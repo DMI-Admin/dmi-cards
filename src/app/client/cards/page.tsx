@@ -1,0 +1,2638 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import type { LucideIcon } from "lucide-react";
+import {
+  BadgePlus,
+  Check,
+  Copy,
+  CreditCard,
+  ExternalLink,
+  GripVertical,
+  ImagePlus,
+  Lock,
+  Save,
+  Search,
+  Smartphone,
+  Tablet,
+  Trash2,
+  X,
+} from "lucide-react";
+import CardRenderer, {
+  type CardRendererData,
+  type CardRendererTemplate,
+} from "@/components/CardRenderer";
+import ClientSidebar from "@/components/ClientSidebar";
+import { supabase } from "@/lib/supabase";
+
+const currentPlan = "free" as
+  | "free"
+  | "individual_pro"
+  | "business"
+  | "enterprise";
+const isPaid = currentPlan !== "free";
+const clientCardsStorageKey = "dmi-client-cards-v1";
+
+type CardStatus = "published" | "unpublished";
+type PanelMode = "create" | "edit";
+type SectionKey = "personal" | "company" | "contact" | "social";
+type BuilderStep = 0 | 1 | 2;
+type DevicePreviewKey =
+  | "iphone_se"
+  | "iphone_se_2_3"
+  | "iphone_x"
+  | "iphone_xr"
+  | "iphone_11"
+  | "iphone_11_pro"
+  | "iphone_11_pro_max"
+  | "iphone_12_mini"
+  | "iphone_12"
+  | "iphone_12_pro_max"
+  | "iphone_13_mini"
+  | "iphone_13"
+  | "iphone_13_pro_max"
+  | "iphone_14"
+  | "iphone_14_plus"
+  | "iphone_14_pro"
+  | "iphone_14_pro_max"
+  | "iphone_15"
+  | "iphone_15_plus"
+  | "iphone_15_pro"
+  | "iphone_15_pro_max"
+  | "iphone_16"
+  | "iphone_16_plus"
+  | "iphone_16_pro"
+  | "iphone_16_pro_max"
+  | "galaxy_s10"
+  | "galaxy_s20"
+  | "galaxy_s21"
+  | "galaxy_s21_ultra"
+  | "galaxy_s22"
+  | "galaxy_s22_ultra"
+  | "galaxy_s23"
+  | "galaxy_s23_plus"
+  | "galaxy_s23_ultra"
+  | "galaxy_s24"
+  | "galaxy_s24_plus"
+  | "galaxy_s24_ultra"
+  | "galaxy_s25"
+  | "galaxy_s25_plus"
+  | "galaxy_s25_ultra"
+  | "galaxy_note_20"
+  | "galaxy_note_20_ultra"
+  | "galaxy_z_flip_5"
+  | "galaxy_z_flip_6"
+  | "galaxy_z_fold_4_closed"
+  | "galaxy_z_fold_4_open"
+  | "galaxy_z_fold_5_closed"
+  | "galaxy_z_fold_5_open"
+  | "galaxy_z_fold_6_closed"
+  | "galaxy_z_fold_6_open"
+  | "pixel_6"
+  | "pixel_7"
+  | "pixel_8"
+  | "pixel_8_pro"
+  | "pixel_9"
+  | "pixel_9_pro_xl"
+  | "oneplus_11"
+  | "oneplus_open"
+  | "xiaomi_13"
+  | "xiaomi_14_ultra"
+  | "huawei_p60_pro"
+  | "oppo_find_x5_pro"
+  | "small_android"
+  | "standard_android"
+  | "large_android"
+  | "tablet_portrait"
+  | "tablet_landscape"
+  | "full_width";
+
+type AdminTemplate = CardRendererTemplate & {
+  id: string;
+  name: string;
+  is_published: boolean;
+};
+
+type ClientCard = CardRendererData & {
+  id: string;
+  card_name: string;
+  template_id: string;
+  template_name: string;
+  status: CardStatus;
+  public_url: string;
+  last_updated: string;
+  selected_colour?: string;
+  hidden_fields?: string[];
+  slug?: string;
+  field_order?: FieldOrder;
+  lead_capture_settings?: LeadCaptureSettings;
+};
+
+type FieldOrder = Record<SectionKey, string[]>;
+type LeadField = "name" | "email" | "phone" | "company" | "job_title" | "website" | "message";
+type LeadCaptureSettings = {
+  flow: "collect_first" | "share_first";
+  fields: LeadField[];
+  consent_notice: string;
+  terms_url: string;
+  follow_up_enabled: boolean;
+};
+type SectionConfig = {
+  key: SectionKey;
+  label: string;
+  enabled: boolean;
+  fields: string[];
+};
+
+type SupabaseCardRow = CardRendererData & {
+  id: string;
+  card_name?: string | null;
+  template_id?: string | null;
+  status?: string | null;
+  is_published?: boolean | null;
+  slug?: string | null;
+  selected_colour?: string | null;
+  hidden_fields?: string[] | null;
+  field_order?: FieldOrder | null;
+  lead_capture_settings?: LeadCaptureSettings | null;
+  updated_at?: string | null;
+  created_at?: string | null;
+};
+
+type SaveStatus = "idle" | "saving" | "saved" | "published" | "failed";
+
+type DevicePreviewDevice = {
+  key: DevicePreviewKey;
+  label: string;
+  brand: string;
+  width: number | "100%";
+  height: number;
+  frameType: "iphone" | "android" | "foldable" | "tablet";
+  dynamicIsland?: boolean;
+  notch?: boolean;
+};
+
+type DevicePreviewGroup = {
+  manufacturer: string;
+  icon: LucideIcon;
+  devices: DevicePreviewDevice[];
+};
+
+const devicePreviewGroups: DevicePreviewGroup[] = [
+  {
+    manufacturer: "Apple",
+    icon: Smartphone,
+    devices: [
+      device("iphone_se", "iPhone SE 1st Gen", "Apple", 320, 568, "iphone"),
+      device("iphone_se_2_3", "iPhone SE 2nd/3rd Gen", "Apple", 375, 667, "iphone"),
+      device("iphone_x", "iPhone X", "Apple", 375, 812, "iphone", { notch: true }),
+      device("iphone_xr", "iPhone XR", "Apple", 414, 896, "iphone", { notch: true }),
+      device("iphone_11", "iPhone 11", "Apple", 414, 896, "iphone", { notch: true }),
+      device("iphone_11_pro", "iPhone 11 Pro", "Apple", 375, 812, "iphone", { notch: true }),
+      device("iphone_11_pro_max", "iPhone 11 Pro Max", "Apple", 414, 896, "iphone", { notch: true }),
+      device("iphone_12_mini", "iPhone 12 Mini", "Apple", 360, 780, "iphone", { notch: true }),
+      device("iphone_12", "iPhone 12 / 12 Pro", "Apple", 390, 844, "iphone", { notch: true }),
+      device("iphone_12_pro_max", "iPhone 12 Pro Max", "Apple", 428, 926, "iphone", { notch: true }),
+      device("iphone_13_mini", "iPhone 13 Mini", "Apple", 375, 812, "iphone", { notch: true }),
+      device("iphone_13", "iPhone 13 / 13 Pro", "Apple", 390, 844, "iphone", { notch: true }),
+      device("iphone_13_pro_max", "iPhone 13 Pro Max", "Apple", 428, 926, "iphone", { notch: true }),
+      device("iphone_14", "iPhone 14", "Apple", 390, 844, "iphone", { notch: true }),
+      device("iphone_14_plus", "iPhone 14 Plus", "Apple", 428, 926, "iphone", { notch: true }),
+      device("iphone_14_pro", "iPhone 14 Pro", "Apple", 393, 852, "iphone", { dynamicIsland: true }),
+      device("iphone_14_pro_max", "iPhone 14 Pro Max", "Apple", 430, 932, "iphone", { dynamicIsland: true }),
+      device("iphone_15", "iPhone 15", "Apple", 393, 852, "iphone", { dynamicIsland: true }),
+      device("iphone_15_plus", "iPhone 15 Plus", "Apple", 430, 932, "iphone", { dynamicIsland: true }),
+      device("iphone_15_pro", "iPhone 15 Pro", "Apple", 393, 852, "iphone", { dynamicIsland: true }),
+      device("iphone_15_pro_max", "iPhone 15 Pro Max", "Apple", 430, 932, "iphone", { dynamicIsland: true }),
+      device("iphone_16", "iPhone 16", "Apple", 393, 852, "iphone", { dynamicIsland: true }),
+      device("iphone_16_plus", "iPhone 16 Plus", "Apple", 430, 932, "iphone", { dynamicIsland: true }),
+      device("iphone_16_pro", "iPhone 16 Pro", "Apple", 402, 874, "iphone", { dynamicIsland: true }),
+      device("iphone_16_pro_max", "iPhone 16 Pro Max", "Apple", 440, 956, "iphone", { dynamicIsland: true }),
+    ],
+  },
+  {
+    manufacturer: "Samsung",
+    icon: Smartphone,
+    devices: [
+      device("galaxy_s10", "Galaxy S10", "Samsung", 360, 760, "android"),
+      device("galaxy_s20", "Galaxy S20", "Samsung", 360, 800, "android"),
+      device("galaxy_s21", "Galaxy S21", "Samsung", 360, 800, "android"),
+      device("galaxy_s21_ultra", "Galaxy S21 Ultra", "Samsung", 384, 854, "android"),
+      device("galaxy_s22", "Galaxy S22", "Samsung", 360, 780, "android"),
+      device("galaxy_s22_ultra", "Galaxy S22 Ultra", "Samsung", 412, 915, "android"),
+      device("galaxy_s23", "Galaxy S23", "Samsung", 393, 873, "android"),
+      device("galaxy_s23_plus", "Galaxy S23 Plus", "Samsung", 384, 854, "android"),
+      device("galaxy_s23_ultra", "Galaxy S23 Ultra", "Samsung", 412, 915, "android"),
+      device("galaxy_s24", "Galaxy S24", "Samsung", 412, 915, "android"),
+      device("galaxy_s24_plus", "Galaxy S24 Plus", "Samsung", 412, 915, "android"),
+      device("galaxy_s24_ultra", "Galaxy S24 Ultra", "Samsung", 430, 932, "android"),
+      device("galaxy_s25", "Galaxy S25", "Samsung", 412, 915, "android"),
+      device("galaxy_s25_plus", "Galaxy S25 Plus", "Samsung", 430, 932, "android"),
+      device("galaxy_s25_ultra", "Galaxy S25 Ultra", "Samsung", 440, 956, "android"),
+      device("galaxy_note_20", "Galaxy Note 20", "Samsung", 412, 915, "android"),
+      device("galaxy_note_20_ultra", "Galaxy Note 20 Ultra", "Samsung", 412, 915, "android"),
+      device("galaxy_z_flip_5", "Galaxy Z Flip 5", "Samsung", 393, 873, "foldable"),
+      device("galaxy_z_flip_6", "Galaxy Z Flip 6", "Samsung", 393, 873, "foldable"),
+      device("galaxy_z_fold_4_closed", "Galaxy Z Fold 4 Closed", "Samsung", 344, 882, "foldable"),
+      device("galaxy_z_fold_4_open", "Galaxy Z Fold 4 Open", "Samsung", 673, 841, "foldable"),
+      device("galaxy_z_fold_5_closed", "Galaxy Z Fold 5 Closed", "Samsung", 344, 882, "foldable"),
+      device("galaxy_z_fold_5_open", "Galaxy Z Fold 5 Open", "Samsung", 673, 841, "foldable"),
+      device("galaxy_z_fold_6_closed", "Galaxy Z Fold 6 Closed", "Samsung", 344, 882, "foldable"),
+      device("galaxy_z_fold_6_open", "Galaxy Z Fold 6 Open", "Samsung", 690, 864, "foldable"),
+    ],
+  },
+  {
+    manufacturer: "Google",
+    icon: Smartphone,
+    devices: [
+      device("pixel_6", "Pixel 6", "Google", 393, 851, "android"),
+      device("pixel_7", "Pixel 7", "Google", 412, 915, "android"),
+      device("pixel_8", "Pixel 8", "Google", 412, 915, "android"),
+      device("pixel_8_pro", "Pixel 8 Pro", "Google", 448, 998, "android"),
+      device("pixel_9", "Pixel 9", "Google", 412, 915, "android"),
+      device("pixel_9_pro_xl", "Pixel 9 Pro XL", "Google", 448, 998, "android"),
+    ],
+  },
+  {
+    manufacturer: "OnePlus",
+    icon: Smartphone,
+    devices: [
+      device("oneplus_11", "OnePlus 11", "OnePlus", 412, 915, "android"),
+      device("oneplus_open", "OnePlus Open", "OnePlus", 673, 841, "foldable"),
+    ],
+  },
+  {
+    manufacturer: "Xiaomi",
+    icon: Smartphone,
+    devices: [
+      device("xiaomi_13", "Xiaomi 13", "Xiaomi", 393, 873, "android"),
+      device("xiaomi_14_ultra", "Xiaomi 14 Ultra", "Xiaomi", 430, 932, "android"),
+    ],
+  },
+  {
+    manufacturer: "Huawei",
+    icon: Smartphone,
+    devices: [device("huawei_p60_pro", "Huawei P60 Pro", "Huawei", 412, 915, "android")],
+  },
+  {
+    manufacturer: "Oppo",
+    icon: Smartphone,
+    devices: [
+      device("oppo_find_x5_pro", "Oppo Find X5 Pro", "Oppo", 412, 915, "android"),
+    ],
+  },
+  {
+    manufacturer: "Generic",
+    icon: Tablet,
+    devices: [
+      device("small_android", "Small Android", "Generic", 360, 800, "android"),
+      device("standard_android", "Standard Android", "Generic", 393, 873, "android"),
+      device("large_android", "Large Android", "Generic", 430, 932, "android"),
+      device("tablet_portrait", "Tablet Portrait", "Generic", 768, 1024, "tablet"),
+      device("tablet_landscape", "Tablet Landscape", "Generic", 1024, 768, "tablet"),
+      device("full_width", "Full Width", "Generic", "100%", 844, "tablet"),
+    ],
+  },
+];
+
+const builderSteps: {
+  title: string;
+  shortTitle: string;
+  subtitle: string;
+}[] = [
+  {
+    title: "Customise Your Card",
+    shortTitle: "Customise",
+    subtitle: "Choose your template and colour style.",
+  },
+  {
+    title: "Build Your Card",
+    shortTitle: "Build",
+    subtitle: "Edit the fields enabled by your DMI template.",
+  },
+  {
+    title: "Set Up Your Card",
+    shortTitle: "Set Up",
+    subtitle: "Configure sharing and lead capture settings.",
+  },
+];
+
+const sectionLabels: Record<SectionKey, string> = {
+  personal: "Personal Details",
+  company: "Company Details",
+  contact: "Contact Details",
+  social: "Social & Links",
+};
+
+const sectionDefaults: FieldOrder = {
+  personal: ["job_title", "bio", "department"],
+  company: ["company_name", "website", "address"],
+  contact: ["email", "phone", "website"],
+  social: [
+    "whatsapp",
+    "linkedin",
+    "instagram",
+    "facebook",
+    "youtube",
+    "booking_link",
+    "custom_url",
+  ],
+};
+
+const fieldLabels: Record<string, string> = {
+  full_name: "Full Name",
+  job_title: "Job Title",
+  bio: "Bio",
+  company_name: "Company Name",
+  department: "Department",
+  website: "Website",
+  address: "Address",
+  email: "Email",
+  phone: "Phone",
+  whatsapp: "WhatsApp",
+  linkedin: "LinkedIn",
+  instagram: "Instagram",
+  facebook: "Facebook",
+  youtube: "YouTube",
+  booking_link: "Booking Link",
+  custom_url: "Custom URL",
+  employee_id: "Employee ID",
+};
+
+const editableCardFields = new Set<string>([
+  "full_name",
+  "job_title",
+  "bio",
+  "company_name",
+  "department",
+  "website",
+  "address",
+  "email",
+  "phone",
+  "whatsapp",
+  "linkedin",
+  "instagram",
+  "facebook",
+  "youtube",
+  "booking_link",
+  "custom_url",
+]);
+
+const leadFields: { key: LeadField; label: string }[] = [
+  { key: "name", label: "Name" },
+  { key: "email", label: "Email" },
+  { key: "phone", label: "Phone" },
+  { key: "company", label: "Company" },
+  { key: "job_title", label: "Job title" },
+  { key: "website", label: "Website" },
+  { key: "message", label: "Message" },
+];
+
+const defaultLeadCaptureSettings: LeadCaptureSettings = {
+  flow: "share_first",
+  fields: ["name", "email"],
+  consent_notice:
+    "I consent to sharing my details so this card owner can follow up.",
+  terms_url: "https://www.devmasterinc.com/terms",
+  follow_up_enabled: false,
+};
+
+const mockAdminTemplates: AdminTemplate[] = [
+  {
+    id: "template-free-classic",
+    name: "Free Classic",
+    is_published: true,
+    access_level: "free",
+    layout_type: "classic_free",
+    requires_profile_image: true,
+    allowed_fields: [
+      "full_name",
+      "job_title",
+      "bio",
+      "department",
+      "company_name",
+      "website",
+      "address",
+      "email",
+      "phone",
+    ],
+    custom_fields: {
+      personal: ["job_title", "bio", "department"],
+      company: ["company_name", "website", "address"],
+      contact: ["email", "phone", "website"],
+      social: [
+        "whatsapp",
+        "linkedin",
+        "instagram",
+        "facebook",
+        "youtube",
+        "booking_link",
+        "custom_url",
+      ],
+    },
+    show_personal_section: true,
+    show_company_section: true,
+    show_contact_section: true,
+    show_social_section: false,
+    free_colour_palette: [
+      "#AC00FF",
+      "#7C3AED",
+      "#2563EB",
+      "#059669",
+      "#DC2626",
+      "#101935",
+    ],
+  },
+  {
+    id: "template-paid-classic",
+    name: "Premium Classic",
+    is_published: true,
+    access_level: "paid",
+    layout_type: "premium_classic",
+    requires_profile_image: true,
+    requires_logo: true,
+    requires_banner: true,
+    gradient_enabled: true,
+    allowed_fields: [
+      "full_name",
+      "job_title",
+      "bio",
+      "company_name",
+      "department",
+      "website",
+      "address",
+      "email",
+      "phone",
+      "whatsapp",
+      "linkedin",
+      "instagram",
+      "custom_url",
+    ],
+    show_personal_section: true,
+    show_company_section: true,
+    show_contact_section: true,
+    show_social_section: true,
+  },
+];
+
+const selectedFreeTemplate =
+  mockAdminTemplates.find((template) => {
+    const layout = template.layout_type;
+    return (
+      template.is_published &&
+      template.access_level === "free" &&
+      (layout === "classic" || layout === "classic_free")
+    );
+  }) || null;
+
+const selectedTemplate =
+  currentPlan === "free" ? selectedFreeTemplate : mockAdminTemplates[1];
+const fallbackColour = selectedTemplate?.free_colour_palette?.[0] || "#AC00FF";
+
+const blankCard: ClientCard = {
+  id: "",
+  card_name: "Primary Digital Card",
+  template_id: selectedTemplate?.id || "",
+  template_name: selectedTemplate?.name || "Free Classic",
+  status: "unpublished",
+  public_url: "/u/my-digital-card",
+  last_updated: "Draft",
+  full_name: "",
+  job_title: "",
+  department: "",
+  bio: "",
+  company_name: "",
+  email: "",
+  phone: "",
+  website: "",
+  address: "",
+  whatsapp: "",
+  linkedin: "",
+  instagram: "",
+  facebook: "",
+  youtube: "",
+  booking_link: "",
+  custom_url: "",
+  custom_fields: {},
+  selected_colour: fallbackColour,
+  hidden_fields: [],
+  field_order: getInitialFieldOrder(selectedTemplate),
+  lead_capture_settings: defaultLeadCaptureSettings,
+};
+
+const initialCards: ClientCard[] = selectedTemplate
+  ? [
+      {
+        ...blankCard,
+        id: "card-1",
+        card_name: "Primary Digital Card",
+        status: "published",
+        public_url: "/u/full-name",
+        last_updated: "12 May 2026",
+        full_name: "Full Name",
+        job_title: "Creative Director",
+        department: "Brand Experience",
+        bio: "Helping teams launch premium digital card experiences.",
+        company_name: "DevMaster Inc",
+        email: "hello@devmasterinc.com",
+        phone: "+44 7700 900123",
+        website: "https://www.devmasterinc.com",
+        address: "London, United Kingdom",
+        custom_fields: {},
+      },
+    ]
+  : [];
+
+export default function ClientCardsPage() {
+  const [cards, setCards] = useState<ClientCard[]>(initialCards);
+  const [selectedCardId, setSelectedCardId] = useState(initialCards[0]?.id || "");
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelMode, setPanelMode] = useState<PanelMode>("create");
+  const [activeStep, setActiveStep] = useState<BuilderStep>(0);
+  const [draftCard, setDraftCard] = useState<ClientCard>(blankCard);
+  const [fieldOrder, setFieldOrder] = useState<FieldOrder>(
+    getInitialFieldOrder(selectedTemplate)
+  );
+  const [devicePreview, setDevicePreview] =
+    useState<DevicePreviewKey>("iphone_15");
+  const [deviceSearch, setDeviceSearch] = useState("");
+  const [devicePickerOpen, setDevicePickerOpen] = useState(false);
+  const [previewDrawerOpen, setPreviewDrawerOpen] = useState(false);
+  const [limitMessage, setLimitMessage] = useState("");
+  const [saveMessage, setSaveMessage] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [databaseNotice, setDatabaseNotice] = useState("");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [loadingCards, setLoadingCards] = useState(true);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [databaseReady, setDatabaseReady] = useState(false);
+
+  const selectedCard = useMemo(() => {
+    return cards.find((card) => card.id === selectedCardId) || cards[0] || null;
+  }, [cards, selectedCardId]);
+
+  const selectedCardTemplate = useMemo(() => {
+    return buildTemplatePreview(
+      selectedTemplate,
+      selectedCard?.selected_colour || fallbackColour,
+      selectedCard?.field_order || getInitialFieldOrder(selectedTemplate),
+      selectedCard?.hidden_fields || []
+    );
+  }, [
+    selectedCard?.selected_colour,
+    selectedCard?.hidden_fields,
+    selectedCard?.field_order,
+  ]);
+
+  const draftTemplate = useMemo(() => {
+    return buildTemplatePreview(
+      selectedTemplate,
+      draftCard.selected_colour || fallbackColour,
+      fieldOrder,
+      draftCard.hidden_fields || []
+    );
+  }, [draftCard.selected_colour, draftCard.hidden_fields, fieldOrder]);
+
+  const publishedCards = cards.filter((card) => card.status === "published").length;
+  const previewCard = panelOpen ? draftCard : selectedCard;
+  const previewTemplate = panelOpen ? draftTemplate : selectedCardTemplate;
+  const previewTitle = panelOpen ? "Live Edit Preview" : "Selected Card Preview";
+  const selectedDevice = findDevice(devicePreview);
+  const filteredDeviceGroups = filterDeviceGroups(deviceSearch);
+  const previewDimensions = previewFrameDimensions(selectedDevice);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadSavedCards() {
+      setLoadingCards(true);
+      setSaveError("");
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (ignore) return;
+
+      if (userError || !user) {
+        setAuthUserId(null);
+        setDatabaseReady(false);
+        setDatabaseNotice(
+          "Database/auth not connected yet. Changes are preview-only."
+        );
+        const localCards = readLocalCards();
+        const nextCards = localCards.length > 0 ? localCards : initialCards;
+        setCards(nextCards);
+        setSelectedCardId(nextCards[0]?.id || "");
+        setLoadingCards(false);
+        return;
+      }
+
+      setAuthUserId(user.id);
+
+      const { data, error } = await supabase
+        .from("cards")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false });
+
+      if (ignore) return;
+
+      if (error) {
+        console.error("Client cards fetch failed", error);
+        setDatabaseReady(false);
+        setDatabaseNotice(
+          "Database/auth not connected yet. Changes are preview-only."
+        );
+        const localCards = readLocalCards();
+        const nextCards = localCards.length > 0 ? localCards : initialCards;
+        setCards(nextCards);
+        setSelectedCardId(nextCards[0]?.id || "");
+        setLoadingCards(false);
+        return;
+      }
+
+      setDatabaseReady(true);
+      setDatabaseNotice("");
+      const savedCards = (data || []).map(mapSupabaseCard);
+      const localCards = readLocalCards();
+      const nextCards =
+        savedCards.length > 0
+          ? savedCards
+          : localCards.length > 0
+          ? localCards
+          : initialCards;
+
+      setCards(nextCards);
+      setSelectedCardId(nextCards[0]?.id || "");
+      setLoadingCards(false);
+    }
+
+    void loadSavedCards();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  function openCreatePanel() {
+    if (!selectedTemplate) return;
+
+    if (!isPaid && cards.length >= 1) {
+      setLimitMessage(
+        "Free users can only have one card. Upgrade to Individual Pro to create more cards."
+      );
+      return;
+    }
+
+    setLimitMessage("");
+    setPanelMode("create");
+    setActiveStep(0);
+    const initialFieldOrder = getInitialFieldOrder(selectedTemplate);
+    setFieldOrder(initialFieldOrder);
+    setDraftCard({
+      ...blankCard,
+      id: `card-${Date.now()}`,
+      template_id: selectedTemplate.id,
+      template_name: selectedTemplate.name,
+      selected_colour: selectedTemplate.free_colour_palette?.[0] || fallbackColour,
+      field_order: initialFieldOrder,
+      lead_capture_settings: defaultLeadCaptureSettings,
+    });
+    setPanelOpen(true);
+  }
+
+  function openEditPanel(card: ClientCard) {
+    setLimitMessage("");
+    setPanelMode("edit");
+    setActiveStep(0);
+    const savedFieldOrder = card.field_order || getInitialFieldOrder(selectedTemplate);
+    setFieldOrder(savedFieldOrder);
+    setDraftCard({ ...card, custom_fields: { ...(card.custom_fields || {}) } });
+    setSelectedCardId(card.id);
+    setPanelOpen(true);
+  }
+
+  function updateDraft(field: keyof ClientCard, value: string) {
+    setDraftCard((current) => ({ ...current, [field]: value }));
+
+    if (field === "card_name" && panelMode === "edit") {
+      setCards((currentCards) =>
+        currentCards.map((card) =>
+          card.id === draftCard.id ? { ...card, card_name: value } : card
+        )
+      );
+    }
+  }
+
+  function updateCustomField(field: string, value: string) {
+    setDraftCard((current) => ({
+      ...current,
+      custom_fields: {
+        ...(current.custom_fields || {}),
+        [field]: value,
+      },
+    }));
+  }
+
+  function updateLeadCaptureSettings(settings: LeadCaptureSettings) {
+    setDraftCard((current) => ({
+      ...current,
+      lead_capture_settings: settings,
+    }));
+  }
+
+  function toggleFieldVisibility(field: string) {
+    setDraftCard((current) => {
+      const hiddenFields = current.hidden_fields || [];
+
+      return {
+        ...current,
+        hidden_fields: hiddenFields.includes(field)
+          ? hiddenFields.filter((hiddenField) => hiddenField !== field)
+          : [...hiddenFields, field],
+      };
+    });
+  }
+
+  function moveField(section: SectionKey, draggedField: string, targetField: string) {
+    setFieldOrder((current) => {
+      const nextSectionFields = [...current[section]];
+      const fromIndex = nextSectionFields.indexOf(draggedField);
+      const toIndex = nextSectionFields.indexOf(targetField);
+
+      if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
+        return current;
+      }
+
+      const [movedField] = nextSectionFields.splice(fromIndex, 1);
+      nextSectionFields.splice(toIndex, 0, movedField);
+
+      const nextFieldOrder = { ...current, [section]: nextSectionFields };
+      setDraftCard((currentCard) => ({
+        ...currentCard,
+        field_order: nextFieldOrder,
+      }));
+
+      return nextFieldOrder;
+    });
+  }
+
+  async function handleSaveCard(status: CardStatus) {
+    setSaveError("");
+    setSaveMessage("");
+    setSaveStatus("saving");
+
+    const slug =
+      draftCard.slug ||
+      slugify(draftCard.full_name || draftCard.card_name || "digital-card");
+
+    const nextCard: ClientCard = {
+      ...draftCard,
+      card_name: draftCard.card_name || "Primary Digital Card",
+      slug,
+      public_url: `/u/${slug}`,
+      status,
+      last_updated: "Just now",
+      field_order: fieldOrder,
+      lead_capture_settings:
+        draftCard.lead_capture_settings || defaultLeadCaptureSettings,
+    };
+
+    const savedCard = await saveCardToSupabase({
+      card: nextCard,
+      userId: authUserId,
+      databaseReady,
+      mode: panelMode,
+    });
+
+    if (!savedCard) {
+      setSaveStatus("failed");
+      return;
+    }
+
+    setCards((currentCards) => {
+      const existing = currentCards.some((card) => card.id === draftCard.id);
+      const nextCards = existing
+        ? currentCards.map((card) => (card.id === draftCard.id ? savedCard : card))
+        : [savedCard, ...currentCards];
+
+      writeLocalCards(nextCards);
+      return nextCards;
+    });
+
+    setSelectedCardId(savedCard.id);
+    setSaveStatus(status === "published" ? "published" : "saved");
+    setSaveMessage(
+      status === "published"
+        ? "Card published successfully."
+        : "Draft saved successfully."
+    );
+    setPanelOpen(false);
+  }
+
+  function handleSaveDraft() {
+    void handleSaveCard("unpublished");
+  }
+
+  function handlePublishCard() {
+    void handleSaveCard("published");
+  }
+
+  async function saveCardToSupabase({
+    card,
+    userId,
+    databaseReady,
+    mode,
+  }: {
+    card: ClientCard;
+    userId: string | null;
+    databaseReady: boolean;
+    mode: PanelMode;
+  }) {
+    if (!userId || !databaseReady) {
+      const localCard = {
+        ...card,
+        last_updated: "Saved locally",
+      };
+      console.log("Saving card payload", {
+        mode: "localStorage",
+        card: localCard,
+      });
+      console.log("Save result", localCard);
+      setDatabaseNotice(
+        "Database/auth not connected yet. Changes are preview-only."
+      );
+      setSaveMessage("Saved locally in this browser.");
+      return {
+        ...localCard,
+      };
+    }
+
+    const payload = buildSupabaseCardPayload(card, userId);
+    console.log("Saving card payload", payload);
+    const shouldUpdate = mode === "edit" && !card.id.startsWith("card-");
+
+    const { data, error } = await writeCardPayload({
+      cardId: card.id,
+      payload,
+      shouldUpdate,
+    });
+    console.log("Save result", data);
+
+    if (error || !data) {
+      console.error("Client card save failed", error);
+      console.error("Save error", error);
+      const message =
+        error?.message || "Failed to save card. Please try again.";
+      setSaveError(message);
+      setDatabaseNotice(
+        "Database save failed. Changes were saved locally in this browser."
+      );
+      const localCard = {
+        ...card,
+        last_updated: "Saved locally",
+      };
+      console.log("Save result", localCard);
+      return localCard;
+    }
+
+    return mapSupabaseCard(data);
+  }
+
+  function togglePublish(card: ClientCard) {
+    setCards((currentCards) =>
+      currentCards.map((currentCard) =>
+        currentCard.id === card.id
+          ? {
+              ...currentCard,
+              status:
+                currentCard.status === "published" ? "unpublished" : "published",
+              last_updated: "Just now",
+            }
+          : currentCard
+      )
+    );
+  }
+
+  function deleteCard(card: ClientCard) {
+    const confirmed = window.confirm("Delete this card permanently?");
+
+    if (!confirmed) return;
+
+    setCards((currentCards) => {
+      const nextCards = currentCards.filter((currentCard) => currentCard.id !== card.id);
+      setSelectedCardId(nextCards[0]?.id || "");
+      return nextCards;
+    });
+  }
+
+  async function copyLink(card: ClientCard) {
+    await navigator.clipboard?.writeText(card.public_url);
+  }
+
+  return (
+    <main className="flex min-h-screen bg-[#070B1A] text-white">
+      <ClientSidebar />
+
+      <section className="flex-1 p-10">
+        <div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#AC00FF]">
+              Client Portal
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <h1 className="text-4xl font-bold">My Cards</h1>
+              <PlanBadge />
+            </div>
+            <p className="mt-3 max-w-3xl text-white/50">
+              Manage your live digital card, public URL, template fields, and
+              lead capture setup.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={openCreatePanel}
+            disabled={!selectedTemplate || (!isPaid && cards.length >= 1)}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            <BadgePlus className="h-4 w-4" />
+            Create New Card
+          </button>
+        </div>
+
+        {!selectedTemplate ? (
+          <NoTemplateState />
+        ) : (
+          <>
+            {limitMessage && (
+              <div className="mb-6 rounded-2xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 px-5 py-4 text-sm text-purple-100">
+                {limitMessage}
+              </div>
+            )}
+
+            {saveMessage && (
+              <div className="mb-6 rounded-2xl border border-green-400/20 bg-green-500/10 px-5 py-4 text-sm text-green-100">
+                {saveMessage}
+              </div>
+            )}
+
+            {saveError && (
+              <div className="mb-6 rounded-2xl border border-red-400/20 bg-red-500/10 px-5 py-4 text-sm text-red-100">
+                Save failed: {saveError}
+              </div>
+            )}
+
+            {databaseNotice && (
+              <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-yellow-400/20 bg-yellow-500/10 px-5 py-4 text-sm text-yellow-100 md:flex-row md:items-center md:justify-between">
+                <span>{databaseNotice}</span>
+                <span className="w-fit rounded-full border border-yellow-200/20 bg-yellow-200/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]">
+                  Preview mode — not saved to database
+                </span>
+              </div>
+            )}
+
+            <div className="grid gap-8 2xl:grid-cols-[minmax(0,1fr)_minmax(560px,600px)]">
+              <div className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <StatCard label="Current Plan" value="Free" />
+                  <StatCard label="Total Cards" value={String(cards.length)} />
+                  <StatCard
+                    label="Published Cards"
+                    value={String(publishedCards)}
+                  />
+                </div>
+
+                {loadingCards ? (
+                  <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white/50">
+                    Loading your saved cards...
+                  </div>
+                ) : cards.length === 0 ? (
+                  <EmptyState onCreate={openCreatePanel} />
+                ) : (
+                  <CardList
+                    cards={cards}
+                    selectedCardId={selectedCardId}
+                    onSelect={setSelectedCardId}
+                    onEdit={openEditPanel}
+                    onTogglePublish={togglePublish}
+                    onCopyLink={copyLink}
+                    onDelete={deleteCard}
+                  />
+                )}
+
+                {panelOpen && (
+                  <EditorPanel
+                    activeStep={activeStep}
+                    draftCard={draftCard}
+                    fieldOrder={fieldOrder}
+                    mode={panelMode}
+                    template={selectedTemplate}
+                    onClose={() => setPanelOpen(false)}
+                    onStepChange={setActiveStep}
+                    onUpdate={updateDraft}
+                    onUpdateCustomField={updateCustomField}
+                    onUpdateLeadSettings={updateLeadCaptureSettings}
+                    onToggleFieldVisibility={toggleFieldVisibility}
+                    onMoveField={moveField}
+                    onSaveDraft={handleSaveDraft}
+                    onPublish={handlePublishCard}
+                    saveStatus={saveStatus}
+                    saveMessage={saveMessage}
+                    saveError={saveError}
+                  />
+                )}
+              </div>
+
+              <aside className="hidden 2xl:sticky 2xl:top-8 2xl:block 2xl:self-start">
+                <div className="rounded-3xl border border-white/10 bg-[#101935]/65 p-5 shadow-2xl shadow-black/20">
+                  <PreviewPanelContent
+                    title={previewTitle}
+                    previewCard={previewCard}
+                    previewTemplate={previewTemplate}
+                    selectedDevice={selectedDevice}
+                    selectedKey={devicePreview}
+                    search={deviceSearch}
+                    open={devicePickerOpen}
+                    filteredGroups={filteredDeviceGroups}
+                    dimensions={previewDimensions}
+                    onSearchChange={setDeviceSearch}
+                    onOpenChange={setDevicePickerOpen}
+                    onSelect={(key) => {
+                      setDevicePreview(key);
+                      setDevicePickerOpen(false);
+                    }}
+                  />
+                </div>
+              </aside>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setPreviewDrawerOpen(true)}
+              className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-2xl border border-[#AC00FF]/40 bg-[#AC00FF] px-4 py-3 text-sm font-semibold text-white shadow-2xl shadow-purple-500/35 transition hover:shadow-purple-500/50 md:bottom-auto md:right-0 md:top-1/2 md:-translate-y-1/2 md:flex-col md:rounded-l-2xl md:rounded-r-none md:px-3 md:py-5 2xl:hidden"
+            >
+              <CreditCard className="h-4 w-4" />
+              <span className="md:[writing-mode:vertical-rl] md:rotate-180">
+                Preview
+              </span>
+            </button>
+
+            {previewDrawerOpen && (
+              <div className="fixed inset-0 z-50 2xl:hidden">
+                <button
+                  type="button"
+                  aria-label="Close preview drawer"
+                  onClick={() => setPreviewDrawerOpen(false)}
+                  className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+                />
+
+                <div className="absolute inset-0 overflow-y-auto border-white/10 bg-[#070B1A]/95 p-4 shadow-2xl shadow-black/40 transition-transform duration-300 md:inset-y-0 md:left-auto md:right-0 md:w-[620px] md:border-l md:p-5 lg:w-[680px] xl:w-[720px]">
+                  <div className="min-h-full rounded-3xl border border-white/10 bg-[#101935]/80 p-4 shadow-2xl shadow-purple-950/25 md:min-h-0 md:p-6">
+                    <PreviewPanelContent
+                      title={previewTitle}
+                      previewCard={previewCard}
+                      previewTemplate={previewTemplate}
+                      selectedDevice={selectedDevice}
+                      selectedKey={devicePreview}
+                      search={deviceSearch}
+                      open={devicePickerOpen}
+                      filteredGroups={filteredDeviceGroups}
+                      dimensions={previewDimensions}
+                      actions={
+                        <button
+                          type="button"
+                          onClick={() => setPreviewDrawerOpen(false)}
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/60 transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:text-white"
+                          aria-label="Close preview"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      }
+                      onSearchChange={setDeviceSearch}
+                      onOpenChange={setDevicePickerOpen}
+                      onSelect={(key) => {
+                        setDevicePreview(key);
+                        setDevicePickerOpen(false);
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function PreviewPanelContent({
+  title,
+  previewCard,
+  previewTemplate,
+  selectedDevice,
+  selectedKey,
+  search,
+  open,
+  filteredGroups,
+  dimensions,
+  actions,
+  onSearchChange,
+  onOpenChange,
+  onSelect,
+}: {
+  title: string;
+  previewCard: ClientCard | null;
+  previewTemplate: CardRendererTemplate;
+  selectedDevice: DevicePreviewDevice;
+  selectedKey: DevicePreviewKey;
+  search: string;
+  open: boolean;
+  filteredGroups: DevicePreviewGroup[];
+  dimensions: ReturnType<typeof previewFrameDimensions>;
+  actions?: React.ReactNode;
+  onSearchChange: (value: string) => void;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (key: DevicePreviewKey) => void;
+}) {
+  return (
+    <>
+      <div className="mb-5 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold">{title}</h2>
+            <p className="mt-1 text-sm text-white/45">
+              Preview how your public card appears on different devices.
+            </p>
+          </div>
+          {actions}
+        </div>
+
+        <DevicePreviewPicker
+          selectedDevice={selectedDevice}
+          selectedKey={selectedKey}
+          search={search}
+          open={open}
+          filteredGroups={filteredGroups}
+          onSearchChange={onSearchChange}
+          onOpenChange={onOpenChange}
+          onSelect={onSelect}
+        />
+      </div>
+
+      {previewCard ? (
+        <DevicePreviewFrame device={selectedDevice} dimensions={dimensions}>
+          <CardRenderer
+            template={previewTemplate}
+            cardData={previewCard}
+            mode="preview"
+          />
+        </DevicePreviewFrame>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-8 text-center text-white/45">
+          No card selected.
+        </div>
+      )}
+    </>
+  );
+}
+
+function CardList({
+  cards,
+  selectedCardId,
+  onSelect,
+  onEdit,
+  onTogglePublish,
+  onCopyLink,
+  onDelete,
+}: {
+  cards: ClientCard[];
+  selectedCardId: string;
+  onSelect: (id: string) => void;
+  onEdit: (card: ClientCard) => void;
+  onTogglePublish: (card: ClientCard) => void;
+  onCopyLink: (card: ClientCard) => void;
+  onDelete: (card: ClientCard) => void;
+}) {
+  return (
+    <section className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/10">
+      <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold">Card List</h2>
+          <p className="mt-1 text-sm text-white/45">
+            Manage your published and draft public card pages.
+          </p>
+        </div>
+        {!isPaid && (
+          <span className="rounded-full border border-[#AC00FF]/25 bg-[#AC00FF]/10 px-3 py-1 text-xs font-semibold text-purple-100">
+            Free plan: 1 card limit
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        {cards.map((card) => {
+          const selected = selectedCardId === card.id;
+
+          return (
+            <article
+              key={card.id}
+              className={`rounded-2xl border p-4 transition ${
+                selected
+                  ? "border-[#AC00FF]/70 bg-[#AC00FF]/10 shadow-lg shadow-purple-500/15"
+                  : "border-white/10 bg-[#101935]/55 hover:border-white/20"
+              }`}
+            >
+              <div className="flex flex-col gap-4">
+                <button
+                  type="button"
+                  onClick={() => onSelect(card.id)}
+                  className="w-full min-w-0 text-left"
+                >
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_auto_minmax(170px,1fr)_minmax(130px,0.8fr)] lg:items-center">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold">{card.card_name}</p>
+                      <p className="mt-1 text-sm text-white/45">
+                        Template: {card.template_name}
+                      </p>
+                    </div>
+                    <StatusBadge status={card.status} />
+                    <div className="min-w-0 text-sm">
+                      <p className="text-white/35">Public URL</p>
+                      <p className="mt-1 truncate text-white/70">{card.public_url}</p>
+                    </div>
+                    <div className="min-w-0 text-sm">
+                      <p className="text-white/35">Last updated</p>
+                      <p className="mt-1 text-white/70">{card.last_updated}</p>
+                    </div>
+                  </div>
+                </button>
+
+                <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-4">
+                  <ActionButton
+                    label="Edit Card"
+                    icon={CreditCard}
+                    onClick={() => onEdit(card)}
+                  />
+                  <ActionButton
+                    label={card.status === "published" ? "Unpublish" : "Publish"}
+                    icon={Save}
+                    onClick={() => onTogglePublish(card)}
+                  />
+                  <ActionButton
+                    label="View Public Page"
+                    icon={ExternalLink}
+                    onClick={() => onSelect(card.id)}
+                  />
+                  <ActionButton
+                    label="Copy Link"
+                    icon={Copy}
+                    onClick={() => onCopyLink(card)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onDelete(card)}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-200 transition hover:bg-red-500/20"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function DevicePreviewPicker({
+  selectedDevice,
+  selectedKey,
+  search,
+  open,
+  filteredGroups,
+  onSearchChange,
+  onOpenChange,
+  onSelect,
+}: {
+  selectedDevice: DevicePreviewDevice;
+  selectedKey: DevicePreviewKey;
+  search: string;
+  open: boolean;
+  filteredGroups: DevicePreviewGroup[];
+  onSearchChange: (value: string) => void;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (key: DevicePreviewKey) => void;
+}) {
+  const selectedSize = deviceSizeLabel(selectedDevice);
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
+          Device Preview
+        </span>
+        <button
+          type="button"
+          onClick={() => onOpenChange(!open)}
+          className="group flex w-full items-center justify-between rounded-2xl border border-white/10 bg-[#070B1A]/80 px-4 py-3 text-left text-sm text-white transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10 hover:shadow-lg hover:shadow-purple-500/10"
+        >
+          <span>
+            <span className="block font-semibold">{selectedDevice.label}</span>
+            <span className="mt-1 block text-xs text-white/40">
+              {selectedSize}
+            </span>
+          </span>
+          <span className="rounded-full bg-[#AC00FF]/20 px-3 py-1 text-xs font-semibold text-purple-100 transition group-hover:bg-[#AC00FF]/35">
+            Change
+          </span>
+        </button>
+      </div>
+
+      {open && (
+        <div className="rounded-3xl border border-[#AC00FF]/25 bg-[#070B1A]/95 p-3 shadow-2xl shadow-purple-950/30">
+          <div className="sticky top-0 z-10 rounded-2xl border border-[#AC00FF]/25 bg-[#101935] p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-purple-200">
+              Selected
+            </p>
+            <p className="mt-1 text-sm font-semibold">{selectedDevice.label}</p>
+          </div>
+
+          <div className="relative mt-3">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+            <input
+              value={search}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Search iPhone, Samsung, Pixel..."
+              className="w-full rounded-2xl border border-white/10 bg-white/5 py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60"
+            />
+          </div>
+
+          <div className="mt-3 max-h-80 space-y-4 overflow-y-auto pr-1">
+            {filteredGroups.length === 0 ? (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/45">
+                No devices found.
+              </div>
+            ) : (
+              filteredGroups.map((group) => {
+                const Icon = group.icon;
+
+                return (
+                  <div key={group.manufacturer}>
+                    <div className="mb-2 flex items-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/35">
+                      <Icon className="h-4 w-4 text-purple-200" />
+                      {group.manufacturer}
+                    </div>
+                    <div className="space-y-1.5">
+                      {group.devices.map((device) => {
+                        const selected = device.key === selectedKey;
+                        const width =
+                          device.width === "100%"
+                            ? "Full width"
+                            : `${device.width} x ${device.height}px`;
+
+                        return (
+                          <button
+                            key={device.key}
+                            type="button"
+                            onClick={() => onSelect(device.key)}
+                            className={`flex w-full items-center justify-between rounded-2xl border px-3 py-2.5 text-left text-sm transition ${
+                              selected
+                                ? "border-[#AC00FF]/70 bg-[#AC00FF]/15 text-white shadow-lg shadow-purple-500/15"
+                                : "border-white/5 bg-white/[0.03] text-white/65 hover:border-[#AC00FF]/35 hover:bg-white/10 hover:text-white"
+                            }`}
+                          >
+                            <span>
+                              <span className="block font-medium">
+                                {device.label}
+                              </span>
+                              <span className="mt-0.5 block text-xs text-white/35">
+                                {width}
+                              </span>
+                            </span>
+                            {selected && <Check className="h-4 w-4 text-purple-100" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+function DevicePreviewFrame({
+  device,
+  dimensions,
+  children,
+}: {
+  device: DevicePreviewDevice;
+  dimensions: { width: string; minWidth: string; height: number };
+  children: React.ReactNode;
+}) {
+  const isIphone = device.frameType === "iphone";
+  const isTablet = device.frameType === "tablet";
+  const isFoldable = device.frameType === "foldable";
+  const deviceWidth = device.width === "100%" ? 390 : device.width;
+  const needsWideScroll = isTablet || (isFoldable && deviceWidth > 560);
+  const shellPadding = isTablet || isFoldable ? 14 : 10;
+  const shellRadius = isTablet ? "2rem" : isFoldable ? "2.2rem" : "2.6rem";
+  const screenRadius = isTablet ? "1.35rem" : isFoldable ? "1.6rem" : "2rem";
+
+  return (
+    <div>
+      <div className="mb-4 text-center">
+        <p className="text-sm font-semibold text-white">{device.label}</p>
+        <p className="mt-1 text-xs text-white/40">
+          {deviceSizeLabel(device)}
+        </p>
+      </div>
+
+      <div className="rounded-[2rem] bg-white/[0.07] p-4 shadow-inner shadow-white/5 md:p-8">
+        <div
+          className={`pb-3 ${
+            needsWideScroll ? "overflow-x-auto" : "overflow-x-hidden"
+          }`}
+        >
+          <div
+            className="mx-auto origin-top transform-gpu transition-[width,min-width,transform] duration-300 ease-out max-md:scale-[0.72] md:scale-100"
+            style={{ width: dimensions.width, minWidth: dimensions.minWidth }}
+          >
+            <div
+              className="relative mx-auto bg-gradient-to-br from-black via-[#101016] to-[#1B1230] shadow-2xl shadow-[#AC00FF]/20"
+              style={{
+                borderRadius: shellRadius,
+                padding: shellPadding,
+              }}
+            >
+              {isIphone && (
+                <div className="pointer-events-none absolute left-1/2 top-[18px] z-20 -translate-x-1/2">
+                  {device.dynamicIsland ? (
+                    <div className="h-7 w-24 rounded-full bg-black shadow-inner shadow-white/10" />
+                  ) : device.notch ? (
+                    <div className="h-7 w-32 rounded-b-3xl bg-black shadow-inner shadow-white/10" />
+                  ) : (
+                    <div className="h-1.5 w-16 rounded-full bg-white/20" />
+                  )}
+                </div>
+              )}
+
+              {!isIphone && !isTablet && (
+                <div className="pointer-events-none absolute left-1/2 top-[18px] z-20 h-2 w-2 -translate-x-1/2 rounded-full bg-black shadow-inner shadow-white/20" />
+              )}
+
+              <div
+                onWheel={(event) => event.stopPropagation()}
+                className="relative overflow-y-auto overflow-x-hidden bg-[#070B1A] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                style={{
+                  height: dimensions.height,
+                  borderRadius: screenRadius,
+                }}
+              >
+                <div className="w-full min-w-full [&>*]:w-full">{children}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditorPanel({
+  activeStep,
+  draftCard,
+  fieldOrder,
+  mode,
+  template,
+  onClose,
+  onStepChange,
+  onUpdate,
+  onUpdateCustomField,
+  onUpdateLeadSettings,
+  onToggleFieldVisibility,
+  onMoveField,
+  onSaveDraft,
+  onPublish,
+  saveStatus,
+  saveMessage,
+  saveError,
+}: {
+  activeStep: BuilderStep;
+  draftCard: ClientCard;
+  fieldOrder: FieldOrder;
+  mode: PanelMode;
+  template: AdminTemplate;
+  onClose: () => void;
+  onStepChange: (step: BuilderStep) => void;
+  onUpdate: (field: keyof ClientCard, value: string) => void;
+  onUpdateCustomField: (field: string, value: string) => void;
+  onUpdateLeadSettings: (settings: LeadCaptureSettings) => void;
+  onToggleFieldVisibility: (field: string) => void;
+  onMoveField: (section: SectionKey, draggedField: string, targetField: string) => void;
+  onSaveDraft: () => void;
+  onPublish: () => void;
+  saveStatus: SaveStatus;
+  saveMessage: string;
+  saveError: string;
+}) {
+  return (
+    <section className="rounded-3xl border border-[#AC00FF]/25 bg-[#101935]/75 shadow-2xl shadow-purple-950/20">
+      <div className="flex flex-col gap-4 border-b border-white/10 p-5 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#AC00FF]">
+            {mode === "create" ? "Create Card" : "Edit Card"}
+          </p>
+          <h2 className="mt-1 text-2xl font-semibold">
+            {builderSteps[activeStep].title}
+          </h2>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 transition hover:bg-white/10 hover:text-white"
+        >
+          Close
+        </button>
+      </div>
+
+      <div className="p-5">
+        <div className="mb-6 grid gap-3 md:grid-cols-3">
+          {builderSteps.map((step, index) => (
+              <button
+                key={step.title}
+                type="button"
+                onClick={() => onStepChange(index as BuilderStep)}
+                className={`rounded-2xl border px-4 py-3 text-left transition ${
+                  activeStep === index
+                    ? "border-[#AC00FF]/70 bg-[#AC00FF]/15 text-white shadow-lg shadow-purple-500/15"
+                    : "border-white/10 bg-white/5 text-white/55 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-purple-200">
+                  Step {index + 1}
+                </span>
+                <span className="mt-1 block text-sm font-semibold">
+                  {step.shortTitle}
+                </span>
+                <span className="mt-1 block text-xs font-normal leading-5 text-white/45">
+                  {step.subtitle}
+                </span>
+              </button>
+          ))}
+        </div>
+
+        {activeStep === 0 && (
+          <CustomiseStep
+            template={template}
+            draftCard={draftCard}
+            fieldOrder={fieldOrder}
+            onUpdate={onUpdate}
+          />
+        )}
+        {activeStep === 1 && (
+          <BuildStep
+            template={template}
+            draftCard={draftCard}
+            fieldOrder={fieldOrder}
+            onUpdate={onUpdate}
+            onUpdateCustomField={onUpdateCustomField}
+            onToggleFieldVisibility={onToggleFieldVisibility}
+            onMoveField={onMoveField}
+          />
+        )}
+        {activeStep === 2 && (
+          <SetUpStep
+            settings={draftCard.lead_capture_settings || defaultLeadCaptureSettings}
+            onSettingsChange={onUpdateLeadSettings}
+            onSaveDraft={onSaveDraft}
+            onPublish={onPublish}
+            saveStatus={saveStatus}
+            saveMessage={saveMessage}
+            saveError={saveError}
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function CustomiseStep({
+  template,
+  draftCard,
+  fieldOrder,
+  onUpdate,
+}: {
+  template: AdminTemplate;
+  draftCard: ClientCard;
+  fieldOrder: FieldOrder;
+  onUpdate: (field: keyof ClientCard, value: string) => void;
+}) {
+  const palette = template.free_colour_palette?.length
+    ? template.free_colour_palette
+    : [fallbackColour];
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-xl font-semibold">Customise Your Card</h3>
+        <p className="mt-2 text-sm text-white/45">
+          Choose your template and colour style.
+        </p>
+      </div>
+
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-white/65">
+            Card Name
+          </span>
+          <input
+            value={draftCard.card_name || "Primary Digital Card"}
+            onChange={(event) => onUpdate("card_name", event.target.value)}
+            placeholder="e.g. Primary Digital Card"
+            className="w-full rounded-2xl border border-white/10 bg-[#070B1A]/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60"
+          />
+        </label>
+        <p className="mt-2 text-xs leading-5 text-white/40">
+          This is your internal card label. Your full name is managed separately
+          in Build Your Card.
+        </p>
+      </div>
+
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+        <p className="mb-4 text-sm font-semibold text-white/60">
+          Template selection
+        </p>
+        <div className="flex gap-4 overflow-x-auto pb-2">
+          <div className="w-52 shrink-0 rounded-3xl border border-[#AC00FF]/40 bg-[#AC00FF]/10 p-4 shadow-lg shadow-purple-500/10">
+            <div className="flex h-40 items-start justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/30 pt-3">
+              <div className="origin-top scale-[0.45]">
+                <CardRenderer
+                  template={buildTemplatePreview(
+                    template,
+                    draftCard.selected_colour || fallbackColour,
+                    fieldOrder,
+                    draftCard.hidden_fields || []
+                  )}
+                  cardData={draftCard}
+                  mode="compact"
+                />
+              </div>
+            </div>
+            <p className="mt-4 text-sm font-semibold">{template.name}</p>
+            <p className="mt-1 text-xs text-white/45">Selected by DMI Cards</p>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-[#AC00FF]/30 bg-[#AC00FF]/10 p-5">
+          <div className="flex gap-4">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#AC00FF]/20 text-purple-100">
+              <Lock className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-semibold">{template.name}</p>
+              <p className="mt-2 text-sm leading-6 text-white/55">
+                Your free card uses the Classic template selected by DMI Cards.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+          <p className="text-sm font-semibold text-white/65">
+            Free colour palette
+          </p>
+          <p className="mt-1 text-sm text-white/40">
+            Free users can only choose admin-approved swatches.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            {palette.map((colour) => (
+              <button
+                key={colour}
+                type="button"
+                onClick={() => onUpdate("selected_colour", colour)}
+                className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition ${
+                  draftCard.selected_colour === colour
+                    ? "border-white shadow-lg shadow-purple-500/30"
+                    : "border-white/10"
+                }`}
+                style={{ backgroundColor: colour }}
+                aria-label={`Select ${colour}`}
+              >
+                {draftCard.selected_colour === colour && (
+                  <Check className="h-5 w-5" />
+                )}
+              </button>
+            ))}
+          </div>
+
+        {!isPaid && (
+          <UpgradeNotice message="Upgrade to Pro for paid templates, colour pickers, gradients, fonts, logos, banners, socials, and integrations." />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BuildStep({
+  template,
+  draftCard,
+  fieldOrder,
+  onUpdate,
+  onUpdateCustomField,
+  onToggleFieldVisibility,
+  onMoveField,
+}: {
+  template: AdminTemplate;
+  draftCard: ClientCard;
+  fieldOrder: FieldOrder;
+  onUpdate: (field: keyof ClientCard, value: string) => void;
+  onUpdateCustomField: (field: string, value: string) => void;
+  onToggleFieldVisibility: (field: string) => void;
+  onMoveField: (section: SectionKey, draggedField: string, targetField: string) => void;
+}) {
+  const sections = sectionConfig(template, fieldOrder);
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-xl font-semibold">Build Your Card</h3>
+        <p className="mt-2 text-sm text-white/45">
+          Only fields enabled by the DMI Admin template are editable here.
+        </p>
+      </div>
+
+      <MainProfileSection draftCard={draftCard} onUpdate={onUpdate} />
+
+      {sections.map((section) => (
+        <BuilderSection
+          key={section.key}
+          section={section}
+          draftCard={draftCard}
+          onUpdate={onUpdate}
+          onUpdateCustomField={onUpdateCustomField}
+          onToggleFieldVisibility={onToggleFieldVisibility}
+          onMoveField={onMoveField}
+        />
+      ))}
+    </div>
+  );
+}
+
+function MainProfileSection({
+  draftCard,
+  onUpdate,
+}: {
+  draftCard: ClientCard;
+  onUpdate: (field: keyof ClientCard, value: string) => void;
+}) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+      <h3 className="text-lg font-semibold">Main Profile</h3>
+      <p className="mt-1 text-sm text-white/40">
+        Full name and profile picture are fixed at the top of your card.
+      </p>
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-[220px_1fr]">
+        <ProfilePictureUpload />
+        <TextField
+          label="Full name"
+          value={draftCard.full_name}
+          onChange={(value) => onUpdate("full_name", value)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ProfilePictureUpload() {
+  return (
+    <div>
+      <p className="mb-3 text-sm font-medium text-white/55">Profile Picture</p>
+      <button
+        type="button"
+        className="group flex w-full flex-col items-center rounded-3xl border border-white/10 bg-[#070B1A]/55 p-5 text-center transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10"
+      >
+        <span className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-white/20 bg-gradient-to-br from-[#AC00FF]/70 to-[#101935] text-purple-100 shadow-lg shadow-purple-950/30 transition group-hover:border-white/40">
+          <ImagePlus className="h-8 w-8" />
+        </span>
+        <span className="mt-4 text-sm font-semibold text-white">
+          Upload profile photo
+        </span>
+      </button>
+    </div>
+  );
+}
+
+function BuilderSection({
+  section,
+  draftCard,
+  onUpdate,
+  onUpdateCustomField,
+  onToggleFieldVisibility,
+  onMoveField,
+}: {
+  section: SectionConfig;
+  draftCard: ClientCard;
+  onUpdate: (field: keyof ClientCard, value: string) => void;
+  onUpdateCustomField: (field: string, value: string) => void;
+  onToggleFieldVisibility: (field: string) => void;
+  onMoveField: (section: SectionKey, draggedField: string, targetField: string) => void;
+}) {
+  if (!section.enabled) {
+    return (
+      <LockedSection
+        title={section.label}
+        message="Upgrade to Pro to unlock this section."
+      />
+    );
+  }
+
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+      <h3 className="text-lg font-semibold">{section.label}</h3>
+      {section.fields.length === 0 ? (
+        <p className="mt-3 text-sm text-white/40">
+          No editable fields are enabled for this section.
+        </p>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {section.fields.map((field) => (
+            <FieldRow
+              key={field}
+              section={section.key}
+              field={field}
+              value={
+                isEditableCardField(field)
+                  ? draftCard[field]
+                  : customFieldValue(draftCard, field)
+              }
+              hidden={draftCard.hidden_fields?.includes(field) || false}
+              onChange={(value) => {
+                if (isEditableCardField(field)) {
+                  onUpdate(field, value);
+                  return;
+                }
+
+                onUpdateCustomField(field, value);
+              }}
+              onToggleVisibility={() => onToggleFieldVisibility(field)}
+              onMoveField={onMoveField}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FieldRow({
+  section,
+  field,
+  value,
+  hidden,
+  onChange,
+  onToggleVisibility,
+  onMoveField,
+}: {
+  section: SectionKey;
+  field: string;
+  value: string | null | undefined | ClientCard[keyof ClientCard];
+  hidden: boolean;
+  onChange: (value: string) => void;
+  onToggleVisibility: () => void;
+  onMoveField: (section: SectionKey, draggedField: string, targetField: string) => void;
+}) {
+  return (
+    <div
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.setData("field-name", String(field));
+      }}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        const draggedField = event.dataTransfer.getData("field-name");
+        if (draggedField) onMoveField(section, draggedField, String(field));
+      }}
+      className={`grid gap-3 rounded-2xl border p-3 transition md:grid-cols-[28px_1fr_auto] ${
+        hidden
+          ? "border-white/5 bg-[#070B1A]/35 opacity-60"
+          : "border-white/10 bg-[#070B1A]/55"
+      }`}
+    >
+      <div className="flex items-center justify-center text-white/35">
+        <GripVertical className="h-4 w-4" />
+      </div>
+      {field === "bio" ? (
+        <TextArea
+          label={fieldLabels[field] || labelize(field)}
+          value={String(value || "")}
+          onChange={onChange}
+        />
+      ) : (
+        <TextField
+          label={fieldLabels[field] || labelize(field)}
+          value={String(value || "")}
+          onChange={onChange}
+        />
+      )}
+      <div className="flex items-end">
+        <button
+          type="button"
+          onClick={onToggleVisibility}
+          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+            hidden
+              ? "bg-white/10 text-white/50 hover:bg-white/15 hover:text-white"
+              : "bg-[#AC00FF]/20 text-purple-100 shadow-lg shadow-purple-500/10 hover:bg-[#AC00FF]/30"
+          }`}
+        >
+          {hidden ? "Hidden" : "Shown"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SetUpStep({
+  settings,
+  onSettingsChange,
+  onSaveDraft,
+  onPublish,
+  saveStatus,
+  saveMessage,
+  saveError,
+}: {
+  settings: LeadCaptureSettings;
+  onSettingsChange: (settings: LeadCaptureSettings) => void;
+  onSaveDraft: () => void;
+  onPublish: () => void;
+  saveStatus: SaveStatus;
+  saveMessage: string;
+  saveError: string;
+}) {
+  function toggleField(field: LeadField) {
+    onSettingsChange({
+      ...settings,
+      fields: settings.fields.includes(field)
+        ? settings.fields.filter((item) => item !== field)
+        : [...settings.fields, field],
+    });
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-xl font-semibold">Set Up Your Card</h3>
+        <p className="mt-2 text-sm text-white/45">
+          Configure how recipients interact before or after viewing your card.
+        </p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        {[
+          { value: "share_first", label: "Share first" },
+          { value: "collect_first", label: "Collect first" },
+        ].map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() =>
+              onSettingsChange({
+                ...settings,
+                flow: option.value as "collect_first" | "share_first",
+              })
+            }
+            className={`rounded-2xl border px-4 py-4 text-left text-sm font-semibold transition ${
+              settings.flow === option.value
+                ? "border-[#AC00FF] bg-[#AC00FF]/15 text-white"
+                : "border-white/10 bg-white/5 text-white/55 hover:bg-white/10"
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+        <p className="font-semibold">Recipient data to collect</p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {leadFields.map((field) => (
+            <button
+              key={field.key}
+              type="button"
+              onClick={() => toggleField(field.key)}
+              className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-sm transition ${
+                settings.fields.includes(field.key)
+                  ? "border-[#AC00FF]/60 bg-[#AC00FF]/15 text-white"
+                  : "border-white/10 bg-white/5 text-white/55"
+              }`}
+            >
+              {field.label}
+              {settings.fields.includes(field.key) && <Check className="h-4 w-4" />}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <TextArea
+          label="Consent notice"
+          value={settings.consent_notice}
+          onChange={(value) =>
+            onSettingsChange({ ...settings, consent_notice: value })
+          }
+        />
+        <TextField
+          label="Terms URL"
+          value={settings.terms_url}
+          onChange={(value) => onSettingsChange({ ...settings, terms_url: value })}
+        />
+      </div>
+
+      <button
+        type="button"
+        onClick={() =>
+          onSettingsChange({
+            ...settings,
+            follow_up_enabled: !settings.follow_up_enabled,
+          })
+        }
+        className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left transition hover:bg-white/10"
+      >
+        <div>
+          <p className="font-semibold">Follow-up email</p>
+          <p className="mt-1 text-sm text-white/40">Placeholder toggle for V1.</p>
+        </div>
+        <span
+          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            settings.follow_up_enabled
+              ? "bg-[#AC00FF]/20 text-purple-100"
+              : "bg-white/10 text-white/50"
+          }`}
+        >
+          {settings.follow_up_enabled ? "On" : "Off"}
+        </span>
+      </button>
+
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={onSaveDraft}
+          disabled={saveStatus === "saving"}
+          className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white/75 transition hover:bg-white/10 hover:text-white"
+        >
+          <Save className="h-4 w-4" />
+          {saveStatus === "saving" ? "Saving..." : "Save Draft"}
+        </button>
+        <button
+          type="button"
+          onClick={onPublish}
+          disabled={saveStatus === "saving"}
+          className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35"
+        >
+          <ExternalLink className="h-4 w-4" />
+          {saveStatus === "saving" ? "Saving..." : "Publish Card"}
+        </button>
+      </div>
+
+      {(saveStatus === "saving" || saveMessage || saveError) && (
+        <div
+          className={`rounded-2xl border px-4 py-3 text-sm ${
+            saveError
+              ? "border-red-400/20 bg-red-500/10 text-red-100"
+              : "border-green-400/20 bg-green-500/10 text-green-100"
+          }`}
+        >
+          {saveStatus === "saving" && "Saving..."}
+          {saveStatus !== "saving" && saveError && `Save failed: ${saveError}`}
+          {saveStatus !== "saving" && !saveError && saveMessage}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function buildTemplatePreview(
+  template: AdminTemplate | null,
+  selectedColour: string,
+  fieldOrder: FieldOrder,
+  hiddenFields: string[] = []
+): CardRendererTemplate {
+  if (!template) return {};
+
+  const rendererFieldOrder = fieldOrderForRenderer(fieldOrder, hiddenFields);
+  const hiddenFieldSet = new Set(hiddenFields);
+  const allowedFields = (template.allowed_fields || []).filter(
+    (field) => !hiddenFieldSet.has(field)
+  );
+
+  if (template.access_level === "free") {
+    return {
+      ...template,
+      allowed_fields: allowedFields,
+      custom_fields: rendererFieldOrder,
+      free_colour_palette: [selectedColour],
+      show_personal_section:
+        (template.show_personal_section ?? true) &&
+        rendererFieldOrder.personal.length > 0,
+      show_company_section:
+        (template.show_company_section ?? true) &&
+        rendererFieldOrder.company.length > 0,
+      show_contact_section:
+        (template.show_contact_section ?? true) &&
+        rendererFieldOrder.contact.length > 0,
+      show_social_section:
+        (template.show_social_section ?? false) &&
+        rendererFieldOrder.social.length > 0,
+    };
+  }
+
+  return {
+    ...template,
+    allowed_fields: allowedFields,
+    custom_fields: rendererFieldOrder,
+    show_personal_section:
+      (template.show_personal_section ?? true) &&
+      rendererFieldOrder.personal.length > 0,
+    show_company_section:
+      (template.show_company_section ?? true) &&
+      rendererFieldOrder.company.length > 0,
+    show_contact_section:
+      (template.show_contact_section ?? true) &&
+      rendererFieldOrder.contact.length > 0,
+    show_social_section:
+      (template.show_social_section ?? false) &&
+      rendererFieldOrder.social.length > 0,
+  };
+}
+
+function readLocalCards() {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const stored = window.localStorage.getItem(clientCardsStorageKey);
+    if (!stored) return [];
+
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? (parsed as ClientCard[]) : [];
+  } catch (error) {
+    console.error("Failed to read local client cards", error);
+    return [];
+  }
+}
+
+function writeLocalCards(cards: ClientCard[]) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(clientCardsStorageKey, JSON.stringify(cards));
+  } catch (error) {
+    console.error("Failed to save local client cards", error);
+  }
+}
+
+function mapSupabaseCard(row: SupabaseCardRow): ClientCard {
+  const slug = row.slug || slugify(row.full_name || row.card_name || "digital-card");
+  const templateName =
+    mockAdminTemplates.find((template) => template.id === row.template_id)?.name ||
+    selectedTemplate?.name ||
+    "Free Classic";
+
+  return {
+    id: row.id,
+    card_name: row.card_name || "Primary Digital Card",
+    template_id: row.template_id || selectedTemplate?.id || "",
+    template_name: templateName,
+    status: row.is_published || row.status === "published" ? "published" : "unpublished",
+    public_url: `/u/${slug}`,
+    last_updated: row.updated_at || row.created_at || "Saved",
+    slug,
+    full_name: row.full_name || "",
+    job_title: row.job_title || "",
+    department: row.department || "",
+    bio: row.bio || "",
+    company_name: row.company_name || "",
+    email: row.email || "",
+    phone: row.phone || "",
+    website: row.website || "",
+    address: row.address || "",
+    whatsapp: row.whatsapp || "",
+    linkedin: row.linkedin || "",
+    instagram: row.instagram || "",
+    facebook: row.facebook || "",
+    youtube: row.youtube || "",
+    booking_link: row.booking_link || "",
+    custom_url: row.custom_url || "",
+    profile_image_url: row.profile_image_url || "",
+    company_logo_url: row.company_logo_url || "",
+    company_banner_url: row.company_banner_url || "",
+    custom_fields: row.custom_fields || {},
+    selected_colour: row.selected_colour || fallbackColour,
+    hidden_fields: row.hidden_fields || [],
+    field_order: row.field_order || getInitialFieldOrder(selectedTemplate),
+    lead_capture_settings: row.lead_capture_settings || defaultLeadCaptureSettings,
+  };
+}
+
+function buildSupabaseCardPayload(
+  card: ClientCard,
+  userId: string | null
+) {
+  const isPublished = card.status === "published";
+
+  /*
+    Client Portal database save currently uses only cards columns already used
+    elsewhere in this app, plus user_id after a user_id query succeeds.
+
+    To persist the full editor in Supabase later, the cards table should include:
+    user_id, bio, department, profile_image_url, company_logo_url,
+    company_banner_url, selected_colour, hidden_fields, field_order,
+    lead_capture_settings, and custom_fields.
+  */
+  return {
+    user_id: userId,
+    template_id: card.template_id || selectedTemplate?.id || null,
+    card_name: card.card_name || "Primary Digital Card",
+    slug: card.slug || slugify(card.full_name || card.card_name || "digital-card"),
+    full_name: card.full_name || "",
+    job_title: card.job_title || "",
+    company_name: card.company_name || "",
+    email: card.email || "",
+    phone: card.phone || "",
+    website: card.website || "",
+    address: card.address || "",
+    whatsapp: card.whatsapp || "",
+    linkedin: card.linkedin || "",
+    instagram: card.instagram || "",
+    facebook: card.facebook || "",
+    youtube: card.youtube || "",
+    booking_link: card.booking_link || "",
+    custom_url: card.custom_url || "",
+    status: isPublished ? "published" : "draft",
+    is_published: isPublished,
+  };
+}
+
+async function writeCardPayload({
+  cardId,
+  payload,
+  shouldUpdate,
+}: {
+  cardId: string;
+  payload: Record<string, unknown>;
+  shouldUpdate: boolean;
+}) {
+  const result = shouldUpdate
+    ? await supabase
+        .from("cards")
+        .update(payload)
+        .eq("id", cardId)
+        .select("*")
+        .single()
+    : await supabase.from("cards").insert([payload]).select("*").single();
+
+  if (result.error) {
+    return { data: null, error: result.error };
+  }
+
+  return { data: result.data as SupabaseCardRow, error: null };
+}
+
+function device(
+  key: DevicePreviewKey,
+  label: string,
+  brand: string,
+  width: number | "100%",
+  height: number,
+  frameType: DevicePreviewDevice["frameType"],
+  options: Pick<DevicePreviewDevice, "dynamicIsland" | "notch"> = {}
+): DevicePreviewDevice {
+  return { key, label, brand, width, height, frameType, ...options };
+}
+
+function allDeviceOptions() {
+  return devicePreviewGroups.flatMap((group) => group.devices);
+}
+
+function findDevice(key: DevicePreviewKey) {
+  return (
+    allDeviceOptions().find((device) => device.key === key) ||
+    allDeviceOptions().find((device) => device.key === "iphone_15") ||
+    devicePreviewGroups[0].devices[0]
+  );
+}
+
+function filterDeviceGroups(search: string): DevicePreviewGroup[] {
+  const searchValue = search.trim().toLowerCase();
+
+  if (!searchValue) return devicePreviewGroups;
+
+  return devicePreviewGroups
+    .map((group) => {
+      const manufacturerMatches = group.manufacturer
+        .toLowerCase()
+        .includes(searchValue);
+      const devices = group.devices.filter((device) => {
+        return (
+          manufacturerMatches ||
+          device.brand.toLowerCase().includes(searchValue) ||
+          device.label.toLowerCase().includes(searchValue)
+        );
+      });
+
+      return { ...group, devices };
+    })
+    .filter((group) => group.devices.length > 0);
+}
+
+function previewFrameDimensions(device: DevicePreviewDevice) {
+  const width = device.width === "100%" ? "100%" : device.width;
+  const height = device.height;
+
+  return {
+    width: typeof width === "number" ? `${width}px` : width,
+    minWidth: typeof width === "number" ? `${width + 28}px` : "390px",
+    height,
+  };
+}
+
+function deviceSizeLabel(device: DevicePreviewDevice) {
+  if (device.width === "100%") return "Full width";
+
+  return `${device.width} x ${device.height}px`;
+}
+
+function fieldOrderForRenderer(
+  fieldOrder: FieldOrder,
+  hiddenFields: string[] = []
+): FieldOrder {
+  const hiddenFieldSet = new Set(hiddenFields);
+
+  return {
+    personal: fieldOrder.personal.filter(
+      (field) => field !== "full_name" && !hiddenFieldSet.has(field)
+    ),
+    company: fieldOrder.company.filter((field) => !hiddenFieldSet.has(field)),
+    contact: fieldOrder.contact.filter((field) => !hiddenFieldSet.has(field)),
+    social: fieldOrder.social.filter((field) => !hiddenFieldSet.has(field)),
+  };
+}
+
+function getInitialFieldOrder(template: AdminTemplate | null): FieldOrder {
+  return {
+    personal: template?.custom_fields?.personal?.length
+      ? [...template.custom_fields.personal]
+      : [...sectionDefaults.personal],
+    company: template?.custom_fields?.company?.length
+      ? [...template.custom_fields.company]
+      : [...sectionDefaults.company],
+    contact: template?.custom_fields?.contact?.length
+      ? [...template.custom_fields.contact]
+      : [...sectionDefaults.contact],
+    social: template?.custom_fields?.social?.length
+      ? [...template.custom_fields.social]
+      : [...sectionDefaults.social],
+  };
+}
+
+function sectionEnabled(
+  template: CardRendererTemplate,
+  section: SectionKey
+): boolean {
+  const key = `show_${section}_section` as keyof CardRendererTemplate;
+  const enabled = template[key];
+
+  if (typeof enabled === "boolean") return enabled;
+
+  return section !== "social";
+}
+
+function fieldsForSection(
+  template: CardRendererTemplate,
+  section: SectionKey,
+  fieldOrder: FieldOrder
+) {
+  const allowed = new Set(template.allowed_fields || []);
+  return fieldOrder[section].filter(
+    (field) => field !== "full_name" && allowed.has(field)
+  );
+}
+
+function sectionConfig(
+  template: CardRendererTemplate,
+  fieldOrder: FieldOrder
+): SectionConfig[] {
+  return (Object.keys(sectionLabels) as SectionKey[]).map((section) => ({
+    key: section,
+    label: sectionLabels[section],
+    enabled: sectionEnabled(template, section),
+    fields: fieldsForSection(template, section, fieldOrder),
+  }));
+}
+
+function isEditableCardField(field: string): field is keyof ClientCard {
+  return editableCardFields.has(field);
+}
+
+function customFieldValue(card: ClientCard, field: string) {
+  const value = card.custom_fields?.[field];
+
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return "";
+
+  const firstValue = Object.values(value).find(
+    (nestedValue) => typeof nestedValue === "string" && nestedValue
+  );
+
+  return firstValue || "";
+}
+
+function EmptyState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className="rounded-3xl border border-dashed border-[#AC00FF]/35 bg-[#AC00FF]/10 p-10 text-center">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-3xl bg-[#AC00FF]/20 text-purple-100">
+        <CreditCard className="h-7 w-7" />
+      </div>
+      <h2 className="mt-6 text-3xl font-semibold">
+        Create your first digital business card
+      </h2>
+      <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-white/55">
+        Start with the DMI Classic template, customise allowed fields, and
+        publish your public card page.
+      </p>
+      <button
+        type="button"
+        onClick={onCreate}
+        className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20"
+      >
+        <BadgePlus className="h-4 w-4" />
+        Create Card
+      </button>
+    </div>
+  );
+}
+
+function NoTemplateState() {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-10 text-center">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-3xl bg-white/10 text-white/55">
+        <Lock className="h-7 w-7" />
+      </div>
+      <h2 className="mt-6 text-2xl font-semibold">
+        No free template is currently available. Please contact DMI Cards support.
+      </h2>
+    </div>
+  );
+}
+
+function LockedSection({ title, message }: { title: string; message: string }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 opacity-80">
+      <div className="flex gap-4">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white/50">
+          <Lock className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="font-semibold text-white/70">{title}</p>
+          <p className="mt-2 text-sm leading-6 text-white/40">{message}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TextField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value?: string | null;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-white/55">
+        {label}
+      </span>
+      <input
+        value={value || ""}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-2xl border border-white/10 bg-[#070B1A]/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60"
+      />
+    </label>
+  );
+}
+
+function TextArea({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value?: string | null;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-white/55">
+        {label}
+      </span>
+      <textarea
+        value={value || ""}
+        onChange={(event) => onChange(event.target.value)}
+        rows={4}
+        className="w-full rounded-2xl border border-white/10 bg-[#070B1A]/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60"
+      />
+    </label>
+  );
+}
+
+function UpgradeNotice({ message }: { message: string }) {
+  return (
+    <div className="mt-5 rounded-2xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 p-4 text-sm text-purple-100">
+      <div className="flex gap-3">
+        <Lock className="mt-0.5 h-4 w-4 shrink-0" />
+        <p>{message}</p>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-h-32 rounded-3xl border border-white/10 bg-white/5 p-5">
+      <p className="text-sm text-white/45">{label}</p>
+      <p className="mt-4 text-3xl font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function PlanBadge() {
+  return (
+    <span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-purple-100">
+      Free Plan
+    </span>
+  );
+}
+
+function StatusBadge({ status }: { status: CardStatus }) {
+  return (
+    <span
+      className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold capitalize ${
+        status === "published"
+          ? "bg-green-500/15 text-green-300"
+          : "bg-white/10 text-white/55"
+      }`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function ActionButton({
+  label,
+  icon: Icon,
+  onClick,
+}: {
+  label: string;
+  icon: LucideIcon;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/70 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white"
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+    </button>
+  );
+}
+
+function labelize(field: string) {
+  return field
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}

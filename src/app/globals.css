@@ -14,7 +14,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
+    --background: #020617;
     --foreground: #ededed;
   }
 }
@@ -23,4 +23,57 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* =========================
+   PREMIUM INPUTS + SELECTS
+========================= */
+
+.inputStyle {
+  width: 100%;
+  height: 54px;
+  min-height: 54px;
+
+  background: rgba(10, 18, 50, 0.9);
+
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  border-radius: 18px;
+
+  padding: 0 18px;
+
+  color: white;
+
+  font-size: 15px;
+
+  outline: none;
+
+  transition: all 0.2s ease;
+
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Safari select fix */
+select.inputStyle {
+  line-height: 54px;
+  cursor: pointer;
+}
+
+/* Focus state */
+.inputStyle:focus {
+  border-color: rgba(172, 0, 255, 0.8);
+
+  box-shadow: 0 0 0 4px rgba(172, 0, 255, 0.15);
+}
+
+/* Placeholder */
+.inputStyle::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* Dropdown options */
+select.inputStyle option {
+  background: #0b1023;
+  color: white;
 }
