@@ -234,89 +234,6 @@ export default function CardRenderer({
         theme={theme}
       />
     ),
-    executive_minimal: (
-      <ExecutiveMinimalLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        templateCustomFields={template.custom_fields || {}}
-        mode={mode}
-        sectionSettings={sectionSettings}
-        compact={compact}
-        isPaid
-        theme={theme}
-      />
-    ),
-    corporate_pro: (
-      <CorporateProLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        templateCustomFields={template.custom_fields || {}}
-        mode={mode}
-        sectionSettings={sectionSettings}
-        compact={compact}
-        isPaid
-        theme={theme}
-      />
-    ),
-    neon_tech: (
-      <NeonTechLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        templateCustomFields={template.custom_fields || {}}
-        mode={mode}
-        sectionSettings={sectionSettings}
-        compact={compact}
-        isPaid
-      />
-    ),
-    creator_mode: (
-      <CreatorModeLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        templateCustomFields={template.custom_fields || {}}
-        mode={mode}
-        sectionSettings={sectionSettings}
-        compact={compact}
-        isPaid
-      />
-    ),
-    obsidian_dark: (
-      <ObsidianDarkLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        templateCustomFields={template.custom_fields || {}}
-        mode={mode}
-        sectionSettings={sectionSettings}
-        compact={compact}
-        isPaid
-        theme={theme}
-      />
-    ),
     glassmorphism: (
       <GlassmorphismLayout
         cardData={cardData}
@@ -334,8 +251,8 @@ export default function CardRenderer({
         theme={theme}
       />
     ),
-    soft_pastel: (
-      <SoftPastelLayout
+    banner_card: (
+      <BannerCardLayout
         cardData={cardData}
         allowedFields={allowedFields}
         requiresProfileImage={requiresProfileImage}
@@ -351,8 +268,8 @@ export default function CardRenderer({
         theme={theme}
       />
     ),
-    neon_noir: (
-      <NeonNoirLayout
+    split_card: (
+      <SplitCardLayout
         cardData={cardData}
         allowedFields={allowedFields}
         requiresProfileImage={requiresProfileImage}
@@ -368,127 +285,8 @@ export default function CardRenderer({
         theme={theme}
       />
     ),
-    luxury_vertical: (
-      <LuxuryVerticalLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        templateCustomFields={template.custom_fields || {}}
-        mode={mode}
-        sectionSettings={sectionSettings}
-        compact={compact}
-        isPaid
-        theme={theme}
-      />
-    ),
-    gradient_mesh: (
-      <GradientMeshLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        templateCustomFields={template.custom_fields || {}}
-        mode={mode}
-        sectionSettings={sectionSettings}
-        compact={compact}
-        isPaid
-        theme={theme}
-      />
-    ),
-    pack_obsidian: (
-      <PackObsidianLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        templateCustomFields={template.custom_fields || {}}
-        mode={mode}
-        sectionSettings={sectionSettings}
-        compact={compact}
-        isPaid
-        theme={theme}
-      />
-    ),
-    editorial_serif: (
-      <PackEditorialLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        templateCustomFields={template.custom_fields || {}}
-        mode={mode}
-        sectionSettings={sectionSettings}
-        compact={compact}
-        isPaid
-        theme={theme}
-      />
-    ),
-    colourblock_split: (
-      <PackColourblockLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        templateCustomFields={template.custom_fields || {}}
-        mode={mode}
-        sectionSettings={sectionSettings}
-        compact={compact}
-        isPaid
-        theme={theme}
-      />
-    ),
-    pack_neon_noir: (
-      <PackNeonNoirLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        templateCustomFields={template.custom_fields || {}}
-        mode={mode}
-        sectionSettings={sectionSettings}
-        compact={compact}
-        isPaid
-        theme={theme}
-      />
-    ),
-    pack_luxury_vertical: (
-      <PackLuxuryLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        templateCustomFields={template.custom_fields || {}}
-        mode={mode}
-        sectionSettings={sectionSettings}
-        compact={compact}
-        isPaid
-        theme={theme}
-      />
-    ),
-    blueprint_technical: (
-      <PackBlueprintLayout
+    monogram_card: (
+      <MonogramCardLayout
         cardData={cardData}
         allowedFields={allowedFields}
         requiresProfileImage={requiresProfileImage}
@@ -844,1609 +642,6 @@ function ClassicLayout({
   );
 }
 
-function ExecutiveMinimalLayout(props: LayoutProps) {
-  const rows = layoutRows(props);
-
-  return (
-    <div className="min-w-0 text-left">
-      <div className="rounded-[1.6rem] border border-white/12 bg-black/20 p-5">
-        {props.requiresLogo && (
-          <CompanyLogoBlock cardData={props.cardData} className="mb-5" />
-        )}
-        <div className="flex items-center gap-4">
-          {props.requiresProfileImage && (
-            <ProfileImage cardData={props.cardData} size="medium" />
-          )}
-          <div className="min-w-0">
-            <h3 className="break-words text-3xl font-semibold">
-              {props.cardData.full_name || "Full Name"}
-            </h3>
-            <p className="mt-1 break-words text-sm text-white/62">
-              {props.cardData.job_title || "Job Title"}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <PlaceholderSections rows={rows} tone="minimal" />
-    </div>
-  );
-}
-
-function CorporateProLayout(props: LayoutProps) {
-  const rows = layoutRows(props);
-
-  return (
-    <div className="min-w-0 text-center">
-      <div className="rounded-[1.6rem] border border-white/12 bg-white/[0.08] p-5 shadow-xl shadow-black/10">
-        {props.requiresLogo && (
-          <CompanyLogoBlock cardData={props.cardData} className="mx-auto mb-4" />
-        )}
-        {props.requiresProfileImage && (
-          <ProfileImage cardData={props.cardData} size="large" center />
-        )}
-        <h3 className="mt-4 break-words text-3xl font-bold">
-          {props.cardData.full_name || "Full Name"}
-        </h3>
-        <p className="mt-1 break-words text-sm text-white/68">
-          {props.cardData.job_title || "Job Title"}
-        </p>
-        <p className="mt-2 break-words text-xs uppercase tracking-[0.18em] text-white/42">
-          {props.cardData.company_name || "Company Name"}
-        </p>
-      </div>
-
-      <PlaceholderSections rows={rows} tone="corporate" />
-    </div>
-  );
-}
-
-function NeonTechLayout(props: LayoutProps) {
-  const rows = layoutRows(props);
-
-  return (
-    <div className="min-w-0 text-left">
-      <div className="relative overflow-hidden rounded-[1.6rem] border border-[#AC00FF]/40 bg-[#050816]/65 p-5 shadow-2xl shadow-[#AC00FF]/15">
-        <div className="absolute inset-0 opacity-35 [background-image:linear-gradient(90deg,rgba(172,0,255,0.22)_1px,transparent_1px),linear-gradient(rgba(172,0,255,0.18)_1px,transparent_1px)] [background-size:18px_18px]" />
-        <div className="relative z-10 flex items-center gap-4">
-          {props.requiresProfileImage && (
-            <ProfileImage cardData={props.cardData} size="medium" />
-          )}
-          <div className="min-w-0">
-            {props.requiresLogo && (
-              <CompanyLogoBlock cardData={props.cardData} className="mb-3" />
-            )}
-            <h3 className="break-words text-3xl font-bold text-white">
-              {props.cardData.full_name || "Full Name"}
-            </h3>
-            <p className="mt-1 break-words text-sm text-[#E8C9FF]">
-              {props.cardData.job_title || "Job Title"}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <PlaceholderSections rows={rows} tone="neon" />
-    </div>
-  );
-}
-
-function CreatorModeLayout(props: LayoutProps) {
-  const rows = layoutRows(props);
-
-  return (
-    <div className="min-w-0 text-center">
-      <div className="rounded-[1.6rem] border border-white/12 bg-white/[0.09] p-5">
-        {props.requiresBanner && (
-          <div className="mb-4 rounded-3xl bg-white/12 px-4 py-5">
-            {props.requiresLogo && (
-              <CompanyLogoBlock cardData={props.cardData} className="mx-auto" />
-            )}
-          </div>
-        )}
-        {props.requiresProfileImage && (
-          <ProfileImage cardData={props.cardData} size="large" center />
-        )}
-        <h3 className="mt-4 break-words text-3xl font-extrabold">
-          {props.cardData.full_name || "Full Name"}
-        </h3>
-        <p className="mt-2 break-words text-sm text-white/70">
-          {props.cardData.bio || props.cardData.job_title || "Creator bio"}
-        </p>
-      </div>
-
-      <PlaceholderSections rows={rows} tone="creator" />
-    </div>
-  );
-}
-
-function ObsidianDarkLayout(props: LayoutProps) {
-  const rows = importedTemplateRows(props);
-  const { cardData, compact, requiresLogo } = props;
-  const theme = getRendererTheme(props.theme);
-  const cardBackground = cardBackgroundFromTheme(theme);
-  const sectionBackground = colorAlpha(theme.secondary, 0.38);
-  const subtleLine = colorAlpha(theme.text, 0.26);
-  const mutedText = colorAlpha(theme.text, 0.68);
-  const valueText = colorAlpha(theme.text, 0.86);
-  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
-
-  return (
-    <div
-      className={`flex w-full min-w-0 flex-col overflow-hidden rounded-[1.55rem] border shadow-2xl shadow-black/50 ${minHeightClass}`}
-      style={{
-        background: cardBackground,
-        borderColor: subtleLine,
-        color: theme.text,
-        fontFamily: theme.fontFamily,
-      }}
-    >
-      <div
-        className="flex min-w-0 items-center gap-4 border-b px-5 py-5"
-        style={{
-          backgroundColor: sectionBackground,
-          borderColor: subtleLine,
-        }}
-      >
-        <ImportedAvatar
-          cardData={cardData}
-          className="bg-black/20"
-          style={{ borderColor: theme.text, color: theme.text }}
-          size={compact ? "medium" : "large"}
-        />
-
-        <div className="min-w-0 flex-1">
-          <h3 className="max-w-full break-words text-xl font-black leading-tight tracking-tight">
-            {cardData.full_name || "Full Name"}
-          </h3>
-          {props.sectionSettings?.personal &&
-            props.allowedFields.includes("job_title") && (
-              <p
-                className="mt-1 max-w-full break-words text-sm"
-                style={{ color: mutedText }}
-              >
-                {cardData.job_title || "Job Title"}
-              </p>
-            )}
-        </div>
-
-        {requiresLogo && <ImportedLogo cardData={cardData} dark textColor={theme.text} />}
-      </div>
-
-      <div className="px-5 py-4">
-        {rows.length > 0 ? (
-          <div
-            className="divide-y"
-            style={{ borderColor: subtleLine } as React.CSSProperties}
-          >
-            {rows.map((row) => (
-              <ImportedSplitRow
-                key={row.key}
-                row={row}
-                labelStyle={{ color: theme.text }}
-                valueStyle={{ color: valueText }}
-              />
-            ))}
-          </div>
-        ) : (
-          <p
-            className="rounded-2xl border p-4 text-sm"
-            style={{
-              backgroundColor: sectionBackground,
-              borderColor: subtleLine,
-              color: mutedText,
-            }}
-          >
-            Add visible fields to show card details.
-          </p>
-        )}
-      </div>
-
-      <TemplateSaveButton compact={compact} theme={theme} className="mx-5 mb-5 mt-auto" />
-    </div>
-  );
-}
-
-function GlassmorphismLayout(props: LayoutProps) {
-  const rows = importedTemplateRows(props);
-  const { cardData, compact, requiresLogo } = props;
-  const theme = getRendererTheme(props.theme);
-  const cardBackground = cardBackgroundFromTheme(theme);
-  const glassTint = colorAlpha(theme.secondary, 0.46);
-  const accentBorder = colorAlpha(theme.text, 0.26);
-  const mutedText = colorAlpha(theme.text, 0.58);
-  const labelText = colorAlpha(theme.text, 0.72);
-  const valueText = colorAlpha(theme.text, 0.82);
-  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
-
-  return (
-    <div
-      className={`w-full min-w-0 overflow-hidden rounded-[1.7rem] p-0.5 shadow-2xl shadow-black/50 ${minHeightClass}`}
-      style={{
-        background: cardBackground,
-        fontFamily: theme.fontFamily,
-      }}
-    >
-      <div
-        className="flex min-h-full flex-col overflow-hidden rounded-[1.55rem] border shadow-inner shadow-white/5 backdrop-blur-xl"
-        style={{
-          backgroundColor: glassTint,
-          borderColor: accentBorder,
-          color: theme.text,
-        }}
-      >
-        <div
-          className="flex min-w-0 items-center gap-4 border-b px-5 py-5"
-          style={{ borderColor: accentBorder }}
-        >
-          <ImportedAvatar
-            cardData={cardData}
-            className="bg-white/10"
-            style={{ borderColor: theme.text, color: theme.text }}
-            size={compact ? "medium" : "large"}
-          />
-
-          <div className="min-w-0 flex-1">
-            <h3 className="max-w-full break-words text-xl font-black leading-tight tracking-tight">
-              {cardData.full_name || "Full Name"}
-            </h3>
-            {props.sectionSettings?.personal &&
-              props.allowedFields.includes("job_title") && (
-                <p
-                  className="mt-1 max-w-full break-words text-sm"
-                  style={{ color: mutedText }}
-                >
-                  {cardData.job_title || "Job Title"}
-                </p>
-              )}
-            {!requiresLogo && cardData.company_name && (
-              <p
-                className="mt-2 max-w-full truncate text-[10px] font-semibold uppercase tracking-[0.16em]"
-                style={{ color: labelText }}
-              >
-                {cardData.company_name}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="px-5 py-4">
-          {rows.length > 0 ? (
-            <div className="divide-y" style={{ borderColor: accentBorder } as React.CSSProperties}>
-              {rows.map((row) => (
-              <ImportedSplitRow
-                  key={row.key}
-                  row={row}
-                  labelStyle={{ color: labelText }}
-                  valueStyle={{ color: valueText }}
-                />
-              ))}
-            </div>
-          ) : (
-            <p
-              className="rounded-2xl border p-4 text-sm"
-              style={{
-                backgroundColor: colorAlpha(theme.secondary, 0.2),
-                borderColor: accentBorder,
-                color: mutedText,
-              }}
-            >
-              Add visible fields to show card details.
-            </p>
-          )}
-        </div>
-
-        {(requiresLogo || cardData.company_name) && (
-          <div className="flex justify-end px-5 pb-5">
-            <ImportedLogo cardData={cardData} dark muted textColor={theme.text} />
-          </div>
-        )}
-
-        <TemplateSaveButton compact={compact} theme={theme} className="mx-5 mb-5 mt-auto" />
-      </div>
-    </div>
-  );
-}
-
-function SoftPastelLayout(props: LayoutProps) {
-  const rows = importedTemplateRows(props);
-  const { cardData, compact, requiresLogo } = props;
-  const theme = getRendererTheme(props.theme);
-  const cardBackground = cardBackgroundFromTheme(theme);
-  const chipBackground = colorAlpha(theme.secondary, 0.3);
-  const softBorder = colorAlpha(theme.text, 0.22);
-  const mutedText = colorAlpha(theme.text, 0.82);
-  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
-
-  return (
-    <div
-      className={`flex w-full min-w-0 flex-col rounded-[1.8rem] border p-5 shadow-[0_0_0_8px_rgba(245,240,252,0.75),0_30px_60px_rgba(150,100,200,0.16)] ${minHeightClass}`}
-      style={{
-        background: cardBackground,
-        borderColor: softBorder,
-        color: theme.text,
-        fontFamily: theme.fontFamily,
-      }}
-    >
-      <div className="flex min-w-0 items-center gap-4">
-        <ImportedAvatar
-          cardData={cardData}
-          className="border-transparent text-white"
-          style={{
-            background: colorAlpha(theme.text, 0.16),
-            color: theme.text,
-          }}
-          size={compact ? "medium" : "large"}
-        />
-
-        <div className="min-w-0 flex-1">
-          <h3 className="max-w-full break-words text-xl font-extrabold leading-tight">
-            {cardData.full_name || "Full Name"}
-          </h3>
-          {props.sectionSettings?.personal &&
-            props.allowedFields.includes("job_title") && (
-              <p
-                className="mt-1 max-w-full break-words text-sm font-semibold"
-                style={{ color: mutedText }}
-              >
-                {cardData.job_title || "Job Title"}
-              </p>
-            )}
-        </div>
-      </div>
-
-      {(requiresLogo || cardData.company_name) && (
-        <div className="mt-4 flex min-w-0 items-center gap-2">
-          {requiresLogo && cardData.company_logo_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={cardData.company_logo_url}
-              alt={cardData.company_name || "Company logo"}
-              className="max-h-7 max-w-20 shrink-0 object-contain"
-            />
-          )}
-          <p
-            className="min-w-0 max-w-full truncate text-[11px] font-extrabold uppercase tracking-[0.16em]"
-            style={{ color: theme.text }}
-          >
-            {cardData.company_name || "Company Name"}
-          </p>
-        </div>
-      )}
-
-      {rows.length > 0 ? (
-        <div className="mt-5 flex flex-wrap gap-2">
-          {rows.map((row) => {
-            const Icon = row.icon || iconForLabel(row.label);
-
-            return (
-              <div
-                key={row.key}
-                className="inline-flex max-w-full items-center gap-2 rounded-full px-3 py-2 text-sm font-bold"
-                style={{ backgroundColor: chipBackground, color: mutedText }}
-              >
-                <Icon
-                  className="h-4 w-4 shrink-0"
-                  style={{ color: theme.text }}
-                />
-                <span className="min-w-0 max-w-full break-words">
-                  {row.value}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <p
-          className="mt-5 rounded-2xl p-4 text-sm font-semibold"
-          style={{ backgroundColor: chipBackground, color: theme.text }}
-        >
-          Add visible fields to show card details.
-        </p>
-      )}
-
-      <TemplateSaveButton compact={compact} theme={theme} className="mt-auto" />
-    </div>
-  );
-}
-
-function NeonNoirLayout(props: LayoutProps) {
-  const rows = importedTemplateRows(props);
-  const { cardData, compact, requiresLogo } = props;
-  const theme = getRendererTheme(props.theme);
-  const cardBackground = cardBackgroundFromTheme(theme);
-  const detailRows = rows.filter((row) => row.key !== "job_title");
-  const lineColour = colorAlpha(theme.text, 0.36);
-  const softLine = colorAlpha(theme.text, 0.16);
-  const mutedText = colorAlpha(theme.text, 0.7);
-  const panelTint = colorAlpha(theme.secondary, 0.38);
-  const gridLine = colorAlpha(theme.text, 0.08);
-  const glow = colorAlpha(theme.text, 0.26);
-  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
-
-  return (
-    <div
-      className={`relative flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border ${minHeightClass}`}
-      style={{
-        background: cardBackground,
-        borderColor: lineColour,
-        color: theme.text,
-        fontFamily: theme.fontFamily,
-        boxShadow: `0 0 0 1px ${softLine}, 0 0 42px ${glow}, 0 34px 76px rgba(0,0,0,0.58)`,
-      }}
-    >
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          backgroundImage: `linear-gradient(${gridLine} 1px, transparent 1px), linear-gradient(90deg, ${gridLine} 1px, transparent 1px), radial-gradient(circle at 15% 10%, ${colorAlpha(theme.text, 0.16)}, transparent 32%), radial-gradient(circle at 88% 12%, ${colorAlpha(theme.text, 0.12)}, transparent 30%)`,
-          backgroundSize: "24px 24px, 24px 24px, 100% 100%, 100% 100%",
-        }}
-      />
-      <div
-        className="relative h-[3px]"
-        style={{
-          background: `linear-gradient(90deg, ${theme.text}, ${colorAlpha(theme.text, 0.2)}, ${theme.text})`,
-          boxShadow: `0 0 18px ${colorAlpha(theme.text, 0.54)}`,
-        }}
-      />
-
-      <div className="relative z-10 flex flex-1 flex-col p-5 sm:p-6">
-        <div className="mb-5 flex min-w-0 items-center gap-4">
-          <div className="relative shrink-0">
-            <ImportedAvatar
-              cardData={cardData}
-              className="rounded-[10px] bg-black/20"
-              style={{
-                borderColor: lineColour,
-                color: theme.text,
-                borderRadius: "10px",
-                borderStyle: "dashed",
-                boxShadow: `0 0 24px ${glow}`,
-              }}
-              size={compact ? "medium" : "large"}
-            />
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.24em]" style={{ color: mutedText }}>
-              {`// identity`}
-            </p>
-            <h3 className="max-w-full break-words text-xl font-black leading-tight tracking-tight">
-              {cardData.full_name || "Full Name"}
-            </h3>
-            {props.sectionSettings?.personal &&
-              props.allowedFields.includes("job_title") && (
-                <p className="mt-1 max-w-full break-words text-xs font-semibold uppercase tracking-[0.16em]" style={{ color: mutedText }}>
-                  {cardData.job_title || "Job Title"}
-                </p>
-              )}
-          </div>
-
-          {requiresLogo && (
-            <div
-              className="flex h-9 w-[76px] shrink-0 items-center justify-center rounded-lg border px-2 text-[9px] font-bold uppercase tracking-[0.16em]"
-              style={{
-                backgroundColor: colorAlpha(theme.secondary, 0.32),
-                borderColor: lineColour,
-                borderStyle: cardData.company_logo_url ? "solid" : "dashed",
-                color: theme.text,
-              }}
-            >
-              {cardData.company_logo_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={cardData.company_logo_url}
-                  alt={cardData.company_name || "Company logo"}
-                  className="max-h-6 max-w-full object-contain"
-                />
-              ) : (
-                "Logo"
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="h-px" style={{ background: `linear-gradient(90deg, ${lineColour}, transparent)` }} />
-
-        {detailRows.length > 0 ? (
-          <div className="mt-4 space-y-2">
-            {detailRows.map((row) => (
-              <div
-                key={row.key}
-                className="grid min-w-0 grid-cols-[76px_minmax(0,1fr)] items-center gap-3 border-b py-2.5 text-sm last:border-b-0"
-                style={{ borderColor: softLine }}
-              >
-                <span className="truncate text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: theme.text }}>
-                  {row.label.toLowerCase()}_
-                </span>
-                <span className="min-w-0 break-words text-xs font-semibold leading-relaxed" style={{ color: mutedText }}>
-                  {row.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-4 rounded-2xl border p-4 text-sm" style={{ backgroundColor: panelTint, borderColor: lineColour, color: mutedText }}>
-            Add visible fields to show card details.
-          </p>
-        )}
-
-        <div className="mt-5 h-px" style={{ background: `linear-gradient(90deg, transparent, ${lineColour}, transparent)` }} />
-      </div>
-
-      <TemplateSaveButton compact={compact} theme={theme} className="mx-5 mb-5 mt-auto" />
-    </div>
-  );
-}
-
-function LuxuryVerticalLayout(props: LayoutProps) {
-  const rows = importedTemplateRows(props);
-  const { cardData, compact, requiresLogo } = props;
-  const theme = getRendererTheme(props.theme);
-  const cardBackground = cardBackgroundFromTheme(theme);
-  const detailRows = rows.filter((row) => row.key !== "job_title");
-  const lineColour = colorAlpha(theme.text, 0.38);
-  const softLine = colorAlpha(theme.text, 0.18);
-  const mutedText = colorAlpha(theme.text, 0.7);
-  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
-  const imageHeight = compact ? "h-52" : "h-[310px]";
-
-  return (
-    <div
-      className={`flex w-full min-w-0 flex-col overflow-hidden rounded-[1.7rem] border shadow-2xl shadow-black/60 ${minHeightClass}`}
-      style={{
-        background: cardBackground,
-        borderColor: lineColour,
-        color: theme.text,
-        fontFamily: theme.fontFamily,
-      }}
-    >
-      <div className={`relative overflow-hidden ${imageHeight}`}>
-        {cardData.profile_image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={cardData.profile_image_url}
-            alt={cardData.full_name || "Profile"}
-            className="h-full w-full object-cover object-top"
-          />
-        ) : (
-          <div
-            className="flex h-full w-full flex-col items-center justify-center gap-3 border-2 border-dashed"
-            style={{
-              borderColor: softLine,
-              background: `radial-gradient(circle at center, ${colorAlpha(theme.text, 0.12)}, transparent 38%), ${colorAlpha(theme.secondary, 0.34)}`,
-              color: mutedText,
-            }}
-          >
-            <span className="text-5xl font-black tracking-tight">{initials(cardData.full_name)}</span>
-            <span className="text-[10px] font-semibold uppercase tracking-[0.22em]">Portrait</span>
-          </div>
-        )}
-
-        <div
-          className="absolute inset-0"
-          style={{
-            background: `linear-gradient(to bottom, transparent 42%, ${colorAlpha(theme.secondary, 0.72)} 70%, ${colorAlpha(theme.secondary, 0.96)})`,
-          }}
-        />
-
-        {requiresLogo && (
-          <div
-            className="absolute right-4 top-4 flex min-h-11 min-w-11 items-center justify-center rounded-full border px-3 py-2 text-[9px] font-bold uppercase tracking-[0.18em] backdrop-blur"
-            style={{
-              backgroundColor: colorAlpha(theme.secondary, 0.66),
-              borderColor: lineColour,
-              color: theme.text,
-            }}
-          >
-            {cardData.company_logo_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={cardData.company_logo_url}
-                alt={cardData.company_name || "Company logo"}
-                className="max-h-7 max-w-14 object-contain"
-              />
-            ) : (
-              "DMI"
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="mx-5 mt-5 h-px" style={{ background: `linear-gradient(90deg, transparent, ${theme.text}, transparent)` }} />
-
-      <div className="px-5 pt-6 text-center">
-        <h3 className="max-w-full break-words text-3xl font-black leading-tight tracking-tight">
-          {cardData.full_name || "Full Name"}
-        </h3>
-        {props.sectionSettings?.personal &&
-          props.allowedFields.includes("job_title") && (
-            <p className="mt-3 max-w-full break-words text-xs font-semibold uppercase tracking-[0.22em]" style={{ color: mutedText }}>
-              {cardData.job_title || "Job Title"}
-            </p>
-          )}
-      </div>
-
-      <div className="flex flex-1 flex-col px-5 py-5">
-        {detailRows.length > 0 ? (
-          <div className="divide-y" style={{ borderColor: softLine } as React.CSSProperties}>
-            {detailRows.map((row) => (
-              <ImportedSplitRow
-                key={row.key}
-                row={row}
-                labelStyle={{ color: mutedText }}
-                valueStyle={{ color: theme.text }}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="rounded-2xl border p-4 text-sm" style={{ borderColor: lineColour, color: mutedText }}>
-            Add visible fields to show card details.
-          </p>
-        )}
-      </div>
-
-      <TemplateSaveButton compact={compact} theme={theme} className="mx-5 mb-5 mt-auto" />
-    </div>
-  );
-}
-
-function GradientMeshLayout(props: LayoutProps) {
-  const rows = importedTemplateRows(props);
-  const { cardData, compact, requiresLogo } = props;
-  const theme = getRendererTheme(props.theme);
-  const cardBackground = cardBackgroundFromTheme(theme);
-  const detailRows = rows.filter((row) => row.key !== "job_title");
-  const lineColour = colorAlpha(theme.text, 0.24);
-  const mutedText = colorAlpha(theme.text, 0.74);
-  const panelTint = colorAlpha(theme.secondary, 0.68);
-  const chipTint = colorAlpha(theme.text, 0.1);
-  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
-
-  return (
-    <div
-      className={`relative w-full min-w-0 overflow-hidden rounded-[1.9rem] p-2 shadow-2xl shadow-black/45 ${minHeightClass}`}
-      style={{ background: cardBackground, fontFamily: theme.fontFamily }}
-    >
-      <div
-        className="pointer-events-none absolute inset-0 opacity-80"
-        style={{
-          backgroundImage: `radial-gradient(circle at 18% 18%, ${colorAlpha(theme.text, 0.16)}, transparent 28%), radial-gradient(circle at 82% 8%, ${colorAlpha(theme.secondary, 0.46)}, transparent 34%), radial-gradient(circle at 80% 84%, ${colorAlpha(theme.primary, 0.32)}, transparent 38%)`,
-        }}
-      />
-      <div
-        className="relative z-10 flex min-h-full flex-col overflow-hidden rounded-[1.65rem] border backdrop-blur-2xl"
-        style={{
-          backgroundColor: panelTint,
-          borderColor: lineColour,
-          color: theme.text,
-        }}
-      >
-        <div className="h-1.5" style={{ background: cardBackground }} />
-
-        <div className="p-5 sm:p-6">
-          <div className="mb-6 flex items-start justify-between gap-4">
-            <ImportedAvatar
-              cardData={cardData}
-              className="rounded-[1.2rem] bg-white/10"
-              style={{
-                borderColor: lineColour,
-                color: theme.text,
-                borderRadius: "18px",
-              }}
-              size={compact ? "medium" : "large"}
-            />
-
-            {requiresLogo ? (
-              <div
-                className="flex min-h-10 min-w-[72px] items-center justify-center rounded-2xl border px-3 py-2 text-[9px] font-black uppercase tracking-[0.18em] shadow-lg"
-                style={{
-                  backgroundColor: colorAlpha(theme.secondary, 0.5),
-                  borderColor: lineColour,
-                  color: theme.text,
-                }}
-              >
-                {cardData.company_logo_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={cardData.company_logo_url}
-                    alt={cardData.company_name || "Company logo"}
-                    className="max-h-7 max-w-20 object-contain"
-                  />
-                ) : (
-                  "Logo"
-                )}
-              </div>
-            ) : null}
-          </div>
-
-          <h3 className="max-w-full break-words text-3xl font-black leading-tight tracking-tight">
-            {cardData.full_name || "Full Name"}
-          </h3>
-          {props.sectionSettings?.personal &&
-            props.allowedFields.includes("job_title") && (
-              <p className="mt-2 max-w-full break-words text-sm font-semibold" style={{ color: mutedText }}>
-                {cardData.job_title || "Job Title"}
-              </p>
-            )}
-
-          {detailRows.length > 0 ? (
-            <div className="mt-6 grid gap-2">
-              {detailRows.map((row) => (
-                <div
-                  key={row.key}
-                  className="grid min-w-0 grid-cols-[88px_minmax(0,1fr)] items-center gap-3 rounded-2xl border px-3 py-3 text-xs font-semibold"
-                  style={{ backgroundColor: chipTint, borderColor: lineColour, color: mutedText }}
-                >
-                  <span className="min-w-0 truncate uppercase tracking-[0.14em]" style={{ color: theme.text }}>
-                    {row.label}
-                  </span>
-                  <span className="min-w-0 break-words text-right" style={{ color: mutedText }}>
-                    {row.value}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-5 rounded-2xl border p-4 text-sm" style={{ borderColor: lineColour, color: mutedText }}>
-              Add visible fields to show card details.
-            </p>
-          )}
-        </div>
-
-        <TemplateSaveButton compact={compact} theme={theme} className="mx-5 mb-5 mt-auto" />
-      </div>
-    </div>
-  );
-}
-
-function PackProfile({
-  cardData,
-  size,
-  radius,
-  border,
-  background,
-  color,
-  label = "Photo",
-  className = "",
-}: {
-  cardData: CardRendererData;
-  size: number;
-  radius: string;
-  border: string;
-  background: string;
-  color: string;
-  label?: string;
-  className?: string;
-}) {
-  if (cardData.profile_image_url) {
-    return (
-      <div
-        className={`shrink-0 overflow-hidden ${className}`}
-        style={{ width: size, height: size, borderRadius: radius, border }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={cardData.profile_image_url}
-          alt={cardData.full_name || "Profile"}
-          className="h-full w-full object-cover"
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={`flex shrink-0 flex-col items-center justify-center gap-1 ${className}`}
-      style={{
-        width: size,
-        height: size,
-        borderRadius: radius,
-        border,
-        background,
-        color,
-      }}
-    >
-      <span className="text-xl font-black leading-none">{initials(cardData.full_name)}</span>
-      {!cardData.full_name && (
-        <span className="text-[8px] font-semibold uppercase tracking-[0.12em]">
-          {label}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function PackLogo({
-  cardData,
-  width,
-  height,
-  border,
-  background,
-  color,
-  rounded = "6px",
-  className = "",
-}: {
-  cardData: CardRendererData;
-  width: number;
-  height: number;
-  border: string;
-  background: string;
-  color: string;
-  rounded?: string;
-  className?: string;
-}) {
-  if (cardData.company_logo_url) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={cardData.company_logo_url}
-        alt={cardData.company_name || "Company logo"}
-        className={`block object-contain ${className}`}
-        style={{ height, maxWidth: width }}
-      />
-    );
-  }
-
-  return (
-    <div
-      className={`flex shrink-0 flex-col items-center justify-center gap-0.5 ${className}`}
-      style={{
-        width,
-        height,
-        border,
-        borderRadius: rounded,
-        background,
-        color,
-      }}
-    >
-      <span className="text-sm leading-none">+</span>
-      <span className="text-[7px] font-semibold uppercase tracking-[0.12em]">Logo</span>
-    </div>
-  );
-}
-
-function PackEmptyRows({
-  theme,
-  className = "",
-}: {
-  theme: RendererTheme;
-  className?: string;
-}) {
-  return (
-    <p
-      className={`rounded-2xl border p-4 text-sm ${className}`}
-      style={{
-        borderColor: colorAlpha(theme.text, 0.22),
-        color: colorAlpha(theme.text, 0.68),
-      }}
-    >
-      Add visible fields to show card details.
-    </p>
-  );
-}
-
-function PackObsidianLayout(props: LayoutProps) {
-  const rows = importedTemplateRows(props).filter((row) => row.key !== "job_title");
-  const { cardData, compact, requiresLogo } = props;
-  const theme = getRendererTheme(props.theme);
-  const cardBackground = cardBackgroundFromTheme(theme);
-  const line = colorAlpha(theme.text, 0.22);
-  const muted = colorAlpha(theme.text, 0.68);
-  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
-
-  return (
-    <div
-      className={`flex w-full min-w-0 flex-col overflow-hidden rounded-[1.35rem] border shadow-2xl shadow-black/50 ${minHeightClass}`}
-      style={{
-        background: cardBackground,
-        borderColor: line,
-        color: theme.text,
-        fontFamily: theme.fontFamily,
-      }}
-    >
-      <div
-        className="flex min-w-0 items-center gap-3 px-5 py-5 sm:px-6"
-        style={{ backgroundColor: colorAlpha(theme.secondary, 0.42) }}
-      >
-        <PackProfile
-          cardData={cardData}
-          size={60}
-          radius="999px"
-          border={`2px dashed ${colorAlpha(theme.text, 0.48)}`}
-          background={colorAlpha(theme.text, 0.1)}
-          color={theme.text}
-        />
-        <div className="min-w-0 flex-1">
-          <h3 className="max-w-full break-words text-lg font-black leading-tight tracking-tight">
-            {cardData.full_name || "Your Name"}
-          </h3>
-          {props.sectionSettings?.personal && props.allowedFields.includes("job_title") && (
-            <p className="mt-1 max-w-full break-words text-xs" style={{ color: muted }}>
-              {cardData.job_title || "Job Title"}
-            </p>
-          )}
-        </div>
-        {requiresLogo && (
-          <PackLogo
-            cardData={cardData}
-            width={72}
-            height={28}
-            border={`1.5px dashed ${colorAlpha(theme.text, 0.28)}`}
-            background={colorAlpha(theme.text, 0.05)}
-            color={colorAlpha(theme.text, 0.55)}
-          />
-        )}
-      </div>
-
-      <div className="flex flex-1 flex-col px-5 py-4 sm:px-6">
-        {rows.length > 0 ? (
-          <div className="divide-y" style={{ borderColor: line } as React.CSSProperties}>
-            {rows.map((row) => (
-              <div
-                key={row.key}
-                className="grid min-w-0 grid-cols-[82px_minmax(0,1fr)] items-center gap-3 py-2"
-              >
-                <span className="truncate text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: theme.text }}>
-                  {row.label}
-                </span>
-                <span className="min-w-0 break-words text-right text-xs font-medium" style={{ color: muted }}>
-                  {row.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <PackEmptyRows theme={theme} />
-        )}
-      </div>
-
-      <TemplateSaveButton compact={compact} theme={theme} className="mx-5 mb-5 mt-auto" />
-    </div>
-  );
-}
-
-function PackEditorialLayout(props: LayoutProps) {
-  const rows = importedTemplateRows(props).filter((row) => row.key !== "job_title");
-  const { cardData, compact, requiresLogo } = props;
-  const theme = getRendererTheme(props.theme);
-  const cardBackground = cardBackgroundFromTheme(theme);
-  const initialsText = initials(cardData.full_name);
-  const line = colorAlpha(theme.text, 0.22);
-  const muted = colorAlpha(theme.text, 0.72);
-  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
-
-  return (
-    <div
-      className={`relative flex w-full min-w-0 flex-col overflow-hidden rounded-lg border shadow-2xl shadow-black/25 ${minHeightClass}`}
-      style={{
-        background: cardBackground,
-        borderColor: line,
-        color: theme.text,
-        fontFamily: theme.fontFamily,
-      }}
-    >
-      <div
-        className="pointer-events-none absolute bottom-3 right-5 select-none text-[5rem] font-black leading-none"
-        style={{ color: colorAlpha(theme.text, 0.08) }}
-      >
-        {initialsText}
-      </div>
-
-      <div className="relative z-10 flex flex-1 flex-col p-6 sm:p-8">
-        <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.26em]" style={{ color: muted }}>
-          Digital Business Card
-        </p>
-        <div className="mb-5 flex min-w-0 items-center gap-4">
-          <PackProfile
-            cardData={cardData}
-            size={56}
-            radius="999px"
-            border={`2px dashed ${colorAlpha(theme.text, 0.34)}`}
-            background={colorAlpha(theme.text, 0.07)}
-            color={theme.text}
-          />
-          <div className="min-w-0">
-            <h3 className="max-w-full break-words text-2xl font-bold leading-tight">
-              {cardData.full_name || "Your Name"}
-            </h3>
-            {props.sectionSettings?.personal && props.allowedFields.includes("job_title") && (
-              <p className="mt-1 max-w-full break-words text-sm italic" style={{ color: muted }}>
-                {cardData.job_title || "Job Title"}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="mb-4 h-px" style={{ backgroundColor: line }} />
-
-        {requiresLogo && (
-          <div className="mb-4">
-            <PackLogo
-              cardData={cardData}
-              width={100}
-              height={28}
-              border={`1.5px dashed ${colorAlpha(theme.text, 0.24)}`}
-              background={colorAlpha(theme.text, 0.05)}
-              color={colorAlpha(theme.text, 0.55)}
-            />
-          </div>
-        )}
-
-        {rows.length > 0 ? (
-          <div className="space-y-2">
-            {rows.map((row) => (
-              <div key={row.key} className="grid min-w-0 grid-cols-[72px_minmax(0,1fr)] gap-4 text-sm">
-                <span className="min-w-0 truncate font-light" style={{ color: muted }}>
-                  {row.label}
-                </span>
-                <span className="min-w-0 break-words" style={{ color: theme.text }}>
-                  {row.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <PackEmptyRows theme={theme} />
-        )}
-      </div>
-
-      <TemplateSaveButton compact={compact} theme={theme} className="relative z-10 mx-6 mb-6 mt-auto" />
-    </div>
-  );
-}
-
-function PackColourblockLayout(props: LayoutProps) {
-  const rows = importedTemplateRows(props).filter((row) => row.key !== "job_title");
-  const { cardData, compact, requiresLogo } = props;
-  const theme = getRendererTheme(props.theme);
-  const cardBackground = cardBackgroundFromTheme(theme);
-  const muted = colorAlpha(theme.text, 0.72);
-  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
-
-  return (
-    <div
-      className={`flex w-full min-w-0 flex-col overflow-hidden rounded-2xl shadow-2xl shadow-black/30 ${minHeightClass}`}
-      style={{
-        background: theme.secondary,
-        color: theme.text,
-        fontFamily: theme.fontFamily,
-      }}
-    >
-      <div
-        className="relative overflow-hidden px-6 pb-12 pt-6"
-        style={{ background: cardBackground }}
-      >
-        {requiresLogo && (
-          <div className="absolute right-5 top-5">
-            <PackLogo
-              cardData={cardData}
-              width={70}
-              height={26}
-              border={`1.5px dashed ${colorAlpha(theme.text, 0.28)}`}
-              background={colorAlpha(theme.text, 0.08)}
-              color={colorAlpha(theme.text, 0.56)}
-            />
-          </div>
-        )}
-        <h3 className="relative max-w-[68%] break-words text-3xl font-black leading-tight tracking-tight">
-          {cardData.full_name || "Your Name"}
-        </h3>
-        {props.sectionSettings?.personal && props.allowedFields.includes("job_title") && (
-          <p className="relative mt-2 max-w-[70%] break-words text-sm font-semibold" style={{ color: muted }}>
-            {cardData.job_title || "Job Title"}
-          </p>
-        )}
-      </div>
-
-      <div className="flex flex-1 flex-col px-6 pb-6">
-        <div className="-mt-9 mb-5">
-          <PackProfile
-            cardData={cardData}
-            size={68}
-            radius="999px"
-            border={`3px solid ${theme.secondary}`}
-            background={colorAlpha(theme.text, 0.14)}
-            color={theme.text}
-            className="shadow-xl shadow-black/25"
-          />
-        </div>
-
-        {rows.length > 0 ? (
-          <div className="space-y-3">
-            {rows.map((row) => (
-              <div key={row.key} className="flex min-w-0 items-center gap-3">
-                <div
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[9px] font-black uppercase"
-                  style={{ backgroundColor: theme.buttonColor, color: theme.buttonTextColor }}
-                >
-                  {row.label.slice(0, 2)}
-                </div>
-                <span className="min-w-0 break-words text-sm" style={{ color: theme.text }}>
-                  {row.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <PackEmptyRows theme={theme} />
-        )}
-      </div>
-
-      <TemplateSaveButton compact={compact} theme={theme} className="mx-6 mb-6 mt-auto" />
-    </div>
-  );
-}
-
-function PackNeonNoirLayout(props: LayoutProps) {
-  const rows = importedTemplateRows(props).filter((row) => row.key !== "job_title");
-  const { cardData, compact, requiresLogo } = props;
-  const theme = getRendererTheme(props.theme);
-  const cardBackground = cardBackgroundFromTheme(theme);
-  const line = colorAlpha(theme.text, 0.36);
-  const muted = colorAlpha(theme.text, 0.72);
-  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
-
-  return (
-    <div
-      className={`relative flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border shadow-2xl shadow-black/50 ${minHeightClass}`}
-      style={{
-        background: cardBackground,
-        borderColor: line,
-        color: theme.text,
-        fontFamily: theme.fontFamily,
-        boxShadow: `0 0 0 1px ${colorAlpha(theme.text, 0.1)}, 0 30px 80px rgba(0,0,0,0.5)`,
-      }}
-    >
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          backgroundImage: `linear-gradient(${colorAlpha(theme.text, 0.08)} 1px, transparent 1px), linear-gradient(90deg, ${colorAlpha(theme.text, 0.08)} 1px, transparent 1px)`,
-          backgroundSize: "24px 24px",
-        }}
-      />
-      <div
-        className="relative h-[3px]"
-        style={{ background: `linear-gradient(90deg, ${theme.text}, ${colorAlpha(theme.text, 0.18)}, ${theme.text})` }}
-      />
-
-      <div className="relative z-10 flex flex-1 flex-col p-5 sm:p-6">
-        <div className="mb-5 flex min-w-0 items-center gap-3">
-          <PackProfile
-            cardData={cardData}
-            size={62}
-            radius="10px"
-            border={`1.5px dashed ${colorAlpha(theme.text, 0.38)}`}
-            background={colorAlpha(theme.text, 0.08)}
-            color={theme.text}
-          />
-          <div className="min-w-0 flex-1">
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.2em]" style={{ color: muted }}>
-              {`// identity`}
-            </p>
-            <h3 className="max-w-full break-words text-lg font-black leading-tight">
-              {cardData.full_name || "Your Name"}
-            </h3>
-            {props.sectionSettings?.personal && props.allowedFields.includes("job_title") && (
-              <p className="mt-1 max-w-full break-words text-[11px]" style={{ color: muted }}>
-                {cardData.job_title || "Job Title"}
-              </p>
-            )}
-          </div>
-          {requiresLogo && (
-            <PackLogo
-              cardData={cardData}
-              width={68}
-              height={28}
-              border={`1.5px dashed ${colorAlpha(theme.text, 0.24)}`}
-              background={colorAlpha(theme.text, 0.04)}
-              color={colorAlpha(theme.text, 0.55)}
-            />
-          )}
-        </div>
-
-        <div className="mb-4 h-px" style={{ background: `linear-gradient(90deg, ${line}, ${colorAlpha(theme.text, 0.14)}, transparent)` }} />
-
-        {rows.length > 0 ? (
-          <div className="space-y-2">
-            {rows.map((row) => (
-              <div key={row.key} className="grid min-w-0 grid-cols-[64px_minmax(0,1fr)] gap-3 text-xs">
-                <span className="truncate text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ color: theme.text }}>
-                  {row.label}_
-                </span>
-                <span className="min-w-0 break-words" style={{ color: muted }}>
-                  {row.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <PackEmptyRows theme={theme} />
-        )}
-
-        <div className="mt-5 h-px" style={{ background: `linear-gradient(90deg, transparent, ${line}, ${colorAlpha(theme.text, 0.14)})` }} />
-      </div>
-
-      <TemplateSaveButton compact={compact} theme={theme} className="mx-5 mb-5 mt-auto" />
-    </div>
-  );
-}
-
-function PackLuxuryLayout(props: LayoutProps) {
-  const rows = importedTemplateRows(props).filter((row) => row.key !== "job_title");
-  const { cardData, compact, requiresLogo } = props;
-  const theme = getRendererTheme(props.theme);
-  const cardBackground = cardBackgroundFromTheme(theme);
-  const muted = colorAlpha(theme.text, 0.72);
-  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
-  const imageHeight = compact ? "h-56" : "h-[300px]";
-
-  return (
-    <div
-      className={`flex w-full min-w-0 flex-col overflow-hidden rounded-[1.6rem] shadow-2xl shadow-black/60 ${minHeightClass}`}
-      style={{
-        background: cardBackground,
-        color: theme.text,
-        fontFamily: theme.fontFamily,
-      }}
-    >
-      <div className={`relative overflow-hidden ${imageHeight}`}>
-        {cardData.profile_image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={cardData.profile_image_url}
-            alt={cardData.full_name || "Profile"}
-            className="h-full w-full object-cover object-top"
-          />
-        ) : (
-          <div
-            className="flex h-full w-full flex-col items-center justify-center gap-2 border-2 border-dashed"
-            style={{
-              backgroundColor: colorAlpha(theme.text, 0.08),
-              borderColor: colorAlpha(theme.text, 0.28),
-              color: muted,
-            }}
-          >
-            <span className="text-4xl font-black">{initials(cardData.full_name) || "+"}</span>
-            <span className="text-[10px] font-semibold uppercase tracking-[0.16em]">
-              Upload Profile Photo
-            </span>
-          </div>
-        )}
-        <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 48%, ${theme.primary})` }} />
-        {requiresLogo && (
-          <div
-            className="absolute right-4 top-4 rounded-lg border px-2.5 py-2 backdrop-blur"
-            style={{
-              backgroundColor: colorAlpha(theme.primary, 0.58),
-              borderColor: colorAlpha(theme.text, 0.28),
-            }}
-          >
-            <PackLogo
-              cardData={cardData}
-              width={52}
-              height={18}
-              border={`1px dashed ${colorAlpha(theme.text, 0.28)}`}
-              background="transparent"
-              color={colorAlpha(theme.text, 0.58)}
-            />
-          </div>
-        )}
-      </div>
-
-      <div className="h-px" style={{ background: `linear-gradient(90deg, transparent, ${theme.text}, transparent)` }} />
-
-      <div className="flex flex-1 flex-col px-6 py-5">
-        <h3 className="max-w-full break-words text-xl font-black leading-tight tracking-tight">
-          {cardData.full_name || "Your Name"}
-        </h3>
-        {props.sectionSettings?.personal && props.allowedFields.includes("job_title") && (
-          <p className="mb-5 mt-2 max-w-full break-words text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: muted }}>
-            {cardData.job_title || "Job Title"}
-          </p>
-        )}
-
-        {rows.length > 0 ? (
-          <div className="divide-y" style={{ borderColor: colorAlpha(theme.text, 0.2) } as React.CSSProperties}>
-            {rows.map((row) => (
-              <ImportedSplitRow
-                key={row.key}
-                row={row}
-                labelStyle={{ color: muted }}
-                valueStyle={{ color: colorAlpha(theme.text, 0.78) }}
-              />
-            ))}
-          </div>
-        ) : (
-          <PackEmptyRows theme={theme} />
-        )}
-      </div>
-
-      <TemplateSaveButton compact={compact} theme={theme} className="mx-6 mb-6 mt-auto" />
-    </div>
-  );
-}
-
-function PackBlueprintLayout(props: LayoutProps) {
-  const rows = importedTemplateRows(props).filter((row) => row.key !== "job_title");
-  const { cardData, compact, requiresLogo } = props;
-  const theme = getRendererTheme(props.theme);
-  const cardBackground = cardBackgroundFromTheme(theme);
-  const line = colorAlpha(theme.text, 0.24);
-  const muted = colorAlpha(theme.text, 0.72);
-  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
-
-  return (
-    <div
-      className={`relative flex w-full min-w-0 flex-col overflow-hidden rounded-md border shadow-2xl shadow-black/45 ${minHeightClass}`}
-      style={{
-        background: cardBackground,
-        borderColor: line,
-        color: theme.text,
-        fontFamily: theme.fontFamily,
-      }}
-    >
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          backgroundImage: `linear-gradient(${colorAlpha(theme.text, 0.06)} 1px, transparent 1px), linear-gradient(90deg, ${colorAlpha(theme.text, 0.06)} 1px, transparent 1px)`,
-          backgroundSize: "20px 20px",
-        }}
-      />
-      <div className="relative z-10 flex flex-1 flex-col p-5 sm:p-6">
-        <div className="mb-4 flex min-w-0 items-start justify-between gap-4 border-b pb-4" style={{ borderColor: line }}>
-          <div className="min-w-0 flex-1">
-            <p className="mb-1 text-[8px] font-semibold uppercase tracking-[0.2em]" style={{ color: muted }}>
-              REV 01 · CONTACT CARD
-            </p>
-            <h3 className="max-w-full break-words text-lg font-black leading-tight">
-              {cardData.full_name || "Your Name"}
-            </h3>
-            {props.sectionSettings?.personal && props.allowedFields.includes("job_title") && (
-              <p className="mt-1 max-w-full break-words text-[11px]" style={{ color: muted }}>
-                {cardData.job_title || "Job Title"}
-              </p>
-            )}
-            {requiresLogo && (
-              <div className="mt-2">
-                <PackLogo
-                  cardData={cardData}
-                  width={70}
-                  height={20}
-                  border={`1px dashed ${colorAlpha(theme.text, 0.24)}`}
-                  background={colorAlpha(theme.text, 0.05)}
-                  color={colorAlpha(theme.text, 0.55)}
-                />
-              </div>
-            )}
-          </div>
-
-          <div className="relative h-14 w-14 shrink-0">
-            <PackProfile
-              cardData={cardData}
-              size={56}
-              radius="999px"
-              border={`1.5px dashed ${colorAlpha(theme.text, 0.48)}`}
-              background={colorAlpha(theme.text, 0.06)}
-              color={theme.text}
-            />
-            <div className="pointer-events-none absolute left-[-10px] right-[-10px] top-1/2 h-px" style={{ backgroundColor: colorAlpha(theme.text, 0.18) }} />
-            <div className="pointer-events-none absolute bottom-[-10px] left-1/2 top-[-10px] w-px" style={{ backgroundColor: colorAlpha(theme.text, 0.18) }} />
-          </div>
-        </div>
-
-        {rows.length > 0 ? (
-          <div className="overflow-hidden rounded border" style={{ borderColor: line }}>
-            {rows.map((row) => (
-              <div
-                key={row.key}
-                className="grid min-w-0 grid-cols-[80px_minmax(0,1fr)] border-b last:border-b-0"
-                style={{ borderColor: line }}
-              >
-                <div
-                  className="border-r px-2 py-2 text-[8px] font-semibold uppercase tracking-[0.12em]"
-                  style={{ borderColor: line, color: theme.text }}
-                >
-                  {row.label}
-                </div>
-                <div className="min-w-0 break-words px-2 py-2 text-[10px]" style={{ color: muted }}>
-                  {row.value}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <PackEmptyRows theme={theme} />
-        )}
-
-        <div className="mt-4 flex justify-end">
-          <p className="text-[7px] font-semibold uppercase tracking-[0.16em]" style={{ color: muted }}>
-            Approved · Digital Issue
-          </p>
-        </div>
-      </div>
-
-      <TemplateSaveButton compact={compact} theme={theme} className="mx-5 mb-5 mt-auto" />
-    </div>
-  );
-}
-
-function PlaceholderSections({
-  rows,
-  tone,
-}: {
-  rows: { title: string; rows: DisplayRow[] }[];
-  tone: "minimal" | "corporate" | "neon" | "creator";
-}) {
-  const toneClass =
-    tone === "neon"
-      ? "border-[#AC00FF]/30 bg-[#050816]/55"
-      : tone === "minimal"
-      ? "border-white/10 bg-black/18"
-      : "border-white/12 bg-white/[0.07]";
-
-  return (
-    <div className="mt-5 space-y-4">
-      {rows.map((section) => (
-        <ClassicSection
-          key={section.title}
-          title={section.title}
-          rows={section.rows}
-          premium
-          className={toneClass}
-        />
-      ))}
-    </div>
-  );
-}
-
-function layoutRows({
-  cardData,
-  allowedFields,
-  templateCustomFields = {},
-  sectionSettings = {
-    personal: true,
-    company: true,
-    contact: true,
-    social: false,
-  },
-  mode = "preview",
-}: LayoutProps) {
-  const allowed = new Set(allowedFields);
-  const previewMode = mode === "preview" || mode === "compact";
-  const sections = [
-    ["Personal Details", "personal", sectionSettings.personal],
-    ["Company Details", "company", sectionSettings.company],
-    ["Contact", "contact", sectionSettings.contact],
-    ["Social Links", "social", sectionSettings.social],
-  ] as const;
-
-  return sections
-    .map(([title, key, enabled]) => ({
-      title,
-      rows: enabled
-        ? classicRows(key, templateCustomFields, cardData, allowed, previewMode)
-        : [],
-    }))
-    .filter((section) => section.rows.length > 0);
-}
-
-type ImportedTemplateRow = DisplayRow & {
-  key: string;
-  section: string;
-};
-
-function importedTemplateRows(props: LayoutProps): ImportedTemplateRow[] {
-  return layoutRows(props).flatMap((section) =>
-    section.rows.map((row) => ({
-      ...row,
-      key: `${section.title}:${row.label}`,
-      section: section.title,
-    }))
-  );
-}
-
-function ImportedAvatar({
-  cardData,
-  className,
-  style,
-  size,
-}: {
-  cardData: CardRendererData;
-  className: string;
-  style?: React.CSSProperties;
-  size: "medium" | "large";
-}) {
-  const sizeClass = size === "large" ? "h-16 w-16 text-xl" : "h-14 w-14 text-lg";
-
-  return (
-    <div
-      className={`flex ${sizeClass} shrink-0 items-center justify-center overflow-hidden rounded-full border-2 font-black ${className}`}
-      style={style}
-    >
-      {cardData.profile_image_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={cardData.profile_image_url}
-          alt={cardData.full_name || "Profile"}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        initials(cardData.full_name)
-      )}
-    </div>
-  );
-}
-
-function ImportedLogo({
-  cardData,
-  dark = false,
-  muted = false,
-  textColor,
-}: {
-  cardData: CardRendererData;
-  dark?: boolean;
-  muted?: boolean;
-  textColor?: string;
-}) {
-  if (!cardData.company_logo_url && !cardData.company_name) return null;
-
-  if (cardData.company_logo_url) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={cardData.company_logo_url}
-        alt={cardData.company_name || "Company logo"}
-        className={`max-h-7 max-w-24 object-contain ${
-          dark ? "brightness-0 invert" : ""
-        } ${muted ? "opacity-60" : ""}`}
-      />
-    );
-  }
-
-  return (
-    <span
-      className={`max-w-28 truncate text-[10px] font-bold uppercase tracking-[0.16em] ${
-        dark ? "text-white/45" : "text-black/45"
-      }`}
-      style={textColor ? { color: colorAlpha(textColor, muted ? 0.6 : 0.78) } : undefined}
-    >
-      {cardData.company_name}
-    </span>
-  );
-}
-
-function ImportedSplitRow({
-  row,
-  labelClassName = "",
-  valueClassName = "",
-  labelStyle,
-  valueStyle,
-}: {
-  row: ImportedTemplateRow;
-  labelClassName?: string;
-  valueClassName?: string;
-  labelStyle?: React.CSSProperties;
-  valueStyle?: React.CSSProperties;
-}) {
-  return (
-    <div className="grid min-w-0 grid-cols-[88px_minmax(0,1fr)] items-start gap-3 py-2 text-sm">
-      <span
-        className={`min-w-0 truncate text-[10px] uppercase tracking-[0.12em] ${labelClassName}`}
-        style={labelStyle}
-      >
-        {row.label}
-      </span>
-      <span
-        className={`min-w-0 max-w-full whitespace-pre-wrap break-words text-right text-xs font-semibold ${valueClassName}`}
-        style={valueStyle}
-      >
-        {row.value}
-      </span>
-    </div>
-  );
-}
-
 function ClassicSection({
   title,
   rows,
@@ -2576,6 +771,475 @@ function buildPaidPersonalRows({
   });
 
   return rows;
+}
+
+type ImportedTemplateRow = DisplayRow & {
+  key: string;
+  section: string;
+};
+
+function importedTemplateRows(props: LayoutProps): ImportedTemplateRow[] {
+  return layoutRows(props).flatMap((section) =>
+    section.rows.map((row) => ({
+      ...row,
+      key: `${section.title}:${row.label}`,
+      section: section.title,
+    }))
+  );
+}
+
+function layoutRows({
+  cardData,
+  allowedFields,
+  templateCustomFields = {},
+  sectionSettings = {
+    personal: true,
+    company: true,
+    contact: true,
+    social: false,
+  },
+  mode = "preview",
+}: LayoutProps) {
+  const allowed = new Set(allowedFields);
+  const previewMode = mode === "preview" || mode === "compact";
+  const sections = [
+    ["Personal Details", "personal", sectionSettings.personal],
+    ["Company Details", "company", sectionSettings.company],
+    ["Contact", "contact", sectionSettings.contact],
+    ["Social Links", "social", sectionSettings.social],
+  ] as const;
+
+  return sections
+    .map(([title, key, enabled]) => ({
+      title,
+      rows: enabled
+        ? classicRows(key, templateCustomFields, cardData, allowed, previewMode)
+        : [],
+    }))
+    .filter((section) => section.rows.length > 0);
+}
+
+function GlassmorphismLayout(props: LayoutProps) {
+  const rows = importedTemplateRows(props);
+  const { cardData, compact, requiresLogo } = props;
+  const showCompanyName =
+    props.sectionSettings?.company && props.allowedFields.includes("company_name");
+  const theme = getRendererTheme(props.theme);
+  const cardBackground = cardBackgroundFromTheme(theme);
+  const glassTint = colorAlpha(theme.secondary, 0.46);
+  const accentBorder = colorAlpha(theme.text, 0.26);
+  const mutedText = colorAlpha(theme.text, 0.58);
+  const labelText = colorAlpha(theme.text, 0.72);
+  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
+
+  return (
+    <div
+      className={`w-full min-w-0 overflow-hidden rounded-[1.7rem] p-0.5 shadow-2xl shadow-black/50 ${minHeightClass}`}
+      style={{
+        background: cardBackground,
+        fontFamily: theme.fontFamily,
+      }}
+    >
+      <div
+        className="flex min-h-full flex-col overflow-hidden rounded-[1.55rem] border shadow-inner shadow-white/5 backdrop-blur-xl"
+        style={{
+          backgroundColor: glassTint,
+          borderColor: accentBorder,
+          color: theme.text,
+        }}
+      >
+        <div
+          className="flex min-w-0 items-center gap-4 border-b px-5 py-5"
+          style={{ borderColor: accentBorder }}
+        >
+          <PaidAvatar cardData={cardData} theme={theme} size={compact ? 56 : 64} />
+
+          <div className="min-w-0 flex-1">
+            <h3 className="max-w-full break-words text-xl font-black leading-tight tracking-tight">
+              {cardData.full_name || "Full Name"}
+            </h3>
+            {props.sectionSettings?.personal &&
+              props.allowedFields.includes("job_title") && (
+                <p
+                  className="mt-1 max-w-full break-words text-sm"
+                  style={{ color: mutedText }}
+                >
+                  {cardData.job_title || "Job Title"}
+                </p>
+              )}
+            {!requiresLogo && showCompanyName && (
+              <p
+                className="mt-2 max-w-full truncate text-[10px] font-semibold uppercase tracking-[0.16em]"
+                style={{ color: labelText }}
+              >
+                {cardData.company_name || "Company Name"}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <PaidRowList
+          rows={rows}
+          theme={theme}
+          className="px-5 py-4"
+          emptyPanelColor={colorAlpha(theme.secondary, 0.2)}
+        />
+
+        {(requiresLogo || showCompanyName) && (
+          <div className="flex justify-end px-5 pb-5">
+            {requiresLogo ? (
+              <PaidLogoMark cardData={cardData} theme={theme} size="large" />
+            ) : (
+              <span className="max-w-32 truncate text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: labelText }}>
+                {cardData.company_name || "Company Name"}
+              </span>
+            )}
+          </div>
+        )}
+
+        <TemplateSaveButton compact={compact} theme={theme} className="mx-5 mb-5 mt-auto" />
+      </div>
+    </div>
+  );
+}
+
+function BannerCardLayout(props: LayoutProps) {
+  const theme = getRendererTheme(props.theme);
+  const rows = importedTemplateRows(props);
+  const detailRows = rows.filter((row) => row.key !== "Personal Details:Job Title");
+  const { cardData, compact, requiresLogo } = props;
+  const showCompanyName =
+    props.sectionSettings?.company && props.allowedFields.includes("company_name");
+  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
+  const borderColor = colorAlpha(theme.text, 0.22);
+  const mutedText = colorAlpha(theme.text, 0.74);
+  const softPanel = colorAlpha(theme.text, 0.08);
+  const bannerBackground = cardData.company_banner_url
+    ? `linear-gradient(180deg, ${colorAlpha(theme.secondary, 0.06)}, ${colorAlpha(theme.secondary, 0.62)}), url(${cardData.company_banner_url}) center/cover no-repeat`
+    : cardBackgroundFromTheme(theme);
+
+  return (
+    <div
+      className={`flex w-full min-w-0 flex-col overflow-hidden rounded-[1.6rem] border shadow-2xl shadow-black/35 ${minHeightClass}`}
+      style={{
+        background: cardBackgroundFromTheme(theme),
+        borderColor,
+        color: theme.text,
+        fontFamily: theme.fontFamily,
+      }}
+    >
+      <div className={compact ? "relative h-36" : "relative h-48"} style={{ background: bannerBackground }}>
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(180deg, transparent 30%, ${colorAlpha(theme.secondary, 0.58)})`,
+          }}
+        />
+
+        {requiresLogo && (
+          <div
+            className="absolute right-4 top-4 flex max-w-[180px] items-center gap-2 rounded-full border px-3 py-2 backdrop-blur-md"
+            style={{
+              backgroundColor: colorAlpha(theme.secondary, 0.54),
+              borderColor,
+              color: theme.text,
+            }}
+          >
+            <PaidLogoMark cardData={cardData} theme={theme} size="small" />
+            {showCompanyName && (
+              <span className="min-w-0 truncate text-xs font-bold">
+                {cardData.company_name || "Company Name"}
+              </span>
+            )}
+          </div>
+        )}
+
+        {props.requiresProfileImage && (
+          <div className="absolute bottom-0 left-5 translate-y-1/2">
+            <PaidAvatar cardData={cardData} theme={theme} size={compact ? 74 : 88} />
+          </div>
+        )}
+      </div>
+
+      <div className={`px-5 ${props.requiresProfileImage ? (compact ? "pt-12" : "pt-14") : "pt-5"}`}>
+        <h3 className="max-w-full break-words text-2xl font-black leading-tight">
+          {cardData.full_name || "Full Name"}
+        </h3>
+        {props.sectionSettings?.personal && props.allowedFields.includes("job_title") && (
+          <p className="mt-1 max-w-full break-words text-sm font-semibold" style={{ color: mutedText }}>
+            {cardData.job_title || "Job Title"}
+          </p>
+        )}
+      </div>
+
+      <PaidRowList rows={detailRows} theme={theme} className="px-5 py-5" emptyPanelColor={softPanel} />
+
+      <TemplateSaveButton compact={compact} theme={theme} className="mx-5 mb-5 mt-auto" />
+    </div>
+  );
+}
+
+function SplitCardLayout(props: LayoutProps) {
+  const theme = getRendererTheme(props.theme);
+  const rows = importedTemplateRows(props);
+  const detailRows = rows.filter(
+    (row) =>
+      row.key !== "Personal Details:Job Title" &&
+      row.key !== "Company Details:Company Name"
+  );
+  const { cardData, compact, requiresLogo } = props;
+  const showCompanyName =
+    props.sectionSettings?.company && props.allowedFields.includes("company_name");
+  const borderColor = colorAlpha(theme.text, 0.2);
+  const mutedText = colorAlpha(theme.text, 0.74);
+  const panelColor = colorAlpha(theme.secondary, 0.5);
+
+  return (
+    <div
+      className={`grid w-full min-w-0 overflow-hidden rounded-[1.6rem] border shadow-2xl shadow-black/35 ${
+        compact ? "min-h-[420px] grid-cols-1" : "min-h-[650px] grid-cols-[42%_58%]"
+      }`}
+      style={{
+        background: cardBackgroundFromTheme(theme),
+        borderColor,
+        color: theme.text,
+        fontFamily: theme.fontFamily,
+      }}
+    >
+      <div
+        className={`flex min-w-0 flex-col items-center justify-center p-5 text-center ${
+          compact ? "min-h-48" : ""
+        }`}
+        style={{
+          backgroundColor: panelColor,
+          borderColor,
+          borderRightWidth: compact ? 0 : 1,
+          borderBottomWidth: compact ? 1 : 0,
+        }}
+      >
+        {props.requiresProfileImage && (
+          <PaidAvatar cardData={cardData} theme={theme} size={compact ? 82 : 104} />
+        )}
+        <h3 className="mt-4 max-w-full break-words text-2xl font-black leading-tight">
+          {cardData.full_name || "Full Name"}
+        </h3>
+        {props.sectionSettings?.personal && props.allowedFields.includes("job_title") && (
+          <p className="mt-2 max-w-full break-words text-sm font-semibold" style={{ color: mutedText }}>
+            {cardData.job_title || "Job Title"}
+          </p>
+        )}
+      </div>
+
+      <div className="flex min-w-0 flex-col p-5">
+        {(requiresLogo || showCompanyName) && (
+          <div className="mb-5 flex min-w-0 items-center gap-3">
+            {requiresLogo && <PaidLogoMark cardData={cardData} theme={theme} size="large" />}
+            {showCompanyName && (
+              <span className="min-w-0 max-w-full break-words text-sm font-bold">
+                {cardData.company_name || "Company Name"}
+              </span>
+            )}
+          </div>
+        )}
+
+        <PaidRowList rows={detailRows} theme={theme} className="flex-1" />
+
+        <TemplateSaveButton compact={compact} theme={theme} className="mt-auto" />
+      </div>
+    </div>
+  );
+}
+
+function MonogramCardLayout(props: LayoutProps) {
+  const theme = getRendererTheme(props.theme);
+  const rows = importedTemplateRows(props);
+  const detailRows = rows.filter(
+    (row) =>
+      row.key !== "Personal Details:Job Title" &&
+      row.key !== "Company Details:Company Name"
+  );
+  const { cardData, compact, requiresLogo } = props;
+  const showCompanyName =
+    props.sectionSettings?.company && props.allowedFields.includes("company_name");
+  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
+  const borderColor = colorAlpha(theme.text, 0.18);
+  const mutedText = colorAlpha(theme.text, 0.76);
+  const panelColor = colorAlpha(theme.secondary, 0.44);
+
+  return (
+    <div
+      className={`flex w-full min-w-0 flex-col overflow-hidden rounded-[1.35rem] border shadow-2xl shadow-black/30 ${minHeightClass}`}
+      style={{
+        background: cardBackgroundFromTheme(theme),
+        borderColor,
+        color: theme.text,
+        fontFamily: theme.fontFamily,
+      }}
+    >
+      <div className="flex min-w-0 items-center gap-4 border-b p-5" style={{ borderColor, backgroundColor: panelColor }}>
+        <div
+          className="flex h-[76px] w-[76px] shrink-0 items-center justify-center rounded-2xl border text-3xl font-black tracking-normal"
+          style={{
+            backgroundColor: colorAlpha(theme.text, 0.12),
+            borderColor,
+            color: theme.text,
+          }}
+        >
+          {initials(cardData.full_name)}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <h3 className="max-w-full break-words text-2xl font-black leading-tight">
+            {cardData.full_name || "Full Name"}
+          </h3>
+          {props.sectionSettings?.personal && props.allowedFields.includes("job_title") && (
+            <p className="mt-1 max-w-full break-words text-sm font-semibold" style={{ color: mutedText }}>
+              {cardData.job_title || "Job Title"}
+            </p>
+          )}
+          {showCompanyName && (
+            <p className="mt-1 max-w-full break-words text-xs font-semibold" style={{ color: mutedText }}>
+              {cardData.company_name || "Company Name"}
+            </p>
+          )}
+        </div>
+
+        {requiresLogo && <PaidLogoMark cardData={cardData} theme={theme} size="large" />}
+      </div>
+
+      <PaidRowList rows={detailRows} theme={theme} className="px-5 py-5" />
+
+      <TemplateSaveButton compact={compact} theme={theme} className="mx-5 mb-5 mt-auto" />
+    </div>
+  );
+}
+
+function PaidRowList({
+  rows,
+  theme,
+  className = "",
+  emptyPanelColor,
+}: {
+  rows: ImportedTemplateRow[];
+  theme: RendererTheme;
+  className?: string;
+  emptyPanelColor?: string;
+}) {
+  const line = colorAlpha(theme.text, 0.16);
+  const mutedText = colorAlpha(theme.text, 0.74);
+
+  if (rows.length === 0) {
+    return (
+      <p
+        className={`rounded-2xl border p-4 text-sm ${className}`}
+        style={{
+          backgroundColor: emptyPanelColor || colorAlpha(theme.text, 0.07),
+          borderColor: line,
+          color: mutedText,
+        }}
+      >
+        Add visible fields to show card details.
+      </p>
+    );
+  }
+
+  return (
+    <div className={`min-w-0 ${className}`}>
+      <div className="divide-y" style={{ borderColor: line } as React.CSSProperties}>
+        {rows.map((row) => {
+          const Icon = row.icon || iconForLabel(row.label);
+
+          return (
+            <div
+              key={row.key}
+              className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-start gap-3 py-3 text-sm"
+              style={{ borderColor: line }}
+            >
+              <span className="flex min-w-0 items-center gap-2" style={{ color: theme.text }}>
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-normal">
+                  {row.label}
+                </span>
+              </span>
+              <span className="min-w-0 max-w-full whitespace-pre-wrap break-words text-right text-sm font-semibold" style={{ color: theme.text }}>
+                {row.value}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PaidAvatar({
+  cardData,
+  theme,
+  size,
+}: {
+  cardData: CardRendererData;
+  theme: RendererTheme;
+  size: number;
+}) {
+  return (
+    <div
+      className="flex shrink-0 items-center justify-center overflow-hidden rounded-full border-4 text-2xl font-black shadow-xl"
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: colorAlpha(theme.text, 0.12),
+        borderColor: theme.text,
+        color: theme.text,
+      }}
+    >
+      {cardData.profile_image_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={cardData.profile_image_url}
+          alt={cardData.full_name || "Profile"}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        initials(cardData.full_name)
+      )}
+    </div>
+  );
+}
+
+function PaidLogoMark({
+  cardData,
+  theme,
+  size,
+}: {
+  cardData: CardRendererData;
+  theme: RendererTheme;
+  size: "small" | "large";
+}) {
+  const dimension = size === "large" ? 44 : 24;
+
+  return (
+    <div
+      className="flex shrink-0 items-center justify-center overflow-hidden rounded-lg border text-[10px] font-black"
+      style={{
+        width: dimension,
+        height: dimension,
+        backgroundColor: colorAlpha(theme.text, 0.1),
+        borderColor: colorAlpha(theme.text, 0.22),
+        color: theme.text,
+      }}
+    >
+      {cardData.company_logo_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={cardData.company_logo_url}
+          alt={cardData.company_name || "Company logo"}
+          className="h-full w-full object-contain p-1"
+        />
+      ) : (
+        initials(cardData.company_name)
+      )}
+    </div>
+  );
 }
 
 function ModernLayout({
@@ -3066,18 +1730,10 @@ function TemplateSaveButton({
 
 function isTemplateShelllessPaidLayout(layout: string) {
   return (
-    layout === "obsidian_dark" ||
     layout === "glassmorphism" ||
-    layout === "soft_pastel" ||
-    layout === "neon_noir" ||
-    layout === "luxury_vertical" ||
-    layout === "gradient_mesh" ||
-    layout === "pack_obsidian" ||
-    layout === "editorial_serif" ||
-    layout === "colourblock_split" ||
-    layout === "pack_neon_noir" ||
-    layout === "pack_luxury_vertical" ||
-    layout === "blueprint_technical"
+    layout === "banner_card" ||
+    layout === "split_card" ||
+    layout === "monogram_card"
   );
 }
 
@@ -3342,22 +1998,10 @@ function normalizeLayoutType(
 
   const paidLayouts = [
     "premium_classic",
-    "executive_minimal",
-    "corporate_pro",
-    "neon_tech",
-    "creator_mode",
-    "obsidian_dark",
     "glassmorphism",
-    "soft_pastel",
-    "neon_noir",
-    "luxury_vertical",
-    "gradient_mesh",
-    "pack_obsidian",
-    "editorial_serif",
-    "colourblock_split",
-    "pack_neon_noir",
-    "pack_luxury_vertical",
-    "blueprint_technical",
+    "banner_card",
+    "split_card",
+    "monogram_card",
   ];
 
   if (layout && paidLayouts.includes(layout)) {
@@ -3394,18 +2038,10 @@ function getTemplateFont(layoutType: string, selectedFont?: string | null) {
   if (selectedFont) return getFontFamily(selectedFont);
 
   const defaults: Record<string, string> = {
-    obsidian_dark: "Outfit",
     glassmorphism: "Outfit",
-    soft_pastel: "Nunito",
-    neon_noir: "Space Mono",
-    luxury_vertical: "Syne",
-    gradient_mesh: "Outfit",
-    pack_obsidian: "Inter",
-    editorial_serif: "Playfair Display",
-    colourblock_split: "Poppins",
-    pack_neon_noir: "Space Mono",
-    pack_luxury_vertical: "Syne",
-    blueprint_technical: "Space Mono",
+    banner_card: "Inter",
+    split_card: "Poppins",
+    monogram_card: "Playfair Display",
   };
 
   return getFontFamily(defaults[layoutType] || "Inter");

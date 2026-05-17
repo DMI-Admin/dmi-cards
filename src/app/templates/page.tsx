@@ -143,22 +143,10 @@ const freeLayouts = [
 
 const paidLayouts = [
   { value: "premium_classic", label: "Premium Classic" },
-  { value: "obsidian_dark", label: "Obsidian Dark" },
   { value: "glassmorphism", label: "Glassmorphism" },
-  { value: "soft_pastel", label: "Soft Pastel" },
-  { value: "neon_noir", label: "Neon Noir" },
-  { value: "luxury_vertical", label: "Luxury Vertical" },
-  { value: "gradient_mesh", label: "Gradient Mesh" },
-  { value: "pack_obsidian", label: "Pack Obsidian" },
-  { value: "editorial_serif", label: "Editorial Serif" },
-  { value: "colourblock_split", label: "Colourblock Split" },
-  { value: "pack_neon_noir", label: "Pack Neon Noir" },
-  { value: "pack_luxury_vertical", label: "Pack Luxury Vertical" },
-  { value: "blueprint_technical", label: "Blueprint Technical" },
-  { value: "executive_minimal", label: "Executive Minimal" },
-  { value: "corporate_pro", label: "Corporate Pro" },
-  { value: "neon_tech", label: "Neon Tech" },
-  { value: "creator_mode", label: "Creator Mode" },
+  { value: "banner_card", label: "Banner Card" },
+  { value: "split_card", label: "Split Card" },
+  { value: "monogram_card", label: "Monogram Card" },
 ];
 
 const defaultFreeColourPalette = [
