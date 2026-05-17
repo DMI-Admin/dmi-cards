@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import CardRenderer from "@/components/CardRenderer";
-import { supabase } from "@/lib/supabase";
+import {
+  deleteAdminTemplate,
+  getAdminTemplates,
+  publishAdminTemplate,
+  saveAdminTemplate,
+  type SharedTemplate,
+} from "@/lib/templates";
 
 type Template = {
   id: string;
@@ -44,14 +50,6 @@ type TemplatePayload = Record<
   string,
   string | boolean | number | null | string[] | CustomFields
 >;
-
-const optionalV1TemplateFields = [
-  "free_colour_palette",
-  "requires_banner",
-  "gradient_enabled",
-  "allowed_fonts",
-  "default_font",
-];
 
 const sectionFieldGroups: {
   key: SectionKey;
@@ -191,6 +189,8 @@ export default function TemplatesPage() {
     null
   );
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateMessage, setTemplateMessage] = useState("");
+  const [templateError, setTemplateError] = useState("");
 
   const [name, setName] = useState("");
   const [accessLevel, setAccessLevel] = useState("free");
@@ -227,36 +227,34 @@ export default function TemplatesPage() {
   const layoutOptions = accessLevel === "free" ? freeLayouts : paidLayouts;
 
   async function fetchTemplates() {
-    const { data, error } = await supabase
-      .from("templates")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      alert(error.message);
-      return;
+    try {
+      const loadedTemplates = await getAdminTemplates();
+      setTemplates(loadedTemplates as Template[]);
+      setTemplateError("");
+    } catch (error) {
+      console.error("Template load failed", error);
+      setTemplateError("Templates could not be loaded. Using local templates for now.");
+      setTemplates([]);
     }
-
-    if (data) setTemplates(data);
   }
 
   useEffect(() => {
     let ignore = false;
 
     async function loadTemplates() {
-      const { data, error } = await supabase
-        .from("templates")
-        .select("*")
-        .order("created_at", { ascending: false });
+      try {
+        const loadedTemplates = await getAdminTemplates();
 
-      if (ignore) return;
+        if (ignore) return;
 
-      if (error) {
-        alert(error.message);
-        return;
+        setTemplates(loadedTemplates as Template[]);
+        setTemplateError("");
+      } catch (error) {
+        if (ignore) return;
+
+        console.error("Template load failed", error);
+        setTemplateError("Templates could not be loaded. Using local templates for now.");
       }
-
-      if (data) setTemplates(data);
     }
 
     void loadTemplates();
@@ -533,7 +531,7 @@ export default function TemplatesPage() {
     if (savingTemplate) return;
 
     if (!name.trim()) {
-      alert("Template name is required.");
+      setTemplateError("Template name is required.");
       return;
     }
 
@@ -571,66 +569,31 @@ export default function TemplatesPage() {
 
     try {
       setSavingTemplate(true);
+      setTemplateError("");
+      setTemplateMessage("");
 
-      if (editingTemplateId) {
-        console.log("Template payload", payload);
-
-        let { error } = await supabase
-          .from("templates")
-          .update(payload)
-          .eq("id", editingTemplateId);
-
-        if (error && isOptionalTemplateFieldError(error)) {
-          const fallbackPayload = stripOptionalV1TemplateFields(payload);
-          console.warn("Retrying template save without optional V1 fields", error);
-          const retry = await supabase
-            .from("templates")
-            .update(fallbackPayload)
-            .eq("id", editingTemplateId);
-          error = retry.error;
-        }
-
-        if (error) {
-          console.error("Template save failed", error);
-          alert("Failed to save template");
-          return;
-        }
-      } else {
-        const insertPayload = {
+      const existingTemplate = templates.find(
+        (template) => template.id === editingTemplateId
+      );
+      const result = await saveAdminTemplate(
+        {
           ...payload,
-          is_published: false,
-          usage_count: 0,
-        };
-
-        console.log("Template payload", insertPayload);
-
-        let { error } = await supabase
-          .from("templates")
-          .insert([insertPayload]);
-
-        if (error && isOptionalTemplateFieldError(error)) {
-          const fallbackPayload = stripOptionalV1TemplateFields(insertPayload);
-          console.warn("Retrying template save without optional V1 fields", error);
-          const retry = await supabase
-            .from("templates")
-            .insert([fallbackPayload]);
-          error = retry.error;
-        }
-
-        if (error) {
-          console.error("Template save failed", error);
-          alert("Failed to save template");
-          return;
-        }
-
-        alert("Template created successfully");
-      }
+          is_published: existingTemplate?.is_published ?? false,
+          usage_count: existingTemplate?.usage_count ?? 0,
+        } as unknown as SharedTemplate,
+        editingTemplateId
+      );
 
       resetBuilder();
       await fetchTemplates();
+      setTemplateMessage(
+        result.source === "local"
+          ? "Template saved locally. Client Portal will use this local template source."
+          : "Template saved successfully."
+      );
     } catch (error) {
       console.error("Template save failed", error);
-      alert("Failed to save template");
+      setTemplateError("Template could not be saved. Your current edits are still on screen.");
     } finally {
       setSavingTemplate(false);
     }
@@ -686,36 +649,44 @@ export default function TemplatesPage() {
 
     console.log("Template payload", insertPayload);
 
-    let { error } = await supabase.from("templates").insert([insertPayload]);
-
-    if (error && isOptionalTemplateFieldError(error)) {
-      const fallbackPayload = stripOptionalV1TemplateFields(insertPayload);
-      console.warn("Retrying template save without optional V1 fields", error);
-      const retry = await supabase.from("templates").insert([fallbackPayload]);
-      error = retry.error;
+    try {
+      const result = await saveAdminTemplate(
+        insertPayload as unknown as SharedTemplate
+      );
+      setTemplateMessage(
+        result.source === "local"
+          ? "Template duplicated locally."
+          : "Template duplicated successfully."
+      );
+      setTemplateError("");
+      await fetchTemplates();
+    } catch (error) {
+      console.error("Template duplicate failed", error);
+      setTemplateError("Template could not be duplicated. Please try again.");
     }
-
-    if (error) {
-      console.error("Template save error", error);
-      alert(error.message);
-      return;
-    }
-
-    fetchTemplates();
   }
 
   async function togglePublished(template: Template) {
-    const { error } = await supabase
-      .from("templates")
-      .update({ is_published: !template.is_published })
-      .eq("id", template.id);
-
-    if (error) {
-      alert(error.message);
-      return;
+    try {
+      const result = await publishAdminTemplate(
+        template as unknown as SharedTemplate,
+        !template.is_published
+      );
+      setTemplates((current) =>
+        current.map((item) =>
+          item.id === template.id ? (result.template as Template) : item
+        )
+      );
+      setTemplateMessage(
+        result.source === "local"
+          ? `Template ${result.template.is_published ? "published" : "unpublished"} locally.`
+          : `Template ${result.template.is_published ? "published" : "unpublished"}.`
+      );
+      setTemplateError("");
+    } catch (error) {
+      console.error("Template publish failed", error);
+      setTemplateError("Template publish state could not be updated. Please try again.");
     }
-
-    fetchTemplates();
   }
 
   async function deleteTemplate(template: Template) {
@@ -725,21 +696,26 @@ export default function TemplatesPage() {
 
     if (!confirmed) return;
 
-    const { error } = await supabase
-      .from("templates")
-      .delete()
-      .eq("id", template.id);
-
-    if (error) {
-      alert(error.message);
+    try {
+      const result = await deleteAdminTemplate(template.id);
+      setTemplates((current) =>
+        current.filter((currentTemplate) => currentTemplate.id !== template.id)
+      );
+      setTemplateMessage(
+        result.source === "local"
+          ? "Template deleted locally."
+          : "Template deleted successfully."
+      );
+      setTemplateError("");
+    } catch (error) {
+      console.error("Template delete failed", error);
+      setTemplateError("Template could not be deleted. Please try again.");
       return;
     }
 
     if (editingTemplateId === template.id) {
       resetBuilder();
     }
-
-    fetchTemplates();
   }
 
   return (
@@ -754,6 +730,18 @@ export default function TemplatesPage() {
             colours and content later.
           </p>
         </div>
+
+        {templateMessage && (
+          <div className="mb-6 rounded-2xl border border-green-400/20 bg-green-500/10 px-5 py-4 text-sm text-green-100">
+            {templateMessage}
+          </div>
+        )}
+
+        {templateError && (
+          <div className="mb-6 rounded-2xl border border-yellow-400/20 bg-yellow-500/10 px-5 py-4 text-sm text-yellow-100">
+            {templateError}
+          </div>
+        )}
 
         <div className="mb-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-start">
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
@@ -1694,23 +1682,6 @@ function normalizeTemplateLayout(layout: string | null | undefined, accessLevel:
   }
 
   return "premium_classic";
-}
-
-function stripOptionalV1TemplateFields(payload: TemplatePayload) {
-  return Object.fromEntries(
-    Object.entries(payload).filter(
-      ([key]) => !optionalV1TemplateFields.includes(key)
-    )
-  ) as TemplatePayload;
-}
-
-function isOptionalTemplateFieldError(error: { message?: string; code?: string }) {
-  const message = error.message || "";
-
-  return (
-    error.code === "PGRST204" ||
-    optionalV1TemplateFields.some((field) => message.includes(field))
-  );
 }
 
 function sanitizeCustomFields(customFields: CustomFields): CustomFields {

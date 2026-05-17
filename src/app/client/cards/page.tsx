@@ -24,6 +24,11 @@ import CardRenderer, {
 } from "@/components/CardRenderer";
 import ClientSidebar from "@/components/ClientSidebar";
 import { supabase } from "@/lib/supabase";
+import {
+  defaultTemplatesFallback,
+  getClientVisibleTemplates,
+  type SharedTemplate,
+} from "@/lib/templates";
 
 const currentPlan = "free" as
   | "free"
@@ -107,12 +112,7 @@ type DevicePreviewKey =
   | "tablet_landscape"
   | "full_width";
 
-type AdminTemplate = CardRendererTemplate & {
-  id: string;
-  name: string;
-  is_published: boolean;
-  slug?: string | null;
-};
+type AdminTemplate = SharedTemplate;
 
 type ClientCard = CardRendererData & {
   id: string;
@@ -398,86 +398,10 @@ const defaultLeadCaptureSettings: LeadCaptureSettings = {
   follow_up_enabled: false,
 };
 
-const mockAdminTemplates: AdminTemplate[] = [
-  {
-    id: "template-free-classic",
-    name: "Free Classic",
-    is_published: true,
-    access_level: "free",
-    layout_type: "classic_free",
-    requires_profile_image: true,
-    allowed_fields: [
-      "full_name",
-      "job_title",
-      "bio",
-      "department",
-      "company_name",
-      "website",
-      "address",
-      "email",
-      "phone",
-    ],
-    custom_fields: {
-      personal: ["job_title", "bio", "department"],
-      company: ["company_name", "website", "address"],
-      contact: ["email", "phone", "website"],
-      social: [
-        "whatsapp",
-        "linkedin",
-        "instagram",
-        "facebook",
-        "youtube",
-        "booking_link",
-        "custom_url",
-      ],
-    },
-    show_personal_section: true,
-    show_company_section: true,
-    show_contact_section: true,
-    show_social_section: false,
-    free_colour_palette: [
-      "#AC00FF",
-      "#7C3AED",
-      "#2563EB",
-      "#059669",
-      "#DC2626",
-      "#101935",
-    ],
-  },
-  {
-    id: "template-paid-classic",
-    name: "Premium Classic",
-    is_published: true,
-    access_level: "paid",
-    layout_type: "premium_classic",
-    requires_profile_image: true,
-    requires_logo: true,
-    requires_banner: true,
-    gradient_enabled: true,
-    allowed_fields: [
-      "full_name",
-      "job_title",
-      "bio",
-      "company_name",
-      "department",
-      "website",
-      "address",
-      "email",
-      "phone",
-      "whatsapp",
-      "linkedin",
-      "instagram",
-      "custom_url",
-    ],
-    show_personal_section: true,
-    show_company_section: true,
-    show_contact_section: true,
-    show_social_section: true,
-  },
-];
+const fallbackAdminTemplates = defaultTemplatesFallback as AdminTemplate[];
 
 const selectedFreeTemplate =
-  mockAdminTemplates.find((template) => {
+  fallbackAdminTemplates.find((template) => {
     const layout = template.layout_type;
     return (
       template.is_published &&
@@ -487,11 +411,8 @@ const selectedFreeTemplate =
   }) || null;
 
 const activeDefaultTemplate =
-  currentPlan === "free" ? selectedFreeTemplate : mockAdminTemplates[1];
+  currentPlan === "free" ? selectedFreeTemplate : fallbackAdminTemplates[1];
 const fallbackColour = activeDefaultTemplate?.free_colour_palette?.[0] || "#AC00FF";
-const fallbackAdminTemplates = mockAdminTemplates.filter(
-  (template) => template.is_published
-);
 
 const blankCard: ClientCard = {
   id: "",
@@ -2335,18 +2256,7 @@ function writeLocalCards(cards: ClientCard[]) {
 }
 
 async function loadPublishedTemplates(): Promise<AdminTemplate[]> {
-  const { data, error } = await supabase
-    .from("templates")
-    .select("*")
-    .eq("is_published", true)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("Client templates fetch failed", error);
-    return [];
-  }
-
-  return normalizeAdminTemplates(data || []);
+  return (await getClientVisibleTemplates(currentPlan)) as AdminTemplate[];
 }
 
 function normalizeAdminTemplates(templates: AdminTemplate[]) {
@@ -2361,9 +2271,7 @@ function normalizeAdminTemplates(templates: AdminTemplate[]) {
 function visibleTemplatesForPlan(templates: AdminTemplate[]) {
   const published = normalizeAdminTemplates(templates);
 
-  if (currentPlan === "free") {
-    return published.filter((template) => template.access_level === "free");
-  }
+  if (currentPlan === "free") return published;
 
   return published.filter(
     (template) => template.access_level === "free" || isPaidTemplate(template)
