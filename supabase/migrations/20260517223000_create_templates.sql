@@ -6,11 +6,13 @@ create table if not exists public.templates (
   slug text not null unique,
   layout_type text not null default 'classic_free',
   access_level text not null default 'free' check (access_level in ('free', 'paid')),
+  status text not null default 'draft' check (status in ('draft', 'published')),
   logo_size text default 'standard',
   requires_profile_image boolean not null default true,
   requires_logo boolean not null default false,
   requires_banner boolean not null default false,
   gradient_enabled boolean not null default false,
+  colour_palette text[],
   free_colour_palette text[],
   allowed_fonts text[],
   default_font text,
@@ -33,8 +35,24 @@ create table if not exists public.templates (
   updated_at timestamptz not null default now()
 );
 
+alter table public.templates
+  add column if not exists status text not null default 'draft'
+    check (status in ('draft', 'published')),
+  add column if not exists colour_palette text[],
+  add column if not exists updated_at timestamptz not null default now();
+
+update public.templates
+set
+  status = case when is_published then 'published' else 'draft' end,
+  colour_palette = coalesce(colour_palette, free_colour_palette)
+where status is null
+   or colour_palette is null;
+
 create index if not exists templates_published_access_idx
   on public.templates (is_published, access_level);
+
+create index if not exists templates_status_access_idx
+  on public.templates (status, access_level);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -59,7 +77,7 @@ drop policy if exists "Published templates are readable" on public.templates;
 create policy "Published templates are readable"
   on public.templates
   for select
-  using (is_published = true);
+  using (status = 'published' or is_published = true);
 
 drop policy if exists "Authenticated users can manage templates" on public.templates;
 create policy "Authenticated users can manage templates"
@@ -82,10 +100,12 @@ insert into public.templates (
   slug,
   layout_type,
   access_level,
+  status,
   requires_profile_image,
   requires_logo,
   requires_banner,
   gradient_enabled,
+  colour_palette,
   free_colour_palette,
   allowed_fonts,
   default_font,
@@ -109,10 +129,12 @@ insert into public.templates (
   'free-classic',
   'classic_free',
   'free',
+  'published',
   true,
   false,
   false,
   false,
+  array['#AC00FF', '#7C3AED', '#2563EB', '#059669', '#DC2626', '#101935'],
   array['#AC00FF', '#7C3AED', '#2563EB', '#059669', '#DC2626', '#101935'],
   array['Inter'],
   'Inter',

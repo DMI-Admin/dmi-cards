@@ -7,6 +7,8 @@ export type SharedTemplate = CardRendererTemplate & {
   id: string;
   name: string;
   slug?: string | null;
+  status?: "draft" | "published" | null;
+  colour_palette?: string[] | null;
   is_published: boolean;
   usage_count?: number | null;
   created_at?: string | null;
@@ -20,12 +22,16 @@ type TemplatePayload = Partial<SharedTemplate> & {
 
 export const adminTemplatesStorageKey = "dmi-admin-templates-v1";
 
+let lastTemplateSource: "database" | "local" = "local";
+let lastTemplateError: unknown = null;
+
 export const defaultTemplatesFallback: SharedTemplate[] = [
   {
     id: "template-free-classic",
     name: "Free Classic",
     slug: "free-classic",
     is_published: true,
+    status: "published",
     access_level: "free",
     layout_type: "classic_free",
     requires_profile_image: true,
@@ -39,6 +45,14 @@ export const defaultTemplatesFallback: SharedTemplate[] = [
     button_text_color: "#0F0E38",
     default_font: "Inter",
     free_colour_palette: [
+      "#AC00FF",
+      "#7C3AED",
+      "#2563EB",
+      "#059669",
+      "#DC2626",
+      "#101935",
+    ],
+    colour_palette: [
       "#AC00FF",
       "#7C3AED",
       "#2563EB",
@@ -81,6 +95,7 @@ export const defaultTemplatesFallback: SharedTemplate[] = [
     name: "Premium Classic",
     slug: "premium-classic",
     is_published: true,
+    status: "published",
     access_level: "paid",
     layout_type: "premium_classic",
     requires_profile_image: true,
@@ -117,7 +132,7 @@ export const defaultTemplatesFallback: SharedTemplate[] = [
 
 export async function getPublishedTemplates() {
   const templates = await getAdminTemplates();
-  return templates.filter((template) => template.is_published);
+  return templates.filter(isPublishedTemplate);
 }
 
 export async function getClientVisibleTemplates(plan: TemplatePlan) {
@@ -142,13 +157,24 @@ export async function getAdminTemplates() {
     if (data) {
       const templates = normalizeTemplates(data as SharedTemplate[]);
       writeLocalTemplates(templates);
+      lastTemplateSource = "database";
+      lastTemplateError = null;
       return templates;
     }
   } catch (error) {
     console.warn("Templates database unavailable; using local templates.", error);
+    lastTemplateSource = "local";
+    lastTemplateError = error;
   }
 
   return readLocalTemplates();
+}
+
+export function getLastTemplateStorageStatus() {
+  return {
+    source: lastTemplateSource,
+    error: lastTemplateError,
+  };
 }
 
 export async function saveAdminTemplate(
@@ -159,6 +185,7 @@ export async function saveAdminTemplate(
     ...payload,
     id: editingTemplateId || payload.id || createLocalTemplateId(),
     is_published: payload.is_published ?? false,
+    status: payload.status || (payload.is_published ? "published" : "draft"),
     usage_count: payload.usage_count ?? 0,
   });
 
@@ -192,12 +219,19 @@ export async function saveAdminTemplate(
 }
 
 export async function publishAdminTemplate(template: SharedTemplate, published: boolean) {
-  const nextTemplate = normalizeTemplate({ ...template, is_published: published });
+  const nextTemplate = normalizeTemplate({
+    ...template,
+    is_published: published,
+    status: published ? "published" : "draft",
+  });
 
   try {
     const { data, error } = await supabase
       .from("templates")
-      .update({ is_published: published })
+      .update({
+        is_published: published,
+        status: published ? "published" : "draft",
+      })
       .eq("id", template.id)
       .select("*")
       .single();
@@ -233,6 +267,7 @@ export function normalizeTemplates(templates: SharedTemplate[]) {
 
 export function normalizeTemplate(template: SharedTemplate | TemplatePayload): SharedTemplate {
   const freeColourPalette =
+    template.colour_palette ||
     template.free_colour_palette ||
     readAliasArray(template, "free_colors") ||
     readAliasArray(template, "colour_palette") ||
@@ -247,7 +282,9 @@ export function normalizeTemplate(template: SharedTemplate | TemplatePayload): S
     slug: template.slug || slugify(template.name),
     access_level: template.access_level === "free" ? "free" : "paid",
     layout_type: template.layout_type || "classic_free",
-    is_published: Boolean(template.is_published),
+    status: template.status || (template.is_published ? "published" : "draft"),
+    is_published: isPublishedTemplate(template),
+    colour_palette: sanitizeColourPalette(freeColourPalette),
     free_colour_palette: sanitizeColourPalette(freeColourPalette),
     allowed_fields: template.allowed_fields || [],
     show_personal_section: template.show_personal_section ?? true,
@@ -255,6 +292,10 @@ export function normalizeTemplate(template: SharedTemplate | TemplatePayload): S
     show_contact_section: template.show_contact_section ?? true,
     show_social_section: template.show_social_section ?? false,
   };
+}
+
+function isPublishedTemplate(template: Partial<SharedTemplate> | TemplatePayload) {
+  return template.status === "published" || Boolean(template.is_published);
 }
 
 function readLocalTemplates() {

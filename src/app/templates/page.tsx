@@ -6,6 +6,7 @@ import CardRenderer from "@/components/CardRenderer";
 import {
   deleteAdminTemplate,
   getAdminTemplates,
+  getLastTemplateStorageStatus,
   publishAdminTemplate,
   saveAdminTemplate,
   type SharedTemplate,
@@ -229,8 +230,13 @@ export default function TemplatesPage() {
   async function fetchTemplates() {
     try {
       const loadedTemplates = await getAdminTemplates();
+      const templateStorageStatus = getLastTemplateStorageStatus();
       setTemplates(loadedTemplates as Template[]);
-      setTemplateError("");
+      setTemplateError(
+        templateStorageStatus.source === "local"
+          ? "Supabase templates are unavailable. Editing local fallback templates for now."
+          : ""
+      );
     } catch (error) {
       console.error("Template load failed", error);
       setTemplateError("Templates could not be loaded. Using local templates for now.");
@@ -244,11 +250,16 @@ export default function TemplatesPage() {
     async function loadTemplates() {
       try {
         const loadedTemplates = await getAdminTemplates();
+        const templateStorageStatus = getLastTemplateStorageStatus();
 
         if (ignore) return;
 
         setTemplates(loadedTemplates as Template[]);
-        setTemplateError("");
+        setTemplateError(
+          templateStorageStatus.source === "local"
+            ? "Supabase templates are unavailable. Editing local fallback templates for now."
+            : ""
+        );
       } catch (error) {
         if (ignore) return;
 
@@ -579,6 +590,7 @@ export default function TemplatesPage() {
         {
           ...payload,
           is_published: existingTemplate?.is_published ?? false,
+          status: existingTemplate?.is_published ? "published" : "draft",
           usage_count: existingTemplate?.usage_count ?? 0,
         } as unknown as SharedTemplate,
         editingTemplateId
@@ -644,6 +656,7 @@ export default function TemplatesPage() {
     const insertPayload = {
       ...duplicatePayload,
       is_published: false,
+      status: "draft",
       usage_count: 0,
     };
 
@@ -1603,6 +1616,7 @@ function buildTemplatePayload({
     layout_type,
     access_level,
     is_premium: access_level !== "free",
+    status: "draft",
     primary_color,
     secondary_color,
     text_color,
@@ -1613,6 +1627,7 @@ function buildTemplatePayload({
     requires_banner,
     gradient_enabled,
     free_colour_palette: sanitizeFreeColourPalette(free_colour_palette),
+    colour_palette: sanitizeFreeColourPalette(free_colour_palette),
     allowed_fonts: sanitizeTemplateFonts(allowed_fonts),
     default_font: sanitizeDefaultFont(default_font, allowed_fonts),
     supports_bio: true,

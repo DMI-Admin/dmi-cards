@@ -27,6 +27,7 @@ import { supabase } from "@/lib/supabase";
 import {
   defaultTemplatesFallback,
   getClientVisibleTemplates,
+  getLastTemplateStorageStatus,
   type SharedTemplate,
 } from "@/lib/templates";
 
@@ -489,6 +490,7 @@ export default function ClientCardsPage() {
   const [saveMessage, setSaveMessage] = useState("");
   const [saveError, setSaveError] = useState("");
   const [databaseNotice, setDatabaseNotice] = useState("");
+  const [templateNotice, setTemplateNotice] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [loadingCards, setLoadingCards] = useState(true);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
@@ -563,6 +565,7 @@ export default function ClientCardsPage() {
 
       const loadedTemplates = await loadPublishedTemplates();
       if (ignore) return;
+      const templateStorageStatus = getLastTemplateStorageStatus();
 
       const nextTemplates = loadedTemplates.length
         ? loadedTemplates
@@ -572,6 +575,11 @@ export default function ClientCardsPage() {
         nextDefaultTemplate?.free_colour_palette?.[0] || fallbackColour;
 
       setAdminTemplates(nextTemplates);
+      setTemplateNotice(
+        templateStorageStatus.source === "local"
+          ? "Template database is unavailable. Showing local fallback templates."
+          : ""
+      );
 
       const {
         data: { user },
@@ -988,6 +996,12 @@ export default function ClientCardsPage() {
                 <span className="w-fit rounded-full border border-yellow-200/20 bg-yellow-200/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]">
                   Preview mode — not saved to database
                 </span>
+              </div>
+            )}
+
+            {templateNotice && (
+              <div className="mb-6 rounded-2xl border border-yellow-400/20 bg-yellow-500/10 px-5 py-4 text-sm text-yellow-100">
+                {templateNotice}
               </div>
             )}
 
