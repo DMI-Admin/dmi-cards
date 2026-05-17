@@ -111,6 +111,7 @@ type AdminTemplate = CardRendererTemplate & {
   id: string;
   name: string;
   is_published: boolean;
+  slug?: string | null;
 };
 
 type ClientCard = CardRendererData & {
@@ -485,15 +486,18 @@ const selectedFreeTemplate =
     );
   }) || null;
 
-const selectedTemplate =
+const activeDefaultTemplate =
   currentPlan === "free" ? selectedFreeTemplate : mockAdminTemplates[1];
-const fallbackColour = selectedTemplate?.free_colour_palette?.[0] || "#AC00FF";
+const fallbackColour = activeDefaultTemplate?.free_colour_palette?.[0] || "#AC00FF";
+const fallbackAdminTemplates = mockAdminTemplates.filter(
+  (template) => template.is_published
+);
 
 const blankCard: ClientCard = {
   id: "",
   card_name: "Primary Digital Card",
-  template_id: selectedTemplate?.id || "",
-  template_name: selectedTemplate?.name || "Free Classic",
+  template_id: activeDefaultTemplate?.id || "",
+  template_name: activeDefaultTemplate?.name || "Free Classic",
   status: "unpublished",
   public_url: "/u/my-digital-card",
   last_updated: "Draft",
@@ -516,11 +520,11 @@ const blankCard: ClientCard = {
   custom_fields: {},
   selected_colour: fallbackColour,
   hidden_fields: [],
-  field_order: getInitialFieldOrder(selectedTemplate),
+  field_order: getInitialFieldOrder(activeDefaultTemplate),
   lead_capture_settings: defaultLeadCaptureSettings,
 };
 
-const initialCards: ClientCard[] = selectedTemplate
+const initialCards: ClientCard[] = activeDefaultTemplate
   ? [
       {
         ...blankCard,
@@ -544,6 +548,8 @@ const initialCards: ClientCard[] = selectedTemplate
   : [];
 
 export default function ClientCardsPage() {
+  const [adminTemplates, setAdminTemplates] =
+    useState<AdminTemplate[]>(fallbackAdminTemplates);
   const [cards, setCards] = useState<ClientCard[]>(initialCards);
   const [selectedCardId, setSelectedCardId] = useState(initialCards[0]?.id || "");
   const [panelOpen, setPanelOpen] = useState(false);
@@ -551,7 +557,7 @@ export default function ClientCardsPage() {
   const [activeStep, setActiveStep] = useState<BuilderStep>(0);
   const [draftCard, setDraftCard] = useState<ClientCard>(blankCard);
   const [fieldOrder, setFieldOrder] = useState<FieldOrder>(
-    getInitialFieldOrder(selectedTemplate)
+    getInitialFieldOrder(activeDefaultTemplate)
   );
   const [devicePreview, setDevicePreview] =
     useState<DevicePreviewKey>("iphone_15");
@@ -571,14 +577,34 @@ export default function ClientCardsPage() {
     return cards.find((card) => card.id === selectedCardId) || cards[0] || null;
   }, [cards, selectedCardId]);
 
+  const defaultTemplate = useMemo(
+    () => defaultTemplateForPlan(adminTemplates),
+    [adminTemplates]
+  );
+  const visibleTemplates = useMemo(
+    () => visibleTemplatesForPlan(adminTemplates),
+    [adminTemplates]
+  );
+  const currentDefaultTemplate = defaultTemplate;
+  const selectedTemplateFallbackColour =
+    currentDefaultTemplate?.free_colour_palette?.[0] || fallbackColour;
+  const selectedCardTemplateRecord = useMemo(() => {
+    return templateForCard(selectedCard, adminTemplates) || currentDefaultTemplate;
+  }, [adminTemplates, selectedCard, currentDefaultTemplate]);
+  const draftTemplateRecord = useMemo(() => {
+    return templateForCard(draftCard, adminTemplates) || currentDefaultTemplate;
+  }, [adminTemplates, draftCard, currentDefaultTemplate]);
+
   const selectedCardTemplate = useMemo(() => {
     return buildTemplatePreview(
-      selectedTemplate,
-      selectedCard?.selected_colour || fallbackColour,
-      selectedCard?.field_order || getInitialFieldOrder(selectedTemplate),
+      selectedCardTemplateRecord,
+      selectedCard?.selected_colour || selectedTemplateFallbackColour,
+      selectedCard?.field_order || getInitialFieldOrder(selectedCardTemplateRecord),
       selectedCard?.hidden_fields || []
     );
   }, [
+    selectedCardTemplateRecord,
+    selectedTemplateFallbackColour,
     selectedCard?.selected_colour,
     selectedCard?.hidden_fields,
     selectedCard?.field_order,
@@ -586,12 +612,18 @@ export default function ClientCardsPage() {
 
   const draftTemplate = useMemo(() => {
     return buildTemplatePreview(
-      selectedTemplate,
-      draftCard.selected_colour || fallbackColour,
+      draftTemplateRecord,
+      draftCard.selected_colour || selectedTemplateFallbackColour,
       fieldOrder,
       draftCard.hidden_fields || []
     );
-  }, [draftCard.selected_colour, draftCard.hidden_fields, fieldOrder]);
+  }, [
+    draftTemplateRecord,
+    draftCard.selected_colour,
+    draftCard.hidden_fields,
+    selectedTemplateFallbackColour,
+    fieldOrder,
+  ]);
 
   const publishedCards = cards.filter((card) => card.status === "published").length;
   const previewCard = panelOpen ? draftCard : selectedCard;
@@ -608,6 +640,18 @@ export default function ClientCardsPage() {
       setLoadingCards(true);
       setSaveError("");
 
+      const loadedTemplates = await loadPublishedTemplates();
+      if (ignore) return;
+
+      const nextTemplates = loadedTemplates.length
+        ? loadedTemplates
+        : fallbackAdminTemplates;
+      const nextDefaultTemplate = defaultTemplateForPlan(nextTemplates);
+      const nextFallbackColour =
+        nextDefaultTemplate?.free_colour_palette?.[0] || fallbackColour;
+
+      setAdminTemplates(nextTemplates);
+
       const {
         data: { user },
         error: userError,
@@ -622,7 +666,10 @@ export default function ClientCardsPage() {
           "Database/auth not connected yet. Changes are preview-only."
         );
         const localCards = readLocalCards();
-        const nextCards = localCards.length > 0 ? localCards : initialCards;
+        const nextCards =
+          localCards.length > 0
+            ? hydrateCardsWithTemplates(localCards, nextTemplates)
+            : initialCardsForTemplate(nextDefaultTemplate, nextFallbackColour);
         setCards(nextCards);
         setSelectedCardId(nextCards[0]?.id || "");
         setLoadingCards(false);
@@ -646,7 +693,10 @@ export default function ClientCardsPage() {
           "Database/auth not connected yet. Changes are preview-only."
         );
         const localCards = readLocalCards();
-        const nextCards = localCards.length > 0 ? localCards : initialCards;
+        const nextCards =
+          localCards.length > 0
+            ? hydrateCardsWithTemplates(localCards, nextTemplates)
+            : initialCardsForTemplate(nextDefaultTemplate, nextFallbackColour);
         setCards(nextCards);
         setSelectedCardId(nextCards[0]?.id || "");
         setLoadingCards(false);
@@ -655,14 +705,16 @@ export default function ClientCardsPage() {
 
       setDatabaseReady(true);
       setDatabaseNotice("");
-      const savedCards = (data || []).map(mapSupabaseCard);
+      const savedCards = (data || []).map((row) =>
+        mapSupabaseCard(row, nextTemplates, nextDefaultTemplate)
+      );
       const localCards = readLocalCards();
       const nextCards =
         savedCards.length > 0
           ? savedCards
           : localCards.length > 0
-          ? localCards
-          : initialCards;
+          ? hydrateCardsWithTemplates(localCards, nextTemplates)
+          : initialCardsForTemplate(nextDefaultTemplate, nextFallbackColour);
 
       setCards(nextCards);
       setSelectedCardId(nextCards[0]?.id || "");
@@ -677,7 +729,7 @@ export default function ClientCardsPage() {
   }, []);
 
   function openCreatePanel() {
-    if (!selectedTemplate) return;
+    if (!currentDefaultTemplate) return;
 
     if (!isPaid && cards.length >= 1) {
       setLimitMessage(
@@ -689,14 +741,15 @@ export default function ClientCardsPage() {
     setLimitMessage("");
     setPanelMode("create");
     setActiveStep(0);
-    const initialFieldOrder = getInitialFieldOrder(selectedTemplate);
+    const initialFieldOrder = getInitialFieldOrder(currentDefaultTemplate);
     setFieldOrder(initialFieldOrder);
     setDraftCard({
       ...blankCard,
       id: `card-${Date.now()}`,
-      template_id: selectedTemplate.id,
-      template_name: selectedTemplate.name,
-      selected_colour: selectedTemplate.free_colour_palette?.[0] || fallbackColour,
+      template_id: currentDefaultTemplate.id,
+      template_name: currentDefaultTemplate.name,
+      selected_colour:
+        currentDefaultTemplate.free_colour_palette?.[0] || selectedTemplateFallbackColour,
       field_order: initialFieldOrder,
       lead_capture_settings: defaultLeadCaptureSettings,
     });
@@ -707,7 +760,8 @@ export default function ClientCardsPage() {
     setLimitMessage("");
     setPanelMode("edit");
     setActiveStep(0);
-    const savedFieldOrder = card.field_order || getInitialFieldOrder(selectedTemplate);
+    const cardTemplate = templateForCard(card, adminTemplates) || currentDefaultTemplate;
+    const savedFieldOrder = card.field_order || getInitialFieldOrder(cardTemplate);
     setFieldOrder(savedFieldOrder);
     setDraftCard({ ...card, custom_fields: { ...(card.custom_fields || {}) } });
     setSelectedCardId(card.id);
@@ -724,6 +778,28 @@ export default function ClientCardsPage() {
         )
       );
     }
+  }
+
+  function selectDraftTemplate(template: AdminTemplate) {
+    if (!canSelectTemplate(template)) {
+      setLimitMessage("Upgrade to Individual Pro to use paid templates.");
+      return;
+    }
+
+    const nextFieldOrder = getInitialFieldOrder(template);
+    setLimitMessage("");
+    setFieldOrder(nextFieldOrder);
+    setDraftCard((current) => ({
+      ...current,
+      template_id: template.id,
+      template_name: template.name,
+      selected_colour:
+        template.access_level === "free"
+          ? template.free_colour_palette?.[0] || fallbackColour
+          : current.selected_colour || fallbackColour,
+      hidden_fields: [],
+      field_order: nextFieldOrder,
+    }));
   }
 
   function updateCustomField(field: string, value: string) {
@@ -898,7 +974,7 @@ export default function ClientCardsPage() {
       return localCard;
     }
 
-    return mapSupabaseCard(data);
+    return mapSupabaseCard(data, adminTemplates, currentDefaultTemplate);
   }
 
   function togglePublish(card: ClientCard) {
@@ -955,7 +1031,7 @@ export default function ClientCardsPage() {
           <button
             type="button"
             onClick={openCreatePanel}
-            disabled={!selectedTemplate || (!isPaid && cards.length >= 1)}
+            disabled={!currentDefaultTemplate || (!isPaid && cards.length >= 1)}
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35 disabled:cursor-not-allowed disabled:opacity-45"
           >
             <BadgePlus className="h-4 w-4" />
@@ -963,7 +1039,7 @@ export default function ClientCardsPage() {
           </button>
         </div>
 
-        {!selectedTemplate ? (
+        {!currentDefaultTemplate ? (
           <NoTemplateState />
         ) : (
           <>
@@ -997,7 +1073,7 @@ export default function ClientCardsPage() {
             <div className="grid gap-8 2xl:grid-cols-[minmax(0,1fr)_minmax(560px,600px)]">
               <div className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-3">
-                  <StatCard label="Current Plan" value="Free" />
+                  <StatCard label="Current Plan" value={planLabel(currentPlan)} />
                   <StatCard label="Total Cards" value={String(cards.length)} />
                   <StatCard
                     label="Published Cards"
@@ -1029,10 +1105,12 @@ export default function ClientCardsPage() {
                     draftCard={draftCard}
                     fieldOrder={fieldOrder}
                     mode={panelMode}
-                    template={selectedTemplate}
+                    template={draftTemplateRecord || currentDefaultTemplate}
+                    templates={visibleTemplates}
                     onClose={() => setPanelOpen(false)}
                     onStepChange={setActiveStep}
                     onUpdate={updateDraft}
+                    onSelectTemplate={selectDraftTemplate}
                     onUpdateCustomField={updateCustomField}
                     onUpdateLeadSettings={updateLeadCaptureSettings}
                     onToggleFieldVisibility={toggleFieldVisibility}
@@ -1516,9 +1594,11 @@ function EditorPanel({
   fieldOrder,
   mode,
   template,
+  templates,
   onClose,
   onStepChange,
   onUpdate,
+  onSelectTemplate,
   onUpdateCustomField,
   onUpdateLeadSettings,
   onToggleFieldVisibility,
@@ -1534,9 +1614,11 @@ function EditorPanel({
   fieldOrder: FieldOrder;
   mode: PanelMode;
   template: AdminTemplate;
+  templates: AdminTemplate[];
   onClose: () => void;
   onStepChange: (step: BuilderStep) => void;
   onUpdate: (field: keyof ClientCard, value: string) => void;
+  onSelectTemplate: (template: AdminTemplate) => void;
   onUpdateCustomField: (field: string, value: string) => void;
   onUpdateLeadSettings: (settings: LeadCaptureSettings) => void;
   onToggleFieldVisibility: (field: string) => void;
@@ -1596,9 +1678,11 @@ function EditorPanel({
         {activeStep === 0 && (
           <CustomiseStep
             template={template}
+            templates={templates}
             draftCard={draftCard}
             fieldOrder={fieldOrder}
             onUpdate={onUpdate}
+            onSelectTemplate={onSelectTemplate}
           />
         )}
         {activeStep === 1 && (
@@ -1630,14 +1714,18 @@ function EditorPanel({
 
 function CustomiseStep({
   template,
+  templates,
   draftCard,
   fieldOrder,
   onUpdate,
+  onSelectTemplate,
 }: {
   template: AdminTemplate;
+  templates: AdminTemplate[];
   draftCard: ClientCard;
   fieldOrder: FieldOrder;
   onUpdate: (field: keyof ClientCard, value: string) => void;
+  onSelectTemplate: (template: AdminTemplate) => void;
 }) {
   const palette = template.free_colour_palette?.length
     ? template.free_colour_palette
@@ -1675,42 +1763,84 @@ function CustomiseStep({
           Template selection
         </p>
         <div className="flex gap-4 overflow-x-auto pb-2">
-          <div className="w-52 shrink-0 rounded-3xl border border-[#AC00FF]/40 bg-[#AC00FF]/10 p-4 shadow-lg shadow-purple-500/10">
-            <div className="flex h-40 items-start justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/30 pt-3">
-              <div className="origin-top scale-[0.45]">
-                <CardRenderer
-                  template={buildTemplatePreview(
-                    template,
-                    draftCard.selected_colour || fallbackColour,
-                    fieldOrder,
-                    draftCard.hidden_fields || []
+          {templates.map((templateOption) => {
+            const selected = templateOption.id === template.id;
+            const locked = !canSelectTemplate(templateOption);
+            const previewFieldOrder = selected
+              ? fieldOrder
+              : getInitialFieldOrder(templateOption);
+
+            return (
+              <button
+                key={templateOption.id}
+                type="button"
+                onClick={() => onSelectTemplate(templateOption)}
+                className={`relative w-52 shrink-0 rounded-3xl border p-4 text-left transition ${
+                  selected
+                    ? "border-[#AC00FF]/60 bg-[#AC00FF]/10 shadow-lg shadow-purple-500/10"
+                    : "border-white/10 bg-[#070B1A]/55 hover:border-white/20"
+                } ${locked ? "opacity-75" : ""}`}
+              >
+                {locked && (
+                  <div className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-[#AC00FF]/30 bg-[#070B1A]/90 text-purple-100 shadow-lg shadow-black/25">
+                    <Lock className="h-4 w-4" />
+                  </div>
+                )}
+                <div className="flex h-40 items-start justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/30 pt-3">
+                  <div className="origin-top scale-[0.45]">
+                    <CardRenderer
+                      template={buildTemplatePreview(
+                        templateOption,
+                        draftCard.selected_colour ||
+                          templateOption.free_colour_palette?.[0] ||
+                          fallbackColour,
+                        previewFieldOrder,
+                        selected ? draftCard.hidden_fields || [] : []
+                      )}
+                      cardData={draftCard}
+                      mode="compact"
+                    />
+                  </div>
+                </div>
+                <p className="mt-4 text-sm font-semibold">{templateOption.name}</p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <AccessPill template={templateOption} />
+                  {selected && (
+                    <span className="rounded-full bg-[#AC00FF]/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-purple-100">
+                      Selected
+                    </span>
                   )}
-                  cardData={draftCard}
-                  mode="compact"
-                />
+                </div>
+              </button>
+            );
+          })}
+
+          {templates.length === 0 && (
+            <div className="w-52 shrink-0 rounded-3xl border border-dashed border-white/10 bg-[#070B1A]/55 p-4 text-sm text-white/45">
+              No published templates are available yet.
+            </div>
+          )}
+        </div>
+
+        {!canSelectTemplate(template) && (
+          <div className="mt-5 rounded-2xl border border-[#AC00FF]/30 bg-[#AC00FF]/10 p-5">
+            <div className="flex gap-4">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#AC00FF]/20 text-purple-100">
+                <Lock className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-semibold">{template.name}</p>
+                <p className="mt-2 text-sm leading-6 text-white/55">
+                  Upgrade to Individual Pro to select this paid template.
+                </p>
               </div>
             </div>
-            <p className="mt-4 text-sm font-semibold">{template.name}</p>
-            <p className="mt-1 text-xs text-white/45">Selected by DMI Cards</p>
           </div>
-        </div>
-
-        <div className="mt-5 rounded-2xl border border-[#AC00FF]/30 bg-[#AC00FF]/10 p-5">
-          <div className="flex gap-4">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#AC00FF]/20 text-purple-100">
-              <Lock className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-semibold">{template.name}</p>
-              <p className="mt-2 text-sm leading-6 text-white/55">
-                Your free card uses the Classic template selected by DMI Cards.
-              </p>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
 
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+      {template.access_level === "free" && (
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
           <p className="text-sm font-semibold text-white/65">
             Free colour palette
           </p>
@@ -1741,7 +1871,8 @@ function CustomiseStep({
         {!isPaid && (
           <UpgradeNotice message="Upgrade to Pro for paid templates, colour pickers, gradients, fonts, logos, banners, socials, and integrations." />
         )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2203,17 +2334,167 @@ function writeLocalCards(cards: ClientCard[]) {
   }
 }
 
-function mapSupabaseCard(row: SupabaseCardRow): ClientCard {
+async function loadPublishedTemplates(): Promise<AdminTemplate[]> {
+  const { data, error } = await supabase
+    .from("templates")
+    .select("*")
+    .eq("is_published", true)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Client templates fetch failed", error);
+    return [];
+  }
+
+  return normalizeAdminTemplates(data || []);
+}
+
+function normalizeAdminTemplates(templates: AdminTemplate[]) {
+  return templates
+    .filter((template) => template.is_published)
+    .map((template) => ({
+      ...template,
+      access_level: template.access_level === "free" ? "free" : "paid",
+    }));
+}
+
+function visibleTemplatesForPlan(templates: AdminTemplate[]) {
+  const published = normalizeAdminTemplates(templates);
+
+  if (currentPlan === "free") {
+    return published.filter((template) => template.access_level === "free");
+  }
+
+  return published.filter(
+    (template) => template.access_level === "free" || isPaidTemplate(template)
+  );
+}
+
+function defaultTemplateForPlan(templates: AdminTemplate[]) {
+  const published = normalizeAdminTemplates(templates);
+  const freeClassic =
+    published.find(
+      (template) =>
+        template.access_level === "free" &&
+        (template.layout_type === "classic_free" ||
+          template.layout_type === "classic")
+    ) || null;
+
+  if (currentPlan === "free") return freeClassic;
+
+  return (
+    published.find((template) => canSelectTemplate(template)) ||
+    freeClassic ||
+    null
+  );
+}
+
+function templateForCard(
+  card: Pick<ClientCard, "template_id"> | null,
+  templates: AdminTemplate[]
+) {
+  if (!card?.template_id) return null;
+
+  const template =
+    normalizeAdminTemplates(templates).find((item) => item.id === card.template_id) ||
+    null;
+
+  if (template && canSelectTemplate(template)) return template;
+
+  return null;
+}
+
+function hydrateCardsWithTemplates(
+  cards: ClientCard[],
+  templates: AdminTemplate[]
+) {
+  const defaultTemplate = defaultTemplateForPlan(templates);
+
+  return cards.map((card) => {
+    const cardTemplate = templateForCard(card, templates) || defaultTemplate;
+
+    return {
+      ...card,
+      template_id: cardTemplate?.id || card.template_id,
+      template_name: cardTemplate?.name || card.template_name,
+      selected_colour:
+        card.selected_colour ||
+        cardTemplate?.free_colour_palette?.[0] ||
+        fallbackColour,
+      field_order: card.field_order || getInitialFieldOrder(cardTemplate),
+    };
+  });
+}
+
+function initialCardsForTemplate(
+  template: AdminTemplate | null,
+  selectedColour = fallbackColour
+) {
+  if (!template) return [];
+
+  return [
+    {
+      ...blankCard,
+      id: "card-1",
+      template_id: template.id,
+      template_name: template.name,
+      selected_colour: selectedColour,
+      field_order: getInitialFieldOrder(template),
+      card_name: "Primary Digital Card",
+      status: "published" as CardStatus,
+      public_url: "/u/full-name",
+      last_updated: "12 May 2026",
+      full_name: "Full Name",
+      job_title: "Creative Director",
+      department: "Brand Experience",
+      bio: "Helping teams launch premium digital card experiences.",
+      company_name: "DevMaster Inc",
+      email: "hello@devmasterinc.com",
+      phone: "+44 7700 900123",
+      website: "https://www.devmasterinc.com",
+      address: "London, United Kingdom",
+      custom_fields: {},
+    },
+  ];
+}
+
+function isPaidTemplate(template: AdminTemplate | CardRendererTemplate) {
+  return template.access_level !== "free";
+}
+
+function canSelectTemplate(template: AdminTemplate | CardRendererTemplate) {
+  if (!isPaidTemplate(template)) {
+    return template.layout_type === "classic_free" || template.layout_type === "classic";
+  }
+
+  return currentPlan !== "free";
+}
+
+function planLabel(plan: typeof currentPlan) {
+  if (plan === "individual_pro") return "Individual Pro";
+  if (plan === "business") return "Business";
+  if (plan === "enterprise") return "Enterprise";
+
+  return "Free";
+}
+
+function mapSupabaseCard(
+  row: SupabaseCardRow,
+  templates: AdminTemplate[] = fallbackAdminTemplates,
+  defaultTemplate = defaultTemplateForPlan(templates)
+): ClientCard {
   const slug = row.slug || slugify(row.full_name || row.card_name || "digital-card");
+  const rowTemplate =
+    templateForCard({ template_id: row.template_id || "" }, templates) ||
+    defaultTemplate;
   const templateName =
-    mockAdminTemplates.find((template) => template.id === row.template_id)?.name ||
-    selectedTemplate?.name ||
+    rowTemplate?.name ||
     "Free Classic";
 
   return {
     id: row.id,
     card_name: row.card_name || "Primary Digital Card",
-    template_id: row.template_id || selectedTemplate?.id || "",
+    template_id: rowTemplate?.id || row.template_id || "",
     template_name: templateName,
     status: row.is_published || row.status === "published" ? "published" : "unpublished",
     public_url: `/u/${slug}`,
@@ -2239,9 +2520,10 @@ function mapSupabaseCard(row: SupabaseCardRow): ClientCard {
     company_logo_url: row.company_logo_url || "",
     company_banner_url: row.company_banner_url || "",
     custom_fields: row.custom_fields || {},
-    selected_colour: row.selected_colour || fallbackColour,
+    selected_colour:
+      row.selected_colour || rowTemplate?.free_colour_palette?.[0] || fallbackColour,
     hidden_fields: row.hidden_fields || [],
-    field_order: row.field_order || getInitialFieldOrder(selectedTemplate),
+    field_order: row.field_order || getInitialFieldOrder(rowTemplate),
     lead_capture_settings: row.lead_capture_settings || defaultLeadCaptureSettings,
   };
 }
@@ -2263,7 +2545,7 @@ function buildSupabaseCardPayload(
   */
   return {
     user_id: userId,
-    template_id: card.template_id || selectedTemplate?.id || null,
+    template_id: card.template_id || activeDefaultTemplate?.id || null,
     card_name: card.card_name || "Primary Digital Card",
     slug: card.slug || slugify(card.full_name || card.card_name || "digital-card"),
     full_name: card.full_name || "",
@@ -2583,7 +2865,25 @@ function StatCard({ label, value }: { label: string; value: string }) {
 function PlanBadge() {
   return (
     <span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-purple-100">
-      Free Plan
+      {planLabel(currentPlan)} Plan
+    </span>
+  );
+}
+
+function AccessPill({ template }: { template: AdminTemplate }) {
+  const locked = !canSelectTemplate(template);
+  const label = isPaidTemplate(template) ? "Paid" : "Free";
+
+  return (
+    <span
+      className={`inline-flex w-fit items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+        locked
+          ? "border border-[#AC00FF]/30 bg-[#AC00FF]/10 text-purple-100"
+          : "bg-white/10 text-white/55"
+      }`}
+    >
+      {locked && <Lock className="h-3 w-3" />}
+      {locked ? `${label} locked` : label}
     </span>
   );
 }

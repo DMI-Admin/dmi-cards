@@ -38,6 +38,7 @@ export default async function PublicCardPage({ params }: PublicCardPageProps) {
     .from("templates")
     .select("*")
     .eq("id", card.template_id)
+    .eq("is_published", true)
     .maybeSingle();
 
   if (!template) {
