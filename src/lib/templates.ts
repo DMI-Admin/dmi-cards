@@ -13,6 +13,9 @@ export type SharedTemplate = CardRendererTemplate & {
   usage_count?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
+  supports_company_banner?: boolean | null;
+  supports_gradient?: boolean | null;
+  font_family?: string | null;
 };
 
 type TemplatePayload = Partial<SharedTemplate> & {
@@ -20,119 +23,59 @@ type TemplatePayload = Partial<SharedTemplate> & {
   slug?: string | null;
 };
 
-export const adminTemplatesStorageKey = "dmi-admin-templates-v1";
+const templateColumnSupport = {
+  status: null as boolean | null,
+  requires_banner: null as boolean | null,
+  gradient_enabled: null as boolean | null,
+  supports_company_banner: null as boolean | null,
+  supports_gradient: null as boolean | null,
+};
 
-let lastTemplateSource: "database" | "local" = "local";
-let lastTemplateError: unknown = null;
+export async function getAdminTemplates() {
+  const { data, error } = await supabase
+    .from("templates")
+    .select("*")
+    .order("created_at", { ascending: false });
 
-export const defaultTemplatesFallback: SharedTemplate[] = [
-  {
-    id: "template-free-classic",
-    name: "Free Classic",
-    slug: "free-classic",
-    is_published: true,
-    status: "published",
-    access_level: "free",
-    layout_type: "classic_free",
-    requires_profile_image: true,
-    requires_logo: false,
-    requires_banner: false,
-    gradient_enabled: false,
-    primary_color: "#AC00FF",
-    secondary_color: "#101935",
-    text_color: "#FFFFFF",
-    button_color: "#FFFFFF",
-    button_text_color: "#0F0E38",
-    default_font: "Inter",
-    free_colour_palette: [
-      "#AC00FF",
-      "#7C3AED",
-      "#2563EB",
-      "#059669",
-      "#DC2626",
-      "#101935",
-    ],
-    colour_palette: [
-      "#AC00FF",
-      "#7C3AED",
-      "#2563EB",
-      "#059669",
-      "#DC2626",
-      "#101935",
-    ],
-    allowed_fields: [
-      "full_name",
-      "job_title",
-      "bio",
-      "department",
-      "company_name",
-      "website",
-      "address",
-      "email",
-      "phone",
-    ],
-    custom_fields: {
-      personal: ["job_title", "bio", "department"],
-      company: ["company_name", "website", "address"],
-      contact: ["email", "phone", "website"],
-      social: [
-        "whatsapp",
-        "linkedin",
-        "instagram",
-        "facebook",
-        "youtube",
-        "booking_link",
-        "custom_url",
-      ],
-    },
-    show_personal_section: true,
-    show_company_section: true,
-    show_contact_section: true,
-    show_social_section: false,
-  },
-  {
-    id: "template-paid-classic",
-    name: "Premium Classic",
-    slug: "premium-classic",
-    is_published: true,
-    status: "published",
-    access_level: "paid",
-    layout_type: "premium_classic",
-    requires_profile_image: true,
-    requires_logo: true,
-    requires_banner: true,
-    gradient_enabled: true,
-    primary_color: "#AC00FF",
-    secondary_color: "#101935",
-    text_color: "#FFFFFF",
-    button_color: "#FFFFFF",
-    button_text_color: "#0F0E38",
-    default_font: "Inter",
-    allowed_fields: [
-      "full_name",
-      "job_title",
-      "bio",
-      "company_name",
-      "department",
-      "website",
-      "address",
-      "email",
-      "phone",
-      "whatsapp",
-      "linkedin",
-      "instagram",
-      "custom_url",
-    ],
-    show_personal_section: true,
-    show_company_section: true,
-    show_contact_section: true,
-    show_social_section: true,
-  },
-];
+  if (error) {
+    throw new Error(`Could not load templates from Supabase: ${error.message}`);
+  }
+
+  learnTemplateColumns(data || []);
+
+  return normalizeTemplates((data || []) as SharedTemplate[]);
+}
 
 export async function getPublishedTemplates() {
-  const templates = await getAdminTemplates();
-  return templates.filter(isPublishedTemplate);
+  const statusAwareResult = await supabase
+    .from("templates")
+    .select("*")
+    .or("status.eq.published,is_published.eq.true")
+    .order("created_at", { ascending: false });
+  let data = statusAwareResult.data;
+  let error = statusAwareResult.error;
+
+  if (error && isMissingColumnError(error, "status")) {
+    templateColumnSupport.status = false;
+    const isPublishedResult = await supabase
+      .from("templates")
+      .select("*")
+      .eq("is_published", true)
+      .order("created_at", { ascending: false });
+
+    data = isPublishedResult.data;
+    error = isPublishedResult.error;
+  }
+
+  if (error) {
+    throw new Error(`Could not load published templates from Supabase: ${error.message}`);
+  }
+
+  learnTemplateColumns(data || []);
+
+  return normalizeTemplates((data || []) as SharedTemplate[]).filter(
+    isPublishedTemplate
+  );
 }
 
 export async function getClientVisibleTemplates(plan: TemplatePlan) {
@@ -141,124 +84,90 @@ export async function getClientVisibleTemplates(plan: TemplatePlan) {
   if (plan === "free") return published;
 
   return published.filter(
-    (template) => template.access_level === "free" || template.access_level === "paid"
+    (template) =>
+      template.access_level === "free" || template.access_level === "paid"
   );
-}
-
-export async function getAdminTemplates() {
-  try {
-    const { data, error } = await supabase
-      .from("templates")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-
-    if (data) {
-      const templates = normalizeTemplates(data as SharedTemplate[]);
-      writeLocalTemplates(templates);
-      lastTemplateSource = "database";
-      lastTemplateError = null;
-      return templates;
-    }
-  } catch (error) {
-    console.warn("Templates database unavailable; using local templates.", error);
-    lastTemplateSource = "local";
-    lastTemplateError = error;
-  }
-
-  return readLocalTemplates();
-}
-
-export function getLastTemplateStorageStatus() {
-  return {
-    source: lastTemplateSource,
-    error: lastTemplateError,
-  };
 }
 
 export async function saveAdminTemplate(
   payload: TemplatePayload,
   editingTemplateId?: string | null
 ) {
-  const localTemplate = normalizeTemplate({
+  const normalizedPayload = normalizeTemplate({
     ...payload,
-    id: editingTemplateId || payload.id || createLocalTemplateId(),
-    is_published: payload.is_published ?? false,
+    id: editingTemplateId || payload.id || "",
+    is_published: payload.is_published ?? payload.status === "published",
     status: payload.status || (payload.is_published ? "published" : "draft"),
-    usage_count: payload.usage_count ?? 0,
   });
-
-  try {
-    const databasePayload = stripLocalOnlyFields(payload);
-    const result = editingTemplateId
-      ? await supabase
+  const result = editingTemplateId
+    ? await writeTemplateWithSchemaRetry((databasePayload) =>
+        supabase
           .from("templates")
           .update(databasePayload)
           .eq("id", editingTemplateId)
           .select("*")
-          .single()
-      : await supabase
+          .single(),
+        normalizedPayload
+      )
+    : await writeTemplateWithSchemaRetry((databasePayload) =>
+        supabase
           .from("templates")
-          .insert([{ ...databasePayload, is_published: payload.is_published ?? false }])
+          .insert([databasePayload])
           .select("*")
-          .single();
+          .single(),
+        normalizedPayload
+      );
 
-    if (result.error) throw result.error;
-
-    const savedTemplate = normalizeTemplate(
-      (result.data as SharedTemplate | null) || localTemplate
-    );
-    upsertLocalTemplate(savedTemplate);
-    return { template: savedTemplate, source: "database" as const };
-  } catch (error) {
-    console.warn("Template save used local fallback.", error);
-    upsertLocalTemplate(localTemplate);
-    return { template: localTemplate, source: "local" as const, error };
+  if (result.error) {
+    throw new Error(`Could not save template to Supabase: ${result.error.message}`);
   }
+
+  learnTemplateColumns(result.data ? [result.data] : []);
+
+  return {
+    template: normalizeTemplate(result.data as SharedTemplate),
+    source: "database" as const,
+  };
 }
 
-export async function publishAdminTemplate(template: SharedTemplate, published: boolean) {
-  const nextTemplate = normalizeTemplate({
-    ...template,
-    is_published: published,
-    status: published ? "published" : "draft",
-  });
-
-  try {
-    const { data, error } = await supabase
+export async function publishAdminTemplate(
+  template: SharedTemplate,
+  published: boolean
+) {
+  const result = await writeTemplateWithSchemaRetry((databasePayload) =>
+    supabase
       .from("templates")
-      .update({
-        is_published: published,
-        status: published ? "published" : "draft",
-      })
+      .update(databasePayload)
       .eq("id", template.id)
       .select("*")
-      .single();
+      .single(),
+    {
+      ...template,
+      is_published: published,
+      status: published ? "published" : "draft",
+    }
+  );
 
-    if (error) throw error;
-
-    const savedTemplate = normalizeTemplate((data as SharedTemplate | null) || nextTemplate);
-    upsertLocalTemplate(savedTemplate);
-    return { template: savedTemplate, source: "database" as const };
-  } catch (error) {
-    console.warn("Template publish used local fallback.", error);
-    upsertLocalTemplate(nextTemplate);
-    return { template: nextTemplate, source: "local" as const, error };
+  if (result.error) {
+    throw new Error(`Could not update template publish state: ${result.error.message}`);
   }
+
+  learnTemplateColumns(result.data ? [result.data] : []);
+
+  return {
+    template: normalizeTemplate(result.data as SharedTemplate),
+    source: "database" as const,
+  };
 }
 
 export async function deleteAdminTemplate(templateId: string) {
-  try {
-    const { error } = await supabase.from("templates").delete().eq("id", templateId);
-    if (error) throw error;
-    deleteLocalTemplate(templateId);
-    return { source: "database" as const };
-  } catch (error) {
-    console.warn("Template delete used local fallback.", error);
-    deleteLocalTemplate(templateId);
-    return { source: "local" as const, error };
+  const { error } = await supabase.from("templates").delete().eq("id", templateId);
+
+  if (error) {
+    throw new Error(`Could not delete template from Supabase: ${error.message}`);
   }
+
+  return { source: "database" as const };
 }
 
 export function normalizeTemplates(templates: SharedTemplate[]) {
@@ -266,26 +175,38 @@ export function normalizeTemplates(templates: SharedTemplate[]) {
 }
 
 export function normalizeTemplate(template: SharedTemplate | TemplatePayload): SharedTemplate {
-  const freeColourPalette =
+  const colourPalette =
     template.colour_palette ||
     template.free_colour_palette ||
     readAliasArray(template, "free_colors") ||
-    readAliasArray(template, "colour_palette") ||
     readAliasArray(template, "approved_colours") ||
     readAliasArray(template, "approved_colors") ||
     null;
+  const sanitizedPalette = sanitizeColourPalette(colourPalette);
+  const isPublished = isPublishedTemplate(template);
+  const requiresBanner =
+    template.requires_banner ?? template.supports_company_banner ?? false;
+  const gradientEnabled =
+    template.gradient_enabled ?? template.supports_gradient ?? false;
+  const defaultFont = template.default_font || template.font_family || null;
 
   return {
     ...template,
-    id: template.id || createLocalTemplateId(),
+    id: template.id || "",
     name: template.name,
     slug: template.slug || slugify(template.name),
-    access_level: template.access_level === "free" ? "free" : "paid",
+    access_level: template.access_level === "paid" ? "paid" : "free",
     layout_type: template.layout_type || "classic_free",
-    status: template.status || (template.is_published ? "published" : "draft"),
-    is_published: isPublishedTemplate(template),
-    colour_palette: sanitizeColourPalette(freeColourPalette),
-    free_colour_palette: sanitizeColourPalette(freeColourPalette),
+    status: isPublished ? "published" : "draft",
+    is_published: isPublished,
+    requires_banner: requiresBanner,
+    gradient_enabled: gradientEnabled,
+    supports_company_banner: requiresBanner,
+    supports_gradient: gradientEnabled,
+    default_font: defaultFont,
+    font_family: defaultFont,
+    colour_palette: sanitizedPalette,
+    free_colour_palette: sanitizedPalette,
     allowed_fields: template.allowed_fields || [],
     show_personal_section: template.show_personal_section ?? true,
     show_company_section: template.show_company_section ?? true,
@@ -298,65 +219,99 @@ function isPublishedTemplate(template: Partial<SharedTemplate> | TemplatePayload
   return template.status === "published" || Boolean(template.is_published);
 }
 
-function readLocalTemplates() {
-  if (typeof window === "undefined") return defaultTemplatesFallback;
-
-  try {
-    const stored = window.localStorage.getItem(adminTemplatesStorageKey);
-    if (!stored) {
-      writeLocalTemplates(defaultTemplatesFallback);
-      return defaultTemplatesFallback;
-    }
-
-    const parsed = JSON.parse(stored);
-    if (!Array.isArray(parsed)) return defaultTemplatesFallback;
-
-    const templates = normalizeTemplates(parsed);
-    return templates.length ? templates : defaultTemplatesFallback;
-  } catch (error) {
-    console.warn("Failed to read local templates.", error);
-    return defaultTemplatesFallback;
-  }
-}
-
-function writeLocalTemplates(templates: SharedTemplate[]) {
-  if (typeof window === "undefined") return;
-
-  try {
-    window.localStorage.setItem(
-      adminTemplatesStorageKey,
-      JSON.stringify(normalizeTemplates(templates))
-    );
-  } catch (error) {
-    console.warn("Failed to write local templates.", error);
-  }
-}
-
-function upsertLocalTemplate(template: SharedTemplate) {
-  const templates = readLocalTemplates();
-  const exists = templates.some((item) => item.id === template.id);
-  const nextTemplates = exists
-    ? templates.map((item) => (item.id === template.id ? template : item))
-    : [template, ...templates];
-
-  writeLocalTemplates(nextTemplates);
-}
-
-function deleteLocalTemplate(templateId: string) {
-  writeLocalTemplates(readLocalTemplates().filter((template) => template.id !== templateId));
-}
-
-function stripLocalOnlyFields(template: TemplatePayload) {
+function stripLocalOnlyFields(template: SharedTemplate) {
   const { id, created_at, updated_at, ...databasePayload } = template;
   void id;
   void created_at;
   void updated_at;
+
+  if (templateColumnSupport.status === false) {
+    delete databasePayload.status;
+  }
+
+  if (templateColumnSupport.requires_banner === false) {
+    delete databasePayload.requires_banner;
+  }
+
+  if (templateColumnSupport.gradient_enabled === false) {
+    delete databasePayload.gradient_enabled;
+  }
+
+  if (templateColumnSupport.supports_company_banner === false) {
+    delete databasePayload.supports_company_banner;
+  }
+
+  if (templateColumnSupport.supports_gradient === false) {
+    delete databasePayload.supports_gradient;
+  }
+
   return databasePayload;
+}
+
+async function writeTemplateWithSchemaRetry(
+  write: (databasePayload: ReturnType<typeof stripLocalOnlyFields>) => PromiseLike<{
+    data: unknown;
+    error: { message: string } | null;
+  }>,
+  template: SharedTemplate
+) {
+  let result = await write(stripLocalOnlyFields(template));
+
+  while (result.error) {
+    const missingColumn = missingColumnFromError(result.error);
+
+    if (!missingColumn || !markUnsupportedColumn(missingColumn)) {
+      break;
+    }
+
+    result = await write(stripLocalOnlyFields(template));
+  }
+
+  return result;
+}
+
+function learnTemplateColumns(rows: unknown[]) {
+  const firstRow = rows.find(
+    (row): row is Record<string, unknown> =>
+      Boolean(row) && typeof row === "object" && !Array.isArray(row)
+  );
+
+  if (!firstRow) return;
+
+  for (const column of Object.keys(templateColumnSupport) as Array<
+    keyof typeof templateColumnSupport
+  >) {
+    templateColumnSupport[column] = Object.prototype.hasOwnProperty.call(
+      firstRow,
+      column
+    );
+  }
+}
+
+function markUnsupportedColumn(column: string) {
+  if (column in templateColumnSupport) {
+    templateColumnSupport[column as keyof typeof templateColumnSupport] = false;
+    return true;
+  }
+
+  return false;
+}
+
+function missingColumnFromError(error: { message: string } | null) {
+  const message = error?.message || "";
+  const match = message.match(/'([^']+)' column of 'templates'/);
+  return match?.[1] || null;
+}
+
+function isMissingColumnError(error: { message: string } | null, column: string) {
+  return missingColumnFromError(error) === column;
 }
 
 function readAliasArray(template: Record<string, unknown>, key: string) {
   const value = template[key];
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : null;
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : null;
 }
 
 function sanitizeColourPalette(colours?: string[] | null) {
@@ -367,10 +322,6 @@ function sanitizeColourPalette(colours?: string[] | null) {
     .slice(0, 6);
 
   return palette.length ? palette : null;
-}
-
-function createLocalTemplateId() {
-  return `template-local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function slugify(value: string) {

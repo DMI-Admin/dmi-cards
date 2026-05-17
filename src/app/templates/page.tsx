@@ -6,7 +6,6 @@ import CardRenderer from "@/components/CardRenderer";
 import {
   deleteAdminTemplate,
   getAdminTemplates,
-  getLastTemplateStorageStatus,
   publishAdminTemplate,
   saveAdminTemplate,
   type SharedTemplate,
@@ -18,11 +17,13 @@ type Template = {
   slug: string;
   layout_type: string | null;
   access_level: string | null;
+  status?: "draft" | "published" | null;
   logo_size: LogoSize | null;
   requires_profile_image: boolean | null;
   requires_logo: boolean | null;
   requires_banner?: boolean | null;
   gradient_enabled?: boolean | null;
+  colour_palette?: string[] | null;
   free_colour_palette?: string[] | null;
   allowed_fonts?: string[] | null;
   default_font?: string | null;
@@ -230,16 +231,15 @@ export default function TemplatesPage() {
   async function fetchTemplates() {
     try {
       const loadedTemplates = await getAdminTemplates();
-      const templateStorageStatus = getLastTemplateStorageStatus();
       setTemplates(loadedTemplates as Template[]);
-      setTemplateError(
-        templateStorageStatus.source === "local"
-          ? "Supabase templates are unavailable. Editing local fallback templates for now."
-          : ""
-      );
+      setTemplateError("");
     } catch (error) {
       console.error("Template load failed", error);
-      setTemplateError("Templates could not be loaded. Using local templates for now.");
+      setTemplateError(
+        error instanceof Error
+          ? error.message
+          : "Templates could not be loaded from Supabase."
+      );
       setTemplates([]);
     }
   }
@@ -250,21 +250,20 @@ export default function TemplatesPage() {
     async function loadTemplates() {
       try {
         const loadedTemplates = await getAdminTemplates();
-        const templateStorageStatus = getLastTemplateStorageStatus();
 
         if (ignore) return;
 
         setTemplates(loadedTemplates as Template[]);
-        setTemplateError(
-          templateStorageStatus.source === "local"
-            ? "Supabase templates are unavailable. Editing local fallback templates for now."
-            : ""
-        );
+        setTemplateError("");
       } catch (error) {
         if (ignore) return;
 
         console.error("Template load failed", error);
-        setTemplateError("Templates could not be loaded. Using local templates for now.");
+        setTemplateError(
+          error instanceof Error
+            ? error.message
+            : "Templates could not be loaded from Supabase."
+        );
       }
     }
 
@@ -586,7 +585,7 @@ export default function TemplatesPage() {
       const existingTemplate = templates.find(
         (template) => template.id === editingTemplateId
       );
-      const result = await saveAdminTemplate(
+      await saveAdminTemplate(
         {
           ...payload,
           is_published: existingTemplate?.is_published ?? false,
@@ -598,14 +597,14 @@ export default function TemplatesPage() {
 
       resetBuilder();
       await fetchTemplates();
-      setTemplateMessage(
-        result.source === "local"
-          ? "Template saved locally. Client Portal will use this local template source."
-          : "Template saved successfully."
-      );
+      setTemplateMessage("Template saved successfully.");
     } catch (error) {
       console.error("Template save failed", error);
-      setTemplateError("Template could not be saved. Your current edits are still on screen.");
+      setTemplateError(
+        error instanceof Error
+          ? error.message
+          : "Template could not be saved. Your current edits are still on screen."
+      );
     } finally {
       setSavingTemplate(false);
     }
@@ -660,22 +659,18 @@ export default function TemplatesPage() {
       usage_count: 0,
     };
 
-    console.log("Template payload", insertPayload);
-
     try {
-      const result = await saveAdminTemplate(
-        insertPayload as unknown as SharedTemplate
-      );
-      setTemplateMessage(
-        result.source === "local"
-          ? "Template duplicated locally."
-          : "Template duplicated successfully."
-      );
+      await saveAdminTemplate(insertPayload as unknown as SharedTemplate);
+      setTemplateMessage("Template duplicated successfully.");
       setTemplateError("");
       await fetchTemplates();
     } catch (error) {
       console.error("Template duplicate failed", error);
-      setTemplateError("Template could not be duplicated. Please try again.");
+      setTemplateError(
+        error instanceof Error
+          ? error.message
+          : "Template could not be duplicated. Please try again."
+      );
     }
   }
 
@@ -691,14 +686,16 @@ export default function TemplatesPage() {
         )
       );
       setTemplateMessage(
-        result.source === "local"
-          ? `Template ${result.template.is_published ? "published" : "unpublished"} locally.`
-          : `Template ${result.template.is_published ? "published" : "unpublished"}.`
+        `Template ${result.template.is_published ? "published" : "unpublished"}.`
       );
       setTemplateError("");
     } catch (error) {
       console.error("Template publish failed", error);
-      setTemplateError("Template publish state could not be updated. Please try again.");
+      setTemplateError(
+        error instanceof Error
+          ? error.message
+          : "Template publish state could not be updated. Please try again."
+      );
     }
   }
 
@@ -710,19 +707,19 @@ export default function TemplatesPage() {
     if (!confirmed) return;
 
     try {
-      const result = await deleteAdminTemplate(template.id);
+      await deleteAdminTemplate(template.id);
       setTemplates((current) =>
         current.filter((currentTemplate) => currentTemplate.id !== template.id)
       );
-      setTemplateMessage(
-        result.source === "local"
-          ? "Template deleted locally."
-          : "Template deleted successfully."
-      );
+      setTemplateMessage("Template deleted successfully.");
       setTemplateError("");
     } catch (error) {
       console.error("Template delete failed", error);
-      setTemplateError("Template could not be deleted. Please try again.");
+      setTemplateError(
+        error instanceof Error
+          ? error.message
+          : "Template could not be deleted. Please try again."
+      );
       return;
     }
 

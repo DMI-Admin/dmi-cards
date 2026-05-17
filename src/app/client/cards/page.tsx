@@ -25,9 +25,7 @@ import CardRenderer, {
 import ClientSidebar from "@/components/ClientSidebar";
 import { supabase } from "@/lib/supabase";
 import {
-  defaultTemplatesFallback,
   getClientVisibleTemplates,
-  getLastTemplateStorageStatus,
   type SharedTemplate,
 } from "@/lib/templates";
 
@@ -399,27 +397,13 @@ const defaultLeadCaptureSettings: LeadCaptureSettings = {
   follow_up_enabled: false,
 };
 
-const fallbackAdminTemplates = defaultTemplatesFallback as AdminTemplate[];
-
-const selectedFreeTemplate =
-  fallbackAdminTemplates.find((template) => {
-    const layout = template.layout_type;
-    return (
-      template.is_published &&
-      template.access_level === "free" &&
-      (layout === "classic" || layout === "classic_free")
-    );
-  }) || null;
-
-const activeDefaultTemplate =
-  currentPlan === "free" ? selectedFreeTemplate : fallbackAdminTemplates[1];
-const fallbackColour = activeDefaultTemplate?.free_colour_palette?.[0] || "#AC00FF";
+const fallbackColour = "#AC00FF";
 
 const blankCard: ClientCard = {
   id: "",
   card_name: "Primary Digital Card",
-  template_id: activeDefaultTemplate?.id || "",
-  template_name: activeDefaultTemplate?.name || "Free Classic",
+  template_id: "",
+  template_name: "",
   status: "unpublished",
   public_url: "/u/my-digital-card",
   last_updated: "Draft",
@@ -442,36 +426,14 @@ const blankCard: ClientCard = {
   custom_fields: {},
   selected_colour: fallbackColour,
   hidden_fields: [],
-  field_order: getInitialFieldOrder(activeDefaultTemplate),
+  field_order: getInitialFieldOrder(null),
   lead_capture_settings: defaultLeadCaptureSettings,
 };
 
-const initialCards: ClientCard[] = activeDefaultTemplate
-  ? [
-      {
-        ...blankCard,
-        id: "card-1",
-        card_name: "Primary Digital Card",
-        status: "published",
-        public_url: "/u/full-name",
-        last_updated: "12 May 2026",
-        full_name: "Full Name",
-        job_title: "Creative Director",
-        department: "Brand Experience",
-        bio: "Helping teams launch premium digital card experiences.",
-        company_name: "DevMaster Inc",
-        email: "hello@devmasterinc.com",
-        phone: "+44 7700 900123",
-        website: "https://www.devmasterinc.com",
-        address: "London, United Kingdom",
-        custom_fields: {},
-      },
-    ]
-  : [];
+const initialCards: ClientCard[] = [];
 
 export default function ClientCardsPage() {
-  const [adminTemplates, setAdminTemplates] =
-    useState<AdminTemplate[]>(fallbackAdminTemplates);
+  const [adminTemplates, setAdminTemplates] = useState<AdminTemplate[]>([]);
   const [cards, setCards] = useState<ClientCard[]>(initialCards);
   const [selectedCardId, setSelectedCardId] = useState(initialCards[0]?.id || "");
   const [panelOpen, setPanelOpen] = useState(false);
@@ -479,7 +441,7 @@ export default function ClientCardsPage() {
   const [activeStep, setActiveStep] = useState<BuilderStep>(0);
   const [draftCard, setDraftCard] = useState<ClientCard>(blankCard);
   const [fieldOrder, setFieldOrder] = useState<FieldOrder>(
-    getInitialFieldOrder(activeDefaultTemplate)
+    getInitialFieldOrder(null)
   );
   const [devicePreview, setDevicePreview] =
     useState<DevicePreviewKey>("iphone_15");
@@ -490,7 +452,7 @@ export default function ClientCardsPage() {
   const [saveMessage, setSaveMessage] = useState("");
   const [saveError, setSaveError] = useState("");
   const [databaseNotice, setDatabaseNotice] = useState("");
-  const [templateNotice, setTemplateNotice] = useState("");
+  const [templateError, setTemplateError] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [loadingCards, setLoadingCards] = useState(true);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
@@ -562,24 +524,35 @@ export default function ClientCardsPage() {
     async function loadSavedCards() {
       setLoadingCards(true);
       setSaveError("");
+      setTemplateError("");
 
-      const loadedTemplates = await loadPublishedTemplates();
+      let nextTemplates: AdminTemplate[] = [];
+
+      try {
+        nextTemplates = await loadPublishedTemplates();
+      } catch (error) {
+        if (ignore) return;
+
+        console.error("Client template load failed", error);
+        setTemplateError(
+          error instanceof Error
+            ? error.message
+            : "Could not load templates from Supabase."
+        );
+        setAdminTemplates([]);
+        setCards([]);
+        setSelectedCardId("");
+        setLoadingCards(false);
+        return;
+      }
+
       if (ignore) return;
-      const templateStorageStatus = getLastTemplateStorageStatus();
 
-      const nextTemplates = loadedTemplates.length
-        ? loadedTemplates
-        : fallbackAdminTemplates;
       const nextDefaultTemplate = defaultTemplateForPlan(nextTemplates);
       const nextFallbackColour =
         nextDefaultTemplate?.free_colour_palette?.[0] || fallbackColour;
 
       setAdminTemplates(nextTemplates);
-      setTemplateNotice(
-        templateStorageStatus.source === "local"
-          ? "Template database is unavailable. Showing local fallback templates."
-          : ""
-      );
 
       const {
         data: { user },
@@ -999,9 +972,9 @@ export default function ClientCardsPage() {
               </div>
             )}
 
-            {templateNotice && (
-              <div className="mb-6 rounded-2xl border border-yellow-400/20 bg-yellow-500/10 px-5 py-4 text-sm text-yellow-100">
-                {templateNotice}
+            {templateError && (
+              <div className="mb-6 rounded-2xl border border-red-400/20 bg-red-500/10 px-5 py-4 text-sm text-red-100">
+                Template load failed: {templateError}
               </div>
             )}
 
@@ -2402,7 +2375,7 @@ function planLabel(plan: typeof currentPlan) {
 
 function mapSupabaseCard(
   row: SupabaseCardRow,
-  templates: AdminTemplate[] = fallbackAdminTemplates,
+  templates: AdminTemplate[] = [],
   defaultTemplate = defaultTemplateForPlan(templates)
 ): ClientCard {
   const slug = row.slug || slugify(row.full_name || row.card_name || "digital-card");
@@ -2467,7 +2440,7 @@ function buildSupabaseCardPayload(
   */
   return {
     user_id: userId,
-    template_id: card.template_id || activeDefaultTemplate?.id || null,
+    template_id: card.template_id || null,
     card_name: card.card_name || "Primary Digital Card",
     slug: card.slug || slugify(card.full_name || card.card_name || "digital-card"),
     full_name: card.full_name || "",
