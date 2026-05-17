@@ -10,6 +10,7 @@ export type SharedTemplate = CardRendererTemplate & {
   is_published: boolean;
   usage_count?: number | null;
   created_at?: string | null;
+  updated_at?: string | null;
 };
 
 type TemplatePayload = Partial<SharedTemplate> & {
@@ -138,11 +139,8 @@ export async function getAdminTemplates() {
 
     if (error) throw error;
 
-    if (data?.length) {
-      const templates = mergeTemplates(
-        normalizeTemplates(data as SharedTemplate[]),
-        readLocalTemplates()
-      );
+    if (data) {
+      const templates = normalizeTemplates(data as SharedTemplate[]);
       writeLocalTemplates(templates);
       return templates;
     }
@@ -307,27 +305,11 @@ function deleteLocalTemplate(templateId: string) {
   writeLocalTemplates(readLocalTemplates().filter((template) => template.id !== templateId));
 }
 
-function mergeTemplates(
-  databaseTemplates: SharedTemplate[],
-  localTemplates: SharedTemplate[]
-) {
-  const templatesById = new Map<string, SharedTemplate>();
-
-  databaseTemplates.forEach((template) => {
-    templatesById.set(template.id, template);
-  });
-
-  localTemplates.forEach((template) => {
-    templatesById.set(template.id, template);
-  });
-
-  return Array.from(templatesById.values());
-}
-
 function stripLocalOnlyFields(template: TemplatePayload) {
-  const { id, created_at, ...databasePayload } = template;
+  const { id, created_at, updated_at, ...databasePayload } = template;
   void id;
   void created_at;
+  void updated_at;
   return databasePayload;
 }
 
