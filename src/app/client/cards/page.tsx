@@ -26,6 +26,7 @@ import ClientSidebar from "@/components/ClientSidebar";
 import { supabase } from "@/lib/supabase";
 import {
   getClientVisibleTemplates,
+  normalizeColourPalette,
   type SharedTemplate,
 } from "@/lib/templates";
 
@@ -472,7 +473,8 @@ export default function ClientCardsPage() {
   );
   const currentDefaultTemplate = defaultTemplate;
   const selectedTemplateFallbackColour =
-    currentDefaultTemplate?.free_colour_palette?.[0] || fallbackColour;
+    normalizeColourPalette(currentDefaultTemplate?.free_colour_palette)[0] ||
+    fallbackColour;
   const selectedCardTemplateRecord = useMemo(() => {
     return templateForCard(selectedCard, adminTemplates) || currentDefaultTemplate;
   }, [adminTemplates, selectedCard, currentDefaultTemplate]);
@@ -550,7 +552,8 @@ export default function ClientCardsPage() {
 
       const nextDefaultTemplate = defaultTemplateForPlan(nextTemplates);
       const nextFallbackColour =
-        nextDefaultTemplate?.free_colour_palette?.[0] || fallbackColour;
+        normalizeColourPalette(nextDefaultTemplate?.free_colour_palette)[0] ||
+        fallbackColour;
 
       setAdminTemplates(nextTemplates);
 
@@ -651,7 +654,8 @@ export default function ClientCardsPage() {
       template_id: currentDefaultTemplate.id,
       template_name: currentDefaultTemplate.name,
       selected_colour:
-        currentDefaultTemplate.free_colour_palette?.[0] || selectedTemplateFallbackColour,
+        normalizeColourPalette(currentDefaultTemplate.free_colour_palette)[0] ||
+        selectedTemplateFallbackColour,
       field_order: initialFieldOrder,
       lead_capture_settings: defaultLeadCaptureSettings,
     });
@@ -697,7 +701,7 @@ export default function ClientCardsPage() {
       template_name: template.name,
       selected_colour:
         template.access_level === "free"
-          ? template.free_colour_palette?.[0] || fallbackColour
+          ? normalizeColourPalette(template.free_colour_palette)[0] || fallbackColour
           : current.selected_colour || fallbackColour,
       hidden_fields: [],
       field_order: nextFieldOrder,
@@ -1635,9 +1639,8 @@ function CustomiseStep({
   onUpdate: (field: keyof ClientCard, value: string) => void;
   onSelectTemplate: (template: AdminTemplate) => void;
 }) {
-  const palette = template.free_colour_palette?.length
-    ? template.free_colour_palette
-    : [fallbackColour];
+  const palette = normalizeColourPalette(template.free_colour_palette);
+  const approvedPalette = palette.length ? palette : [fallbackColour];
 
   return (
     <div className="space-y-5">
@@ -1700,7 +1703,7 @@ function CustomiseStep({
                       template={buildTemplatePreview(
                         templateOption,
                         draftCard.selected_colour ||
-                          templateOption.free_colour_palette?.[0] ||
+                          normalizeColourPalette(templateOption.free_colour_palette)[0] ||
                           fallbackColour,
                         previewFieldOrder,
                         selected ? draftCard.hidden_fields || [] : []
@@ -1756,7 +1759,7 @@ function CustomiseStep({
             Free users can only choose admin-approved swatches.
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
-            {palette.map((colour) => (
+            {approvedPalette.map((colour) => (
               <button
                 key={colour}
                 type="button"
@@ -2252,6 +2255,8 @@ function normalizeAdminTemplates(templates: AdminTemplate[]) {
     .map((template) => ({
       ...template,
       access_level: template.access_level === "free" ? "free" : "paid",
+      colour_palette: normalizeColourPalette(template.colour_palette),
+      free_colour_palette: normalizeColourPalette(template.free_colour_palette),
     }));
 }
 
@@ -2314,7 +2319,7 @@ function hydrateCardsWithTemplates(
       template_name: cardTemplate?.name || card.template_name,
       selected_colour:
         card.selected_colour ||
-        cardTemplate?.free_colour_palette?.[0] ||
+        normalizeColourPalette(cardTemplate?.free_colour_palette)[0] ||
         fallbackColour,
       field_order: card.field_order || getInitialFieldOrder(cardTemplate),
     };
@@ -2416,7 +2421,9 @@ function mapSupabaseCard(
     company_banner_url: row.company_banner_url || "",
     custom_fields: row.custom_fields || {},
     selected_colour:
-      row.selected_colour || rowTemplate?.free_colour_palette?.[0] || fallbackColour,
+      row.selected_colour ||
+      normalizeColourPalette(rowTemplate?.free_colour_palette)[0] ||
+      fallbackColour,
     hidden_fields: row.hidden_fields || [],
     field_order: row.field_order || getInitialFieldOrder(rowTemplate),
     lead_capture_settings: row.lead_capture_settings || defaultLeadCaptureSettings,

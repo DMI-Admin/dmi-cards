@@ -175,14 +175,7 @@ export function normalizeTemplates(templates: SharedTemplate[]) {
 }
 
 export function normalizeTemplate(template: SharedTemplate | TemplatePayload): SharedTemplate {
-  const colourPalette =
-    template.colour_palette ||
-    template.free_colour_palette ||
-    readAliasArray(template, "free_colors") ||
-    readAliasArray(template, "approved_colours") ||
-    readAliasArray(template, "approved_colors") ||
-    null;
-  const sanitizedPalette = sanitizeColourPalette(colourPalette);
+  const sanitizedPalette = normalizeTemplateColourPalette(template);
   const isPublished = isPublishedTemplate(template);
   const requiresBanner =
     template.requires_banner ?? template.supports_company_banner ?? false;
@@ -217,6 +210,33 @@ export function normalizeTemplate(template: SharedTemplate | TemplatePayload): S
 
 function isPublishedTemplate(template: Partial<SharedTemplate> | TemplatePayload) {
   return template.status === "published" || Boolean(template.is_published);
+}
+
+export function normalizeColourPalette(value: unknown): string[] {
+  if (value == null) return [];
+
+  if (Array.isArray(value)) {
+    return sanitizeColourPalette(value);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+
+    if (!trimmed) return [];
+
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return normalizeColourPalette(parsed);
+      } catch {
+        return sanitizeColourPalette([trimmed]);
+      }
+    }
+
+    return sanitizeColourPalette(trimmed.split(/[\s,;|]+/));
+  }
+
+  return [];
 }
 
 function stripLocalOnlyFields(template: SharedTemplate) {
@@ -307,21 +327,35 @@ function isMissingColumnError(error: { message: string } | null, column: string)
   return missingColumnFromError(error) === column;
 }
 
-function readAliasArray(template: Record<string, unknown>, key: string) {
-  const value = template[key];
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : null;
+function normalizeTemplateColourPalette(
+  template: SharedTemplate | TemplatePayload
+) {
+  const templateRecord = template as Record<string, unknown>;
+  const candidates = [
+    templateRecord.colour_palette,
+    templateRecord.free_colour_palette,
+    templateRecord.free_colors,
+    templateRecord.approved_colours,
+    templateRecord.approved_colors,
+  ];
+
+  for (const candidate of candidates) {
+    const palette = normalizeColourPalette(candidate);
+
+    if (palette.length > 0) {
+      return palette;
+    }
+  }
+
+  return [];
 }
 
-function sanitizeColourPalette(colours?: string[] | null) {
-  const palette = (colours || [])
+function sanitizeColourPalette(colours: unknown[]) {
+  return colours
     .filter((colour): colour is string => typeof colour === "string")
     .map((colour) => colour.trim())
     .filter((colour) => /^#[0-9a-fA-F]{6}$/.test(colour))
     .slice(0, 6);
-
-  return palette.length ? palette : null;
 }
 
 function slugify(value: string) {

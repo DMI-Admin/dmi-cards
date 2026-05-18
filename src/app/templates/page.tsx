@@ -6,6 +6,7 @@ import CardRenderer from "@/components/CardRenderer";
 import {
   deleteAdminTemplate,
   getAdminTemplates,
+  normalizeColourPalette,
   publishAdminTemplate,
   saveAdminTemplate,
   type SharedTemplate,
@@ -1650,12 +1651,8 @@ function sanitizeAllowedFields(fields: string[]) {
   );
 }
 
-function sanitizeFreeColourPalette(colours?: string[] | null) {
-  const palette = (colours || defaultFreeColourPalette)
-    .filter((colour): colour is string => typeof colour === "string")
-    .map((colour) => colour.trim())
-    .filter((colour) => /^#[0-9a-fA-F]{6}$/.test(colour))
-    .slice(0, 6);
+function sanitizeFreeColourPalette(colours?: unknown) {
+  const palette = normalizeColourPalette(colours);
 
   return palette.length ? palette : ["#AC00FF"];
 }
