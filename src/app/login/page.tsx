@@ -1,22 +1,43 @@
 "use client";
 
+import { useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, LockKeyhole, Mail, Sparkles } from "lucide-react";
 import { FaApple, FaMicrosoft } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
+import { supabase } from "@/lib/supabase";
 
 export default function ClientLoginPage() {
   const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleLogin(event: React.FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    router.push("/client/dashboard");
+    setLoginError("");
+    setSubmitting(true);
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    if (error) {
+      setLoginError(error.message);
+      setSubmitting(false);
+      return;
+    }
+
+    const nextPath = new URLSearchParams(window.location.search).get("next");
+    router.push(nextPath || "/client/dashboard");
   }
 
   function handleSocialLogin() {
-    router.push("/client/dashboard");
+    setLoginError("Social login is not enabled yet. Please use email and password.");
   }
 
   return (
@@ -94,8 +115,11 @@ export default function ClientLoginPage() {
                   </span>
                   <input
                     type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
                     placeholder="you@company.com"
                     className="inputStyle"
+                    required
                   />
                 </label>
 
@@ -106,8 +130,11 @@ export default function ClientLoginPage() {
                   </span>
                   <input
                     type="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
                     placeholder="Enter your password"
                     className="inputStyle"
+                    required
                   />
                 </label>
 
@@ -126,11 +153,18 @@ export default function ClientLoginPage() {
                   </Link>
                 </div>
 
+                {loginError && (
+                  <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                    {loginError}
+                  </div>
+                )}
+
                 <button
                   type="submit"
+                  disabled={submitting}
                   className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35"
                 >
-                  Login
+                  {submitting ? "Logging in..." : "Login"}
                   <ArrowRight className="h-4 w-4" />
                 </button>
               </form>

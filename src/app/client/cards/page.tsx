@@ -37,6 +37,7 @@ import {
   normalizeColourPalette,
   type SharedTemplate,
 } from "@/lib/templates";
+import { useRouter } from "next/navigation";
 
 const currentPlan = "free" as
   | "free"
@@ -44,7 +45,6 @@ const currentPlan = "free" as
   | "business"
   | "enterprise";
 const isPaid = currentPlan !== "free";
-const clientCardsStorageKey = "dmi-client-cards-v1";
 
 type CardStatus = "published" | "unpublished";
 type PanelMode = "create" | "edit";
@@ -157,6 +157,7 @@ type SupabaseCardRow = CardRendererData & {
   id: string;
   card_name?: string | null;
   template_id?: string | null;
+  profile_id?: string | null;
   status?: string | null;
   is_published?: boolean | null;
   slug?: string | null;
@@ -445,6 +446,7 @@ const blankCard: ClientCard = {
 const initialCards: ClientCard[] = [];
 
 export default function ClientCardsPage() {
+  const router = useRouter();
   const [adminTemplates, setAdminTemplates] = useState<AdminTemplate[]>([]);
   const [cards, setCards] = useState<ClientCard[]>(initialCards);
   const [selectedCardId, setSelectedCardId] = useState(initialCards[0]?.id || "");
@@ -561,20 +563,7 @@ export default function ClientCardsPage() {
 
       if (ignore) return;
 
-      console.log("[DMI templates] fetched templates", nextTemplates);
-
       const nextDefaultTemplate = defaultTemplateForPlan(nextTemplates);
-      console.log(
-        "[DMI templates] filtered free templates",
-        normalizeAdminTemplates(nextTemplates).filter(
-          (template) => template.access_level === "free"
-        )
-      );
-      console.log("[DMI templates] selected template", nextDefaultTemplate);
-      const nextFallbackColour =
-        normalizeColourPalette(nextDefaultTemplate?.free_colour_palette)[0] ||
-        fallbackColour;
-
       setAdminTemplates(nextTemplates);
 
       const {
@@ -585,18 +574,7 @@ export default function ClientCardsPage() {
       if (ignore) return;
 
       if (userError || !user) {
-        setAuthUserId(null);
-        setDatabaseReady(false);
-        setDatabaseNotice(
-          "Database/auth not connected yet. Changes are preview-only."
-        );
-        const localCards = readLocalCards();
-        const nextCards =
-          localCards.length > 0
-            ? hydrateCardsWithTemplates(localCards, nextTemplates)
-            : initialCardsForTemplate(nextDefaultTemplate, nextFallbackColour);
-        setCards(nextCards);
-        setSelectedCardId(nextCards[0]?.id || "");
+        router.replace("/login?next=/client/cards");
         setLoadingCards(false);
         return;
       }
@@ -614,16 +592,9 @@ export default function ClientCardsPage() {
       if (error) {
         console.error("Client cards fetch failed", error);
         setDatabaseReady(false);
-        setDatabaseNotice(
-          "Database/auth not connected yet. Changes are preview-only."
-        );
-        const localCards = readLocalCards();
-        const nextCards =
-          localCards.length > 0
-            ? hydrateCardsWithTemplates(localCards, nextTemplates)
-            : initialCardsForTemplate(nextDefaultTemplate, nextFallbackColour);
-        setCards(nextCards);
-        setSelectedCardId(nextCards[0]?.id || "");
+        setDatabaseNotice("Could not load your saved cards from Supabase.");
+        setCards([]);
+        setSelectedCardId("");
         setLoadingCards(false);
         return;
       }
@@ -633,16 +604,8 @@ export default function ClientCardsPage() {
       const savedCards = (data || []).map((row) =>
         mapSupabaseCard(row, nextTemplates, nextDefaultTemplate)
       );
-      const localCards = readLocalCards();
-      const nextCards =
-        savedCards.length > 0
-          ? savedCards
-          : localCards.length > 0
-          ? hydrateCardsWithTemplates(localCards, nextTemplates)
-          : initialCardsForTemplate(nextDefaultTemplate, nextFallbackColour);
-
-      setCards(nextCards);
-      setSelectedCardId(nextCards[0]?.id || "");
+      setCards(savedCards);
+      setSelectedCardId(savedCards[0]?.id || "");
       setLoadingCards(false);
     }
 
@@ -651,7 +614,7 @@ export default function ClientCardsPage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [router]);
 
   function openCreatePanel() {
     if (!currentDefaultTemplate) return;
@@ -711,8 +674,6 @@ export default function ClientCardsPage() {
       setLimitMessage("Upgrade to Individual Pro to use paid templates.");
       return;
     }
-
-    console.log("[DMI templates] selected template", template);
 
     const nextFieldOrder = getInitialFieldOrder(template);
     setLimitMessage("");
@@ -832,7 +793,6 @@ export default function ClientCardsPage() {
         ? currentCards.map((card) => (card.id === draftCard.id ? savedCard : card))
         : [savedCard, ...currentCards];
 
-      writeLocalCards(nextCards);
       return nextCards;
     });
 
@@ -866,26 +826,12 @@ export default function ClientCardsPage() {
     mode: PanelMode;
   }) {
     if (!userId || !databaseReady) {
-      const localCard = {
-        ...card,
-        last_updated: "Saved locally",
-      };
-      console.log("Saving card payload", {
-        mode: "localStorage",
-        card: localCard,
-      });
-      console.log("Save result", localCard);
-      setDatabaseNotice(
-        "Database/auth not connected yet. Changes are preview-only."
-      );
-      setSaveMessage("Saved locally in this browser.");
-      return {
-        ...localCard,
-      };
+      router.replace("/login?next=/client/cards");
+      setSaveError("Please log in to save your card.");
+      return null;
     }
 
     const payload = buildSupabaseCardPayload(card, userId);
-    console.log("Saving card payload", payload);
     const shouldUpdate = mode === "edit" && !card.id.startsWith("card-");
 
     const { data, error } = await writeCardPayload({
@@ -893,7 +839,6 @@ export default function ClientCardsPage() {
       payload,
       shouldUpdate,
     });
-    console.log("Save result", data);
 
     if (error || !data) {
       console.error("Client card save failed", error);
@@ -902,14 +847,9 @@ export default function ClientCardsPage() {
         error?.message || "Failed to save card. Please try again.";
       setSaveError(message);
       setDatabaseNotice(
-        "Database save failed. Changes were saved locally in this browser."
+        "Database save failed. Your card was not saved."
       );
-      const localCard = {
-        ...card,
-        last_updated: "Saved locally",
-      };
-      console.log("Save result", localCard);
-      return localCard;
+      return null;
     }
 
     return mapSupabaseCard(data, adminTemplates, currentDefaultTemplate);
@@ -935,7 +875,6 @@ export default function ClientCardsPage() {
       const nextCards = currentCards.map((currentCard) =>
         currentCard.id === card.id ? savedCard : currentCard
       );
-      writeLocalCards(nextCards);
       return nextCards;
     });
   }
@@ -2479,31 +2418,6 @@ function buildTemplatePreview(
   };
 }
 
-function readLocalCards() {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const stored = window.localStorage.getItem(clientCardsStorageKey);
-    if (!stored) return [];
-
-    const parsed = JSON.parse(stored);
-    return Array.isArray(parsed) ? (parsed as ClientCard[]) : [];
-  } catch (error) {
-    console.error("Failed to read local client cards", error);
-    return [];
-  }
-}
-
-function writeLocalCards(cards: ClientCard[]) {
-  if (typeof window === "undefined") return;
-
-  try {
-    window.localStorage.setItem(clientCardsStorageKey, JSON.stringify(cards));
-  } catch (error) {
-    console.error("Failed to save local client cards", error);
-  }
-}
-
 async function loadPublishedTemplates(): Promise<AdminTemplate[]> {
   return (await getClientVisibleTemplates(currentPlan)) as AdminTemplate[];
 }
@@ -2560,60 +2474,6 @@ function templateForCard(
   if (template && canSelectTemplate(template)) return template;
 
   return null;
-}
-
-function hydrateCardsWithTemplates(
-  cards: ClientCard[],
-  templates: AdminTemplate[]
-) {
-  const defaultTemplate = defaultTemplateForPlan(templates);
-
-  return cards.map((card) => {
-    const cardTemplate = templateForCard(card, templates) || defaultTemplate;
-
-    return {
-      ...card,
-      template_id: cardTemplate?.id || card.template_id,
-      template_name: cardTemplate?.name || card.template_name,
-      selected_colour:
-        card.selected_colour ||
-        normalizeColourPalette(cardTemplate?.free_colour_palette)[0] ||
-        fallbackColour,
-      field_order: card.field_order || getInitialFieldOrder(cardTemplate),
-    };
-  });
-}
-
-function initialCardsForTemplate(
-  template: AdminTemplate | null,
-  selectedColour = fallbackColour
-) {
-  if (!template) return [];
-
-  return [
-    {
-      ...blankCard,
-      id: "card-1",
-      template_id: template.id,
-      template_name: template.name,
-      selected_colour: selectedColour,
-      field_order: getInitialFieldOrder(template),
-      card_name: "Primary Digital Card",
-      status: "published" as CardStatus,
-      public_url: "/u/full-name",
-      last_updated: "12 May 2026",
-      full_name: "Full Name",
-      job_title: "Creative Director",
-      department: "Brand Experience",
-      bio: "Helping teams launch premium digital card experiences.",
-      company_name: "DevMaster Inc",
-      email: "hello@devmasterinc.com",
-      phone: "+44 7700 900123",
-      website: "https://www.devmasterinc.com",
-      address: "London, United Kingdom",
-      custom_fields: {},
-    },
-  ];
 }
 
 function isPaidTemplate(template: AdminTemplate | CardRendererTemplate) {
@@ -2696,6 +2556,7 @@ function buildSupabaseCardPayload(
 
   return {
     user_id: userId,
+    profile_id: userId,
     template_id: card.template_id || null,
     card_name: card.card_name || "Primary Digital Card",
     slug: card.slug || slugify(card.full_name || card.card_name || "digital-card"),

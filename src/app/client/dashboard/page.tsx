@@ -30,9 +30,8 @@ import {
 
 const currentPlan = "free" as "free" | "individual_pro" | "business" | "enterprise";
 const isPaid = currentPlan !== "free";
-const clientCardsStorageKey = "dmi-client-cards-v1";
 
-const mockTemplate: CardRendererTemplate = {
+const fallbackTemplate: CardRendererTemplate = {
   access_level: "free",
   layout_type: "classic_free",
   allowed_fields: [
@@ -55,17 +54,6 @@ const mockTemplate: CardRendererTemplate = {
   show_contact_section: true,
   show_social_section: false,
   free_colour_palette: ["#AC00FF", "#101935"],
-};
-
-const mockCardData: CardRendererData = {
-  full_name: "Full Name",
-  job_title: "Creative Director",
-  department: "Brand Experience",
-  company_name: "DevMaster Inc",
-  email: "hello@devmasterinc.com",
-  phone: "+44 7700 900123",
-  website: "https://www.devmasterinc.com",
-  address: "London, United Kingdom",
 };
 
 const recentContacts = [
@@ -149,32 +137,21 @@ export default function ClientDashboardPage() {
 
         if (ignore) return;
 
-        if (user) {
-          const { data } = await supabase
-            .from("cards")
-            .select("*")
-            .eq("user_id", user.id)
-            .order("updated_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+        if (!user) return;
 
-          if (!ignore && data) {
-            setLatestCard(data);
-          }
-        } else {
-          const localCard = readLatestLocalCard();
+        const { data } = await supabase
+          .from("cards")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-          if (!ignore) {
-            setLatestCard(localCard);
-          }
+        if (!ignore && data) {
+          setLatestCard(data);
         }
       } catch (error) {
         console.error("Dashboard preview load failed", error);
-        const localCard = readLatestLocalCard();
-
-        if (!ignore) {
-          setLatestCard(localCard);
-        }
       } finally {
         if (!ignore) {
           setLoadingPreview(false);
@@ -195,7 +172,7 @@ export default function ClientDashboardPage() {
       templates.find((template) => template.access_level === "free") ||
       null;
 
-    if (!selectedTemplate) return mockTemplate;
+    if (!selectedTemplate) return fallbackTemplate;
 
     if (selectedTemplate.access_level === "free") {
       return {
@@ -210,7 +187,6 @@ export default function ClientDashboardPage() {
 
     return selectedTemplate;
   }, [latestCard?.selected_colour, latestCard?.template_id, templates]);
-  const previewCard = latestCard || mockCardData;
   const publicUrl = latestCard?.slug ? `/u/${latestCard.slug}` : "/u/your-card-url";
 
   return (
@@ -278,13 +254,19 @@ export default function ClientDashboardPage() {
                 </span>
               </div>
 
-              <div className="flex justify-center overflow-hidden rounded-[2rem]">
-                <CardRenderer
-                  template={previewTemplate}
-                  cardData={previewCard}
-                  mode="preview"
-                />
-              </div>
+              {latestCard ? (
+                <div className="flex justify-center overflow-hidden rounded-[2rem]">
+                  <CardRenderer
+                    template={previewTemplate}
+                    cardData={latestCard}
+                    mode="preview"
+                  />
+                </div>
+              ) : (
+                <div className="rounded-[2rem] border border-dashed border-white/10 bg-[#070B1A]/60 p-8 text-center text-sm text-white/45">
+                  No saved card yet. Create and publish your first card in My Cards.
+                </div>
+              )}
             </div>
           </aside>
         </div>
@@ -373,19 +355,6 @@ function QuickActionsCard({ publicUrl }: { publicUrl: string }) {
       </div>
     </div>
   );
-}
-
-function readLatestLocalCard() {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const stored = window.localStorage.getItem(clientCardsStorageKey);
-    const parsed = stored ? JSON.parse(stored) : [];
-
-    return Array.isArray(parsed) ? parsed[0] || null : null;
-  } catch {
-    return null;
-  }
 }
 
 function ShortcutCard({

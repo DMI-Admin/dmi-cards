@@ -1,5 +1,97 @@
 create extension if not exists pgcrypto;
 
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  full_name text,
+  email text,
+  plan text not null default 'free',
+  account_type text not null default 'individual',
+  created_at timestamptz not null default now()
+);
+
+alter table public.profiles
+  add column if not exists full_name text,
+  add column if not exists email text,
+  add column if not exists plan text not null default 'free',
+  add column if not exists account_type text not null default 'individual',
+  add column if not exists created_at timestamptz not null default now();
+
+alter table public.profiles
+  drop constraint if exists profiles_plan_check;
+
+alter table public.profiles
+  drop constraint if exists profiles_account_type_check;
+
+alter table public.profiles
+  add constraint profiles_plan_check
+  check (plan in ('free', 'paid'));
+
+alter table public.profiles
+  add constraint profiles_account_type_check
+  check (account_type in ('individual'));
+
+alter table public.profiles enable row level security;
+
+drop policy if exists "Users can read own profile" on public.profiles;
+create policy "Users can read own profile"
+  on public.profiles
+  for select
+  to authenticated
+  using (auth.uid() = id);
+
+drop policy if exists "Users can insert own profile" on public.profiles;
+create policy "Users can insert own profile"
+  on public.profiles
+  for insert
+  to authenticated
+  with check (auth.uid() = id);
+
+drop policy if exists "Users can update own profile" on public.profiles;
+create policy "Users can update own profile"
+  on public.profiles
+  for update
+  to authenticated
+  using (auth.uid() = id)
+  with check (auth.uid() = id);
+
+create or replace function public.create_profile_for_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (
+    id,
+    full_name,
+    email,
+    plan,
+    account_type
+  ) values (
+    new.id,
+    coalesce(new.raw_user_meta_data ->> 'full_name', ''),
+    new.email,
+    coalesce(new.raw_user_meta_data ->> 'plan', 'free'),
+    coalesce(new.raw_user_meta_data ->> 'account_type', 'individual')
+  )
+  on conflict (id) do update
+  set
+    full_name = excluded.full_name,
+    email = excluded.email,
+    plan = excluded.plan,
+    account_type = excluded.account_type;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists create_profile_after_user_signup on auth.users;
+
+create trigger create_profile_after_user_signup
+after insert on auth.users
+for each row
+execute function public.create_profile_for_new_user();
+
 create table if not exists public.templates (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -206,6 +298,8 @@ insert into public.templates (
 on conflict (slug) do nothing;
 
 alter table if exists public.cards
+  add column if not exists user_id uuid references auth.users(id) on delete cascade,
+  add column if not exists profile_id uuid references public.profiles(id) on delete set null,
   add column if not exists department text,
   add column if not exists bio text,
   add column if not exists profile_image_url text,
@@ -235,3 +329,44 @@ where status is null
 
 create unique index if not exists cards_slug_unique_idx
   on public.cards (slug);
+
+create index if not exists cards_user_id_idx
+  on public.cards (user_id);
+
+alter table if exists public.cards enable row level security;
+
+drop policy if exists "Users can read own cards" on public.cards;
+create policy "Users can read own cards"
+  on public.cards
+  for select
+  to authenticated
+  using (auth.uid() = user_id);
+
+drop policy if exists "Published cards are publicly readable" on public.cards;
+create policy "Published cards are publicly readable"
+  on public.cards
+  for select
+  to anon, authenticated
+  using (status = 'published' or is_published = true);
+
+drop policy if exists "Users can insert own cards" on public.cards;
+create policy "Users can insert own cards"
+  on public.cards
+  for insert
+  to authenticated
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can update own cards" on public.cards;
+create policy "Users can update own cards"
+  on public.cards
+  for update
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can delete own cards" on public.cards;
+create policy "Users can delete own cards"
+  on public.cards
+  for delete
+  to authenticated
+  using (auth.uid() = user_id);

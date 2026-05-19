@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import { FaApple, FaMicrosoft } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
+import { supabase } from "@/lib/supabase";
 
 const plans = [
   {
@@ -38,14 +40,81 @@ const plans = [
 
 export default function ClientSignupPage() {
   const router = useRouter();
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [signupError, setSignupError] = useState("");
+  const [signupMessage, setSignupMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSignup(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSignup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSignupError("");
+    setSignupMessage("");
+
+    if (!fullName.trim()) {
+      setSignupError("Full name is required.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setSignupError("Passwords do not match.");
+      return;
+    }
+
+    if (password.length < 6) {
+      setSignupError("Password must be at least 6 characters.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          full_name: fullName.trim(),
+          plan: "free",
+          account_type: "individual",
+        },
+      },
+    });
+
+    if (error) {
+      setSignupError(error.message);
+      setSubmitting(false);
+      return;
+    }
+
+    if (data.user && data.session) {
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        id: data.user.id,
+        full_name: fullName.trim(),
+        email: email.trim(),
+        plan: "free",
+        account_type: "individual",
+      });
+
+      if (profileError) {
+        setSignupError(profileError.message);
+        setSubmitting(false);
+        return;
+      }
+    }
+
+    if (!data.session) {
+      setSignupMessage("Account created. Please confirm your email, then log in.");
+      setSubmitting(false);
+      return;
+    }
+
     router.push("/client/dashboard");
   }
 
   function handleSocialSignup() {
-    router.push("/client/dashboard");
+    setSignupError("Social signup is not enabled yet. Please use email and password.");
   }
 
   return (
@@ -131,32 +200,44 @@ export default function ClientSignupPage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Full name" icon={UserRound}>
                     <input
+                      value={fullName}
+                      onChange={(event) => setFullName(event.target.value)}
                       placeholder="Full Name"
                       className="inputStyle"
+                      required
                     />
                   </Field>
 
                   <Field label="Email address" icon={Mail}>
                     <input
                       type="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
                       placeholder="you@company.com"
                       className="inputStyle"
+                      required
                     />
                   </Field>
 
                   <Field label="Password" icon={LockKeyhole}>
                     <input
                       type="password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
                       placeholder="Create a password"
                       className="inputStyle"
+                      required
                     />
                   </Field>
 
                   <Field label="Confirm password" icon={LockKeyhole}>
                     <input
                       type="password"
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
                       placeholder="Confirm password"
                       className="inputStyle"
+                      required
                     />
                   </Field>
                 </div>
@@ -164,8 +245,8 @@ export default function ClientSignupPage() {
                 <section>
                   <div className="mb-3 flex items-center justify-between gap-4">
                     <h3 className="font-semibold">Choose your plan</h3>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/50">
-                      Visual only
+                    <span className="rounded-full border border-green-400/20 bg-green-500/10 px-3 py-1 text-xs font-semibold text-green-100">
+                      Selected: Free
                     </span>
                   </div>
 
@@ -200,11 +281,24 @@ export default function ClientSignupPage() {
                   </div>
                 </div>
 
+                {signupError && (
+                  <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                    {signupError}
+                  </div>
+                )}
+
+                {signupMessage && (
+                  <div className="rounded-2xl border border-green-400/20 bg-green-500/10 px-4 py-3 text-sm text-green-100">
+                    {signupMessage}
+                  </div>
+                )}
+
                 <button
                   type="submit"
+                  disabled={submitting}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35"
                 >
-                  Create Account
+                  {submitting ? "Creating account..." : "Create Account"}
                   <ArrowRight className="h-4 w-4" />
                 </button>
               </form>
