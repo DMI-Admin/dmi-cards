@@ -1,6 +1,7 @@
 import CardRenderer from "@/components/CardRenderer";
+import type { CardRendererTemplate } from "@/components/CardRenderer";
 import { supabase } from "@/lib/supabase";
-import { normalizeTemplate } from "@/lib/templates";
+import { normalizeColourPalette, normalizeTemplate } from "@/lib/templates";
 
 type PublicCardPageProps = {
   params: Promise<{
@@ -57,13 +58,93 @@ export default async function PublicCardPage({ params }: PublicCardPageProps) {
         <div className="w-full">
           <CardRenderer
             mode="public"
-            template={normalizeTemplate(template)}
+            template={buildPublicTemplate(template, card)}
             cardData={card}
           />
         </div>
       </div>
     </main>
   );
+}
+
+type PublicCardRow = {
+  selected_colour?: string | null;
+  hidden_fields?: string[] | null;
+  field_order?: Partial<Record<"personal" | "company" | "contact" | "social", string[]>> | null;
+};
+
+function buildPublicTemplate(
+  template: Parameters<typeof normalizeTemplate>[0],
+  card: PublicCardRow
+): CardRendererTemplate {
+  const normalizedTemplate = normalizeTemplate(template);
+  const hiddenFields = new Set(
+    Array.isArray(card.hidden_fields) ? card.hidden_fields : []
+  );
+  const fieldOrder = normalizeFieldOrder(card.field_order, normalizedTemplate);
+  const allowedFields = (normalizedTemplate.allowed_fields || []).filter(
+    (field) => !hiddenFields.has(field)
+  );
+  const rendererFieldOrder = {
+    personal: fieldOrder.personal.filter((field) => !hiddenFields.has(field)),
+    company: fieldOrder.company.filter((field) => !hiddenFields.has(field)),
+    contact: fieldOrder.contact.filter((field) => !hiddenFields.has(field)),
+    social: fieldOrder.social.filter((field) => !hiddenFields.has(field)),
+  };
+  const selectedColour =
+    card.selected_colour ||
+    normalizeColourPalette(normalizedTemplate.free_colour_palette)[0] ||
+    "#AC00FF";
+
+  return {
+    ...normalizedTemplate,
+    allowed_fields: allowedFields,
+    custom_fields: rendererFieldOrder,
+    free_colour_palette:
+      normalizedTemplate.access_level === "free"
+        ? [selectedColour]
+        : normalizedTemplate.free_colour_palette,
+    show_personal_section:
+      (normalizedTemplate.show_personal_section ?? true) &&
+      rendererFieldOrder.personal.length > 0,
+    show_company_section:
+      (normalizedTemplate.show_company_section ?? true) &&
+      rendererFieldOrder.company.length > 0,
+    show_contact_section:
+      (normalizedTemplate.show_contact_section ?? true) &&
+      rendererFieldOrder.contact.length > 0,
+    show_social_section:
+      (normalizedTemplate.show_social_section ?? false) &&
+      rendererFieldOrder.social.length > 0,
+  };
+}
+
+function normalizeFieldOrder(
+  fieldOrder: PublicCardRow["field_order"],
+  template: CardRendererTemplate
+) {
+  return {
+    personal: fieldOrder?.personal?.length
+      ? fieldOrder.personal
+      : template.custom_fields?.personal || ["job_title", "bio", "department"],
+    company: fieldOrder?.company?.length
+      ? fieldOrder.company
+      : template.custom_fields?.company || ["company_name", "website", "address"],
+    contact: fieldOrder?.contact?.length
+      ? fieldOrder.contact
+      : template.custom_fields?.contact || ["email", "phone", "website"],
+    social: fieldOrder?.social?.length
+      ? fieldOrder.social
+      : template.custom_fields?.social || [
+          "whatsapp",
+          "linkedin",
+          "instagram",
+          "facebook",
+          "youtube",
+          "booking_link",
+          "custom_url",
+        ],
+  };
 }
 
 function PublicMessage({

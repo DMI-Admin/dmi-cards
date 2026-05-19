@@ -788,9 +788,19 @@ export default function ClientCardsPage() {
     setSaveMessage("");
     setSaveStatus("saving");
 
-    const slug =
+    const baseSlug = slugify(
       draftCard.slug ||
-      slugify(draftCard.full_name || draftCard.card_name || "digital-card");
+        draftCard.full_name ||
+        draftCard.card_name ||
+        "digital-card"
+    );
+    const slug =
+      authUserId && databaseReady
+        ? await ensureUniqueCardSlug(
+            baseSlug,
+            draftCard.id.startsWith("card-") ? null : draftCard.id
+          )
+        : baseSlug;
 
     const nextCard: ClientCard = {
       ...draftCard,
@@ -2762,6 +2772,36 @@ async function writeCardPayload({
   }
 
   return { data: result.data as SupabaseCardRow, error: null };
+}
+
+async function ensureUniqueCardSlug(baseSlug: string, currentCardId: string | null) {
+  const cleanBase = slugify(baseSlug) || "digital-card";
+  let candidate = cleanBase;
+  let suffix = 2;
+
+  while (await cardSlugExists(candidate, currentCardId)) {
+    candidate = `${cleanBase}-${suffix}`;
+    suffix += 1;
+  }
+
+  return candidate;
+}
+
+async function cardSlugExists(slug: string, currentCardId: string | null) {
+  let query = supabase.from("cards").select("id").eq("slug", slug).limit(1);
+
+  if (currentCardId) {
+    query = query.neq("id", currentCardId);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    console.error("Slug uniqueness check failed", error);
+    return true;
+  }
+
+  return Boolean(data);
 }
 
 function missingCardColumnFromError(error: { message?: string } | null) {

@@ -232,3 +232,6 @@ set
   is_published = case when status = 'published' or is_published then true else false end
 where status is null
    or status not in ('draft', 'published');
+
+create unique index if not exists cards_slug_unique_idx
+  on public.cards (slug);
