@@ -550,7 +550,16 @@ export default function ClientCardsPage() {
 
       if (ignore) return;
 
+      console.log("[DMI templates] fetched templates", nextTemplates);
+
       const nextDefaultTemplate = defaultTemplateForPlan(nextTemplates);
+      console.log(
+        "[DMI templates] filtered free templates",
+        normalizeAdminTemplates(nextTemplates).filter(
+          (template) => template.access_level === "free"
+        )
+      );
+      console.log("[DMI templates] selected template", nextDefaultTemplate);
       const nextFallbackColour =
         normalizeColourPalette(nextDefaultTemplate?.free_colour_palette)[0] ||
         fallbackColour;
@@ -691,6 +700,8 @@ export default function ClientCardsPage() {
       setLimitMessage("Upgrade to Individual Pro to use paid templates.");
       return;
     }
+
+    console.log("[DMI templates] selected template", template);
 
     const nextFieldOrder = getInitialFieldOrder(template);
     setLimitMessage("");
@@ -2255,6 +2266,10 @@ function normalizeAdminTemplates(templates: AdminTemplate[]) {
     .map((template) => ({
       ...template,
       access_level: template.access_level === "free" ? "free" : "paid",
+      layout_type:
+        template.access_level === "free"
+          ? "classic_free"
+          : template.layout_type || "premium_classic",
       colour_palette: normalizeColourPalette(template.colour_palette),
       free_colour_palette: normalizeColourPalette(template.free_colour_palette),
     }));
@@ -2272,19 +2287,14 @@ function visibleTemplatesForPlan(templates: AdminTemplate[]) {
 
 function defaultTemplateForPlan(templates: AdminTemplate[]) {
   const published = normalizeAdminTemplates(templates);
-  const freeClassic =
-    published.find(
-      (template) =>
-        template.access_level === "free" &&
-        (template.layout_type === "classic_free" ||
-          template.layout_type === "classic")
-    ) || null;
+  const freeTemplate =
+    published.find((template) => template.access_level === "free") || null;
 
-  if (currentPlan === "free") return freeClassic;
+  if (currentPlan === "free") return freeTemplate;
 
   return (
     published.find((template) => canSelectTemplate(template)) ||
-    freeClassic ||
+    freeTemplate ||
     null
   );
 }

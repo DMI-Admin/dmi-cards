@@ -50,7 +50,7 @@ export async function getPublishedTemplates() {
   const statusAwareResult = await supabase
     .from("templates")
     .select("*")
-    .or("status.eq.published,is_published.eq.true")
+    .eq("status", "published")
     .order("created_at", { ascending: false });
   let data = statusAwareResult.data;
   let error = statusAwareResult.error;
@@ -81,7 +81,9 @@ export async function getPublishedTemplates() {
 export async function getClientVisibleTemplates(plan: TemplatePlan) {
   const published = await getPublishedTemplates();
 
-  if (plan === "free") return published;
+  if (plan === "free") {
+    return published.filter((template) => template.access_level === "free");
+  }
 
   return published.filter(
     (template) =>
@@ -182,14 +184,16 @@ export function normalizeTemplate(template: SharedTemplate | TemplatePayload): S
   const gradientEnabled =
     template.gradient_enabled ?? template.supports_gradient ?? false;
   const defaultFont = template.default_font || template.font_family || null;
+  const accessLevel = template.access_level === "paid" ? "paid" : "free";
 
   return {
     ...template,
     id: template.id || "",
     name: template.name,
     slug: template.slug || slugify(template.name),
-    access_level: template.access_level === "paid" ? "paid" : "free",
-    layout_type: template.layout_type || "classic_free",
+    access_level: accessLevel,
+    layout_type:
+      accessLevel === "free" ? "classic_free" : template.layout_type || "premium_classic",
     status: isPublished ? "published" : "draft",
     is_published: isPublished,
     requires_banner: requiresBanner,
