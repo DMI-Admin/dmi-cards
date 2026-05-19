@@ -16,6 +16,7 @@ import {
 import { FaApple, FaMicrosoft } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
 import { supabase } from "@/lib/supabase";
+import { getOrCreateClientProfile } from "@/lib/profiles";
 
 const plans = [
   {
@@ -89,16 +90,17 @@ export default function ClientSignupPage() {
     }
 
     if (data.user && data.session) {
-      const { error: profileError } = await supabase.from("profiles").upsert({
-        id: data.user.id,
-        full_name: fullName.trim(),
-        email: email.trim(),
-        plan: "free",
-        account_type: "individual",
-      });
-
-      if (profileError) {
-        setSignupError(profileError.message);
+      try {
+        const profile = await getOrCreateClientProfile(data.user);
+        console.log("[DMI auth] signed in user", data.user);
+        console.log("[DMI auth] loaded profile", profile);
+        console.log("[DMI auth] mock fallback used", false);
+      } catch (profileError) {
+        setSignupError(
+          profileError instanceof Error
+            ? profileError.message
+            : "Could not create your profile."
+        );
         setSubmitting(false);
         return;
       }

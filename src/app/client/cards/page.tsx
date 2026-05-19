@@ -37,6 +37,7 @@ import {
   normalizeColourPalette,
   type SharedTemplate,
 } from "@/lib/templates";
+import { getOrCreateClientProfile } from "@/lib/profiles";
 import { useRouter } from "next/navigation";
 
 const currentPlan = "free" as
@@ -580,6 +581,15 @@ export default function ClientCardsPage() {
       }
 
       setAuthUserId(user.id);
+      console.log("[DMI auth] signed in user", user);
+
+      try {
+        const profile = await getOrCreateClientProfile(user);
+        console.log("[DMI auth] loaded profile", profile);
+        console.log("[DMI auth] mock fallback used", false);
+      } catch (profileError) {
+        console.error("Client profile load failed", profileError);
+      }
 
       const { data, error } = await supabase
         .from("cards")
@@ -604,6 +614,7 @@ export default function ClientCardsPage() {
       const savedCards = (data || []).map((row) =>
         mapSupabaseCard(row, nextTemplates, nextDefaultTemplate)
       );
+      console.log("[DMI auth] loaded cards", savedCards);
       setCards(savedCards);
       setSelectedCardId(savedCards[0]?.id || "");
       setLoadingCards(false);

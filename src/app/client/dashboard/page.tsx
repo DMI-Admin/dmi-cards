@@ -27,6 +27,10 @@ import {
   normalizeColourPalette,
   type SharedTemplate,
 } from "@/lib/templates";
+import {
+  getOrCreateClientProfile,
+  type ClientProfile,
+} from "@/lib/profiles";
 
 const currentPlan = "free" as "free" | "individual_pro" | "business" | "enterprise";
 const isPaid = currentPlan !== "free";
@@ -107,6 +111,7 @@ const analyticsStats = [
 
 export default function ClientDashboardPage() {
   const [templates, setTemplates] = useState<SharedTemplate[]>([]);
+  const [profile, setProfile] = useState<ClientProfile | null>(null);
   const [latestCard, setLatestCard] = useState<(CardRendererData & {
     id?: string;
     template_id?: string | null;
@@ -139,6 +144,15 @@ export default function ClientDashboardPage() {
 
         if (!user) return;
 
+        console.log("[DMI auth] signed in user", user);
+        const loadedProfile = await getOrCreateClientProfile(user);
+
+        if (ignore) return;
+
+        console.log("[DMI auth] loaded profile", loadedProfile);
+        console.log("[DMI auth] mock fallback used", false);
+        setProfile(loadedProfile);
+
         const { data } = await supabase
           .from("cards")
           .select("*")
@@ -150,6 +164,7 @@ export default function ClientDashboardPage() {
         if (!ignore && data) {
           setLatestCard(data);
         }
+        console.log("[DMI auth] loaded cards", data ? [data] : []);
       } catch (error) {
         console.error("Dashboard preview load failed", error);
       } finally {
@@ -207,7 +222,7 @@ export default function ClientDashboardPage() {
 
         <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_390px]">
           <div className="space-y-6">
-            <WelcomePlanCard />
+            <WelcomePlanCard profile={profile} />
 
             <div className="grid gap-5 lg:grid-cols-2">
               <PublicUrlCard publicUrl={publicUrl} published={Boolean(latestCard?.is_published || latestCard?.status === "published")} />
@@ -275,7 +290,10 @@ export default function ClientDashboardPage() {
   );
 }
 
-function WelcomePlanCard() {
+function WelcomePlanCard({ profile }: { profile: ClientProfile | null }) {
+  const displayName = profile?.full_name?.trim() || profile?.email || "there";
+  const displayEmail = profile?.email || "Signed in with Supabase";
+
   return (
     <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#101935] to-[#AC00FF]/15 p-6 shadow-2xl shadow-purple-950/10">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -284,7 +302,10 @@ function WelcomePlanCard() {
             <Sparkles className="h-3.5 w-3.5 text-purple-200" />
             Free plan
           </div>
-          <h2 className="mt-5 text-3xl font-semibold">Welcome back</h2>
+          <h2 className="mt-5 text-3xl font-semibold">
+            Welcome back, {displayName}
+          </h2>
+          <p className="mt-2 text-sm text-white/40">{displayEmail}</p>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-white/55">
             Your free digital card shell is ready. Upgrade to Individual Pro to
             unlock contacts, wallet, tap sharing, analytics, and integrations.

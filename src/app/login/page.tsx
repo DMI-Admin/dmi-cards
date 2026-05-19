@@ -8,6 +8,7 @@ import { ArrowRight, LockKeyhole, Mail, Sparkles } from "lucide-react";
 import { FaApple, FaMicrosoft } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
 import { supabase } from "@/lib/supabase";
+import { getOrCreateClientProfile } from "@/lib/profiles";
 
 export default function ClientLoginPage() {
   const router = useRouter();
@@ -28,6 +29,32 @@ export default function ClientLoginPage() {
 
     if (error) {
       setLoginError(error.message);
+      setSubmitting(false);
+      return;
+    }
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setLoginError(userError?.message || "Could not load signed-in user.");
+      setSubmitting(false);
+      return;
+    }
+
+    try {
+      const profile = await getOrCreateClientProfile(user);
+      console.log("[DMI auth] signed in user", user);
+      console.log("[DMI auth] loaded profile", profile);
+      console.log("[DMI auth] mock fallback used", false);
+    } catch (profileError) {
+      setLoginError(
+        profileError instanceof Error
+          ? profileError.message
+          : "Could not load your profile."
+      );
       setSubmitting(false);
       return;
     }

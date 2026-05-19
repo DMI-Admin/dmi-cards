@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { getOrCreateClientProfile } from "@/lib/profiles";
 
 export default function ClientPortalLayout({
   children,
@@ -26,6 +27,15 @@ export default function ClientPortalLayout({
       if (!user) {
         router.replace(`/login?next=${encodeURIComponent(pathname)}`);
         return;
+      }
+
+      try {
+        const profile = await getOrCreateClientProfile(user);
+        console.log("[DMI auth] signed in user", user);
+        console.log("[DMI auth] loaded profile", profile);
+        console.log("[DMI auth] mock fallback used", false);
+      } catch (error) {
+        console.error("Client profile load failed", error);
       }
 
       setCheckingSession(false);
