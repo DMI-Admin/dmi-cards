@@ -81,9 +81,7 @@ export async function getPublishedTemplates() {
 export async function getClientVisibleTemplates(plan: TemplatePlan) {
   const published = await getPublishedTemplates();
 
-  if (plan === "free") {
-    return published.filter((template) => template.access_level === "free");
-  }
+  if (plan === "free") return published;
 
   return published.filter(
     (template) =>

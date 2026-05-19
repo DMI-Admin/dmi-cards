@@ -957,7 +957,7 @@ export default function ClientCardsPage() {
         </div>
 
         {!currentDefaultTemplate ? (
-          <NoTemplateState />
+          <NoTemplateState templates={visibleTemplates} />
         ) : (
           <>
             {limitMessage && (
@@ -2678,15 +2678,33 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-function NoTemplateState() {
+function NoTemplateState({ templates }: { templates: AdminTemplate[] }) {
+  const paidTemplates = templates.filter((template) => isPaidTemplate(template));
+
   return (
     <div className="rounded-3xl border border-white/10 bg-white/5 p-10 text-center">
       <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-3xl bg-white/10 text-white/55">
         <Lock className="h-7 w-7" />
       </div>
       <h2 className="mt-6 text-2xl font-semibold">
-        No free template is currently available. Please contact DMI Cards support.
+        No published free template exists. Publish a Free template in Admin.
       </h2>
+      {paidTemplates.length > 0 && (
+        <div className="mx-auto mt-6 flex max-w-2xl flex-wrap justify-center gap-3">
+          {paidTemplates.map((template) => (
+            <div
+              key={template.id}
+              className="inline-flex items-center gap-2 rounded-2xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 px-4 py-2 text-sm text-purple-100"
+            >
+              <Lock className="h-4 w-4" />
+              <span>{template.name}</span>
+              <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/50">
+                Paid
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

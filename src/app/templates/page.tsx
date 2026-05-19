@@ -1705,14 +1705,14 @@ function sanitizeCustomFields(customFields: CustomFields): CustomFields {
 }
 
 function AccessBadge({ level }: { level: string }) {
-  const displayLevel = level === "free" ? "free" : "paid";
+  const displayLevel = level === "free" ? "Free" : "Paid";
   const styles =
-    displayLevel === "free"
+    displayLevel === "Free"
       ? "bg-white/10 text-white/55"
       : "bg-yellow-500/20 text-yellow-300";
 
   return (
-    <span className={`rounded-full px-3 py-1 text-xs capitalize ${styles}`}>
+    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${styles}`}>
       {displayLevel}
     </span>
   );
