@@ -24,7 +24,6 @@ type TemplatePayload = Partial<SharedTemplate> & {
 };
 
 const templateColumnSupport = {
-  status: null as boolean | null,
   requires_banner: null as boolean | null,
   gradient_enabled: null as boolean | null,
   supports_company_banner: null as boolean | null,
@@ -47,25 +46,11 @@ export async function getAdminTemplates() {
 }
 
 export async function getPublishedTemplates() {
-  const statusAwareResult = await supabase
+  const { data, error } = await supabase
     .from("templates")
     .select("*")
     .eq("status", "published")
     .order("created_at", { ascending: false });
-  let data = statusAwareResult.data;
-  let error = statusAwareResult.error;
-
-  if (error && isMissingColumnError(error, "status")) {
-    templateColumnSupport.status = false;
-    const isPublishedResult = await supabase
-      .from("templates")
-      .select("*")
-      .eq("is_published", true)
-      .order("created_at", { ascending: false });
-
-    data = isPublishedResult.data;
-    error = isPublishedResult.error;
-  }
 
   if (error) {
     throw new Error(`Could not load published templates from Supabase: ${error.message}`);
@@ -247,10 +232,6 @@ function stripLocalOnlyFields(template: SharedTemplate) {
   void created_at;
   void updated_at;
 
-  if (templateColumnSupport.status === false) {
-    delete databasePayload.status;
-  }
-
   if (templateColumnSupport.requires_banner === false) {
     delete databasePayload.requires_banner;
   }
@@ -323,10 +304,6 @@ function missingColumnFromError(error: { message: string } | null) {
   const message = error?.message || "";
   const match = message.match(/'([^']+)' column of 'templates'/);
   return match?.[1] || null;
-}
-
-function isMissingColumnError(error: { message: string } | null, column: string) {
-  return missingColumnFromError(error) === column;
 }
 
 function normalizeTemplateColourPalette(

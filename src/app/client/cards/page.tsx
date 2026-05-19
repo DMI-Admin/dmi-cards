@@ -2262,7 +2262,7 @@ async function loadPublishedTemplates(): Promise<AdminTemplate[]> {
 
 function normalizeAdminTemplates(templates: AdminTemplate[]) {
   return templates
-    .filter((template) => template.is_published)
+    .filter((template) => template.status === "published")
     .map((template) => ({
       ...template,
       access_level: template.access_level === "free" ? "free" : "paid",

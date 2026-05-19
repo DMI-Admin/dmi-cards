@@ -36,17 +36,51 @@ create table if not exists public.templates (
 );
 
 alter table public.templates
+  add column if not exists access_level text not null default 'free',
   add column if not exists status text not null default 'draft'
     check (status in ('draft', 'published')),
+  add column if not exists is_published boolean not null default false,
   add column if not exists colour_palette text[],
+  add column if not exists free_colour_palette text[],
   add column if not exists updated_at timestamptz not null default now();
+
+alter table public.templates
+  drop constraint if exists templates_access_level_check;
+
+alter table public.templates
+  drop constraint if exists templates_status_check;
+
+alter table public.templates
+  add constraint templates_access_level_check
+  check (access_level in ('free', 'paid'));
+
+alter table public.templates
+  add constraint templates_status_check
+  check (status in ('draft', 'published'));
 
 update public.templates
 set
-  status = case when is_published then 'published' else 'draft' end,
-  colour_palette = coalesce(colour_palette, free_colour_palette)
-where status is null
-   or colour_palette is null;
+  access_level = case when access_level = 'paid' then 'paid' else 'free' end,
+  status = case when status = 'published' or is_published then 'published' else 'draft' end,
+  is_published = case when status = 'published' or is_published then true else false end,
+  colour_palette = coalesce(colour_palette, free_colour_palette),
+  free_colour_palette = coalesce(free_colour_palette, colour_palette)
+where access_level is null
+   or access_level not in ('free', 'paid')
+   or status is null
+   or status not in ('draft', 'published')
+   or colour_palette is null
+   or free_colour_palette is null;
+
+update public.templates
+set
+  access_level = 'free',
+  status = 'published',
+  is_published = true,
+  layout_type = 'classic_free'
+where upper(name) = 'CLASSIC'
+   or slug = 'classic'
+   or slug = 'free-classic';
 
 create index if not exists templates_published_access_idx
   on public.templates (is_published, access_level);
