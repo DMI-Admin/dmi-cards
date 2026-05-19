@@ -204,3 +204,31 @@ insert into public.templates (
   0
 )
 on conflict (slug) do nothing;
+
+alter table if exists public.cards
+  add column if not exists department text,
+  add column if not exists bio text,
+  add column if not exists profile_image_url text,
+  add column if not exists company_logo_url text,
+  add column if not exists company_banner_url text,
+  add column if not exists selected_colour text,
+  add column if not exists hidden_fields text[],
+  add column if not exists field_order jsonb,
+  add column if not exists lead_capture_settings jsonb,
+  add column if not exists custom_fields jsonb not null default '{}'::jsonb,
+  add column if not exists status text not null default 'draft',
+  add column if not exists is_published boolean not null default false;
+
+alter table if exists public.cards
+  drop constraint if exists cards_status_check;
+
+alter table if exists public.cards
+  add constraint cards_status_check
+  check (status in ('draft', 'published'));
+
+update public.cards
+set
+  status = case when status = 'published' or is_published then 'published' else 'draft' end,
+  is_published = case when status = 'published' or is_published then true else false end
+where status is null
+   or status not in ('draft', 'published');

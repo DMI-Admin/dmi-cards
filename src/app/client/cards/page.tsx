@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   BadgePlus,
@@ -16,6 +16,7 @@ import {
   Smartphone,
   Tablet,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import CardRenderer, {
@@ -152,6 +153,9 @@ type SupabaseCardRow = CardRendererData & {
   status?: string | null;
   is_published?: boolean | null;
   slug?: string | null;
+  profile_image_url?: string | null;
+  company_logo_url?: string | null;
+  company_banner_url?: string | null;
   selected_colour?: string | null;
   hidden_fields?: string[] | null;
   field_order?: FieldOrder | null;
@@ -894,19 +898,29 @@ export default function ClientCardsPage() {
     return mapSupabaseCard(data, adminTemplates, currentDefaultTemplate);
   }
 
-  function togglePublish(card: ClientCard) {
-    setCards((currentCards) =>
-      currentCards.map((currentCard) =>
-        currentCard.id === card.id
-          ? {
-              ...currentCard,
-              status:
-                currentCard.status === "published" ? "unpublished" : "published",
-              last_updated: "Just now",
-            }
-          : currentCard
-      )
-    );
+  async function togglePublish(card: ClientCard) {
+    const nextStatus: CardStatus =
+      card.status === "published" ? "unpublished" : "published";
+    const savedCard = await saveCardToSupabase({
+      card: {
+        ...card,
+        status: nextStatus,
+        last_updated: "Just now",
+      },
+      userId: authUserId,
+      databaseReady,
+      mode: card.id.startsWith("card-") ? "create" : "edit",
+    });
+
+    if (!savedCard) return;
+
+    setCards((currentCards) => {
+      const nextCards = currentCards.map((currentCard) =>
+        currentCard.id === card.id ? savedCard : currentCard
+      );
+      writeLocalCards(nextCards);
+      return nextCards;
+    });
   }
 
   function deleteCard(card: ClientCard) {
@@ -923,6 +937,10 @@ export default function ClientCardsPage() {
 
   async function copyLink(card: ClientCard) {
     await navigator.clipboard?.writeText(card.public_url);
+  }
+
+  function viewPublicPage(card: ClientCard) {
+    window.open(card.public_url, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -956,7 +974,11 @@ export default function ClientCardsPage() {
           </button>
         </div>
 
-        {!currentDefaultTemplate ? (
+        {loadingCards ? (
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white/50">
+            Loading your templates and cards...
+          </div>
+        ) : !currentDefaultTemplate ? (
           <NoTemplateState templates={visibleTemplates} />
         ) : (
           <>
@@ -1004,11 +1026,7 @@ export default function ClientCardsPage() {
                   />
                 </div>
 
-                {loadingCards ? (
-                  <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white/50">
-                    Loading your saved cards...
-                  </div>
-                ) : cards.length === 0 ? (
+                {cards.length === 0 ? (
                   <EmptyState onCreate={openCreatePanel} />
                 ) : (
                   <CardList
@@ -1018,6 +1036,7 @@ export default function ClientCardsPage() {
                     onEdit={openEditPanel}
                     onTogglePublish={togglePublish}
                     onCopyLink={copyLink}
+                    onViewPublicPage={viewPublicPage}
                     onDelete={deleteCard}
                   />
                 )}
@@ -1208,6 +1227,7 @@ function CardList({
   onEdit,
   onTogglePublish,
   onCopyLink,
+  onViewPublicPage,
   onDelete,
 }: {
   cards: ClientCard[];
@@ -1216,6 +1236,7 @@ function CardList({
   onEdit: (card: ClientCard) => void;
   onTogglePublish: (card: ClientCard) => void;
   onCopyLink: (card: ClientCard) => void;
+  onViewPublicPage: (card: ClientCard) => void;
   onDelete: (card: ClientCard) => void;
 }) {
   return (
@@ -1286,7 +1307,7 @@ function CardList({
                   <ActionButton
                     label="View Public Page"
                     icon={ExternalLink}
-                    onClick={() => onSelect(card.id)}
+                    onClick={() => onViewPublicPage(card)}
                   />
                   <ActionButton
                     label="Copy Link"
@@ -1668,7 +1689,7 @@ function CustomiseStep({
             Card Name
           </span>
           <input
-            value={draftCard.card_name || "Primary Digital Card"}
+            value={draftCard.card_name}
             onChange={(event) => onUpdate("card_name", event.target.value)}
             placeholder="e.g. Primary Digital Card"
             className="w-full rounded-2xl border border-white/10 bg-[#070B1A]/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60"
@@ -1859,7 +1880,11 @@ function MainProfileSection({
       </p>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[220px_1fr]">
-        <ProfilePictureUpload />
+        <ProfilePictureUpload
+          value={draftCard.profile_image_url || ""}
+          fullName={draftCard.full_name}
+          onChange={(value) => onUpdate("profile_image_url", value)}
+        />
         <TextField
           label="Full name"
           value={draftCard.full_name}
@@ -1870,21 +1895,64 @@ function MainProfileSection({
   );
 }
 
-function ProfilePictureUpload() {
+function ProfilePictureUpload({
+  value,
+  fullName,
+  onChange,
+}: {
+  value: string;
+  fullName?: string | null;
+  onChange: (value: string) => void;
+}) {
+  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    const resizedImage = await resizeImageToSquare(file);
+    onChange(resizedImage);
+  }
+
   return (
     <div>
       <p className="mb-3 text-sm font-medium text-white/55">Profile Picture</p>
-      <button
-        type="button"
-        className="group flex w-full flex-col items-center rounded-3xl border border-white/10 bg-[#070B1A]/55 p-5 text-center transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10"
-      >
-        <span className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-white/20 bg-gradient-to-br from-[#AC00FF]/70 to-[#101935] text-purple-100 shadow-lg shadow-purple-950/30 transition group-hover:border-white/40">
-          <ImagePlus className="h-8 w-8" />
-        </span>
+      <label className="group flex w-full cursor-pointer flex-col items-center rounded-3xl border border-white/10 bg-[#070B1A]/55 p-5 text-center transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10">
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handleFileChange}
+          className="sr-only"
+        />
+        {value ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={value}
+            alt={fullName ? `${fullName} profile` : "Profile"}
+            className="h-24 w-24 rounded-full border-2 border-white/20 object-cover shadow-lg shadow-purple-950/30 transition group-hover:border-white/40"
+          />
+        ) : (
+          <span className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-white/20 bg-gradient-to-br from-[#AC00FF]/70 to-[#101935] text-purple-100 shadow-lg shadow-purple-950/30 transition group-hover:border-white/40">
+            <ImagePlus className="h-8 w-8" />
+          </span>
+        )}
         <span className="mt-4 text-sm font-semibold text-white">
-          Upload profile photo
+          {value ? "Change profile photo" : "Upload profile photo"}
         </span>
-      </button>
+        <span className="mt-2 inline-flex items-center gap-1 text-xs text-white/40">
+          <Upload className="h-3.5 w-3.5" />
+          Cropped square for preview
+        </span>
+      </label>
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-white/60 transition hover:bg-white/10 hover:text-white"
+        >
+          Remove photo
+        </button>
+      )}
     </div>
   );
 }
@@ -2446,15 +2514,6 @@ function buildSupabaseCardPayload(
 ) {
   const isPublished = card.status === "published";
 
-  /*
-    Client Portal database save currently uses only cards columns already used
-    elsewhere in this app, plus user_id after a user_id query succeeds.
-
-    To persist the full editor in Supabase later, the cards table should include:
-    user_id, bio, department, profile_image_url, company_logo_url,
-    company_banner_url, selected_colour, hidden_fields, field_order,
-    lead_capture_settings, and custom_fields.
-  */
   return {
     user_id: userId,
     template_id: card.template_id || null,
@@ -2462,6 +2521,8 @@ function buildSupabaseCardPayload(
     slug: card.slug || slugify(card.full_name || card.card_name || "digital-card"),
     full_name: card.full_name || "",
     job_title: card.job_title || "",
+    department: card.department || "",
+    bio: card.bio || "",
     company_name: card.company_name || "",
     email: card.email || "",
     phone: card.phone || "",
@@ -2474,6 +2535,14 @@ function buildSupabaseCardPayload(
     youtube: card.youtube || "",
     booking_link: card.booking_link || "",
     custom_url: card.custom_url || "",
+    profile_image_url: card.profile_image_url || "",
+    company_logo_url: card.company_logo_url || "",
+    company_banner_url: card.company_banner_url || "",
+    selected_colour: card.selected_colour || fallbackColour,
+    hidden_fields: card.hidden_fields || [],
+    field_order: card.field_order || getInitialFieldOrder(null),
+    lead_capture_settings: card.lead_capture_settings || defaultLeadCaptureSettings,
+    custom_fields: card.custom_fields || {},
     status: isPublished ? "published" : "draft",
     is_published: isPublished,
   };
@@ -2488,20 +2557,95 @@ async function writeCardPayload({
   payload: Record<string, unknown>;
   shouldUpdate: boolean;
 }) {
-  const result = shouldUpdate
+  let nextPayload = { ...payload };
+  let result = shouldUpdate
     ? await supabase
         .from("cards")
-        .update(payload)
+        .update(nextPayload)
         .eq("id", cardId)
         .select("*")
         .single()
-    : await supabase.from("cards").insert([payload]).select("*").single();
+    : await supabase.from("cards").insert([nextPayload]).select("*").single();
+
+  while (result.error) {
+    const missingColumn = missingCardColumnFromError(result.error);
+
+    if (!missingColumn || !(missingColumn in nextPayload)) {
+      break;
+    }
+
+    const { [missingColumn]: _removed, ...reducedPayload } = nextPayload;
+    void _removed;
+    nextPayload = reducedPayload;
+    result = shouldUpdate
+      ? await supabase
+          .from("cards")
+          .update(nextPayload)
+          .eq("id", cardId)
+          .select("*")
+          .single()
+      : await supabase.from("cards").insert([nextPayload]).select("*").single();
+  }
 
   if (result.error) {
     return { data: null, error: result.error };
   }
 
   return { data: result.data as SupabaseCardRow, error: null };
+}
+
+function missingCardColumnFromError(error: { message?: string } | null) {
+  const message = error?.message || "";
+  const match = message.match(/'([^']+)' column of 'cards'/);
+  return match?.[1] || null;
+}
+
+function resizeImageToSquare(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(new Error("Could not read image file."));
+    reader.onload = () => {
+      const image = new Image();
+
+      image.onerror = () => reject(new Error("Could not load image file."));
+      image.onload = () => {
+        const size = 512;
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+
+        if (!context) {
+          reject(new Error("Image resizing is not supported in this browser."));
+          return;
+        }
+
+        canvas.width = size;
+        canvas.height = size;
+
+        const sourceSize = Math.min(image.width, image.height);
+        const sourceX = (image.width - sourceSize) / 2;
+        const sourceY = (image.height - sourceSize) / 2;
+
+        context.drawImage(
+          image,
+          sourceX,
+          sourceY,
+          sourceSize,
+          sourceSize,
+          0,
+          0,
+          size,
+          size
+        );
+
+        resolve(canvas.toDataURL("image/jpeg", 0.86));
+      };
+
+      image.src = String(reader.result || "");
+    };
+
+    reader.readAsDataURL(file);
+  });
 }
 
 function device(

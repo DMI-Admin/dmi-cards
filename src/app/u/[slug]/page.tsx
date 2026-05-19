@@ -1,5 +1,6 @@
 import CardRenderer from "@/components/CardRenderer";
 import { supabase } from "@/lib/supabase";
+import { normalizeTemplate } from "@/lib/templates";
 
 type PublicCardPageProps = {
   params: Promise<{
@@ -25,7 +26,7 @@ export default async function PublicCardPage({ params }: PublicCardPageProps) {
     );
   }
 
-  if (!card.is_published) {
+  if (!(card.status === "published" || card.is_published)) {
     return (
       <PublicMessage
         title="This card is not currently published."
@@ -38,7 +39,7 @@ export default async function PublicCardPage({ params }: PublicCardPageProps) {
     .from("templates")
     .select("*")
     .eq("id", card.template_id)
-    .eq("is_published", true)
+    .eq("status", "published")
     .maybeSingle();
 
   if (!template) {
@@ -56,7 +57,7 @@ export default async function PublicCardPage({ params }: PublicCardPageProps) {
         <div className="w-full">
           <CardRenderer
             mode="public"
-            template={template}
+            template={normalizeTemplate(template)}
             cardData={card}
           />
         </div>

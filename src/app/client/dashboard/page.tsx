@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
 import {
   ContactRound,
   CreditCard,
@@ -18,9 +21,16 @@ import CardRenderer, {
   type CardRendererTemplate,
 } from "@/components/CardRenderer";
 import ClientSidebar from "@/components/ClientSidebar";
+import { supabase } from "@/lib/supabase";
+import {
+  getClientVisibleTemplates,
+  normalizeColourPalette,
+  type SharedTemplate,
+} from "@/lib/templates";
 
 const currentPlan = "free" as "free" | "individual_pro" | "business" | "enterprise";
 const isPaid = currentPlan !== "free";
+const clientCardsStorageKey = "dmi-client-cards-v1";
 
 const mockTemplate: CardRendererTemplate = {
   access_level: "free",
@@ -108,6 +118,101 @@ const analyticsStats = [
 ];
 
 export default function ClientDashboardPage() {
+  const [templates, setTemplates] = useState<SharedTemplate[]>([]);
+  const [latestCard, setLatestCard] = useState<(CardRendererData & {
+    id?: string;
+    template_id?: string | null;
+    slug?: string | null;
+    card_name?: string | null;
+    selected_colour?: string | null;
+    status?: string | null;
+    is_published?: boolean | null;
+  }) | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(true);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadDashboardPreview() {
+      setLoadingPreview(true);
+
+      try {
+        const loadedTemplates = await getClientVisibleTemplates(currentPlan);
+
+        if (ignore) return;
+
+        setTemplates(loadedTemplates);
+
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (ignore) return;
+
+        if (user) {
+          const { data } = await supabase
+            .from("cards")
+            .select("*")
+            .eq("user_id", user.id)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (!ignore && data) {
+            setLatestCard(data);
+          }
+        } else {
+          const localCard = readLatestLocalCard();
+
+          if (!ignore) {
+            setLatestCard(localCard);
+          }
+        }
+      } catch (error) {
+        console.error("Dashboard preview load failed", error);
+        const localCard = readLatestLocalCard();
+
+        if (!ignore) {
+          setLatestCard(localCard);
+        }
+      } finally {
+        if (!ignore) {
+          setLoadingPreview(false);
+        }
+      }
+    }
+
+    void loadDashboardPreview();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const previewTemplate = useMemo(() => {
+    const selectedTemplate =
+      templates.find((template) => template.id === latestCard?.template_id) ||
+      templates.find((template) => template.access_level === "free") ||
+      null;
+
+    if (!selectedTemplate) return mockTemplate;
+
+    if (selectedTemplate.access_level === "free") {
+      return {
+        ...selectedTemplate,
+        free_colour_palette: [
+          latestCard?.selected_colour ||
+            normalizeColourPalette(selectedTemplate.free_colour_palette)[0] ||
+            "#AC00FF",
+        ],
+      };
+    }
+
+    return selectedTemplate;
+  }, [latestCard?.selected_colour, latestCard?.template_id, templates]);
+  const previewCard = latestCard || mockCardData;
+  const publicUrl = latestCard?.slug ? `/u/${latestCard.slug}` : "/u/your-card-url";
+
   return (
     <main className="flex min-h-screen bg-[#070B1A] text-white">
       <ClientSidebar />
@@ -129,8 +234,8 @@ export default function ClientDashboardPage() {
             <WelcomePlanCard />
 
             <div className="grid gap-5 lg:grid-cols-2">
-              <PublicUrlCard />
-              <QuickActionsCard />
+              <PublicUrlCard publicUrl={publicUrl} published={Boolean(latestCard?.is_published || latestCard?.status === "published")} />
+              <QuickActionsCard publicUrl={publicUrl} />
             </div>
 
             <div className="grid gap-5 lg:grid-cols-3">
@@ -165,7 +270,7 @@ export default function ClientDashboardPage() {
                 <div>
                   <h2 className="text-xl font-semibold">Live Card Preview</h2>
                   <p className="mt-1 text-sm text-white/45">
-                    Mock preview until live data is connected.
+                    {loadingPreview ? "Loading latest saved card." : "Latest saved card preview."}
                   </p>
                 </div>
                 <span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/15 px-3 py-1 text-xs font-semibold text-purple-100">
@@ -175,8 +280,8 @@ export default function ClientDashboardPage() {
 
               <div className="flex justify-center overflow-hidden rounded-[2rem]">
                 <CardRenderer
-                  template={mockTemplate}
-                  cardData={mockCardData}
+                  template={previewTemplate}
+                  cardData={previewCard}
                   mode="preview"
                 />
               </div>
@@ -213,7 +318,13 @@ function WelcomePlanCard() {
   );
 }
 
-function PublicUrlCard() {
+function PublicUrlCard({
+  publicUrl,
+  published,
+}: {
+  publicUrl: string;
+  published: boolean;
+}) {
   return (
     <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
       <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#AC00FF]/15 text-purple-200">
@@ -221,19 +332,21 @@ function PublicUrlCard() {
       </div>
       <h2 className="mt-5 text-xl font-semibold">Public page URL</h2>
       <p className="mt-3 rounded-2xl border border-white/10 bg-[#070B1A]/60 px-4 py-3 text-sm text-white/70">
-        /u/your-card-url
+        {publicUrl}
       </p>
       <p className="mt-3 text-sm text-white/45">
-        Your public link will become active when your card is published.
+        {published
+          ? "Your public link is active."
+          : "Your public link will become active when your card is published."}
       </p>
     </div>
   );
 }
 
-function QuickActionsCard() {
+function QuickActionsCard({ publicUrl }: { publicUrl: string }) {
   const actions = [
-    { label: "Edit card", icon: CreditCard },
-    { label: "Open public page", icon: ExternalLink },
+    { label: "Edit card", icon: CreditCard, href: "/client/cards" },
+    { label: "Open public page", icon: ExternalLink, href: publicUrl },
     { label: "Download QR", icon: QrCode },
   ];
 
@@ -245,19 +358,34 @@ function QuickActionsCard() {
           const Icon = action.icon;
 
           return (
-            <button
+            <a
               key={action.label}
-              type="button"
+              href={action.href || "#"}
+              target={action.href?.startsWith("/u/") ? "_blank" : undefined}
+              rel={action.href?.startsWith("/u/") ? "noreferrer" : undefined}
               className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm font-medium text-white/75 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white"
             >
               <Icon className="h-4 w-4 text-purple-200" />
               {action.label}
-            </button>
+            </a>
           );
         })}
       </div>
     </div>
   );
+}
+
+function readLatestLocalCard() {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const stored = window.localStorage.getItem(clientCardsStorageKey);
+    const parsed = stored ? JSON.parse(stored) : [];
+
+    return Array.isArray(parsed) ? parsed[0] || null : null;
+  } catch {
+    return null;
+  }
 }
 
 function ShortcutCard({
