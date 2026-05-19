@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -49,6 +49,22 @@ export default function ClientSignupPage() {
   const [signupMessage, setSignupMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("[DMI auth] session state", {
+        page: "signup",
+        event,
+        hasSession: Boolean(session),
+        userId: session?.user?.id || null,
+        email: session?.user?.email || null,
+      });
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   async function handleSignup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSignupError("");
@@ -71,6 +87,12 @@ export default function ClientSignupPage() {
 
     setSubmitting(true);
 
+    console.log("[DMI auth] signup request", {
+      email: email.trim(),
+      fullName: fullName.trim(),
+      projectUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    });
+
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
@@ -83,6 +105,31 @@ export default function ClientSignupPage() {
       },
     });
 
+    console.log("[DMI auth] signup result", {
+      error: error ? { name: error.name, message: error.message, status: error.status } : null,
+      hasUser: Boolean(data.user),
+      hasSession: Boolean(data.session),
+      user: data.user
+        ? {
+            id: data.user.id,
+            email: data.user.email,
+            metadata: data.user.user_metadata,
+          }
+        : null,
+    });
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    console.log("[DMI auth] session state", {
+      page: "signup",
+      event: "AFTER_SIGNUP",
+      hasSession: Boolean(session),
+      userId: session?.user?.id || null,
+      email: session?.user?.email || null,
+    });
+
     if (error) {
       setSignupError(error.message);
       setSubmitting(false);
@@ -92,7 +139,14 @@ export default function ClientSignupPage() {
     if (data.user && data.session) {
       try {
         const profile = await getOrCreateClientProfile(data.user);
-        console.log("[DMI auth] signed in user", data.user);
+        console.log("[DMI auth] auth user", {
+          id: data.user.id,
+          email: data.user.email,
+        });
+        console.log("[DMI auth] signed in user", {
+          id: data.user.id,
+          email: data.user.email,
+        });
         console.log("[DMI auth] loaded profile", profile);
         console.log("[DMI auth] mock fallback used", false);
       } catch (profileError) {
@@ -107,7 +161,22 @@ export default function ClientSignupPage() {
     }
 
     if (!data.session) {
-      setSignupMessage("Account created. Please confirm your email, then log in.");
+      console.log("[DMI auth] auth user", data.user
+        ? {
+            id: data.user.id,
+            email: data.user.email,
+          }
+        : null);
+      console.log("[DMI auth] session state", {
+        page: "signup",
+        event: "SIGNED_UP_WITHOUT_SESSION",
+        hasSession: false,
+        userId: data.user?.id || null,
+        email: data.user?.email || email.trim(),
+      });
+      setSignupMessage(
+        "Account created in Supabase Auth. Please confirm your email, then log in."
+      );
       setSubmitting(false);
       return;
     }

@@ -50,7 +50,10 @@ export default function ClientSidebar() {
   const router = useRouter();
 
   async function handleLogout() {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    console.log("[DMI auth] logout result", {
+      error: error ? { name: error.name, message: error.message, status: error.status } : null,
+    });
     router.push("/login");
   }
 

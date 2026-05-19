@@ -19,6 +19,18 @@ export default function ClientPortalLayout({
 
     async function requireSession() {
       const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      console.log("[DMI auth] session state", {
+        page: "client-layout",
+        event: "INITIAL_CHECK",
+        hasSession: Boolean(session),
+        userId: session?.user?.id || null,
+        email: session?.user?.email || null,
+      });
+
+      const {
         data: { user },
       } = await supabase.auth.getUser();
 
@@ -31,7 +43,14 @@ export default function ClientPortalLayout({
 
       try {
         const profile = await getOrCreateClientProfile(user);
-        console.log("[DMI auth] signed in user", user);
+        console.log("[DMI auth] auth user", {
+          id: user.id,
+          email: user.email,
+        });
+        console.log("[DMI auth] signed in user", {
+          id: user.id,
+          email: user.email,
+        });
         console.log("[DMI auth] loaded profile", profile);
         console.log("[DMI auth] mock fallback used", false);
       } catch (error) {
@@ -43,8 +62,27 @@ export default function ClientPortalLayout({
 
     void requireSession();
 
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("[DMI auth] session state", {
+        page: "client-layout",
+        event,
+        hasSession: Boolean(session),
+        userId: session?.user?.id || null,
+        email: session?.user?.email || null,
+      });
+
+      if (event === "SIGNED_OUT" || !session) {
+        router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      } else if (!ignore) {
+        setCheckingSession(false);
+      }
+    });
+
     return () => {
       ignore = true;
+      subscription.unsubscribe();
     };
   }, [pathname, router]);
 
