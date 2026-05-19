@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type PointerEvent,
+} from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   BadgePlus,
@@ -1904,15 +1911,87 @@ function ProfilePictureUpload({
   fullName?: string | null;
   onChange: (value: string) => void;
 }) {
+  const [cropSource, setCropSource] = useState("");
+  const [cropPosition, setCropPosition] = useState({ x: 0, y: 0 });
+  const [cropZoom, setCropZoom] = useState(1);
+  const [imageSize, setImageSize] = useState({ width: 1, height: 1 });
+  const dragStartRef = useRef<{
+    pointerX: number;
+    pointerY: number;
+    imageX: number;
+    imageY: number;
+  } | null>(null);
+
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
 
     if (!file) return;
 
-    const resizedImage = await resizeImageToSquare(file);
-    onChange(resizedImage);
+    const imageDataUrl = await readFileAsDataUrl(file);
+    setCropSource(imageDataUrl);
+    setCropPosition({ x: 0, y: 0 });
+    setCropZoom(1);
   }
+
+  function resetCrop() {
+    setCropPosition({ x: 0, y: 0 });
+    setCropZoom(1);
+  }
+
+  function cancelCrop() {
+    setCropSource("");
+    resetCrop();
+  }
+
+  async function saveCrop() {
+    if (!cropSource) return;
+
+    const croppedImage = await exportCroppedImage({
+      source: cropSource,
+      imageWidth: imageSize.width,
+      imageHeight: imageSize.height,
+      position: cropPosition,
+      zoom: cropZoom,
+    });
+    onChange(croppedImage);
+    cancelCrop();
+  }
+
+  function startDrag(event: PointerEvent<HTMLDivElement>) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragStartRef.current = {
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      imageX: cropPosition.x,
+      imageY: cropPosition.y,
+    };
+  }
+
+  function dragImage(event: PointerEvent<HTMLDivElement>) {
+    if (!dragStartRef.current) return;
+
+    setCropPosition({
+      x: dragStartRef.current.imageX + event.clientX - dragStartRef.current.pointerX,
+      y: dragStartRef.current.imageY + event.clientY - dragStartRef.current.pointerY,
+    });
+  }
+
+  function stopDrag(event: PointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    dragStartRef.current = null;
+  }
+
+  const previewSize = 260;
+  const baseScale = Math.max(
+    previewSize / imageSize.width,
+    previewSize / imageSize.height
+  );
+  const displayWidth = imageSize.width * baseScale * cropZoom;
+  const displayHeight = imageSize.height * baseScale * cropZoom;
 
   return (
     <div>
@@ -1952,6 +2031,97 @@ function ProfilePictureUpload({
         >
           Remove photo
         </button>
+      )}
+      {cropSource && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#101935] p-5 text-white shadow-2xl shadow-black/40">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-semibold">Position profile photo</h3>
+                <p className="mt-1 text-sm text-white/45">
+                  Drag to reposition, then zoom until the face sits neatly in the circle.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={cancelCrop}
+                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/60 transition hover:bg-white/10 hover:text-white"
+                aria-label="Cancel crop"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-6 flex justify-center">
+              <div
+                className="relative h-[260px] w-[260px] touch-none overflow-hidden rounded-full border-2 border-white/25 bg-black/40 shadow-inner shadow-black"
+                onPointerDown={startDrag}
+                onPointerMove={dragImage}
+                onPointerUp={stopDrag}
+                onPointerCancel={stopDrag}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={cropSource}
+                  alt="Crop preview"
+                  draggable={false}
+                  onLoad={(event) =>
+                    setImageSize({
+                      width: event.currentTarget.naturalWidth || 1,
+                      height: event.currentTarget.naturalHeight || 1,
+                    })
+                  }
+                  className="absolute left-1/2 top-1/2 max-w-none select-none"
+                  style={{
+                    width: `${displayWidth}px`,
+                    height: `${displayHeight}px`,
+                    transform: `translate(calc(-50% + ${cropPosition.x}px), calc(-50% + ${cropPosition.y}px))`,
+                  }}
+                />
+                <div className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-inset ring-white/40" />
+              </div>
+            </div>
+
+            <label className="mt-6 block">
+              <span className="mb-2 block text-sm font-medium text-white/55">
+                Zoom
+              </span>
+              <input
+                type="range"
+                min="1"
+                max="3"
+                step="0.01"
+                value={cropZoom}
+                onChange={(event) => setCropZoom(Number(event.target.value))}
+                className="w-full accent-[#AC00FF]"
+              />
+            </label>
+
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={resetCrop}
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/65 transition hover:bg-white/10 hover:text-white"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={cancelCrop}
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/65 transition hover:bg-white/10 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveCrop()}
+                className="rounded-2xl bg-[#AC00FF] px-5 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+              >
+                Save crop
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -2600,51 +2770,63 @@ function missingCardColumnFromError(error: { message?: string } | null) {
   return match?.[1] || null;
 }
 
-function resizeImageToSquare(file: File) {
+function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
 
     reader.onerror = () => reject(new Error("Could not read image file."));
-    reader.onload = () => {
-      const image = new Image();
-
-      image.onerror = () => reject(new Error("Could not load image file."));
-      image.onload = () => {
-        const size = 512;
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d");
-
-        if (!context) {
-          reject(new Error("Image resizing is not supported in this browser."));
-          return;
-        }
-
-        canvas.width = size;
-        canvas.height = size;
-
-        const sourceSize = Math.min(image.width, image.height);
-        const sourceX = (image.width - sourceSize) / 2;
-        const sourceY = (image.height - sourceSize) / 2;
-
-        context.drawImage(
-          image,
-          sourceX,
-          sourceY,
-          sourceSize,
-          sourceSize,
-          0,
-          0,
-          size,
-          size
-        );
-
-        resolve(canvas.toDataURL("image/jpeg", 0.86));
-      };
-
-      image.src = String(reader.result || "");
-    };
+    reader.onload = () => resolve(String(reader.result || ""));
 
     reader.readAsDataURL(file);
+  });
+}
+
+function exportCroppedImage({
+  source,
+  imageWidth,
+  imageHeight,
+  position,
+  zoom,
+}: {
+  source: string;
+  imageWidth: number;
+  imageHeight: number;
+  position: { x: number; y: number };
+  zoom: number;
+}) {
+  return new Promise<string>((resolve, reject) => {
+    const image = new Image();
+
+    image.onerror = () => reject(new Error("Could not load image file."));
+    image.onload = () => {
+      const previewSize = 260;
+      const outputSize = 512;
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+
+      if (!context) {
+        reject(new Error("Image cropping is not supported in this browser."));
+        return;
+      }
+
+      canvas.width = outputSize;
+      canvas.height = outputSize;
+
+      const baseScale = Math.max(previewSize / imageWidth, previewSize / imageHeight);
+      const outputScale = outputSize / previewSize;
+      const drawWidth = imageWidth * baseScale * zoom * outputScale;
+      const drawHeight = imageHeight * baseScale * zoom * outputScale;
+      const drawX = (outputSize - drawWidth) / 2 + position.x * outputScale;
+      const drawY = (outputSize - drawHeight) / 2 + position.y * outputScale;
+
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, outputSize, outputSize);
+      context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+
+      resolve(canvas.toDataURL("image/jpeg", 0.9));
+    };
+
+    image.src = source;
   });
 }
 
