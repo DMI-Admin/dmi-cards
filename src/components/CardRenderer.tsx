@@ -57,6 +57,7 @@ export type CardRendererTemplate = {
   requires_logo?: boolean | null;
   requires_banner?: boolean | null;
   gradient_enabled?: boolean | null;
+  colour_palette?: string[] | null;
   free_colour_palette?: string[] | null;
   allowed_fonts?: string[] | null;
   default_font?: string | null;

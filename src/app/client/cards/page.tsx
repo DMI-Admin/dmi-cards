@@ -486,26 +486,28 @@ export default function ClientCardsPage() {
     [adminTemplates]
   );
   const currentDefaultTemplate = defaultTemplate;
-  const selectedTemplateFallbackColour =
-    normalizeColourPalette(currentDefaultTemplate?.free_colour_palette)[0] ||
-    fallbackColour;
   const selectedCardTemplateRecord = useMemo(() => {
     return templateForCard(selectedCard, adminTemplates) || currentDefaultTemplate;
   }, [adminTemplates, selectedCard, currentDefaultTemplate]);
   const draftTemplateRecord = useMemo(() => {
     return templateForCard(draftCard, adminTemplates) || currentDefaultTemplate;
   }, [adminTemplates, draftCard, currentDefaultTemplate]);
+  const selectedCardFallbackColour = firstTemplateColour(selectedCardTemplateRecord);
+  const draftFallbackColour = firstTemplateColour(draftTemplateRecord);
 
   const selectedCardTemplate = useMemo(() => {
     return buildTemplatePreview(
       selectedCardTemplateRecord,
-      selectedCard?.selected_colour || selectedTemplateFallbackColour,
+      selectedColourForTemplate(
+        selectedCardTemplateRecord,
+        selectedCard?.selected_colour || selectedCardFallbackColour
+      ),
       selectedCard?.field_order || getInitialFieldOrder(selectedCardTemplateRecord),
       selectedCard?.hidden_fields || []
     );
   }, [
     selectedCardTemplateRecord,
-    selectedTemplateFallbackColour,
+    selectedCardFallbackColour,
     selectedCard?.selected_colour,
     selectedCard?.hidden_fields,
     selectedCard?.field_order,
@@ -514,7 +516,10 @@ export default function ClientCardsPage() {
   const draftTemplate = useMemo(() => {
     return buildTemplatePreview(
       draftTemplateRecord,
-      draftCard.selected_colour || selectedTemplateFallbackColour,
+      selectedColourForTemplate(
+        draftTemplateRecord,
+        draftCard.selected_colour || draftFallbackColour
+      ),
       fieldOrder,
       draftCard.hidden_fields || []
     );
@@ -522,7 +527,7 @@ export default function ClientCardsPage() {
     draftTemplateRecord,
     draftCard.selected_colour,
     draftCard.hidden_fields,
-    selectedTemplateFallbackColour,
+    draftFallbackColour,
     fieldOrder,
   ]);
 
@@ -646,9 +651,7 @@ export default function ClientCardsPage() {
       id: `card-${Date.now()}`,
       template_id: currentDefaultTemplate.id,
       template_name: currentDefaultTemplate.name,
-      selected_colour:
-        normalizeColourPalette(currentDefaultTemplate.free_colour_palette)[0] ||
-        selectedTemplateFallbackColour,
+      selected_colour: firstTemplateColour(currentDefaultTemplate),
       field_order: initialFieldOrder,
       lead_capture_settings: defaultLeadCaptureSettings,
     });
@@ -662,7 +665,11 @@ export default function ClientCardsPage() {
     const cardTemplate = templateForCard(card, adminTemplates) || currentDefaultTemplate;
     const savedFieldOrder = card.field_order || getInitialFieldOrder(cardTemplate);
     setFieldOrder(savedFieldOrder);
-    setDraftCard({ ...card, custom_fields: { ...(card.custom_fields || {}) } });
+    setDraftCard({
+      ...card,
+      selected_colour: selectedColourForTemplate(cardTemplate, card.selected_colour),
+      custom_fields: { ...(card.custom_fields || {}) },
+    });
     setSelectedCardId(card.id);
     setPanelOpen(true);
   }
@@ -694,7 +701,7 @@ export default function ClientCardsPage() {
       template_name: template.name,
       selected_colour:
         template.access_level === "free"
-          ? normalizeColourPalette(template.free_colour_palette)[0] || fallbackColour
+          ? firstTemplateColour(template)
           : current.selected_colour || fallbackColour,
       hidden_fields: [],
       field_order: nextFieldOrder,
@@ -1637,8 +1644,9 @@ function CustomiseStep({
   onUpdate: (field: keyof ClientCard, value: string) => void;
   onSelectTemplate: (template: AdminTemplate) => void;
 }) {
-  const palette = normalizeColourPalette(template.free_colour_palette);
+  const palette = templateColourPalette(template);
   const approvedPalette = palette.length ? palette : [fallbackColour];
+  const activeColour = selectedColourForTemplate(template, draftCard.selected_colour);
 
   return (
     <div className="space-y-5">
@@ -1700,9 +1708,7 @@ function CustomiseStep({
                     <CardRenderer
                       template={buildTemplatePreview(
                         templateOption,
-                        draftCard.selected_colour ||
-                          normalizeColourPalette(templateOption.free_colour_palette)[0] ||
-                          fallbackColour,
+                        firstTemplateColour(templateOption),
                         previewFieldOrder,
                         selected ? draftCard.hidden_fields || [] : []
                       )}
@@ -1763,14 +1769,14 @@ function CustomiseStep({
                 type="button"
                 onClick={() => onUpdate("selected_colour", colour)}
                 className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition ${
-                  draftCard.selected_colour === colour
+                  activeColour === colour
                     ? "border-white shadow-lg shadow-purple-500/30"
                     : "border-white/10"
                 }`}
                 style={{ backgroundColor: colour }}
                 aria-label={`Select ${colour}`}
               >
-                {draftCard.selected_colour === colour && (
+                {activeColour === colour && (
                   <Check className="h-5 w-5" />
                 )}
               </button>
@@ -2394,6 +2400,9 @@ function buildTemplatePreview(
       allowed_fields: allowedFields,
       custom_fields: rendererFieldOrder,
       free_colour_palette: [selectedColour],
+      colour_palette: [selectedColour],
+      primary_color: selectedColour,
+      secondary_color: selectedColour,
       show_personal_section:
         (template.show_personal_section ?? true) &&
         rendererFieldOrder.personal.length > 0,
@@ -2428,6 +2437,41 @@ function buildTemplatePreview(
   };
 }
 
+function templateColourPalette(template: AdminTemplate | CardRendererTemplate | null) {
+  if (!template) return [];
+
+  const freePalette = normalizeColourPalette(template.free_colour_palette);
+  if (freePalette.length) return freePalette;
+
+  const colourPalette = normalizeColourPalette(template.colour_palette);
+  if (colourPalette.length) return colourPalette;
+
+  return normalizeColourPalette(template.primary_color);
+}
+
+function firstTemplateColour(template: AdminTemplate | CardRendererTemplate | null) {
+  return templateColourPalette(template)[0] || fallbackColour;
+}
+
+function selectedColourForTemplate(
+  template: AdminTemplate | CardRendererTemplate | null,
+  selectedColour: string | null | undefined
+) {
+  const palette = templateColourPalette(template);
+
+  if (!palette.length) {
+    return selectedColour || fallbackColour;
+  }
+
+  if (template?.access_level === "free") {
+    return selectedColour && palette.includes(selectedColour)
+      ? selectedColour
+      : palette[0];
+  }
+
+  return selectedColour || palette[0];
+}
+
 async function loadPublishedTemplates(): Promise<AdminTemplate[]> {
   return (await getClientVisibleTemplates(currentPlan)) as AdminTemplate[];
 }
@@ -2435,16 +2479,28 @@ async function loadPublishedTemplates(): Promise<AdminTemplate[]> {
 function normalizeAdminTemplates(templates: AdminTemplate[]) {
   return templates
     .filter((template) => template.status === "published")
-    .map((template) => ({
-      ...template,
-      access_level: template.access_level === "free" ? "free" : "paid",
-      layout_type:
-        template.access_level === "free"
-          ? "classic_free"
-          : template.layout_type || "premium_classic",
-      colour_palette: normalizeColourPalette(template.colour_palette),
-      free_colour_palette: normalizeColourPalette(template.free_colour_palette),
-    }));
+    .map((template) => {
+      const colourPalette = normalizeColourPalette(template.colour_palette);
+      const freeColourPalette = normalizeColourPalette(template.free_colour_palette);
+      const primaryPalette = normalizeColourPalette(template.primary_color);
+      const templatePalette =
+        freeColourPalette.length
+          ? freeColourPalette
+          : colourPalette.length
+            ? colourPalette
+            : primaryPalette;
+
+      return {
+        ...template,
+        access_level: template.access_level === "free" ? "free" : "paid",
+        layout_type:
+          template.access_level === "free"
+            ? "classic_free"
+            : template.layout_type || "premium_classic",
+        colour_palette: colourPalette.length ? colourPalette : templatePalette,
+        free_colour_palette: templatePalette,
+      };
+    });
 }
 
 function visibleTemplatesForPlan(templates: AdminTemplate[]) {
@@ -2548,10 +2604,7 @@ function mapSupabaseCard(
     company_logo_url: row.company_logo_url || "",
     company_banner_url: row.company_banner_url || "",
     custom_fields: row.custom_fields || {},
-    selected_colour:
-      row.selected_colour ||
-      normalizeColourPalette(rowTemplate?.free_colour_palette)[0] ||
-      fallbackColour,
+    selected_colour: selectedColourForTemplate(rowTemplate, row.selected_colour),
     hidden_fields: row.hidden_fields || [],
     field_order: row.field_order || getInitialFieldOrder(rowTemplate),
     lead_capture_settings: row.lead_capture_settings || defaultLeadCaptureSettings,
