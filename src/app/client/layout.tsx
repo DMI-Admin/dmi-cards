@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { getOrCreateClientProfile } from "@/lib/profiles";
+import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
 
 export default function ClientPortalLayout({
   children,
@@ -18,45 +18,20 @@ export default function ClientPortalLayout({
     let ignore = false;
 
     async function requireSession() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      try {
+        await requireClientUser();
+      } catch (error) {
+        if (ignore) return;
 
-      console.log("[DMI auth] session state", {
-        page: "client-layout",
-        event: "INITIAL_CHECK",
-        hasSession: Boolean(session),
-        userId: session?.user?.id || null,
-        email: session?.user?.email || null,
-      });
+        if (error instanceof ClientAuthRequiredError) {
+          router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+          return;
+        }
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        console.error("Client auth/profile load failed", error);
+      }
 
       if (ignore) return;
-
-      if (!user) {
-        router.replace(`/login?next=${encodeURIComponent(pathname)}`);
-        return;
-      }
-
-      try {
-        const profile = await getOrCreateClientProfile(user);
-        console.log("[DMI auth] auth user", {
-          id: user.id,
-          email: user.email,
-        });
-        console.log("[DMI auth] signed in user", {
-          id: user.id,
-          email: user.email,
-        });
-        console.log("[DMI auth] loaded profile", profile);
-        console.log("[DMI auth] mock fallback used", false);
-      } catch (error) {
-        console.error("Client profile load failed", error);
-      }
-
       setCheckingSession(false);
     }
 
@@ -73,7 +48,7 @@ export default function ClientPortalLayout({
         email: session?.user?.email || null,
       });
 
-      if (event === "SIGNED_OUT" || !session) {
+      if (event === "SIGNED_OUT") {
         router.replace(`/login?next=${encodeURIComponent(pathname)}`);
       } else if (!ignore) {
         setCheckingSession(false);

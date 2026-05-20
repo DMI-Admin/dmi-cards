@@ -37,7 +37,7 @@ import {
   normalizeColourPalette,
   type SharedTemplate,
 } from "@/lib/templates";
-import { getOrCreateClientProfile } from "@/lib/profiles";
+import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
 import { useRouter } from "next/navigation";
 
 const currentPlan = "free" as
@@ -567,34 +567,33 @@ export default function ClientCardsPage() {
       const nextDefaultTemplate = defaultTemplateForPlan(nextTemplates);
       setAdminTemplates(nextTemplates);
 
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+      let userId = "";
 
-      if (ignore) return;
+      try {
+        const { user } = await requireClientUser();
+        userId = user.id;
+      } catch (error) {
+        if (ignore) return;
 
-      if (userError || !user) {
-        router.replace("/login?next=/client/cards");
+        if (error instanceof ClientAuthRequiredError) {
+          router.replace("/login?next=/client/cards");
+        } else {
+          console.error("Client auth load failed", error);
+          setSaveError("Could not confirm your login session.");
+        }
+
         setLoadingCards(false);
         return;
       }
 
-      setAuthUserId(user.id);
-      console.log("[DMI auth] signed in user", user);
+      if (ignore) return;
 
-      try {
-        const profile = await getOrCreateClientProfile(user);
-        console.log("[DMI auth] loaded profile", profile);
-        console.log("[DMI auth] mock fallback used", false);
-      } catch (profileError) {
-        console.error("Client profile load failed", profileError);
-      }
+      setAuthUserId(userId);
 
       const { data, error } = await supabase
         .from("cards")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .order("updated_at", { ascending: false });
 
       if (ignore) return;

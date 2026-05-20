@@ -27,10 +27,8 @@ import {
   normalizeColourPalette,
   type SharedTemplate,
 } from "@/lib/templates";
-import {
-  getOrCreateClientProfile,
-  type ClientProfile,
-} from "@/lib/profiles";
+import type { ClientProfile } from "@/lib/profiles";
+import { requireClientUser } from "@/lib/client-auth";
 
 const currentPlan = "free" as "free" | "individual_pro" | "business" | "enterprise";
 const isPaid = currentPlan !== "free";
@@ -136,21 +134,10 @@ export default function ClientDashboardPage() {
 
         setTemplates(loadedTemplates);
 
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        const { user, profile: loadedProfile } = await requireClientUser();
 
         if (ignore) return;
 
-        if (!user) return;
-
-        console.log("[DMI auth] signed in user", user);
-        const loadedProfile = await getOrCreateClientProfile(user);
-
-        if (ignore) return;
-
-        console.log("[DMI auth] loaded profile", loadedProfile);
-        console.log("[DMI auth] mock fallback used", false);
         setProfile(loadedProfile);
 
         const { data } = await supabase

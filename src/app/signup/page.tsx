@@ -97,6 +97,7 @@ export default function ClientSignupPage() {
       email: email.trim(),
       password,
       options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/client/dashboard`,
         data: {
           full_name: fullName.trim(),
           plan: "free",

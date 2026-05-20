@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
 import { supabase } from "@/lib/supabase";
+import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
 
 const currentPlan = "free" as
   | "free"
@@ -23,7 +24,6 @@ const currentPlan = "free" as
   | "business"
   | "enterprise";
 const isPaid = currentPlan !== "free";
-const clientCardsStorageKey = "dmi-client-cards-v1";
 
 const mockSelectedCard = {
   name: "Primary Digital Card",
@@ -58,37 +58,34 @@ export default function ClientQrCodePage() {
     let ignore = false;
 
     async function loadSavedCard() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        const { user } = await requireClientUser();
 
-      if (!user) {
-        const localCard = readLocalQrCard();
-        if (!ignore && localCard) setSelectedCard(localCard);
-        return;
+        const { data, error } = await supabase
+          .from("cards")
+          .select("card_name, slug, is_published, status")
+          .eq("user_id", user.id)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (ignore) return;
+
+        if (error || !data) {
+          if (error) console.error("QR card fetch failed", error);
+          return;
+        }
+
+        setSelectedCard({
+          name: data.card_name || "Primary Digital Card",
+          public_url: `/u/${data.slug || "full-name"}`,
+          status: data.is_published ? "published" : data.status || "draft",
+        });
+      } catch (error) {
+        if (!(error instanceof ClientAuthRequiredError)) {
+          console.error("QR card load failed", error);
+        }
       }
-
-      const { data, error } = await supabase
-        .from("cards")
-        .select("card_name, slug, is_published, status")
-        .eq("user_id", user.id)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (ignore) return;
-
-      if (error || !data) {
-        const localCard = readLocalQrCard();
-        if (localCard) setSelectedCard(localCard);
-        return;
-      }
-
-      setSelectedCard({
-        name: data.card_name || "Primary Digital Card",
-        public_url: `/u/${data.slug || "full-name"}`,
-        status: data.is_published ? "published" : data.status || "draft",
-      });
     }
 
     void loadSavedCard();
@@ -339,33 +336,6 @@ export default function ClientQrCodePage() {
   );
 }
 
-function readLocalQrCard() {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const stored = window.localStorage.getItem(clientCardsStorageKey);
-    if (!stored) return null;
-
-    const cards = JSON.parse(stored);
-    if (!Array.isArray(cards) || cards.length === 0) return null;
-
-    const card = cards[0] as {
-      card_name?: string;
-      public_url?: string;
-      slug?: string;
-      status?: string;
-    };
-
-    return {
-      name: card.card_name || "Primary Digital Card",
-      public_url: card.public_url || `/u/${card.slug || "full-name"}`,
-      status: card.status || "draft",
-    };
-  } catch (error) {
-    console.error("Failed to load local QR card", error);
-    return null;
-  }
-}
 
 function SummaryCard({
   label,

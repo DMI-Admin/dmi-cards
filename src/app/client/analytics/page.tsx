@@ -20,6 +20,8 @@ import {
   WalletCards,
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
+import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
+import { supabase } from "@/lib/supabase";
 
 const currentPlan = "pro" as
   | "free"
@@ -28,7 +30,6 @@ const currentPlan = "pro" as
   | "business"
   | "enterprise";
 const isPaid = currentPlan !== "free";
-const clientCardsStorageKey = "dmi-client-cards-v1";
 
 const mockCard = {
   name: "Primary Digital Card",
@@ -78,17 +79,43 @@ export default function ClientAnalyticsPage() {
   const [cardName, setCardName] = useState(mockCard.name);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      const localCard = readLocalAnalyticsCard();
+    let ignore = false;
 
-      if (localCard?.name) {
-        setCardName(localCard.name);
+    async function loadCardName() {
+      try {
+        const { user } = await requireClientUser();
+        const { data, error } = await supabase
+          .from("cards")
+          .select("card_name")
+          .eq("user_id", user.id)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (ignore) return;
+
+        if (error) {
+          console.error("Analytics card fetch failed", error);
+          return;
+        }
+
+        if (data?.card_name) {
+          setCardName(data.card_name);
+        }
+      } catch (error) {
+        if (!(error instanceof ClientAuthRequiredError)) {
+          console.error("Analytics card load failed", error);
+        }
+      } finally {
+        if (!ignore) setMounted(true);
       }
+    }
 
-      setMounted(true);
-    }, 0);
+    void loadCardName();
 
-    return () => window.clearTimeout(timeout);
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const cardOptions = mounted ? ["All Cards", cardName] : ["All Cards"];
@@ -464,23 +491,4 @@ function LockedOverlay() {
       </div>
     </div>
   );
-}
-
-function readLocalAnalyticsCard() {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const stored = window.localStorage.getItem(clientCardsStorageKey);
-    if (!stored) return null;
-
-    const cards = JSON.parse(stored);
-    if (!Array.isArray(cards) || cards.length === 0) return null;
-
-    return {
-      name: cards[0]?.card_name || "Primary Digital Card",
-    };
-  } catch (error) {
-    console.error("Failed to load local analytics card", error);
-    return null;
-  }
 }

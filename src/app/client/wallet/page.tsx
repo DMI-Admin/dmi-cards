@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
 import { supabase } from "@/lib/supabase";
+import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
 
 const currentPlan = "free" as
   | "free"
@@ -26,7 +27,6 @@ const currentPlan = "free" as
   | "business"
   | "enterprise";
 const isPaid = currentPlan !== "free";
-const clientCardsStorageKey = "dmi-client-cards-v1";
 
 const mockLinkedCard = {
   name: "Primary Digital Card",
@@ -60,40 +60,37 @@ export default function ClientWalletPage() {
     let ignore = false;
 
     async function loadLinkedCard() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        const { user } = await requireClientUser();
 
-      if (!user) {
-        const localCard = readLocalWalletCard();
-        if (!ignore && localCard) setLinkedCard(localCard);
-        return;
+        const { data, error } = await supabase
+          .from("cards")
+          .select("card_name, slug, is_published, status, full_name, job_title, company_name")
+          .eq("user_id", user.id)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (ignore) return;
+
+        if (error || !data) {
+          if (error) console.error("Wallet card fetch failed", error);
+          return;
+        }
+
+        setLinkedCard({
+          name: data.card_name || "Primary Digital Card",
+          public_url: `/u/${data.slug || "full-name"}`,
+          status: data.is_published ? "published" : data.status || "draft",
+          full_name: data.full_name || "Full Name",
+          role: data.job_title || "Creative Director",
+          company_name: data.company_name || "DevMaster Inc",
+        });
+      } catch (error) {
+        if (!(error instanceof ClientAuthRequiredError)) {
+          console.error("Wallet card load failed", error);
+        }
       }
-
-      const { data, error } = await supabase
-        .from("cards")
-        .select("card_name, slug, is_published, status, full_name, job_title, company_name")
-        .eq("user_id", user.id)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (ignore) return;
-
-      if (error || !data) {
-        const localCard = readLocalWalletCard();
-        if (localCard) setLinkedCard(localCard);
-        return;
-      }
-
-      setLinkedCard({
-        name: data.card_name || "Primary Digital Card",
-        public_url: `/u/${data.slug || "full-name"}`,
-        status: data.is_published ? "published" : data.status || "draft",
-        full_name: data.full_name || "Full Name",
-        role: data.job_title || "Creative Director",
-        company_name: data.company_name || "DevMaster Inc",
-      });
     }
 
     void loadLinkedCard();
@@ -672,38 +669,4 @@ function CssQrPreview() {
       {cells}
     </div>
   );
-}
-
-function readLocalWalletCard() {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const stored = window.localStorage.getItem(clientCardsStorageKey);
-    if (!stored) return null;
-
-    const cards = JSON.parse(stored);
-    if (!Array.isArray(cards) || cards.length === 0) return null;
-
-    const card = cards[0] as {
-      card_name?: string;
-      public_url?: string;
-      slug?: string;
-      status?: string;
-      full_name?: string;
-      job_title?: string;
-      company_name?: string;
-    };
-
-    return {
-      name: card.card_name || "Primary Digital Card",
-      public_url: card.public_url || `/u/${card.slug || "full-name"}`,
-      status: card.status || "draft",
-      full_name: card.full_name || "Full Name",
-      role: card.job_title || "Creative Director",
-      company_name: card.company_name || "DevMaster Inc",
-    };
-  } catch (error) {
-    console.error("Failed to load local wallet card", error);
-    return null;
-  }
 }
