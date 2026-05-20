@@ -100,6 +100,7 @@ export default function ClientSignupPage() {
         emailRedirectTo: `${window.location.origin}/auth/callback?next=/client/dashboard`,
         data: {
           full_name: fullName.trim(),
+          subscription_plan: "free",
           plan: "free",
           account_type: "individual",
         },

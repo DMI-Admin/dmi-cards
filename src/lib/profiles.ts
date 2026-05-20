@@ -5,9 +5,10 @@ export type ClientProfile = {
   id: string;
   full_name: string | null;
   email: string | null;
-  plan: "free" | "paid";
-  account_type: "individual";
+  subscription_plan: "free" | "paid";
+  plan?: "free" | "paid";
   created_at?: string | null;
+  updated_at?: string | null;
 };
 
 export async function getOrCreateClientProfile(user: User) {
@@ -22,7 +23,7 @@ export async function getOrCreateClientProfile(user: User) {
   }
 
   if (profile) {
-    return profile as ClientProfile;
+    return normalizeProfile(profile);
   }
 
   const fallbackProfile = {
@@ -32,9 +33,9 @@ export async function getOrCreateClientProfile(user: User) {
         ? user.user_metadata.full_name
         : "",
     email: user.email || "",
+    subscription_plan: "free",
     plan: "free",
-    account_type: "individual",
-  } satisfies Omit<ClientProfile, "created_at">;
+  } satisfies Omit<ClientProfile, "created_at" | "updated_at">;
 
   const { data: createdProfile, error: createError } = await supabase
     .from("profiles")
@@ -46,5 +47,25 @@ export async function getOrCreateClientProfile(user: User) {
     throw new Error(`Could not create profile: ${createError.message}`);
   }
 
-  return createdProfile as ClientProfile;
+  return normalizeProfile(createdProfile);
+}
+
+function normalizeProfile(profile: Record<string, unknown>): ClientProfile {
+  const selectedPlan =
+    profile.subscription_plan === "paid" || profile.plan === "paid"
+      ? "paid"
+      : "free";
+
+  return {
+    id: String(profile.id),
+    full_name:
+      typeof profile.full_name === "string" ? profile.full_name : null,
+    email: typeof profile.email === "string" ? profile.email : null,
+    subscription_plan: selectedPlan,
+    plan: selectedPlan,
+    created_at:
+      typeof profile.created_at === "string" ? profile.created_at : null,
+    updated_at:
+      typeof profile.updated_at === "string" ? profile.updated_at : null,
+  };
 }
