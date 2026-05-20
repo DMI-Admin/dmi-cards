@@ -999,9 +999,9 @@ export default function ClientCardsPage() {
                   />
                 </div>
 
-                {cards.length === 0 ? (
+                {cards.length === 0 && !panelOpen ? (
                   <EmptyState onCreate={openCreatePanel} />
-                ) : (
+                ) : cards.length > 0 ? (
                   <CardList
                     cards={cards}
                     selectedCardId={selectedCardId}
@@ -1012,7 +1012,7 @@ export default function ClientCardsPage() {
                     onViewPublicPage={viewPublicPage}
                     onDelete={deleteCard}
                   />
-                )}
+                ) : null}
 
                 {panelOpen && (
                   <EditorPanel
