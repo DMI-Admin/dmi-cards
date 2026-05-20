@@ -451,7 +451,7 @@ export default function ClientCardsPage() {
   const [adminTemplates, setAdminTemplates] = useState<AdminTemplate[]>([]);
   const [cards, setCards] = useState<ClientCard[]>(initialCards);
   const [selectedCardId, setSelectedCardId] = useState(initialCards[0]?.id || "");
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [showBuilder, setShowBuilder] = useState(false);
   const [panelMode, setPanelMode] = useState<PanelMode>("create");
   const [activeStep, setActiveStep] = useState<BuilderStep>(0);
   const [draftCard, setDraftCard] = useState<ClientCard>(blankCard);
@@ -532,9 +532,9 @@ export default function ClientCardsPage() {
   ]);
 
   const publishedCards = cards.filter((card) => card.status === "published").length;
-  const previewCard = panelOpen ? draftCard : selectedCard;
-  const previewTemplate = panelOpen ? draftTemplate : selectedCardTemplate;
-  const previewTitle = panelOpen ? "Live Edit Preview" : "Selected Card Preview";
+  const previewCard = showBuilder ? draftCard : selectedCard;
+  const previewTemplate = showBuilder ? draftTemplate : selectedCardTemplate;
+  const previewTitle = showBuilder ? "Live Edit Preview" : "Selected Card Preview";
   const selectedDevice = findDevice(devicePreview);
   const filteredDeviceGroups = filterDeviceGroups(deviceSearch);
   const previewDimensions = previewFrameDimensions(selectedDevice);
@@ -655,7 +655,7 @@ export default function ClientCardsPage() {
       field_order: initialFieldOrder,
       lead_capture_settings: defaultLeadCaptureSettings,
     });
-    setPanelOpen(true);
+    setShowBuilder(true);
   }
 
   function openEditPanel(card: ClientCard) {
@@ -671,7 +671,7 @@ export default function ClientCardsPage() {
       custom_fields: { ...(card.custom_fields || {}) },
     });
     setSelectedCardId(card.id);
-    setPanelOpen(true);
+    setShowBuilder(true);
   }
 
   function updateDraft(field: keyof ClientCard, value: string) {
@@ -820,7 +820,7 @@ export default function ClientCardsPage() {
         ? "Card published successfully."
         : "Draft saved successfully."
     );
-    setPanelOpen(false);
+    setShowBuilder(false);
   }
 
   function handleSaveDraft() {
@@ -999,7 +999,7 @@ export default function ClientCardsPage() {
                   />
                 </div>
 
-                {cards.length === 0 && !panelOpen ? (
+                {cards.length === 0 && !showBuilder ? (
                   <EmptyState onCreate={openCreatePanel} />
                 ) : cards.length > 0 ? (
                   <CardList
@@ -1014,7 +1014,7 @@ export default function ClientCardsPage() {
                   />
                 ) : null}
 
-                {panelOpen && (
+                {showBuilder && (
                   <EditorPanel
                     activeStep={activeStep}
                     draftCard={draftCard}
@@ -1022,7 +1022,7 @@ export default function ClientCardsPage() {
                     mode={panelMode}
                     template={draftTemplateRecord || currentDefaultTemplate}
                     templates={visibleTemplates}
-                    onClose={() => setPanelOpen(false)}
+                    onClose={() => setShowBuilder(false)}
                     onStepChange={setActiveStep}
                     onUpdate={updateDraft}
                     onSelectTemplate={selectDraftTemplate}
