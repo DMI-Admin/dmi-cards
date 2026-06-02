@@ -8,6 +8,7 @@ import {
   type ChangeEvent,
   type PointerEvent,
 } from "react";
+import type { User } from "@supabase/supabase-js";
 import type { LucideIcon } from "lucide-react";
 import {
   BadgePlus,
@@ -470,7 +471,6 @@ export default function ClientCardsPage() {
   const [templateError, setTemplateError] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [loadingCards, setLoadingCards] = useState(true);
-  const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [databaseReady, setDatabaseReady] = useState(false);
 
   const selectedCard = useMemo(() => {
@@ -592,8 +592,6 @@ export default function ClientCardsPage() {
       }
 
       if (ignore) return;
-
-      setAuthUserId(userId);
 
       const { data, error } = await supabase
         .from("cards")
@@ -766,61 +764,82 @@ export default function ClientCardsPage() {
     setSaveMessage("");
     setSaveStatus("saving");
 
-    const baseSlug = slugify(
-      draftCard.slug ||
-        draftCard.full_name ||
-        draftCard.card_name ||
-        "digital-card"
-    );
-    const slug =
-      authUserId && databaseReady
-        ? await ensureUniqueCardSlug(
-            baseSlug,
-            draftCard.id.startsWith("card-") ? null : draftCard.id
-          )
-        : baseSlug;
+    const isPublishing = status === "published";
+    const authUser = await getActiveUserForCardSave(isPublishing);
 
-    const nextCard: ClientCard = {
-      ...draftCard,
-      card_name: draftCard.card_name || "Primary Digital Card",
-      slug,
-      public_url: `/u/${slug}`,
-      status,
-      last_updated: "Just now",
-      field_order: fieldOrder,
-      lead_capture_settings:
-        draftCard.lead_capture_settings || defaultLeadCaptureSettings,
-    };
-
-    const savedCard = await saveCardToSupabase({
-      card: nextCard,
-      userId: authUserId,
-      databaseReady,
-      mode: panelMode,
-    });
-
-    if (!savedCard) {
+    if (!authUser) {
       setSaveStatus("failed");
+      router.replace("/login?next=/client/cards");
+      setSaveError("Please log in to save your card.");
       return;
     }
 
-    setCards((currentCards) => {
-      const existing = currentCards.some((card) => card.id === draftCard.id);
-      const nextCards = existing
-        ? currentCards.map((card) => (card.id === draftCard.id ? savedCard : card))
-        : [savedCard, ...currentCards];
+    try {
+      const baseSlug = slugify(
+        draftCard.slug ||
+          draftCard.full_name ||
+          draftCard.card_name ||
+          "digital-card"
+      );
+      const slug =
+        databaseReady
+          ? await ensureUniqueCardSlug(
+              baseSlug,
+              draftCard.id.startsWith("card-") ? null : draftCard.id
+            )
+          : baseSlug;
 
-      return nextCards;
-    });
+      const nextCard: ClientCard = {
+        ...draftCard,
+        card_name: draftCard.card_name || "Primary Digital Card",
+        slug,
+        public_url: `/u/${slug}`,
+        status,
+        last_updated: "Just now",
+        field_order: fieldOrder,
+        lead_capture_settings:
+          draftCard.lead_capture_settings || defaultLeadCaptureSettings,
+      };
 
-    setSelectedCardId(savedCard.id);
-    setSaveStatus(status === "published" ? "published" : "saved");
-    setSaveMessage(
-      status === "published"
-        ? "Card published successfully."
-        : "Draft saved successfully."
-    );
-    setShowBuilder(false);
+      const savedCard = await saveCardToSupabase({
+        card: nextCard,
+        userId: authUser.id,
+        databaseReady,
+        mode: panelMode,
+        isPublishing,
+      });
+
+      if (!savedCard) {
+        setSaveStatus("failed");
+        return;
+      }
+
+      setCards((currentCards) => {
+        const existing = currentCards.some((card) => card.id === draftCard.id);
+        const nextCards = existing
+          ? currentCards.map((card) => (card.id === draftCard.id ? savedCard : card))
+          : [savedCard, ...currentCards];
+
+        return nextCards;
+      });
+
+      setSelectedCardId(savedCard.id);
+      setSaveStatus(status === "published" ? "published" : "saved");
+      setSaveMessage(
+        status === "published"
+          ? "Card published successfully."
+          : "Draft saved successfully."
+      );
+      setShowBuilder(false);
+    } catch (error) {
+      console.error("Client card save failed", error);
+      setSaveStatus("failed");
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : "Failed to save card. Please try again."
+      );
+    }
   }
 
   function handleSaveDraft() {
@@ -836,26 +855,39 @@ export default function ClientCardsPage() {
     userId,
     databaseReady,
     mode,
+    isPublishing = false,
   }: {
     card: ClientCard;
-    userId: string | null;
+    userId: string;
     databaseReady: boolean;
     mode: PanelMode;
+    isPublishing?: boolean;
   }) {
-    if (!userId || !databaseReady) {
-      router.replace("/login?next=/client/cards");
-      setSaveError("Please log in to save your card.");
+    if (!databaseReady) {
+      setSaveError("Database is not ready. Your card was not saved.");
+      setDatabaseNotice("Database save failed. Your card was not saved.");
       return null;
     }
 
     const payload = buildSupabaseCardPayload(card, userId);
     const shouldUpdate = mode === "edit" && !card.id.startsWith("card-");
 
+    if (isPublishing) {
+      console.log("[DMI publish] publish payload", payload);
+    }
+
     const { data, error } = await writeCardPayload({
       cardId: card.id,
       payload,
       shouldUpdate,
     });
+
+    if (isPublishing) {
+      console.log("[DMI publish] Supabase result/error", {
+        data,
+        error,
+      });
+    }
 
     if (error || !data) {
       console.error("Client card save failed", error);
@@ -875,15 +907,25 @@ export default function ClientCardsPage() {
   async function togglePublish(card: ClientCard) {
     const nextStatus: CardStatus =
       card.status === "published" ? "unpublished" : "published";
+    const isPublishing = nextStatus === "published";
+    const authUser = await getActiveUserForCardSave(isPublishing);
+
+    if (!authUser) {
+      router.replace("/login?next=/client/cards");
+      setSaveError("Please log in to save your card.");
+      return;
+    }
+
     const savedCard = await saveCardToSupabase({
       card: {
         ...card,
         status: nextStatus,
         last_updated: "Just now",
       },
-      userId: authUserId,
+      userId: authUser.id,
       databaseReady,
       mode: card.id.startsWith("card-") ? "create" : "edit",
+      isPublishing,
     });
 
     if (!savedCard) return;
@@ -2613,7 +2655,7 @@ function mapSupabaseCard(
 
 function buildSupabaseCardPayload(
   card: ClientCard,
-  userId: string | null
+  userId: string
 ) {
   const isPublished = card.status === "published";
 
@@ -2650,6 +2692,46 @@ function buildSupabaseCardPayload(
     status: isPublished ? "published" : "draft",
     is_published: isPublished,
   };
+}
+
+async function getActiveUserForCardSave(isPublishing: boolean): Promise<User | null> {
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+
+  if (isPublishing) {
+    console.log("[DMI publish] session before publish", {
+      hasSession: Boolean(session),
+      userId: session?.user?.id || null,
+      email: session?.user?.email || null,
+      error: sessionError
+        ? { name: sessionError.name, message: sessionError.message }
+        : null,
+    });
+  }
+
+  if (session?.user) {
+    return session.user;
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (isPublishing) {
+    console.log("[DMI publish] user before publish", {
+      hasUser: Boolean(user),
+      userId: user?.id || null,
+      email: user?.email || null,
+      error: userError
+        ? { name: userError.name, message: userError.message }
+        : null,
+    });
+  }
+
+  return user;
 }
 
 async function writeCardPayload({
@@ -2722,7 +2804,7 @@ async function cardSlugExists(slug: string, currentCardId: string | null) {
 
   if (error) {
     console.error("Slug uniqueness check failed", error);
-    return true;
+    return false;
   }
 
   return Boolean(data);
