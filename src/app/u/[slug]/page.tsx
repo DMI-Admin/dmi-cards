@@ -36,12 +36,7 @@ export default async function PublicCardPage({ params }: PublicCardPageProps) {
     );
   }
 
-  const { data: template } = await supabase
-    .from("templates")
-    .select("*")
-    .eq("id", card.template_id)
-    .eq("status", "published")
-    .maybeSingle();
+  const template = await loadPublicTemplate(card.template_id);
 
   if (!template) {
     return (
@@ -68,10 +63,35 @@ export default async function PublicCardPage({ params }: PublicCardPageProps) {
 }
 
 type PublicCardRow = {
+  template_id?: string | null;
   selected_colour?: string | null;
   hidden_fields?: string[] | null;
   field_order?: Partial<Record<"personal" | "company" | "contact" | "social", string[]>> | null;
 };
+
+async function loadPublicTemplate(templateId?: string | null) {
+  if (templateId) {
+    const { data } = await supabase
+      .from("templates")
+      .select("*")
+      .eq("id", templateId)
+      .or("status.eq.published,is_published.eq.true")
+      .maybeSingle();
+
+    if (data) return data;
+  }
+
+  const { data } = await supabase
+    .from("templates")
+    .select("*")
+    .eq("access_level", "free")
+    .or("status.eq.published,is_published.eq.true")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  return data;
+}
 
 function buildPublicTemplate(
   template: Parameters<typeof normalizeTemplate>[0],

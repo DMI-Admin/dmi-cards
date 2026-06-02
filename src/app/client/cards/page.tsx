@@ -603,8 +603,10 @@ export default function ClientCardsPage() {
 
       if (error) {
         console.error("Client cards fetch failed", error);
+        const databaseError = describeCardsDatabaseError(error);
         setDatabaseReady(false);
-        setDatabaseNotice("Could not load your saved cards from Supabase.");
+        setDatabaseNotice(databaseError);
+        setSaveError(databaseError);
         setCards([]);
         setSelectedCardId("");
         setLoadingCards(false);
@@ -689,6 +691,8 @@ export default function ClientCardsPage() {
       setLimitMessage("Upgrade to Individual Pro to use paid templates.");
       return;
     }
+
+    console.log("[DMI cards] selectedTemplate.id", template.id || null);
 
     const nextFieldOrder = getInitialFieldOrder(template);
     setLimitMessage("");
@@ -775,6 +779,17 @@ export default function ClientCardsPage() {
     }
 
     try {
+      const selectedTemplate =
+        templateForCard(draftCard, adminTemplates) || currentDefaultTemplate;
+
+      console.log("[DMI cards] selectedTemplate.id", selectedTemplate?.id || null);
+
+      if (!selectedTemplate?.id) {
+        setSaveStatus("failed");
+        setSaveError("Please select a template");
+        return;
+      }
+
       const baseSlug = slugify(
         draftCard.slug ||
           draftCard.full_name ||
@@ -792,6 +807,8 @@ export default function ClientCardsPage() {
       const nextCard: ClientCard = {
         ...draftCard,
         card_name: draftCard.card_name || "Primary Digital Card",
+        template_id: selectedTemplate.id,
+        template_name: selectedTemplate.name,
         slug,
         public_url: `/u/${slug}`,
         status,
@@ -864,13 +881,18 @@ export default function ClientCardsPage() {
     isPublishing?: boolean;
   }) {
     if (!databaseReady) {
-      setSaveError("Database is not ready. Your card was not saved.");
-      setDatabaseNotice("Database save failed. Your card was not saved.");
+      const message =
+        databaseNotice ||
+        "Database schema issue: could not confirm public.cards is ready.";
+      setSaveError(message);
+      setDatabaseNotice(message);
       return null;
     }
 
     const payload = buildSupabaseCardPayload(card, userId);
     const shouldUpdate = mode === "edit" && !card.id.startsWith("card-");
+
+    console.log("[DMI cards] save payload", payload);
 
     if (isPublishing) {
       console.log("[DMI publish] publish payload", payload);
@@ -893,11 +915,9 @@ export default function ClientCardsPage() {
       console.error("Client card save failed", error);
       console.error("Save error", error);
       const message =
-        error?.message || "Failed to save card. Please try again.";
+        error ? describeCardsDatabaseError(error) : "Failed to save card. Please try again.";
       setSaveError(message);
-      setDatabaseNotice(
-        "Database save failed. Your card was not saved."
-      );
+      setDatabaseNotice(message);
       return null;
     }
 
@@ -916,9 +936,21 @@ export default function ClientCardsPage() {
       return;
     }
 
+    const selectedTemplate =
+      templateForCard(card, adminTemplates) || currentDefaultTemplate;
+
+    console.log("[DMI cards] selectedTemplate.id", selectedTemplate?.id || null);
+
+    if (!selectedTemplate?.id) {
+      setSaveError("Please select a template");
+      return;
+    }
+
     const savedCard = await saveCardToSupabase({
       card: {
         ...card,
+        template_id: selectedTemplate.id,
+        template_name: selectedTemplate.name,
         status: nextStatus,
         last_updated: "Just now",
       },
@@ -2743,7 +2775,10 @@ async function writeCardPayload({
   payload: Record<string, unknown>;
   shouldUpdate: boolean;
 }) {
-  let nextPayload = { ...payload };
+  const timestamp = new Date().toISOString();
+  let nextPayload: Record<string, unknown> = shouldUpdate
+    ? { ...payload, updated_at: timestamp }
+    : { ...payload, created_at: timestamp, updated_at: timestamp };
   let result = shouldUpdate
     ? await supabase
         .from("cards")
@@ -2812,8 +2847,35 @@ async function cardSlugExists(slug: string, currentCardId: string | null) {
 
 function missingCardColumnFromError(error: { message?: string } | null) {
   const message = error?.message || "";
-  const match = message.match(/'([^']+)' column of 'cards'/);
-  return match?.[1] || null;
+  const quotedColumnMatch = message.match(/'([^']+)' column of 'cards'/);
+  const qualifiedColumnMatch = message.match(/column cards\.([a-zA-Z0-9_]+) does not exist/);
+  const missingColumnMatch = message.match(/Could not find the '([^']+)' column of 'cards'/);
+
+  return (
+    quotedColumnMatch?.[1] ||
+    qualifiedColumnMatch?.[1] ||
+    missingColumnMatch?.[1] ||
+    null
+  );
+}
+
+function describeCardsDatabaseError(error: { code?: string; message?: string } | null) {
+  const message = error?.message || "Unknown Supabase error.";
+  const missingColumn = missingCardColumnFromError(error);
+
+  if (missingColumn) {
+    return `Database schema issue: public.cards is missing column "${missingColumn}". Run the cards schema migration before publishing.`;
+  }
+
+  if (
+    message.includes("relation \"public.cards\" does not exist") ||
+    message.includes("Could not find the table") ||
+    message.includes("public.cards")
+  ) {
+    return `Database schema issue: public.cards table is missing or unavailable. Run the cards schema migration before publishing.`;
+  }
+
+  return `Database save failed: ${message}`;
 }
 
 function readFileAsDataUrl(file: File) {
