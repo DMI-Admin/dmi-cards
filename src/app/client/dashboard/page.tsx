@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
+  ChevronDown,
   ContactRound,
   CreditCard,
   ExternalLink,
@@ -9,12 +11,18 @@ import {
   Heart,
   Link2,
   Lock,
+  LogOut,
+  Monitor,
   Plug,
   QrCode,
+  Settings,
   Share2,
+  Sun,
   SmartphoneNfc,
   Sparkles,
+  UserRound,
   WalletCards,
+  Moon,
 } from "lucide-react";
 import CardRenderer, {
   type CardRendererData,
@@ -108,6 +116,7 @@ const analyticsStats = [
 ];
 
 export default function ClientDashboardPage() {
+  const router = useRouter();
   const [templates, setTemplates] = useState<SharedTemplate[]>([]);
   const [profile, setProfile] = useState<ClientProfile | null>(null);
   const [latestCard, setLatestCard] = useState<(CardRendererData & {
@@ -196,20 +205,28 @@ export default function ClientDashboardPage() {
       <ClientSidebar />
 
       <section className="flex-1 p-10">
-        <div className="mb-10">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#AC00FF]">
-            Client Portal
-          </p>
-          <h1 className="mt-3 text-4xl font-bold">Dashboard</h1>
-          <p className="mt-3 max-w-3xl text-white/50">
-            Manage your digital card, public link, QR code, and sharing tools
-            from one client portal.
-          </p>
+        <div className="mb-10 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#AC00FF]">
+              Client Portal
+            </p>
+            <h1 className="mt-3 text-4xl font-bold">Dashboard</h1>
+            <p className="mt-3 max-w-3xl text-white/50">
+              Manage your digital card, public link, QR code, and sharing tools
+              from one client portal.
+            </p>
+          </div>
+          <AccountMenu profile={profile} onNavigate={(href) => router.push(href)} />
         </div>
 
         <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_390px]">
           <div className="space-y-6">
             <WelcomePlanCard profile={profile} />
+
+            <div className="grid gap-5 lg:grid-cols-2">
+              <FreePlanSummary />
+              <UpgradeTeaser />
+            </div>
 
             <div className="grid gap-5 lg:grid-cols-2">
               <PublicUrlCard publicUrl={publicUrl} published={Boolean(latestCard?.is_published || latestCard?.status === "published")} />
@@ -278,33 +295,198 @@ export default function ClientDashboardPage() {
 }
 
 function WelcomePlanCard({ profile }: { profile: ClientProfile | null }) {
-  const displayName = profile?.full_name?.trim() || profile?.email || "there";
+  const firstName = firstNameFromProfile(profile);
   const displayEmail = profile?.email || "Signed in with Supabase";
 
   return (
     <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#101935] to-[#AC00FF]/15 p-6 shadow-2xl shadow-purple-950/10">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+      <div>
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white/60">
             <Sparkles className="h-3.5 w-3.5 text-purple-200" />
             Free plan
           </div>
           <h2 className="mt-5 text-3xl font-semibold">
-            Welcome back, {displayName}
+            {firstName ? `Welcome, ${firstName}` : "Welcome"}
           </h2>
           <p className="mt-2 text-sm text-white/40">{displayEmail}</p>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-white/55">
-            Your free digital card shell is ready. Upgrade to Individual Pro to
-            unlock contacts, wallet, tap sharing, analytics, and integrations.
+            Manage your digital business card, public profile, QR code, and
+            sharing tools from one place.
           </p>
-        </div>
-
-        <div className="rounded-2xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 px-5 py-4">
-          <p className="text-sm text-white/45">Current access</p>
-          <p className="mt-2 text-2xl font-semibold">Free</p>
         </div>
       </div>
     </div>
+  );
+}
+
+function firstNameFromProfile(profile: ClientProfile | null) {
+  const fullName = profile?.full_name?.trim();
+
+  if (fullName) {
+    return fullName.split(/\s+/)[0] || "";
+  }
+
+  return "";
+}
+
+function AccountMenu({
+  profile,
+  onNavigate,
+}: {
+  profile: ClientProfile | null;
+  onNavigate: (href: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const email = profile?.email || "Signed in with Supabase";
+  const firstName = firstNameFromProfile(profile);
+  const initial = (firstName || email || "A").trim().charAt(0).toUpperCase();
+
+  async function handleLogout() {
+    const { error } = await supabase.auth.signOut();
+    console.log("[DMI auth] logout result", {
+      error: error ? { name: error.name, message: error.message, status: error.status } : null,
+    });
+    onNavigate("/login");
+  }
+
+  return (
+    <div className="relative self-start">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-white/75 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#AC00FF] to-[#5B2CFF] text-sm font-bold text-white shadow-lg shadow-purple-500/20">
+          {initial || <UserRound className="h-4 w-4" />}
+        </span>
+        <ChevronDown className="h-4 w-4 text-white/45" />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 z-30 mt-3 w-80 rounded-2xl border border-white/10 bg-[#101935] p-3 shadow-2xl shadow-black/40">
+          <button
+            type="button"
+            onClick={() => onNavigate("/client/settings")}
+            className="w-full rounded-xl px-3 py-3 text-left text-sm text-white/70 transition hover:bg-white/5 hover:text-white"
+          >
+            <span className="block text-xs text-white/35">Signed in as</span>
+            <span className="mt-1 block truncate font-medium">{email}</span>
+          </button>
+
+          <div className="my-2 h-px bg-white/10" />
+
+          <button
+            type="button"
+            onClick={() => onNavigate("/client/settings")}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-white/70 transition hover:bg-white/5 hover:text-white"
+          >
+            <Settings className="h-4 w-4 text-purple-200" />
+            Account settings
+          </button>
+
+          <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
+              Theme
+            </p>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <ThemeOption label="System" active icon={Monitor} />
+              <ThemeOption label="Light" icon={Sun} />
+              <ThemeOption label="Dark" icon={Moon} />
+            </div>
+          </div>
+
+          <div className="my-2 h-px bg-white/10" />
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-red-100 transition hover:bg-red-500/10"
+          >
+            <LogOut className="h-4 w-4" />
+            Log out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FreePlanSummary() {
+  const features = [
+    "1 published digital card",
+    "Free template access",
+    "Public profile URL",
+    "Basic QR code",
+    "Save contact button",
+  ];
+
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+      <h2 className="text-xl font-semibold">Your Free Plan</h2>
+      <ul className="mt-5 space-y-3">
+        {features.map((feature) => (
+          <li key={feature} className="flex items-center gap-3 text-sm text-white/70">
+            <span className="h-2 w-2 rounded-full bg-[#AC00FF]" />
+            {feature}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function UpgradeTeaser() {
+  const features = [
+    "Premium templates",
+    "Contacts",
+    "Wallet",
+    "Tap to Share",
+    "Analytics",
+    "Integrations",
+  ];
+
+  return (
+    <div className="rounded-3xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 p-6">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold">Upgrade to Individual Pro</h2>
+        <LockedBadge />
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        {features.map((feature) => (
+          <div key={feature} className="flex items-center gap-3 text-sm text-purple-100/80">
+            <Lock className="h-4 w-4 text-purple-200" />
+            {feature}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ThemeOption({
+  label,
+  icon: Icon,
+  active = false,
+}: {
+  label: string;
+  icon: typeof Monitor;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2 text-xs transition ${
+        active
+          ? "border-[#AC00FF]/50 bg-[#AC00FF]/15 text-purple-100"
+          : "border-white/10 bg-white/5 text-white/45 hover:text-white"
+      }`}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+    </button>
   );
 }
 

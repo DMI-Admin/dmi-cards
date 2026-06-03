@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
@@ -12,14 +12,12 @@ import {
   Landmark,
   LayoutDashboard,
   Lock,
-  LogOut,
   Plug,
   QrCode,
   Settings,
   SmartphoneNfc,
   WalletCards,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 
 const navItems: {
   label: string;
@@ -47,15 +45,6 @@ const navItems: {
 
 export default function ClientSidebar() {
   const pathname = usePathname();
-  const router = useRouter();
-
-  async function handleLogout() {
-    const { error } = await supabase.auth.signOut();
-    console.log("[DMI auth] logout result", {
-      error: error ? { name: error.name, message: error.message, status: error.status } : null,
-    });
-    router.push("/login");
-  }
 
   return (
     <aside className="sticky top-0 flex h-screen w-72 shrink-0 flex-col border-r border-white/5 bg-[#0F0E38] text-white">
@@ -122,14 +111,6 @@ export default function ClientSidebar() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="mt-3 flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/65 transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/15 hover:text-white"
-        >
-          <LogOut className="h-4 w-4" />
-          Log Out
-        </button>
       </div>
     </aside>
   );
