@@ -15,7 +15,11 @@ export default function ClientLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
+  const [showResetForm, setShowResetForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [resetSubmitting, setResetSubmitting] = useState(false);
 
   useEffect(() => {
     const {
@@ -122,6 +126,29 @@ export default function ClientLoginPage() {
     setLoginError("Social login is not enabled yet. Please use email and password.");
   }
 
+  async function handlePasswordReset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoginError("");
+    setResetMessage("");
+    setResetSubmitting(true);
+
+    try {
+      await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      setResetMessage(
+        "If an account exists for this email, we’ve sent password reset instructions."
+      );
+    } catch (error) {
+      console.error("[DMI auth] password reset request failed", error);
+      setResetMessage(
+        "If an account exists for this email, we’ve sent password reset instructions."
+      );
+    } finally {
+      setResetSubmitting(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#070B1A] text-white">
       <div className="grid min-h-screen lg:grid-cols-[minmax(0,0.9fr)_minmax(480px,0.6fr)]">
@@ -221,12 +248,17 @@ export default function ClientLoginPage() {
                 </label>
 
                 <div className="flex items-center justify-between gap-4 text-sm">
-                  <Link
-                    href="#"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowResetForm((current) => !current);
+                      setResetEmail(email);
+                      setResetMessage("");
+                    }}
                     className="text-white/45 transition hover:text-purple-100"
                   >
                     Forgot password?
-                  </Link>
+                  </button>
                   <Link
                     href="/signup"
                     className="text-[#DFA7FF] transition hover:text-white"
@@ -250,6 +282,42 @@ export default function ClientLoginPage() {
                   <ArrowRight className="h-4 w-4" />
                 </button>
               </form>
+
+              {showResetForm && (
+                <form
+                  onSubmit={handlePasswordReset}
+                  className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4"
+                >
+                  <label className="block">
+                    <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/45">
+                      <Mail className="h-3.5 w-3.5 text-purple-200" />
+                      Reset email
+                    </span>
+                    <input
+                      type="email"
+                      value={resetEmail}
+                      onChange={(event) => setResetEmail(event.target.value)}
+                      placeholder="you@company.com"
+                      className="inputStyle"
+                      required
+                    />
+                  </label>
+
+                  {resetMessage && (
+                    <div className="mt-3 rounded-2xl border border-green-400/20 bg-green-500/10 px-4 py-3 text-sm text-green-100">
+                      {resetMessage}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={resetSubmitting}
+                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#AC00FF]/35 bg-[#AC00FF]/15 px-5 py-3 text-sm font-semibold text-purple-100 transition hover:bg-[#AC00FF]/25"
+                  >
+                    {resetSubmitting ? "Sending..." : "Send reset instructions"}
+                  </button>
+                </form>
+              )}
 
               <SocialLoginSection onSocialLogin={handleSocialLogin} />
             </div>
