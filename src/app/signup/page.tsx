@@ -43,11 +43,14 @@ export default function ClientSignupPage() {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [createdEmail, setCreatedEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [signupError, setSignupError] = useState("");
   const [signupMessage, setSignupMessage] = useState("");
+  const [verificationPending, setVerificationPending] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [resending, setResending] = useState(false);
 
   useEffect(() => {
     const {
@@ -86,15 +89,16 @@ export default function ClientSignupPage() {
     }
 
     setSubmitting(true);
+    const signupEmail = email.trim();
 
     console.log("[DMI auth] signup request", {
-      email: email.trim(),
+      email: signupEmail,
       fullName: fullName.trim(),
       projectUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
     });
 
     const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
+      email: signupEmail,
       password,
       options: {
         emailRedirectTo: `${window.location.origin}/auth/callback?next=/client/dashboard`,
@@ -133,7 +137,7 @@ export default function ClientSignupPage() {
     });
 
     if (error) {
-      setSignupError(error.message);
+      setSignupError("Could not create your account. Please check your details and try again.");
       setSubmitting(false);
       return;
     }
@@ -162,32 +166,62 @@ export default function ClientSignupPage() {
       }
     }
 
-    if (!data.session) {
-      console.log("[DMI auth] auth user", data.user
-        ? {
-            id: data.user.id,
-            email: data.user.email,
-          }
-        : null);
-      console.log("[DMI auth] session state", {
-        page: "signup",
-        event: "SIGNED_UP_WITHOUT_SESSION",
-        hasSession: false,
-        userId: data.user?.id || null,
-        email: data.user?.email || email.trim(),
-      });
-      setSignupMessage(
-        "Account created in Supabase Auth. Please confirm your email, then log in."
-      );
-      setSubmitting(false);
-      return;
+    if (data.session) {
+      await supabase.auth.signOut();
     }
 
-    router.push("/client/dashboard");
+    console.log("[DMI auth] auth user", data.user
+      ? {
+          id: data.user.id,
+          email: data.user.email,
+        }
+      : null);
+    console.log("[DMI auth] session state", {
+      page: "signup",
+      event: "SIGNED_UP_VERIFY_EMAIL",
+      hasSession: false,
+      userId: data.user?.id || null,
+      email: data.user?.email || signupEmail,
+    });
+
+    setCreatedEmail(signupEmail);
+    setVerificationPending(true);
+    setSignupMessage("");
+    setPassword("");
+    setConfirmPassword("");
+    setSubmitting(false);
   }
 
   function handleSocialSignup() {
     setSignupError("Social signup is not enabled yet. Please use email and password.");
+  }
+
+  async function resendVerificationEmail() {
+    const resendEmail = createdEmail || email.trim();
+
+    if (!resendEmail) {
+      setSignupError("Enter your email address to resend verification.");
+      return;
+    }
+
+    setSignupError("");
+    setResending(true);
+
+    try {
+      await supabase.auth.resend({
+        type: "signup",
+        email: resendEmail,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=/client/dashboard`,
+        },
+      });
+      setSignupMessage("Verification email sent. Please check your inbox.");
+    } catch (error) {
+      console.error("[DMI auth] verification resend failed", error);
+      setSignupMessage("If an account exists for this email, we’ve sent a verification link.");
+    } finally {
+      setResending(false);
+    }
   }
 
   return (
@@ -256,6 +290,16 @@ export default function ClientSignupPage() {
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-[#101935]/80 p-7 shadow-2xl shadow-purple-950/25">
+              {verificationPending ? (
+                <VerificationSuccess
+                  email={createdEmail}
+                  message={signupMessage}
+                  resending={resending}
+                  onGoToLogin={() => router.push("/login")}
+                  onResend={resendVerificationEmail}
+                />
+              ) : (
+              <>
               <div className="mb-8">
                 <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#AC00FF]/15 text-purple-100">
                   <UserRound className="h-6 w-6" />
@@ -392,6 +436,8 @@ export default function ClientSignupPage() {
                   </Link>
                 </div>
               </div>
+              </>
+              )}
             </div>
 
             <p className="mt-8 text-center text-xs text-white/30">
@@ -475,6 +521,63 @@ function Field({
       </span>
       {children}
     </label>
+  );
+}
+
+function VerificationSuccess({
+  email,
+  message,
+  resending,
+  onGoToLogin,
+  onResend,
+}: {
+  email: string;
+  message: string;
+  resending: boolean;
+  onGoToLogin: () => void;
+  onResend: () => void;
+}) {
+  return (
+    <div className="text-center">
+      <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-green-500/15 text-green-100">
+        <Check className="h-7 w-7" />
+      </div>
+      <h2 className="text-3xl font-bold">
+        Account created. Please check your email to verify your account before logging in.
+      </h2>
+      <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-white/55">
+        We’ve sent a verification link to your email address. Open the link,
+        then return here to log in.
+      </p>
+      {email && (
+        <p className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+          {email}
+        </p>
+      )}
+      {message && (
+        <div className="mt-5 rounded-2xl border border-green-400/20 bg-green-500/10 px-4 py-3 text-sm text-green-100">
+          {message}
+        </div>
+      )}
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+        <button
+          type="button"
+          onClick={onGoToLogin}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35"
+        >
+          Go to login
+          <ArrowRight className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={onResend}
+          disabled={resending}
+          className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white/70 transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {resending ? "Sending..." : "Resend verification email"}
+        </button>
+      </div>
+    </div>
   );
 }
 
