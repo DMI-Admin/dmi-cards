@@ -101,7 +101,7 @@ export default function ClientSignupPage() {
       email: signupEmail,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/client/dashboard`,
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/email-verified`,
         data: {
           full_name: fullName.trim(),
           subscription_plan: "free",
@@ -212,7 +212,7 @@ export default function ClientSignupPage() {
         type: "signup",
         email: resendEmail,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=/client/dashboard`,
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=/email-verified`,
         },
       });
       setSignupMessage("Verification email sent. Please check your inbox.");

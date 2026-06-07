@@ -70,6 +70,15 @@ function AuthCallbackContent() {
           await getCurrentProfile(session.user);
         }
 
+        if (nextPath === "/email-verified") {
+          const { error: signOutError } = await supabase.auth.signOut();
+          console.log("[DMI auth] email verification signout", {
+            error: signOutError
+              ? { name: signOutError.name, message: signOutError.message, status: signOutError.status }
+              : null,
+          });
+        }
+
         if (!ignore) {
           router.replace(nextPath);
         }
