@@ -25,6 +25,11 @@ function AuthCallbackContent() {
     async function completeAuth() {
       const nextPath = searchParams.get("next") || "/client/dashboard";
       const code = searchParams.get("code");
+      const tokenHash = searchParams.get("token_hash");
+      const type = searchParams.get("type");
+      const email = searchParams.get("email") || "";
+      let verifiedUserId: string | null = null;
+      let verifiedEmail: string | null = email || null;
       const urlError =
         searchParams.get("error_description") ||
         searchParams.get("error") ||
@@ -32,11 +37,19 @@ function AuthCallbackContent() {
 
       if (urlError) {
         console.error("[DMI auth] auth callback error", urlError);
-        setErrorMessage(urlError);
+        routeVerificationError(urlError, email);
         return;
       }
 
       try {
+        console.log("[DMI auth] auth callback params", {
+          nextPath,
+          hasCode: Boolean(code),
+          hasTokenHash: Boolean(tokenHash),
+          type,
+          email: email || null,
+        });
+
         if (code) {
           const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
@@ -49,7 +62,35 @@ function AuthCallbackContent() {
             email: data.user?.email || data.session?.user?.email || null,
           });
 
+          verifiedUserId = data.user?.id || data.session?.user?.id || null;
+          verifiedEmail = data.user?.email || data.session?.user?.email || email || null;
+
           if (error) throw error;
+        } else if (tokenHash && type) {
+          const { data, error } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: normalizeOtpType(type),
+          });
+
+          console.log("[DMI auth] auth callback verify otp", {
+            error: error
+              ? { name: error.name, message: error.message, status: error.status }
+              : null,
+            hasSession: Boolean(data.session),
+            userId: data.user?.id || data.session?.user?.id || null,
+            email: data.user?.email || data.session?.user?.email || email || null,
+            emailConfirmedAt: data.user?.email_confirmed_at || null,
+          });
+
+          verifiedUserId = data.user?.id || data.session?.user?.id || null;
+          verifiedEmail = data.user?.email || data.session?.user?.email || email || null;
+
+          if (error) throw error;
+        } else {
+          console.log("[DMI auth] auth callback no explicit token", {
+            nextPath,
+            note: "Checking for an existing session from URL hash handling.",
+          });
         }
 
         const {
@@ -64,10 +105,17 @@ function AuthCallbackContent() {
           hasSession: Boolean(session),
           userId: session?.user?.id || null,
           email: session?.user?.email || null,
+          emailConfirmedAt: session?.user?.email_confirmed_at || null,
+          verifiedUserId,
+          verifiedEmail,
         });
 
         if (session?.user) {
           await getCurrentProfile(session.user);
+        } else if (nextPath === "/email-verified" && !verifiedUserId) {
+          throw new Error("Verification link is missing its confirmation token.");
+        } else if (nextPath !== "/email-verified") {
+          throw new Error("Verification link is missing its confirmation token.");
         }
 
         if (nextPath === "/email-verified") {
@@ -85,13 +133,27 @@ function AuthCallbackContent() {
       } catch (error) {
         console.error("[DMI auth] auth callback failed", error);
         if (!ignore) {
-          setErrorMessage(
+          routeVerificationError(
             error instanceof Error
               ? error.message
-              : "Could not complete email verification."
+              : "Could not complete email verification.",
+            email
           );
         }
       }
+    }
+
+    function routeVerificationError(message: string, email: string) {
+      if (nextIsEmailVerification(searchParams.get("next"))) {
+        router.replace(
+          `/email-verification-error?message=${encodeURIComponent(message)}${
+            email ? `&email=${encodeURIComponent(email)}` : ""
+          }`
+        );
+        return;
+      }
+
+      setErrorMessage(message);
     }
 
     void completeAuth();
@@ -119,6 +181,19 @@ function AuthCallbackContent() {
   }
 
   return <CallbackLoading />;
+}
+
+function nextIsEmailVerification(nextPath: string | null) {
+  return nextPath === "/email-verified";
+}
+
+function normalizeOtpType(type: string) {
+  if (type === "signup" || type === "email") return "signup";
+  if (type === "recovery") return "recovery";
+  if (type === "invite") return "invite";
+  if (type === "magiclink") return "magiclink";
+  if (type === "email_change") return "email_change";
+  return "signup";
 }
 
 function CallbackLoading() {

@@ -73,6 +73,21 @@ export async function DELETE(
     client?.profile_id,
     ...(clientUsers || []).flatMap((user) => [user.user_id, user.profile_id]),
   ]);
+  const linkedEmails = uniqueEmails([
+    client?.email,
+    ...(clientUsers || []).map((user) => user.email),
+  ]);
+  const authUserIdsByEmail = await findAuthUserIdsByEmail(supabaseAdmin, linkedEmails);
+  const allAuthUserIds = uniqueIds([...authUserIds, ...authUserIdsByEmail]);
+
+  console.log("[DMI admin] client delete identities", {
+    clientId,
+    clientFound: Boolean(client),
+    linkedEmails,
+    authUserIds,
+    authUserIdsByEmail,
+    allAuthUserIds,
+  });
 
   const deletionErrors: string[] = [];
 
@@ -83,7 +98,7 @@ export async function DELETE(
 
   if (clientCardsError) deletionErrors.push(`cards by client_id: ${clientCardsError.message}`);
 
-  for (const authUserId of authUserIds) {
+  for (const authUserId of allAuthUserIds) {
     const { error: userCardsError } = await supabaseAdmin
       .from("cards")
       .delete()
@@ -101,7 +116,7 @@ export async function DELETE(
     deletionErrors.push(`client_users: ${clientUsersDeleteError.message}`);
   }
 
-  for (const authUserId of authUserIds) {
+  for (const authUserId of allAuthUserIds) {
     const { error: linkedClientUsersDeleteError } = await supabaseAdmin
       .from("client_users")
       .delete()
@@ -109,6 +124,17 @@ export async function DELETE(
 
     if (linkedClientUsersDeleteError) {
       deletionErrors.push(`client_users for user ${authUserId}: ${linkedClientUsersDeleteError.message}`);
+    }
+  }
+
+  for (const email of linkedEmails) {
+    const { error: clientUsersByEmailDeleteError } = await supabaseAdmin
+      .from("client_users")
+      .delete()
+      .ilike("email", email);
+
+    if (clientUsersByEmailDeleteError) {
+      deletionErrors.push(`client_users for email ${email}: ${clientUsersByEmailDeleteError.message}`);
     }
   }
 
@@ -121,7 +147,18 @@ export async function DELETE(
     deletionErrors.push(`clients: ${clientDeleteError.message}`);
   }
 
-  for (const authUserId of authUserIds) {
+  for (const email of linkedEmails) {
+    const { error: clientsByEmailDeleteError } = await supabaseAdmin
+      .from("clients")
+      .delete()
+      .ilike("email", email);
+
+    if (clientsByEmailDeleteError) {
+      deletionErrors.push(`clients for email ${email}: ${clientsByEmailDeleteError.message}`);
+    }
+  }
+
+  for (const authUserId of allAuthUserIds) {
     const { error: profileDeleteError } = await supabaseAdmin
       .from("profiles")
       .delete()
@@ -148,7 +185,8 @@ export async function DELETE(
   return NextResponse.json({
     deleted: true,
     clientId,
-    authUserIds,
+    authUserIds: allAuthUserIds,
+    linkedEmails,
     alreadyMissing: !client,
   });
 }
@@ -157,6 +195,47 @@ function uniqueIds(ids: Array<string | null | undefined>) {
   return Array.from(new Set(ids.filter((id): id is string => Boolean(id))));
 }
 
+function uniqueEmails(emails: Array<string | null | undefined>) {
+  return Array.from(
+    new Set(
+      emails
+        .map((email) => email?.trim().toLowerCase())
+        .filter((email): email is string => Boolean(email))
+    )
+  );
+}
+
 function isMissingAuthUserError(error: { message?: string; status?: number }) {
   return error.status === 404 || /not found|does not exist/i.test(error.message || "");
+}
+
+async function findAuthUserIdsByEmail(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  emails: string[]
+) {
+  if (emails.length === 0) return [];
+
+  const wantedEmails = new Set(emails);
+  const matchedUserIds = new Set<string>();
+  const perPage = 1000;
+
+  for (let page = 1; page <= 20; page += 1) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+
+    if (error) throw new Error(`Could not search Supabase Auth users: ${error.message}`);
+
+    for (const user of data.users) {
+      const userEmail = user.email?.trim().toLowerCase();
+      if (userEmail && wantedEmails.has(userEmail)) {
+        matchedUserIds.add(user.id);
+      }
+    }
+
+    if (data.users.length < perPage) break;
+  }
+
+  return Array.from(matchedUserIds);
 }

@@ -63,7 +63,7 @@ export default function EmailVerifiedPage() {
                 <Sparkles className="h-3.5 w-3.5 text-purple-200" />
                 Verified
               </div>
-              <h2 className="text-3xl font-bold">Your email has been verified.</h2>
+              <h2 className="text-3xl font-bold">Your email has been successfully verified.</h2>
               <p className="mx-auto mt-4 max-w-sm text-sm leading-6 text-white/55">
                 You can now log in to your DMI Cards account.
               </p>
