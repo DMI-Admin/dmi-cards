@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, LockKeyhole, Mail, Sparkles } from "lucide-react";
+import { ArrowRight, LockKeyhole, Mail, Sparkles, X } from "lucide-react";
 import { FaApple, FaMicrosoft } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
 import { supabase } from "@/lib/supabase";
@@ -17,7 +17,7 @@ export default function ClientLoginPage() {
   const [loginError, setLoginError] = useState("");
   const [resetEmail, setResetEmail] = useState("");
   const [resetMessage, setResetMessage] = useState("");
-  const [showResetForm, setShowResetForm] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [resetSubmitting, setResetSubmitting] = useState(false);
 
@@ -251,7 +251,7 @@ export default function ClientLoginPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      setShowResetForm((current) => !current);
+                      setShowResetModal(true);
                       setResetEmail(email);
                       setResetMessage("");
                     }}
@@ -283,42 +283,6 @@ export default function ClientLoginPage() {
                 </button>
               </form>
 
-              {showResetForm && (
-                <form
-                  onSubmit={handlePasswordReset}
-                  className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4"
-                >
-                  <label className="block">
-                    <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/45">
-                      <Mail className="h-3.5 w-3.5 text-purple-200" />
-                      Reset email
-                    </span>
-                    <input
-                      type="email"
-                      value={resetEmail}
-                      onChange={(event) => setResetEmail(event.target.value)}
-                      placeholder="you@company.com"
-                      className="inputStyle"
-                      required
-                    />
-                  </label>
-
-                  {resetMessage && (
-                    <div className="mt-3 rounded-2xl border border-green-400/20 bg-green-500/10 px-4 py-3 text-sm text-green-100">
-                      {resetMessage}
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={resetSubmitting}
-                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#AC00FF]/35 bg-[#AC00FF]/15 px-5 py-3 text-sm font-semibold text-purple-100 transition hover:bg-[#AC00FF]/25"
-                  >
-                    {resetSubmitting ? "Sending..." : "Send reset instructions"}
-                  </button>
-                </form>
-              )}
-
               <SocialLoginSection onSocialLogin={handleSocialLogin} />
             </div>
 
@@ -328,7 +292,101 @@ export default function ClientLoginPage() {
           </div>
         </section>
       </div>
+
+      {showResetModal && (
+        <PasswordResetModal
+          email={resetEmail}
+          message={resetMessage}
+          submitting={resetSubmitting}
+          onEmailChange={setResetEmail}
+          onClose={() => {
+            setShowResetModal(false);
+            setResetMessage("");
+          }}
+          onSubmit={handlePasswordReset}
+        />
+      )}
     </main>
+  );
+}
+
+function PasswordResetModal({
+  email,
+  message,
+  submitting,
+  onEmailChange,
+  onClose,
+  onSubmit,
+}: {
+  email: string;
+  message: string;
+  submitting: boolean;
+  onEmailChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#101935] p-6 text-white shadow-2xl shadow-black/40">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-semibold">Reset your password</h2>
+            <p className="mt-3 text-sm leading-6 text-white/50">
+              Enter your email address and we’ll send you password reset
+              instructions.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/55 transition hover:bg-white/10 hover:text-white"
+            aria-label="Close password reset"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit} className="mt-6 space-y-4">
+          <label className="block">
+            <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/45">
+              <Mail className="h-3.5 w-3.5 text-purple-200" />
+              Email
+            </span>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => onEmailChange(event.target.value)}
+              placeholder="you@company.com"
+              className="inputStyle"
+              required
+            />
+          </label>
+
+          {message && (
+            <div className="rounded-2xl border border-green-400/20 bg-green-500/10 px-4 py-3 text-sm leading-6 text-green-100">
+              {message}
+            </div>
+          )}
+
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white/65 transition hover:bg-white/10 hover:text-white"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submitting ? "Sending..." : "Send reset instructions"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
