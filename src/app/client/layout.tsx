@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
+import {
+  ClientAuthRequiredError,
+  ClientSuspendedError,
+  requireClientUser,
+} from "@/lib/client-auth";
 
 export default function ClientPortalLayout({
   children,
@@ -25,6 +29,13 @@ export default function ClientPortalLayout({
 
         if (error instanceof ClientAuthRequiredError) {
           router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+          return;
+        }
+
+        if (error instanceof ClientSuspendedError) {
+          router.replace(
+            `/login?suspended=1&next=${encodeURIComponent(pathname)}`
+          );
           return;
         }
 

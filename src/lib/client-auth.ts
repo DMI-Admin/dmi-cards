@@ -9,6 +9,13 @@ export class ClientAuthRequiredError extends Error {
   }
 }
 
+export class ClientSuspendedError extends Error {
+  constructor() {
+    super("This account has been suspended. Please contact DMI Cards support.");
+    this.name = "ClientSuspendedError";
+  }
+}
+
 export type CurrentClient = {
   user: User;
   profile: ClientProfile;
@@ -88,6 +95,11 @@ export async function requireClientUser(): Promise<CurrentClient> {
     throw new Error("Could not load your client profile.");
   }
 
+  if (await isClientAccountSuspended(user.id)) {
+    await supabase.auth.signOut();
+    throw new ClientSuspendedError();
+  }
+
   console.log("[DMI auth] requireClientUser", {
     authenticated: true,
     user: authUserLog(user),
@@ -95,4 +107,30 @@ export async function requireClientUser(): Promise<CurrentClient> {
   });
 
   return { user, profile };
+}
+
+export async function isClientAccountSuspended(userId: string) {
+  const suspendedStatuses = new Set(["suspended", "inactive"]);
+
+  const { data: clients, error: clientsError } = await supabase
+    .from("clients")
+    .select("id, status")
+    .or(`user_id.eq.${userId},profile_id.eq.${userId}`);
+
+  if (clientsError) {
+    throw new Error(`Could not check client status: ${clientsError.message}`);
+  }
+
+  const { data: clientUsers, error: clientUsersError } = await supabase
+    .from("client_users")
+    .select("id, status")
+    .or(`user_id.eq.${userId},profile_id.eq.${userId}`);
+
+  if (clientUsersError) {
+    throw new Error(`Could not check client user status: ${clientUsersError.message}`);
+  }
+
+  return [...(clients || []), ...(clientUsers || [])].some((record) =>
+    suspendedStatuses.has(String(record.status || "").toLowerCase())
+  );
 }

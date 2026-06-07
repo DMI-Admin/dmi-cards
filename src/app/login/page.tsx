@@ -9,12 +9,18 @@ import { FaApple, FaMicrosoft } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
 import { supabase } from "@/lib/supabase";
 import { getOrCreateClientProfile } from "@/lib/profiles";
+import { isClientAccountSuspended } from "@/lib/client-auth";
 
 export default function ClientLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
+  const [loginError, setLoginError] = useState(() =>
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("suspended") === "1"
+      ? "This account has been suspended. Please contact DMI Cards support."
+      : ""
+  );
   const [resetEmail, setResetEmail] = useState("");
   const [resetMessage, setResetMessage] = useState("");
   const [showResetModal, setShowResetModal] = useState(false);
@@ -102,6 +108,15 @@ export default function ClientLoginPage() {
 
     try {
       const profile = await getOrCreateClientProfile(user);
+      const suspended = await isClientAccountSuspended(user.id);
+
+      if (suspended) {
+        await supabase.auth.signOut();
+        setLoginError("This account has been suspended. Please contact DMI Cards support.");
+        setSubmitting(false);
+        return;
+      }
+
       console.log("[DMI auth] signed in user", {
         id: user.id,
         email: user.email,

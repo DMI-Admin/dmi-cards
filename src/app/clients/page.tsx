@@ -260,25 +260,59 @@ export default function ClientsPage() {
   }
 
   async function toggleClientStatus(client: Client) {
+    const nextStatus = client.status === "suspended" ? "active" : "suspended";
+
     const { error } = await supabase
       .from("clients")
-      .update({ status: client.status === "suspended" ? "active" : "suspended" })
+      .update({ status: nextStatus })
       .eq("id", client.id);
     if (error) return alert(error.message);
+
+    const { error: usersError } = await supabase
+      .from("client_users")
+      .update({ status: nextStatus })
+      .eq("client_id", client.id);
+
+    if (usersError) return alert(usersError.message);
+
     void fetchClientData();
   }
 
   async function deleteClient(client: Client) {
-    if (!window.confirm(`Are you sure you want to delete ${client.full_name}? This cannot be undone.`)) return;
-    const { error } = await supabase.from("clients").delete().eq("id", client.id);
-    if (error) return alert(error.message);
+    const confirmed = window.confirm(
+      `Delete ${client.full_name || client.email}? This removes the client, client user link, profile, cards, and Supabase Auth user where linked. This cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    const response = await fetch(`/api/admin/clients/${encodeURIComponent(client.id)}`, {
+      method: "DELETE",
+    });
+    const result = (await response.json().catch(() => null)) as { error?: string } | null;
+
+    if (!response.ok) {
+      return alert(result?.error || "Could not delete client.");
+    }
+
     void fetchClientData();
   }
 
   async function deleteCompany(client: Client) {
-    if (!window.confirm("Delete this company and all users under it?")) return;
-    const { error } = await supabase.from("clients").delete().eq("id", client.id);
-    if (error) return alert(error.message);
+    const confirmed = window.confirm(
+      `Delete ${client.company_name || client.full_name}? This removes the company, linked users, profiles, cards, and Supabase Auth users where linked. This cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    const response = await fetch(`/api/admin/clients/${encodeURIComponent(client.id)}`, {
+      method: "DELETE",
+    });
+    const result = (await response.json().catch(() => null)) as { error?: string } | null;
+
+    if (!response.ok) {
+      return alert(result?.error || "Could not delete company.");
+    }
+
     if (expandedCompany === client.id) setExpandedCompany(null);
     void fetchClientData();
   }
