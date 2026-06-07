@@ -28,11 +28,19 @@ export default function ClientPortalLayout({
         if (ignore) return;
 
         if (error instanceof ClientAuthRequiredError) {
+          console.log("[DMI auth] client layout redirect decision", {
+            pathname,
+            redirectDecision: "redirect-login-no-session",
+          });
           router.replace(`/login?next=${encodeURIComponent(pathname)}`);
           return;
         }
 
         if (error instanceof ClientSuspendedError) {
+          console.log("[DMI auth] client layout redirect decision", {
+            pathname,
+            redirectDecision: "redirect-login-suspended",
+          });
           router.replace(
             `/login?suspended=1&next=${encodeURIComponent(pathname)}`
           );
@@ -43,6 +51,10 @@ export default function ClientPortalLayout({
       }
 
       if (ignore) return;
+      console.log("[DMI auth] client layout redirect decision", {
+        pathname,
+        redirectDecision: "allow-client-portal",
+      });
       setCheckingSession(false);
     }
 
@@ -61,8 +73,6 @@ export default function ClientPortalLayout({
 
       if (event === "SIGNED_OUT") {
         router.replace(`/login?next=${encodeURIComponent(pathname)}`);
-      } else if (!ignore) {
-        setCheckingSession(false);
       }
     });
 

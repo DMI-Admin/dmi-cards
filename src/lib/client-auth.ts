@@ -21,6 +21,14 @@ export type CurrentClient = {
   profile: ClientProfile;
 };
 
+export type ClientAccountStatus = {
+  clientId: string | null;
+  clientStatus: string;
+  clientUserId: string | null;
+  clientUserStatus: string;
+  isSuspended: boolean;
+};
+
 export function authUserLog(user: User | null | undefined) {
   return user
     ? {
@@ -95,7 +103,20 @@ export async function requireClientUser(): Promise<CurrentClient> {
     throw new Error("Could not load your client profile.");
   }
 
-  if (await isClientAccountSuspended(user.id)) {
+  const status = await getCurrentClientAccountStatus(user.id);
+
+  console.log("[DMI auth] client portal status decision", {
+    source: "requireClientUser",
+    authenticatedUserId: user.id,
+    email: user.email || null,
+    clientId: status.clientId,
+    clientStatus: status.clientStatus,
+    clientUserId: status.clientUserId,
+    clientUserStatus: status.clientUserStatus,
+    redirectDecision: status.isSuspended ? "sign-out-and-redirect-login" : "allow",
+  });
+
+  if (status.isSuspended) {
     await supabase.auth.signOut();
     throw new ClientSuspendedError();
   }
@@ -109,28 +130,45 @@ export async function requireClientUser(): Promise<CurrentClient> {
   return { user, profile };
 }
 
-export async function isClientAccountSuspended(userId: string) {
-  const suspendedStatuses = new Set(["suspended", "inactive"]);
+export async function getCurrentClientAccountStatus(userIdForLog?: string | null) {
+  const { data, error } = await supabase
+    .rpc("get_current_client_account_status")
+    .single();
 
-  const { data: clients, error: clientsError } = await supabase
-    .from("clients")
-    .select("id, status")
-    .or(`user_id.eq.${userId},profile_id.eq.${userId}`);
-
-  if (clientsError) {
-    throw new Error(`Could not check client status: ${clientsError.message}`);
+  if (error) {
+    throw new Error(`Could not check client status: ${error.message}`);
   }
 
-  const { data: clientUsers, error: clientUsersError } = await supabase
-    .from("client_users")
-    .select("id, status")
-    .or(`user_id.eq.${userId},profile_id.eq.${userId}`);
+  const result = data as {
+    client_id?: string | null;
+    client_status?: string | null;
+    client_user_id?: string | null;
+    client_user_status?: string | null;
+    is_suspended?: boolean | null;
+  } | null;
 
-  if (clientUsersError) {
-    throw new Error(`Could not check client user status: ${clientUsersError.message}`);
-  }
+  const status: ClientAccountStatus = {
+    clientId: result?.client_id || null,
+    clientStatus: result?.client_status || "active",
+    clientUserId: result?.client_user_id || null,
+    clientUserStatus: result?.client_user_status || "active",
+    isSuspended: Boolean(result?.is_suspended),
+  };
 
-  return [...(clients || []), ...(clientUsers || [])].some((record) =>
-    suspendedStatuses.has(String(record.status || "").toLowerCase())
-  );
+  console.log("[DMI auth] suspended status lookup", {
+    authenticatedUserId: userIdForLog || null,
+    checkedTables: ["clients.status", "client_users.status"],
+    clientId: status.clientId,
+    clientStatus: status.clientStatus,
+    clientUserId: status.clientUserId,
+    clientUserStatus: status.clientUserStatus,
+    redirectDecision: status.isSuspended ? "block" : "allow",
+  });
+
+  return status;
+}
+
+export async function isClientAccountSuspended(userIdForLog?: string | null) {
+  const status = await getCurrentClientAccountStatus(userIdForLog);
+  return status.isSuspended;
 }

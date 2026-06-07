@@ -9,7 +9,7 @@ import { FaApple, FaMicrosoft } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
 import { supabase } from "@/lib/supabase";
 import { getOrCreateClientProfile } from "@/lib/profiles";
-import { isClientAccountSuspended } from "@/lib/client-auth";
+import { getCurrentClientAccountStatus } from "@/lib/client-auth";
 
 export default function ClientLoginPage() {
   const router = useRouter();
@@ -107,10 +107,43 @@ export default function ClientLoginPage() {
     }
 
     try {
-      const profile = await getOrCreateClientProfile(user);
-      const suspended = await isClientAccountSuspended(user.id);
+      const statusBeforeProvisioning = await getCurrentClientAccountStatus(user.id);
 
-      if (suspended) {
+      console.log("[DMI auth] login status decision", {
+        authenticatedUserId: user.id,
+        email: user.email || null,
+        clientId: statusBeforeProvisioning.clientId,
+        clientStatus: statusBeforeProvisioning.clientStatus,
+        clientUserId: statusBeforeProvisioning.clientUserId,
+        clientUserStatus: statusBeforeProvisioning.clientUserStatus,
+        redirectDecision: statusBeforeProvisioning.isSuspended
+          ? "sign-out-and-stay-login"
+          : "continue-login",
+      });
+
+      if (statusBeforeProvisioning.isSuspended) {
+        await supabase.auth.signOut();
+        setLoginError("This account has been suspended. Please contact DMI Cards support.");
+        setSubmitting(false);
+        return;
+      }
+
+      const profile = await getOrCreateClientProfile(user);
+      const statusAfterProvisioning = await getCurrentClientAccountStatus(user.id);
+
+      console.log("[DMI auth] login post-provision status decision", {
+        authenticatedUserId: user.id,
+        email: user.email || null,
+        clientId: statusAfterProvisioning.clientId,
+        clientStatus: statusAfterProvisioning.clientStatus,
+        clientUserId: statusAfterProvisioning.clientUserId,
+        clientUserStatus: statusAfterProvisioning.clientUserStatus,
+        redirectDecision: statusAfterProvisioning.isSuspended
+          ? "sign-out-and-stay-login"
+          : "allow-dashboard",
+      });
+
+      if (statusAfterProvisioning.isSuspended) {
         await supabase.auth.signOut();
         setLoginError("This account has been suspended. Please contact DMI Cards support.");
         setSubmitting(false);
