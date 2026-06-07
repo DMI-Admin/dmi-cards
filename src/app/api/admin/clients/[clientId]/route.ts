@@ -58,10 +58,6 @@ export async function DELETE(
     return NextResponse.json({ error: clientError.message }, { status: 500 });
   }
 
-  if (!client) {
-    return NextResponse.json({ error: "Client record was not found." }, { status: 404 });
-  }
-
   const { data: clientUsers, error: clientUsersError } = await supabaseAdmin
     .from("client_users")
     .select("id, profile_id, user_id, email")
@@ -73,8 +69,8 @@ export async function DELETE(
   }
 
   const authUserIds = uniqueIds([
-    client.user_id,
-    client.profile_id,
+    client?.user_id,
+    client?.profile_id,
     ...(clientUsers || []).flatMap((user) => [user.user_id, user.profile_id]),
   ]);
 
@@ -91,7 +87,7 @@ export async function DELETE(
     const { error: userCardsError } = await supabaseAdmin
       .from("cards")
       .delete()
-      .or(`user_id.eq.${authUserId},profile_id.eq.${authUserId}`);
+      .eq("user_id", authUserId);
 
     if (userCardsError) deletionErrors.push(`cards for user ${authUserId}: ${userCardsError.message}`);
   }
@@ -103,6 +99,17 @@ export async function DELETE(
 
   if (clientUsersDeleteError) {
     deletionErrors.push(`client_users: ${clientUsersDeleteError.message}`);
+  }
+
+  for (const authUserId of authUserIds) {
+    const { error: linkedClientUsersDeleteError } = await supabaseAdmin
+      .from("client_users")
+      .delete()
+      .or(`user_id.eq.${authUserId},profile_id.eq.${authUserId}`);
+
+    if (linkedClientUsersDeleteError) {
+      deletionErrors.push(`client_users for user ${authUserId}: ${linkedClientUsersDeleteError.message}`);
+    }
   }
 
   const { error: clientDeleteError } = await supabaseAdmin
@@ -126,7 +133,7 @@ export async function DELETE(
 
     const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(authUserId);
 
-    if (authDeleteError) {
+    if (authDeleteError && !isMissingAuthUserError(authDeleteError)) {
       deletionErrors.push(`auth user ${authUserId}: ${authDeleteError.message}`);
     }
   }
@@ -142,9 +149,14 @@ export async function DELETE(
     deleted: true,
     clientId,
     authUserIds,
+    alreadyMissing: !client,
   });
 }
 
 function uniqueIds(ids: Array<string | null | undefined>) {
   return Array.from(new Set(ids.filter((id): id is string => Boolean(id))));
+}
+
+function isMissingAuthUserError(error: { message?: string; status?: number }) {
+  return error.status === 404 || /not found|does not exist/i.test(error.message || "");
 }

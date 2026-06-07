@@ -294,6 +294,7 @@ export default function ClientsPage() {
       return alert(result?.error || "Could not delete client.");
     }
 
+    removeDeletedClientFromState(client.id);
     void fetchClientData();
   }
 
@@ -314,7 +315,21 @@ export default function ClientsPage() {
     }
 
     if (expandedCompany === client.id) setExpandedCompany(null);
+    removeDeletedClientFromState(client.id);
     void fetchClientData();
+  }
+
+  function removeDeletedClientFromState(clientId: string) {
+    setClients((current) => current.filter((client) => client.id !== clientId));
+    setClientUsers((current) => current.filter((user) => user.client_id !== clientId));
+    setCards((current) => current.filter((card) => card.client_id !== clientId));
+    setPreviewCards((current) => current.filter((card) => card.client_id !== clientId));
+    if (previewUserId) {
+      const deletedUserIds = new Set(
+        clientUsers.filter((user) => user.client_id === clientId).map((user) => user.id)
+      );
+      if (deletedUserIds.has(previewUserId)) setPreviewUserId(null);
+    }
   }
 
   async function createClientUser(client: Client) {
