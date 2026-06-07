@@ -216,74 +216,92 @@ export default function ClientLoginPage() {
                 </p>
               </div>
 
-              <form onSubmit={handleLogin} className="space-y-4">
-                <label className="block">
-                  <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/45">
-                    <Mail className="h-3.5 w-3.5 text-purple-200" />
-                    Email
-                  </span>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="you@company.com"
-                    className="inputStyle"
-                    required
-                  />
-                </label>
+              {!showResetModal ? (
+                <>
+                  <form onSubmit={handleLogin} className="space-y-4">
+                    <label className="block">
+                      <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/45">
+                        <Mail className="h-3.5 w-3.5 text-purple-200" />
+                        Email
+                      </span>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        placeholder="you@company.com"
+                        autoComplete="username"
+                        className="inputStyle"
+                        required
+                      />
+                    </label>
 
-                <label className="block">
-                  <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/45">
-                    <LockKeyhole className="h-3.5 w-3.5 text-purple-200" />
-                    Password
-                  </span>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Enter your password"
-                    className="inputStyle"
-                    required
-                  />
-                </label>
+                    <label className="block">
+                      <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/45">
+                        <LockKeyhole className="h-3.5 w-3.5 text-purple-200" />
+                        Password
+                      </span>
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        placeholder="Enter your password"
+                        autoComplete="current-password"
+                        className="inputStyle"
+                        required
+                      />
+                    </label>
 
-                <div className="flex items-center justify-between gap-4 text-sm">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowResetModal(true);
-                      setResetEmail(email);
-                      setResetMessage("");
-                    }}
-                    className="text-white/45 transition hover:text-purple-100"
-                  >
-                    Forgot password?
-                  </button>
-                  <Link
-                    href="/signup"
-                    className="text-[#DFA7FF] transition hover:text-white"
-                  >
-                    Create account
-                  </Link>
-                </div>
+                    <div className="flex items-center justify-between gap-4 text-sm">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowResetModal(true);
+                          setResetEmail(email);
+                          setResetMessage("");
+                        }}
+                        className="text-white/45 transition hover:text-purple-100"
+                      >
+                        Forgot password?
+                      </button>
+                      <Link
+                        href="/signup"
+                        className="text-[#DFA7FF] transition hover:text-white"
+                      >
+                        Create account
+                      </Link>
+                    </div>
 
-                {loginError && (
-                  <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-                    {loginError}
-                  </div>
-                )}
+                    {loginError && (
+                      <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                        {loginError}
+                      </div>
+                    )}
 
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35"
-                >
-                  {submitting ? "Logging in..." : "Login"}
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              </form>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35"
+                    >
+                      {submitting ? "Logging in..." : "Login"}
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  </form>
 
-              <SocialLoginSection onSocialLogin={handleSocialLogin} />
+                  <SocialLoginSection onSocialLogin={handleSocialLogin} />
+                </>
+              ) : (
+                <PasswordResetModal
+                  email={resetEmail}
+                  message={resetMessage}
+                  submitting={resetSubmitting}
+                  onEmailChange={setResetEmail}
+                  onClose={() => {
+                    setShowResetModal(false);
+                    setResetMessage("");
+                  }}
+                  onSubmit={handlePasswordReset}
+                />
+              )}
             </div>
 
             <p className="mt-8 text-center text-xs text-white/30">
@@ -293,19 +311,6 @@ export default function ClientLoginPage() {
         </section>
       </div>
 
-      {showResetModal && (
-        <PasswordResetModal
-          email={resetEmail}
-          message={resetMessage}
-          submitting={resetSubmitting}
-          onEmailChange={setResetEmail}
-          onClose={() => {
-            setShowResetModal(false);
-            setResetMessage("");
-          }}
-          onSubmit={handlePasswordReset}
-        />
-      )}
     </main>
   );
 }
@@ -326,8 +331,8 @@ function PasswordResetModal({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#101935] p-6 text-white shadow-2xl shadow-black/40">
+    <div className="rounded-3xl border border-white/10 bg-[#070B1A]/70 p-5 shadow-2xl shadow-black/30">
+      <div className="w-full text-white">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-2xl font-semibold">Reset your password</h2>
@@ -357,6 +362,7 @@ function PasswordResetModal({
               value={email}
               onChange={(event) => onEmailChange(event.target.value)}
               placeholder="you@company.com"
+              autoComplete="email"
               className="inputStyle"
               required
             />
