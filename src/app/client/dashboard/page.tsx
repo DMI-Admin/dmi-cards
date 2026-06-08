@@ -203,6 +203,7 @@ export default function ClientDashboardPage() {
     return selectedTemplate;
   }, [latestCard?.selected_colour, latestCard?.template_id, templates]);
   const publicUrl = latestCard?.slug ? `/u/${latestCard.slug}` : "/u/your-card-url";
+  const hasSavedCard = Boolean(latestCard);
 
   return (
     <main className="flex min-h-screen bg-[#070B1A] text-white">
@@ -232,10 +233,14 @@ export default function ClientDashboardPage() {
               <UpgradeTeaser />
             </div>
 
-            <div className="grid gap-5 lg:grid-cols-2">
-              <PublicUrlCard publicUrl={publicUrl} published={Boolean(latestCard?.is_published || latestCard?.status === "published")} />
-              <QuickActionsCard publicUrl={publicUrl} />
-            </div>
+            {hasSavedCard ? (
+              <div className="grid gap-5 lg:grid-cols-2">
+                <PublicUrlCard publicUrl={publicUrl} published={Boolean(latestCard?.is_published || latestCard?.status === "published")} />
+                <QuickActionsCard publicUrl={publicUrl} />
+              </div>
+            ) : (
+              <FirstCardActions onCreate={() => router.push("/client/cards")} />
+            )}
 
             <div className="grid gap-5 lg:grid-cols-3">
               <ShortcutCard
@@ -286,8 +291,20 @@ export default function ClientDashboardPage() {
                   />
                 </div>
               ) : (
-                <div className="rounded-[2rem] border border-dashed border-white/10 bg-[#070B1A]/60 p-8 text-center text-sm text-white/45">
-                  No saved card yet. Create and publish your first card in My Cards.
+                <div className="rounded-[2rem] border border-dashed border-white/10 bg-[#070B1A]/60 p-8 text-center">
+                  <h3 className="text-lg font-semibold text-white">No card created yet</h3>
+                  <p className="mx-auto mt-3 max-w-xs text-sm leading-6 text-white/45">
+                    Create your first digital business card to unlock your
+                    preview, public URL, and QR tools.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/client/cards")}
+                    className="mt-6 inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35"
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    Create My First Card
+                  </button>
                 </div>
               )}
             </div>
@@ -546,6 +563,24 @@ function QuickActionsCard({ publicUrl }: { publicUrl: string }) {
             </a>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function FirstCardActions({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+      <h2 className="text-xl font-semibold">Quick actions</h2>
+      <div className="mt-5">
+        <button
+          type="button"
+          onClick={onCreate}
+          className="flex w-full items-center gap-3 rounded-2xl border border-[#AC00FF]/30 bg-[#AC00FF]/15 px-4 py-3 text-left text-sm font-semibold text-purple-100 transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/20 hover:text-white"
+        >
+          <CreditCard className="h-4 w-4 text-purple-200" />
+          Create My First Card
+        </button>
       </div>
     </div>
   );
