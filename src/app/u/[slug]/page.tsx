@@ -51,13 +51,29 @@ export default async function PublicCardPage({ params }: PublicCardPageProps) {
     );
   }
 
+  const publicTemplate = buildPublicTemplate(template, card);
+
+  console.log("[DMI public card] fetched by slug", {
+    slug,
+    cardId: card.id || null,
+    templateId: card.template_id || null,
+    status: card.status || null,
+    isPublished: Boolean(card.is_published),
+    updatedAt: card.updated_at || null,
+    department: card.department || null,
+    hiddenFields: card.hidden_fields || [],
+    fieldOrder: card.field_order || null,
+    allowedFields: publicTemplate.allowed_fields || [],
+    rendererFields: publicTemplate.custom_fields || null,
+  });
+
   return (
     <main className="min-h-screen bg-[#070B1A] px-4 py-8 text-white sm:px-6">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md items-center justify-center">
         <div className="w-full">
           <CardRenderer
             mode="public"
-            template={buildPublicTemplate(template, card)}
+            template={publicTemplate}
             cardData={card}
           />
         </div>
@@ -106,9 +122,6 @@ function buildPublicTemplate(
     Array.isArray(card.hidden_fields) ? card.hidden_fields : []
   );
   const fieldOrder = normalizeFieldOrder(card.field_order, normalizedTemplate);
-  const allowedFields = (normalizedTemplate.allowed_fields || []).filter(
-    (field) => !hiddenFields.has(field)
-  );
   const rendererFieldOrder = {
     personal: fieldOrder.personal.filter((field) => !hiddenFields.has(field)),
     company: fieldOrder.company.filter((field) => !hiddenFields.has(field)),
@@ -117,6 +130,11 @@ function buildPublicTemplate(
     ),
     social: fieldOrder.social.filter((field) => !hiddenFields.has(field)),
   };
+  const allowedFields = mergeAllowedFieldsWithFieldOrder(
+    normalizedTemplate.allowed_fields || [],
+    rendererFieldOrder,
+    hiddenFields
+  );
   const selectedColour =
     card.selected_colour ||
     normalizeColourPalette(normalizedTemplate.free_colour_palette)[0] ||
@@ -143,6 +161,24 @@ function buildPublicTemplate(
       (normalizedTemplate.show_social_section ?? false) &&
       rendererFieldOrder.social.length > 0,
   };
+}
+
+function mergeAllowedFieldsWithFieldOrder(
+  allowedFields: string[],
+  fieldOrder: Record<"personal" | "company" | "contact" | "social", string[]>,
+  hiddenFieldSet: Set<string>
+) {
+  const orderedFields = Object.values(fieldOrder).flat();
+  const seen = new Set<string>();
+
+  return [...allowedFields, ...orderedFields].filter((field) => {
+    const key = field.toLowerCase();
+
+    if (hiddenFieldSet.has(field) || seen.has(key)) return false;
+
+    seen.add(key);
+    return true;
+  });
 }
 
 function normalizeFieldOrder(

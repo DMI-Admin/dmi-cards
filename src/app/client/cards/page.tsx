@@ -852,6 +852,18 @@ export default function ClientCardsPage() {
           draftCard.lead_capture_settings || defaultLeadCaptureSettings,
       };
 
+      console.log("[DMI cards] publish/edit target", {
+        mode: panelMode,
+        draftCardId: draftCard.id,
+        nextCardId: nextCard.id,
+        slug: nextCard.slug,
+        status,
+        department: nextCard.department || null,
+        hiddenFields: nextCard.hidden_fields || [],
+        fieldOrder: nextCard.field_order,
+        customFields: nextCard.custom_fields || {},
+      });
+
       const savedCard = await saveCardToSupabase({
         card: nextCard,
         userId: authUser.id,
@@ -922,10 +934,19 @@ export default function ClientCardsPage() {
     const payload = buildSupabaseCardPayload(card, userId);
     const shouldUpdate = mode === "edit" && !card.id.startsWith("card-");
 
-    console.log("[DMI cards] save payload", payload);
+    console.log("[DMI cards] save payload", {
+      shouldUpdate,
+      cardId: card.id,
+      userId,
+      payload,
+    });
 
     if (isPublishing) {
-      console.log("[DMI publish] publish payload", payload);
+      console.log("[DMI publish] publish payload", {
+        shouldUpdate,
+        cardId: card.id,
+        payload,
+      });
     }
 
     const { data, error } = await writeCardPayload({
@@ -936,7 +957,9 @@ export default function ClientCardsPage() {
     });
 
     if (isPublishing) {
-      console.log("[DMI publish] Supabase result/error", {
+      console.log("[DMI publish] Supabase update result/error", {
+        shouldUpdate,
+        cardId: card.id,
         data,
         error,
       });
@@ -2549,8 +2572,10 @@ function buildTemplatePreview(
 
   const rendererFieldOrder = fieldOrderForRenderer(fieldOrder, hiddenFields);
   const hiddenFieldSet = new Set(hiddenFields);
-  const allowedFields = (template.allowed_fields || []).filter(
-    (field) => !hiddenFieldSet.has(field)
+  const allowedFields = mergeAllowedFieldsWithFieldOrder(
+    template.allowed_fields || [],
+    rendererFieldOrder,
+    hiddenFieldSet
   );
 
   if (template.access_level === "free") {
@@ -3183,10 +3208,31 @@ function fieldsForSection(
   section: SectionKey,
   fieldOrder: FieldOrder
 ) {
-  const allowed = new Set(template.allowed_fields || []);
+  const allowed = new Set([
+    ...(template.allowed_fields || []),
+    ...fieldOrder[section],
+  ]);
   return fieldOrder[section].filter(
     (field) => field !== "full_name" && allowed.has(field)
   );
+}
+
+function mergeAllowedFieldsWithFieldOrder(
+  allowedFields: string[],
+  fieldOrder: FieldOrder,
+  hiddenFieldSet: Set<string>
+) {
+  const orderedFields = Object.values(fieldOrder).flat();
+  const seen = new Set<string>();
+
+  return [...allowedFields, ...orderedFields].filter((field) => {
+    const key = field.toLowerCase();
+
+    if (hiddenFieldSet.has(field) || seen.has(key)) return false;
+
+    seen.add(key);
+    return true;
+  });
 }
 
 function sectionConfig(
