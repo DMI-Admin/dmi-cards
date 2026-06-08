@@ -970,16 +970,56 @@ export default function ClientCardsPage() {
     });
   }
 
-  function deleteCard(card: ClientCard) {
+  async function deleteCard(card: ClientCard) {
     const confirmed = window.confirm("Delete this card permanently?");
 
     if (!confirmed) return;
+
+    setSaveError("");
+    setSaveMessage("");
+
+    if (!card.id.startsWith("card-")) {
+      const authUser = await getActiveUserForCardSave(false);
+
+      if (!authUser) {
+        router.replace("/login?next=/client/cards");
+        setSaveError("Please log in to delete your card.");
+        return;
+      }
+
+      console.log("[DMI cards] delete request", {
+        cardId: card.id,
+        authenticatedUserId: authUser.id,
+      });
+
+      const { data, error } = await supabase
+        .from("cards")
+        .delete()
+        .eq("id", card.id)
+        .eq("user_id", authUser.id)
+        .select("id")
+        .maybeSingle();
+
+      console.log("[DMI cards] delete result", {
+        cardId: card.id,
+        authenticatedUserId: authUser.id,
+        deletedRow: data,
+        error,
+      });
+
+      if (error) {
+        console.error("Client card delete failed", error);
+        setSaveError(`Could not delete card: ${error.message}`);
+        return;
+      }
+    }
 
     setCards((currentCards) => {
       const nextCards = currentCards.filter((currentCard) => currentCard.id !== card.id);
       setSelectedCardId(nextCards[0]?.id || "");
       return nextCards;
     });
+    setSaveMessage("Card deleted successfully.");
   }
 
   async function copyLink(card: ClientCard) {

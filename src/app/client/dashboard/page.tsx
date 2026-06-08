@@ -149,7 +149,7 @@ export default function ClientDashboardPage() {
 
         setProfile(loadedProfile);
 
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("cards")
           .select("*")
           .eq("user_id", user.id)
@@ -157,8 +157,12 @@ export default function ClientDashboardPage() {
           .limit(1)
           .maybeSingle();
 
-        if (!ignore && data) {
-          setLatestCard(data);
+        if (error) {
+          console.error("Dashboard card fetch failed", error);
+        }
+
+        if (!ignore) {
+          setLatestCard(data || null);
         }
         console.log("[DMI auth] loaded cards", data ? [data] : []);
       } catch (error) {
