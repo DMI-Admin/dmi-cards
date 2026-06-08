@@ -24,16 +24,22 @@ type TemplatePayload = Partial<SharedTemplate> & {
 };
 
 export async function getAdminTemplates() {
-  const { data, error } = await supabase
-    .from("templates")
-    .select("*")
-    .order("created_at", { ascending: false });
+  const response = await fetch("/api/admin/templates", {
+    method: "GET",
+    cache: "no-store",
+  });
+  const result = await response.json().catch(() => ({}));
 
-  if (error) {
-    throw new Error(`Could not load templates from Supabase: ${error.message}`);
+  if (!response.ok) {
+    const message =
+      typeof result.error === "string"
+        ? result.error
+        : "Could not load templates from Supabase.";
+
+    throw new Error(message);
   }
 
-  return normalizeTemplates((data || []) as SharedTemplate[]);
+  return normalizeTemplates((result.templates || []) as SharedTemplate[]);
 }
 
 export async function getPublishedTemplates() {

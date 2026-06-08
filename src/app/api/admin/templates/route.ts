@@ -8,6 +8,41 @@ type TemplateWriteResult = {
   error: { message: string } | null;
 };
 
+export async function GET() {
+  const { userId } = await auth();
+
+  if (!userId) {
+    return NextResponse.json({ error: "Admin sign-in is required." }, { status: 401 });
+  }
+
+  let supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>;
+
+  try {
+    supabaseAdmin = createSupabaseAdminClient();
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Supabase admin client is not configured.",
+      },
+      { status: 500 }
+    );
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("templates")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ templates: data || [] });
+}
+
 export async function POST(request: Request) {
   const { userId } = await auth();
 
@@ -39,6 +74,31 @@ export async function POST(request: Request) {
     );
   }
 
+  const slug = typeof payload.slug === "string" ? payload.slug.trim() : "";
+
+  if (slug) {
+    const { data: existingTemplate, error: existingError } = await supabaseAdmin
+      .from("templates")
+      .select("id, name, slug")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (existingError) {
+      return NextResponse.json({ error: existingError.message }, { status: 500 });
+    }
+
+    if (existingTemplate) {
+      return NextResponse.json(
+        {
+          error:
+            "A template with this name already exists. Please edit the existing template or choose another name.",
+          template: existingTemplate,
+        },
+        { status: 409 }
+      );
+    }
+  }
+
   const result = await writeTemplateWithSchemaRetry((databasePayload) =>
     supabaseAdmin
       .from("templates")
@@ -49,6 +109,16 @@ export async function POST(request: Request) {
   );
 
   if (result.error) {
+    if (isDuplicateSlugError(result.error)) {
+      return NextResponse.json(
+        {
+          error:
+            "A template with this name already exists. Please edit the existing template or choose another name.",
+        },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json({ error: result.error.message }, { status: 500 });
   }
 
@@ -99,4 +169,8 @@ function missingColumnFromError(error: { message: string } | null) {
   const qualifiedColumnMatch = message.match(/column templates\.([a-zA-Z0-9_]+) does not exist/);
 
   return quotedColumnMatch?.[1] || qualifiedColumnMatch?.[1] || null;
+}
+
+function isDuplicateSlugError(error: { message: string } | null) {
+  return /templates_slug_key|duplicate key value/i.test(error?.message || "");
 }
