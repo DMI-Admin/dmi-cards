@@ -76,7 +76,7 @@ const sectionFieldGroups: {
     key: "contact",
     title: "Contact",
     description: "Direct contact actions for the digital card.",
-    fields: ["email", "phone", "website"],
+    fields: ["email", "phone"],
   },
   {
     key: "social",
@@ -108,7 +108,7 @@ const freeFields = [
 const defaultCustomFields: Required<CustomFields> = {
   personal: ["job_title", "department", "bio"],
   company: ["company_name", "website", "address"],
-  contact: ["email", "phone", "website"],
+  contact: ["email", "phone"],
   social: [
     "whatsapp",
     "linkedin",
@@ -1699,7 +1699,9 @@ function sanitizeCustomFields(customFields: CustomFields): CustomFields {
   return {
     personal: sanitizeAllowedFields(normalized.personal),
     company: sanitizeAllowedFields(normalized.company),
-    contact: sanitizeAllowedFields(normalized.contact),
+    contact: sanitizeAllowedFields(normalized.contact).filter(
+      (field) => field !== "website"
+    ),
     social: sanitizeAllowedFields(normalized.social),
   };
 }

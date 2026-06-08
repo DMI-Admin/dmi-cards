@@ -188,10 +188,22 @@ export function normalizeTemplate(template: SharedTemplate | TemplatePayload): S
     colour_palette: sanitizedPalette,
     free_colour_palette: sanitizedPalette,
     allowed_fields: template.allowed_fields || [],
+    custom_fields: normalizeTemplateCustomFields(template.custom_fields),
     show_personal_section: template.show_personal_section ?? true,
     show_company_section: template.show_company_section ?? true,
     show_contact_section: template.show_contact_section ?? true,
     show_social_section: template.show_social_section ?? false,
+  };
+}
+
+function normalizeTemplateCustomFields(value: SharedTemplate["custom_fields"]) {
+  if (!value) return value;
+
+  return {
+    ...value,
+    contact: Array.isArray(value.contact)
+      ? value.contact.filter((field) => field !== "website")
+      : value.contact,
   };
 }
 

@@ -108,7 +108,9 @@ function buildPublicTemplate(
   const rendererFieldOrder = {
     personal: fieldOrder.personal.filter((field) => !hiddenFields.has(field)),
     company: fieldOrder.company.filter((field) => !hiddenFields.has(field)),
-    contact: fieldOrder.contact.filter((field) => !hiddenFields.has(field)),
+    contact: fieldOrder.contact.filter(
+      (field) => field !== "website" && !hiddenFields.has(field)
+    ),
     social: fieldOrder.social.filter((field) => !hiddenFields.has(field)),
   };
   const selectedColour =
@@ -151,8 +153,10 @@ function normalizeFieldOrder(
       ? fieldOrder.company
       : template.custom_fields?.company || ["company_name", "website", "address"],
     contact: fieldOrder?.contact?.length
-      ? fieldOrder.contact
-      : template.custom_fields?.contact || ["email", "phone", "website"],
+      ? fieldOrder.contact.filter((field) => field !== "website")
+      : (template.custom_fields?.contact || ["email", "phone"]).filter(
+          (field) => field !== "website"
+        ),
     social: fieldOrder?.social?.length
       ? fieldOrder.social
       : template.custom_fields?.social || [

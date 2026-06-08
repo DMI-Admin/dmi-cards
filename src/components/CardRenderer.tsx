@@ -138,7 +138,7 @@ type RendererTheme = {
 const classicSectionDefaults: Record<ClassicSectionKey, string[]> = {
   personal: ["job_title", "department", "bio"],
   company: ["company_name", "website", "address"],
-  contact: ["email", "phone", "website"],
+  contact: ["email", "phone"],
   social: [
     "whatsapp",
     "linkedin",
@@ -1835,6 +1835,7 @@ function orderedClassicFields(
 
   return [...fields, ...fallbackFields]
     .map((field) => normalizeClassicField(section, field))
+    .filter((field) => isAllowedSectionField(section, field))
     .filter((field) => {
       const key = field.toLowerCase();
 
@@ -1851,6 +1852,10 @@ function normalizeClassicField(section: ClassicSectionKey, field: string) {
   }
 
   return customFieldKey(section, field);
+}
+
+function isAllowedSectionField(section: ClassicSectionKey, field: string) {
+  return !(section === "contact" && field === "website");
 }
 
 function builtInRow(field: string, cardData: CardRendererData): DisplayRow {

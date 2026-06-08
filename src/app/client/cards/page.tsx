@@ -342,7 +342,7 @@ const sectionLabels: Record<SectionKey, string> = {
 const sectionDefaults: FieldOrder = {
   personal: ["job_title", "bio", "department"],
   company: ["company_name", "website", "address"],
-  contact: ["email", "phone", "website"],
+  contact: ["email", "phone"],
   social: [
     "whatsapp",
     "linkedin",
@@ -3053,7 +3053,9 @@ function fieldOrderForRenderer(
       (field) => field !== "full_name" && !hiddenFieldSet.has(field)
     ),
     company: fieldOrder.company.filter((field) => !hiddenFieldSet.has(field)),
-    contact: fieldOrder.contact.filter((field) => !hiddenFieldSet.has(field)),
+    contact: fieldOrder.contact.filter(
+      (field) => field !== "website" && !hiddenFieldSet.has(field)
+    ),
     social: fieldOrder.social.filter((field) => !hiddenFieldSet.has(field)),
   };
 }
@@ -3067,7 +3069,7 @@ function getInitialFieldOrder(template: AdminTemplate | null): FieldOrder {
       ? [...template.custom_fields.company]
       : [...sectionDefaults.company],
     contact: template?.custom_fields?.contact?.length
-      ? [...template.custom_fields.contact]
+      ? template.custom_fields.contact.filter((field) => field !== "website")
       : [...sectionDefaults.contact],
     social: template?.custom_fields?.social?.length
       ? [...template.custom_fields.social]

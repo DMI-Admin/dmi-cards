@@ -56,7 +56,7 @@ const fallbackTemplate: CardRendererTemplate = {
   custom_fields: {
     personal: ["job_title", "department"],
     company: ["company_name", "website", "address"],
-    contact: ["email", "phone", "website"],
+    contact: ["email", "phone"],
     social: [],
   },
   show_personal_section: true,
