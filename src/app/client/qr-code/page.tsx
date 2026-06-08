@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   Check,
@@ -25,14 +25,12 @@ const currentPlan = "free" as
   | "enterprise";
 const isPaid = currentPlan !== "free";
 
-const mockSelectedCard = {
-  name: "Primary Digital Card",
-  public_url: "/u/full-name",
-  status: "published",
-};
+const publicSiteOrigin = "https://dmi-cards.vercel.app";
 
 type SavedQrCard = {
+  slug: string;
   name: string;
+  public_path: string;
   public_url: string;
   status: string;
 };
@@ -51,13 +49,20 @@ const qrStyles = isPaid
   : ["Classic"];
 
 export default function ClientQrCodePage() {
-  const [selectedCard, setSelectedCard] =
-    useState<SavedQrCard>(mockSelectedCard);
+  const [selectedCard, setSelectedCard] = useState<SavedQrCard | null>(null);
+  const [loadingCard, setLoadingCard] = useState(true);
+  const [actionMessage, setActionMessage] = useState("");
+  const qrMatrix = useMemo(
+    () => (selectedCard ? createQrMatrix(selectedCard.public_url) : []),
+    [selectedCard]
+  );
 
   useEffect(() => {
     let ignore = false;
 
     async function loadSavedCard() {
+      setLoadingCard(true);
+
       try {
         const { user } = await requireClientUser();
 
@@ -65,6 +70,7 @@ export default function ClientQrCodePage() {
           .from("cards")
           .select("card_name, slug, is_published, status")
           .eq("user_id", user.id)
+          .or("status.eq.published,is_published.eq.true")
           .order("updated_at", { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -73,18 +79,30 @@ export default function ClientQrCodePage() {
 
         if (error || !data) {
           if (error) console.error("QR card fetch failed", error);
+          setSelectedCard(null);
+          return;
+        }
+
+        const slug = data.slug || "";
+
+        if (!slug) {
+          setSelectedCard(null);
           return;
         }
 
         setSelectedCard({
+          slug,
           name: data.card_name || "Primary Digital Card",
-          public_url: `/u/${data.slug || "full-name"}`,
+          public_path: `/u/${slug}`,
+          public_url: `${publicSiteOrigin}/u/${slug}`,
           status: data.is_published ? "published" : data.status || "draft",
         });
       } catch (error) {
         if (!(error instanceof ClientAuthRequiredError)) {
           console.error("QR card load failed", error);
         }
+      } finally {
+        if (!ignore) setLoadingCard(false);
       }
     }
 
@@ -96,11 +114,70 @@ export default function ClientQrCodePage() {
   }, []);
 
   async function copyPublicLink() {
+    if (!selectedCard) return;
+
     await navigator.clipboard?.writeText(selectedCard.public_url);
+    setActionMessage("Public link copied.");
+  }
+
+  function viewPublicPage() {
+    if (!selectedCard) return;
+
+    window.open(selectedCard.public_url, "_blank", "noopener,noreferrer");
+  }
+
+  function downloadPng() {
+    if (!selectedCard || qrMatrix.length === 0) return;
+
+    const canvas = document.createElement("canvas");
+    drawQrToCanvas(canvas, qrMatrix, 960);
+    const link = document.createElement("a");
+    link.href = canvas.toDataURL("image/png");
+    link.download = `dmi-card-qr-${slugifyFilename(selectedCard.slug)}.png`;
+    link.click();
+    setActionMessage("QR code PNG downloaded.");
   }
 
   function printQr() {
-    window.print();
+    if (!selectedCard || qrMatrix.length === 0) return;
+
+    const canvas = document.createElement("canvas");
+    drawQrToCanvas(canvas, qrMatrix, 720);
+    const imageUrl = canvas.toDataURL("image/png");
+    const printWindow = window.open("", "_blank", "noopener,noreferrer");
+
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>DMI Cards QR Code</title>
+          <style>
+            body {
+              align-items: center;
+              color: #0f172a;
+              display: flex;
+              font-family: Arial, sans-serif;
+              justify-content: center;
+              min-height: 100vh;
+              margin: 0;
+            }
+            main { text-align: center; }
+            img { width: 320px; height: 320px; }
+            p { color: #475569; font-size: 14px; margin-top: 16px; }
+          </style>
+        </head>
+        <body>
+          <main>
+            <img src="${imageUrl}" alt="DMI Cards QR code" />
+            <p>${selectedCard.public_url}</p>
+          </main>
+          <script>window.onload = () => window.print();</script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   }
 
   return (
@@ -125,22 +202,30 @@ export default function ClientQrCodePage() {
           </span>
         </div>
 
-        <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard
-            label="Linked Card"
-            value={selectedCard.name}
-            icon={QrCode}
-          />
-          <SummaryCard
-            label="Public URL"
-            value={selectedCard.public_url}
-            icon={ExternalLink}
-          />
-          <SummaryCard label="QR Status" value="Ready" icon={Check} />
-          <SummaryCard label="Total Scans" value="Coming soon" icon={BarChart3} />
-        </div>
+        {loadingCard ? (
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-sm text-white/50">
+            Loading your published card...
+          </div>
+        ) : !selectedCard ? (
+          <EmptyQrState />
+        ) : (
+          <>
+            <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <SummaryCard
+                label="Linked Card"
+                value={selectedCard.name}
+                icon={QrCode}
+              />
+              <SummaryCard
+                label="Public URL"
+                value={selectedCard.public_path}
+                icon={ExternalLink}
+              />
+              <SummaryCard label="QR Status" value="Ready" icon={Check} />
+              <SummaryCard label="Total Scans" value="Coming soon" icon={BarChart3} />
+            </div>
 
-        <div className="mb-6 rounded-3xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 p-5 shadow-lg shadow-purple-950/15">
+            <div className="mb-6 rounded-3xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 p-5 shadow-lg shadow-purple-950/15">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="font-semibold text-purple-100">
@@ -159,9 +244,9 @@ export default function ClientQrCodePage() {
               View Upgrade
             </button>
           </div>
-        </div>
+            </div>
 
-        <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_430px]">
+            <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_430px]">
           <div className="space-y-6">
             <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-6 shadow-2xl shadow-black/20">
               <SectionTitle
@@ -281,7 +366,7 @@ export default function ClientQrCodePage() {
 
                 <SettingsBlock title="Download">
                   <div className="flex flex-wrap gap-3">
-                    <ActionButton icon={Download}>Download PNG</ActionButton>
+                    <ActionButton icon={Download} onClick={downloadPng}>Download PNG</ActionButton>
                     <ActionButton icon={Printer} onClick={printQr}>
                       Print QR
                     </ActionButton>
@@ -308,11 +393,11 @@ export default function ClientQrCodePage() {
 
               <div className="mt-6 rounded-[2rem] border border-[#AC00FF]/25 bg-gradient-to-br from-[#1B1241] via-[#101935] to-[#070B1A] p-6 shadow-inner shadow-white/5">
                 <div className="rounded-3xl bg-white p-5 text-[#0F172A] shadow-2xl shadow-purple-950/30">
-                  <CssQrPreview />
+                  <QrPreview matrix={qrMatrix} />
                   <div className="mt-5 text-center">
                     <p className="text-sm font-semibold">Scan to open</p>
                     <p className="mt-1 text-sm text-slate-500">
-                      {selectedCard.public_url}
+                      {selectedCard.public_path}
                     </p>
                   </div>
                 </div>
@@ -321,16 +406,23 @@ export default function ClientQrCodePage() {
                   <ActionButton icon={Copy} onClick={copyPublicLink}>
                     Copy Public Link
                   </ActionButton>
-                  <ActionButton icon={ExternalLink}>View Public Page</ActionButton>
-                  <ActionButton icon={Download}>Download PNG</ActionButton>
+                  <ActionButton icon={ExternalLink} onClick={viewPublicPage}>View Public Page</ActionButton>
+                  <ActionButton icon={Download} onClick={downloadPng}>Download PNG</ActionButton>
                   <ActionButton icon={Printer} onClick={printQr}>
                     Print
                   </ActionButton>
                 </div>
+                {actionMessage && (
+                  <p className="mt-4 rounded-2xl border border-green-400/20 bg-green-500/10 px-4 py-3 text-center text-sm text-green-100">
+                    {actionMessage}
+                  </p>
+                )}
               </div>
             </section>
           </aside>
-        </div>
+            </div>
+          </>
+        )}
       </section>
     </main>
   );
@@ -423,31 +515,338 @@ function ActionButton({
   );
 }
 
-function CssQrPreview() {
-  const cells = Array.from({ length: 121 }, (_, index) => {
-    const row = Math.floor(index / 11);
-    const col = index % 11;
-    const inTopLeft = row < 3 && col < 3;
-    const inTopRight = row < 3 && col > 7;
-    const inBottomLeft = row > 7 && col < 3;
-    const patterned =
-      inTopLeft ||
-      inTopRight ||
-      inBottomLeft ||
-      (row * 7 + col * 5) % 4 === 0 ||
-      (row + col) % 7 === 0;
-
-    return (
-      <span
-        key={`${row}-${col}`}
-        className={`rounded-[4px] ${patterned ? "bg-[#0F172A]" : "bg-transparent"}`}
-      />
-    );
-  });
-
+function EmptyQrState() {
   return (
-    <div className="mx-auto grid aspect-square w-full max-w-[280px] grid-cols-11 gap-1 rounded-3xl bg-white p-3">
-      {cells}
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center shadow-2xl shadow-black/20">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#AC00FF]/15 text-purple-100">
+        <QrCode className="h-7 w-7" />
+      </div>
+      <h2 className="mt-6 text-2xl font-semibold">Publish a card first to generate your QR code.</h2>
+      <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-white/50">
+        Your free QR code is created from your published public card URL. Once
+        your first card is published, this page will show copy, download, and
+        print tools.
+      </p>
+      <a
+        href="/client/cards"
+        className="mt-6 inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35"
+      >
+        <ExternalLink className="h-4 w-4" />
+        Create or Publish Card
+      </a>
     </div>
   );
+}
+
+function QrPreview({ matrix }: { matrix: boolean[][] }) {
+  const size = matrix.length;
+
+  return (
+    <div
+      className="mx-auto grid aspect-square w-full max-w-[280px] rounded-3xl bg-white p-3"
+      style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}
+    >
+      {matrix.flatMap((row, rowIndex) =>
+        row.map((filled, colIndex) => (
+          <span
+            key={`${rowIndex}-${colIndex}`}
+            className={filled ? "bg-[#0F172A]" : "bg-white"}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
+function createQrMatrix(value: string) {
+  const version = 5;
+  const size = 17 + version * 4;
+  const dataCodewords = 108;
+  const errorCodewords = 26;
+  const remainderBits = 7;
+  const matrix: (boolean | null)[][] = Array.from({ length: size }, () =>
+    Array.from({ length: size }, () => null)
+  );
+  const reserved: boolean[][] = Array.from({ length: size }, () =>
+    Array.from({ length: size }, () => false)
+  );
+
+  addFinder(matrix, reserved, 0, 0);
+  addFinder(matrix, reserved, size - 7, 0);
+  addFinder(matrix, reserved, 0, size - 7);
+  addTiming(matrix, reserved);
+  addAlignment(matrix, reserved, 30, 30);
+  reserveFormat(matrix, reserved);
+  setFunctionModule(matrix, reserved, 8, size - 8, true);
+
+  const data = buildQrDataCodewords(value, dataCodewords);
+  const ecc = reedSolomonRemainder(data, errorCodewords);
+  const bits = [...data, ...ecc].flatMap((codeword) =>
+    byteToBits(codeword)
+  );
+
+  for (let index = 0; index < remainderBits; index += 1) bits.push(false);
+
+  placeDataBits(matrix, reserved, bits);
+  applyMask0(matrix, reserved);
+  addFormatBits(matrix, reserved);
+
+  return matrix.map((row) => row.map(Boolean));
+}
+
+function addFinder(
+  matrix: (boolean | null)[][],
+  reserved: boolean[][],
+  x: number,
+  y: number
+) {
+  for (let row = -1; row <= 7; row += 1) {
+    for (let col = -1; col <= 7; col += 1) {
+      const nextX = x + col;
+      const nextY = y + row;
+      if (!inBounds(matrix, nextX, nextY)) continue;
+
+      const filled =
+        (row >= 0 && row <= 6 && (col === 0 || col === 6)) ||
+        (col >= 0 && col <= 6 && (row === 0 || row === 6)) ||
+        (row >= 2 && row <= 4 && col >= 2 && col <= 4);
+      setFunctionModule(matrix, reserved, nextX, nextY, filled);
+    }
+  }
+}
+
+function addTiming(matrix: (boolean | null)[][], reserved: boolean[][]) {
+  for (let index = 8; index < matrix.length - 8; index += 1) {
+    const filled = index % 2 === 0;
+    setFunctionModule(matrix, reserved, index, 6, filled);
+    setFunctionModule(matrix, reserved, 6, index, filled);
+  }
+}
+
+function addAlignment(
+  matrix: (boolean | null)[][],
+  reserved: boolean[][],
+  centerX: number,
+  centerY: number
+) {
+  for (let row = -2; row <= 2; row += 1) {
+    for (let col = -2; col <= 2; col += 1) {
+      const filled = Math.max(Math.abs(row), Math.abs(col)) !== 1;
+      setFunctionModule(matrix, reserved, centerX + col, centerY + row, filled);
+    }
+  }
+}
+
+function reserveFormat(matrix: (boolean | null)[][], reserved: boolean[][]) {
+  const size = matrix.length;
+  for (let index = 0; index < 9; index += 1) {
+    if (index !== 6) {
+      reserveModule(matrix, reserved, 8, index);
+      reserveModule(matrix, reserved, index, 8);
+    }
+  }
+  for (let index = size - 8; index < size; index += 1) {
+    reserveModule(matrix, reserved, 8, index);
+    reserveModule(matrix, reserved, index, 8);
+  }
+}
+
+function addFormatBits(matrix: (boolean | null)[][], reserved: boolean[][]) {
+  const size = matrix.length;
+  const bits = "111011111000100".split("").map((bit) => bit === "1");
+
+  for (let index = 0; index <= 5; index += 1) setFunctionModule(matrix, reserved, index, 8, bits[index]);
+  setFunctionModule(matrix, reserved, 7, 8, bits[6]);
+  setFunctionModule(matrix, reserved, 8, 8, bits[7]);
+  setFunctionModule(matrix, reserved, 8, 7, bits[8]);
+  for (let index = 9; index < 15; index += 1) setFunctionModule(matrix, reserved, 8, 14 - index, bits[index]);
+
+  for (let index = 0; index < 8; index += 1) setFunctionModule(matrix, reserved, size - 1 - index, 8, bits[index]);
+  for (let index = 8; index < 15; index += 1) setFunctionModule(matrix, reserved, 8, size - 15 + index, bits[index]);
+}
+
+function setFunctionModule(
+  matrix: (boolean | null)[][],
+  reserved: boolean[][],
+  x: number,
+  y: number,
+  filled: boolean
+) {
+  if (!inBounds(matrix, x, y)) return;
+  matrix[y][x] = filled;
+  reserved[y][x] = true;
+}
+
+function reserveModule(
+  matrix: (boolean | null)[][],
+  reserved: boolean[][],
+  x: number,
+  y: number
+) {
+  if (!inBounds(matrix, x, y)) return;
+  reserved[y][x] = true;
+}
+
+function inBounds(matrix: unknown[][], x: number, y: number) {
+  return y >= 0 && y < matrix.length && x >= 0 && x < matrix.length;
+}
+
+function buildQrDataCodewords(value: string, capacity: number) {
+  const bytes = Array.from(new TextEncoder().encode(value));
+  if (bytes.length > capacity - 2) {
+    throw new Error("QR URL is too long for the free QR generator.");
+  }
+
+  const bits = [
+    false,
+    true,
+    false,
+    false,
+    ...byteToBits(bytes.length),
+    ...bytes.flatMap((byte) => byteToBits(byte)),
+  ];
+  const maxBits = capacity * 8;
+  const terminatorLength = Math.min(4, maxBits - bits.length);
+  for (let index = 0; index < terminatorLength; index += 1) bits.push(false);
+  while (bits.length % 8 !== 0) bits.push(false);
+
+  const codewords: number[] = [];
+  for (let index = 0; index < bits.length; index += 8) {
+    codewords.push(bitsToByte(bits.slice(index, index + 8)));
+  }
+  for (let pad = 0xec; codewords.length < capacity; pad = pad === 0xec ? 0x11 : 0xec) {
+    codewords.push(pad);
+  }
+  return codewords;
+}
+
+function placeDataBits(
+  matrix: (boolean | null)[][],
+  reserved: boolean[][],
+  bits: boolean[]
+) {
+  const size = matrix.length;
+  let bitIndex = 0;
+  let upward = true;
+
+  for (let right = size - 1; right >= 1; right -= 2) {
+    if (right === 6) right -= 1;
+    for (let vertical = 0; vertical < size; vertical += 1) {
+      const row = upward ? size - 1 - vertical : vertical;
+      for (let offset = 0; offset < 2; offset += 1) {
+        const col = right - offset;
+        if (reserved[row][col]) continue;
+        matrix[row][col] = bits[bitIndex] || false;
+        bitIndex += 1;
+      }
+    }
+    upward = !upward;
+  }
+}
+
+function applyMask0(matrix: (boolean | null)[][], reserved: boolean[][]) {
+  for (let row = 0; row < matrix.length; row += 1) {
+    for (let col = 0; col < matrix.length; col += 1) {
+      if (!reserved[row][col] && (row + col) % 2 === 0) {
+        matrix[row][col] = !matrix[row][col];
+      }
+    }
+  }
+}
+
+function reedSolomonRemainder(data: number[], degree: number) {
+  const generator = reedSolomonGenerator(degree);
+  const result = Array.from({ length: degree }, () => 0);
+
+  for (const byte of data) {
+    const factor = byte ^ result.shift()!;
+    result.push(0);
+    generator.forEach((coefficient, index) => {
+      result[index] ^= gfMultiply(coefficient, factor);
+    });
+  }
+
+  return result;
+}
+
+function reedSolomonGenerator(degree: number) {
+  let result = [1];
+  for (let index = 0; index < degree; index += 1) {
+    result = polynomialMultiply(result, [1, gfPow(2, index)]);
+  }
+  return result.slice(1);
+}
+
+function polynomialMultiply(left: number[], right: number[]) {
+  const result = Array.from({ length: left.length + right.length - 1 }, () => 0);
+  left.forEach((leftValue, leftIndex) => {
+    right.forEach((rightValue, rightIndex) => {
+      result[leftIndex + rightIndex] ^= gfMultiply(leftValue, rightValue);
+    });
+  });
+  return result;
+}
+
+function gfPow(value: number, power: number) {
+  let result = 1;
+  for (let index = 0; index < power; index += 1) {
+    result = gfMultiply(result, value);
+  }
+  return result;
+}
+
+function gfMultiply(left: number, right: number) {
+  let result = 0;
+  let a = left;
+  let b = right;
+  while (b > 0) {
+    if (b & 1) result ^= a;
+    a <<= 1;
+    if (a & 0x100) a ^= 0x11d;
+    b >>= 1;
+  }
+  return result;
+}
+
+function byteToBits(byte: number) {
+  return Array.from({ length: 8 }, (_, index) => Boolean(byte & (1 << (7 - index))));
+}
+
+function bitsToByte(bits: boolean[]) {
+  return bits.reduce((value, bit) => (value << 1) | (bit ? 1 : 0), 0);
+}
+
+function drawQrToCanvas(
+  canvas: HTMLCanvasElement,
+  matrix: boolean[][],
+  size: number
+) {
+  const quietZone = 4;
+  const moduleCount = matrix.length + quietZone * 2;
+  const scale = Math.floor(size / moduleCount);
+  const canvasSize = scale * moduleCount;
+  canvas.width = canvasSize;
+  canvas.height = canvasSize;
+
+  const context = canvas.getContext("2d");
+  if (!context) return;
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvasSize, canvasSize);
+  context.fillStyle = "#0f172a";
+  matrix.forEach((row, rowIndex) => {
+    row.forEach((filled, colIndex) => {
+      if (!filled) return;
+      context.fillRect(
+        (colIndex + quietZone) * scale,
+        (rowIndex + quietZone) * scale,
+        scale,
+        scale
+      );
+    });
+  });
+}
+
+function slugifyFilename(value: string) {
+  return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "card";
 }
