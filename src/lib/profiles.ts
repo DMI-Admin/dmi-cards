@@ -3,6 +3,9 @@ import { supabase } from "@/lib/supabase";
 
 export type ClientProfile = {
   id: string;
+  title: string | null;
+  first_name: string | null;
+  last_name: string | null;
   full_name: string | null;
   email: string | null;
   subscription_plan: "free" | "paid";
@@ -34,12 +37,23 @@ export async function getOrCreateClientProfile(user: User) {
     return normalizedProfile;
   }
 
+  const metadataTitle =
+    typeof user.user_metadata?.title === "string" ? user.user_metadata.title : "";
+  const metadataFirstName =
+    typeof user.user_metadata?.first_name === "string" ? user.user_metadata.first_name : "";
+  const metadataLastName =
+    typeof user.user_metadata?.last_name === "string" ? user.user_metadata.last_name : "";
+  const metadataFullName =
+    typeof user.user_metadata?.full_name === "string"
+      ? user.user_metadata.full_name
+      : [metadataTitle, metadataFirstName, metadataLastName].filter(Boolean).join(" ");
+
   const fallbackProfile = {
     id: user.id,
-    full_name:
-      typeof user.user_metadata?.full_name === "string"
-        ? user.user_metadata.full_name
-        : "",
+    title: metadataTitle,
+    first_name: metadataFirstName,
+    last_name: metadataLastName,
+    full_name: metadataFullName,
     email: user.email || "",
     subscription_plan: "free",
     plan: "free",
@@ -93,6 +107,10 @@ function normalizeProfile(profile: Record<string, unknown>): ClientProfile {
 
   return {
     id: String(profile.id),
+    title: typeof profile.title === "string" ? profile.title : null,
+    first_name:
+      typeof profile.first_name === "string" ? profile.first_name : null,
+    last_name: typeof profile.last_name === "string" ? profile.last_name : null,
     full_name:
       typeof profile.full_name === "string" ? profile.full_name : null,
     email: typeof profile.email === "string" ? profile.email : null,

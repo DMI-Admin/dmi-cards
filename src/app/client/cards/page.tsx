@@ -28,6 +28,8 @@ import {
   X,
 } from "lucide-react";
 import CardRenderer, {
+  combineNameParts,
+  displayName,
   type CardRendererData,
   type CardRendererTemplate,
 } from "@/components/CardRenderer";
@@ -355,6 +357,9 @@ const sectionDefaults: FieldOrder = {
 };
 
 const fieldLabels: Record<string, string> = {
+  title: "Title",
+  first_name: "First Name",
+  last_name: "Last Name",
   full_name: "Full Name",
   job_title: "Job Title",
   bio: "Bio",
@@ -375,6 +380,9 @@ const fieldLabels: Record<string, string> = {
 };
 
 const editableCardFields = new Set<string>([
+  "title",
+  "first_name",
+  "last_name",
   "full_name",
   "job_title",
   "bio",
@@ -413,6 +421,7 @@ const defaultLeadCaptureSettings: LeadCaptureSettings = {
 };
 
 const fallbackColour = "#AC00FF";
+const titleOptions = ["Mr", "Mrs", "Miss", "Ms", "Mx", "Dr", "Prof", "Sir", "Dame", "Lord", "Lady", "Other"];
 
 const blankCard: ClientCard = {
   id: "",
@@ -422,6 +431,9 @@ const blankCard: ClientCard = {
   status: "unpublished",
   public_url: "/u/my-digital-card",
   last_updated: "Draft",
+  title: "",
+  first_name: "",
+  last_name: "",
   full_name: "",
   job_title: "",
   department: "",
@@ -675,13 +687,36 @@ export default function ClientCardsPage() {
   }
 
   function updateDraft(field: keyof ClientCard, value: string) {
-    setDraftCard((current) => ({ ...current, [field]: value }));
+    setDraftCard((current) => {
+      const next = { ...current, [field]: value };
+
+      if (field === "title" || field === "first_name" || field === "last_name") {
+        next.full_name = combineNameParts(next);
+      }
+
+      return next;
+    });
 
     if (field === "card_name" && panelMode === "edit") {
       setCards((currentCards) =>
         currentCards.map((card) =>
           card.id === draftCard.id ? { ...card, card_name: value } : card
         )
+      );
+    }
+
+    if (
+      (field === "title" || field === "first_name" || field === "last_name") &&
+      panelMode === "edit"
+    ) {
+      setCards((currentCards) =>
+        currentCards.map((card) => {
+          if (card.id !== draftCard.id) return card;
+
+          const next = { ...card, [field]: value };
+          next.full_name = combineNameParts(next);
+          return next;
+        })
       );
     }
   }
@@ -792,7 +827,7 @@ export default function ClientCardsPage() {
 
       const baseSlug = slugify(
         draftCard.slug ||
-          draftCard.full_name ||
+          displayName(draftCard, "") ||
           draftCard.card_name ||
           "digital-card"
       );
@@ -1962,20 +1997,33 @@ function MainProfileSection({
     <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
       <h3 className="text-lg font-semibold">Main Profile</h3>
       <p className="mt-1 text-sm text-white/40">
-        Full name and profile picture are fixed at the top of your card.
+        Name and profile picture are fixed at the top of your card.
       </p>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[220px_1fr]">
         <ProfilePictureUpload
           value={draftCard.profile_image_url || ""}
-          fullName={draftCard.full_name}
+          fullName={displayName(draftCard, "")}
           onChange={(value) => onUpdate("profile_image_url", value)}
         />
-        <TextField
-          label="Full name"
-          value={draftCard.full_name}
-          onChange={(value) => onUpdate("full_name", value)}
-        />
+        <div className="grid gap-4 sm:grid-cols-[140px_1fr_1fr]">
+          <SelectField
+            label="Title"
+            value={draftCard.title || ""}
+            options={["", ...titleOptions]}
+            onChange={(value) => onUpdate("title", value)}
+          />
+          <TextField
+            label="First name"
+            value={draftCard.first_name || ""}
+            onChange={(value) => onUpdate("first_name", value)}
+          />
+          <TextField
+            label="Last name"
+            value={draftCard.last_name || ""}
+            onChange={(value) => onUpdate("last_name", value)}
+          />
+        </div>
       </div>
     </div>
   );
@@ -2681,7 +2729,8 @@ function mapSupabaseCard(
   templates: AdminTemplate[] = [],
   defaultTemplate = defaultTemplateForPlan(templates)
 ): ClientCard {
-  const slug = row.slug || slugify(row.full_name || row.card_name || "digital-card");
+  const rowName = displayName(row, "");
+  const slug = row.slug || slugify(rowName || row.card_name || "digital-card");
   const rowTemplate =
     templateForCard({ template_id: row.template_id || "" }, templates) ||
     defaultTemplate;
@@ -2698,7 +2747,10 @@ function mapSupabaseCard(
     public_url: `/u/${slug}`,
     last_updated: row.updated_at || row.created_at || "Saved",
     slug,
-    full_name: row.full_name || "",
+    title: row.title || "",
+    first_name: row.first_name || "",
+    last_name: row.last_name || "",
+    full_name: row.full_name || rowName,
     job_title: row.job_title || "",
     department: row.department || "",
     bio: row.bio || "",
@@ -2730,14 +2782,18 @@ function buildSupabaseCardPayload(
   userId: string
 ) {
   const isPublished = card.status === "published";
+  const combinedName = displayName(card, "");
 
   return {
     user_id: userId,
     profile_id: userId,
     template_id: card.template_id || null,
     card_name: card.card_name || "Primary Digital Card",
-    slug: card.slug || slugify(card.full_name || card.card_name || "digital-card"),
-    full_name: card.full_name || "",
+    slug: card.slug || slugify(combinedName || card.card_name || "digital-card"),
+    title: card.title || null,
+    first_name: card.first_name || "",
+    last_name: card.last_name || "",
+    full_name: combinedName || card.full_name || "",
     job_title: card.job_title || "",
     department: card.department || "",
     bio: card.bio || "",
@@ -3220,6 +3276,37 @@ function TextField({
         onChange={(event) => onChange(event.target.value)}
         className="w-full rounded-2xl border border-white/10 bg-[#070B1A]/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60"
       />
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value?: string | null;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-white/55">
+        {label}
+      </span>
+      <select
+        value={value || ""}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-2xl border border-white/10 bg-[#070B1A]/70 px-4 py-3 text-sm text-white outline-none transition focus:border-[#AC00FF]/60"
+      >
+        {options.map((option) => (
+          <option key={option || "none"} value={option}>
+            {option || "None"}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }

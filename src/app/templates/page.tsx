@@ -64,7 +64,7 @@ const sectionFieldGroups: {
     key: "personal",
     title: "Personal Details",
     description: "Role and department details shown below the fixed name header.",
-    fields: ["job_title", "department", "bio"],
+    fields: ["title", "first_name", "last_name", "job_title", "department", "bio"],
   },
   {
     key: "company",
@@ -95,6 +95,9 @@ const sectionFieldGroups: {
 ];
 
 const freeFields = [
+  "title",
+  "first_name",
+  "last_name",
   "job_title",
   "department",
   "bio",
@@ -924,7 +927,7 @@ export default function TemplatesPage() {
               <h3 className="text-lg font-semibold">Classic Sections</h3>
               <p className="mt-1 text-sm text-white/45">
                 Toggle each card section, then choose which fields are allowed
-                inside it. The profile image and full name header always stays
+                inside it. The profile image and name header always stay
                 visible on Classic cards.
               </p>
 
@@ -1007,6 +1010,9 @@ export default function TemplatesPage() {
                   show_social_section: showSocialSection,
                 }}
                 cardData={{
+                  title: "Dr",
+                  first_name: name || "First Name",
+                  last_name: "Last Name",
                   full_name: name || "Full Name",
                   job_title: "Creative Director",
                   bio:
@@ -1072,6 +1078,9 @@ export default function TemplatesPage() {
                           mode="compact"
                           template={template}
                           cardData={{
+                            title: "Dr",
+                            first_name: "First Name",
+                            last_name: "Last Name",
                             full_name: "Full Name",
                             job_title: "Creative Director",
                             bio: "Professional bio",
@@ -1510,6 +1519,7 @@ function normalizeCustomFields(customFields?: CustomFields | null) {
       const incomingFields = customFields?.[section.key] || [];
       const seen = new Set<string>();
       const fields = [...incomingFields, ...defaultFields]
+        .filter((field) => field !== "full_name")
         .map((field) => normalizeSectionField(section.key, field))
         .filter((field) => {
           const key = field.toLowerCase();

@@ -39,9 +39,20 @@ const plans = [
   },
 ];
 
+const titleOptions = ["Mr", "Mrs", "Miss", "Ms", "Mx", "Dr", "Prof", "Sir", "Dame", "Lord", "Lady", "Other"];
+
+function buildFullName(title: string, firstName: string, lastName: string) {
+  return [title, firstName, lastName]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
 export default function ClientSignupPage() {
   const router = useRouter();
-  const [fullName, setFullName] = useState("");
+  const [title, setTitle] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [createdEmail, setCreatedEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -73,8 +84,8 @@ export default function ClientSignupPage() {
     setSignupError("");
     setSignupMessage("");
 
-    if (!fullName.trim()) {
-      setSignupError("Full name is required.");
+    if (!firstName.trim() || !lastName.trim()) {
+      setSignupError("First name and last name are required.");
       return;
     }
 
@@ -90,10 +101,14 @@ export default function ClientSignupPage() {
 
     setSubmitting(true);
     const signupEmail = email.trim();
+    const fullName = buildFullName(title, firstName, lastName);
 
     console.log("[DMI auth] signup request", {
       email: signupEmail,
-      fullName: fullName.trim(),
+      title: title.trim() || null,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      fullName,
       projectUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
     });
 
@@ -103,7 +118,10 @@ export default function ClientSignupPage() {
       options: {
         emailRedirectTo: `${window.location.origin}/auth/callback?next=/email-verified`,
         data: {
-          full_name: fullName.trim(),
+          title: title.trim(),
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          full_name: fullName,
           subscription_plan: "free",
           plan: "free",
           account_type: "individual",
@@ -315,11 +333,36 @@ export default function ClientSignupPage() {
 
               <form onSubmit={handleSignup} className="space-y-6">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Full name" icon={UserRound}>
+                  <Field label="Title" icon={UserRound}>
+                    <select
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                      className="inputStyle"
+                    >
+                      <option value="">Optional</option>
+                      {titleOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label="First name" icon={UserRound}>
                     <input
-                      value={fullName}
-                      onChange={(event) => setFullName(event.target.value)}
-                      placeholder="Full Name"
+                      value={firstName}
+                      onChange={(event) => setFirstName(event.target.value)}
+                      placeholder="First name"
+                      className="inputStyle"
+                      required
+                    />
+                  </Field>
+
+                  <Field label="Last name" icon={UserRound}>
+                    <input
+                      value={lastName}
+                      onChange={(event) => setLastName(event.target.value)}
+                      placeholder="Last name"
                       className="inputStyle"
                       required
                     />

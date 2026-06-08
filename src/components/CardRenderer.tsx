@@ -72,6 +72,9 @@ export type CardRendererTemplate = {
 };
 
 export type CardRendererData = {
+  title?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   full_name?: string | null;
   job_title?: string | null;
   department?: string | null;
@@ -149,6 +152,26 @@ const classicSectionDefaults: Record<ClassicSectionKey, string[]> = {
     "custom_url",
   ],
 };
+
+export function displayName(
+  cardData: Pick<CardRendererData, "title" | "first_name" | "last_name" | "full_name">,
+  fallback = "Full Name"
+) {
+  const splitName = [cardData.title, cardData.first_name, cardData.last_name]
+    .map(toDisplayValue)
+    .filter(Boolean)
+    .join(" ");
+
+  return splitName || toDisplayValue(cardData.full_name) || fallback;
+}
+
+export function combineNameParts({
+  title,
+  first_name,
+  last_name,
+}: Pick<CardRendererData, "title" | "first_name" | "last_name">) {
+  return [title, first_name, last_name].map(toDisplayValue).filter(Boolean).join(" ");
+}
 
 export default function CardRenderer({
   template,
@@ -493,11 +516,11 @@ function ClassicLayout({
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={cardData.profile_image_url}
-          alt={cardData.full_name || "Profile"}
+          alt={displayName(cardData, "Profile")}
           className="h-full w-full object-cover"
         />
       ) : (
-        initials(cardData.full_name)
+        initials(displayName(cardData))
       )}
     </div>
   );
@@ -527,7 +550,7 @@ function ClassicLayout({
               compact ? "text-2xl" : "text-4xl"
             }`}
           >
-            {cardData.full_name || "Full Name"}
+            {displayName(cardData)}
           </h3>
 
           {headerJobTitle && (
@@ -578,7 +601,7 @@ function ClassicLayout({
             compact ? "text-2xl" : "text-4xl"
           }`}
         >
-          {cardData.full_name || "Full Name"}
+          {displayName(cardData)}
         </h3>
 
         {headerJobTitle && (
@@ -857,7 +880,7 @@ function GlassmorphismLayout(props: LayoutProps) {
 
           <div className="min-w-0 flex-1">
             <h3 className="max-w-full break-words text-xl font-black leading-tight tracking-tight">
-              {cardData.full_name || "Full Name"}
+              {displayName(cardData)}
             </h3>
             {props.sectionSettings?.personal &&
               props.allowedFields.includes("job_title") && (
@@ -964,7 +987,7 @@ function BannerCardLayout(props: LayoutProps) {
 
       <div className={`px-5 ${props.requiresProfileImage ? (compact ? "pt-12" : "pt-14") : "pt-5"}`}>
         <h3 className="max-w-full break-words text-2xl font-black leading-tight">
-          {cardData.full_name || "Full Name"}
+          {displayName(cardData)}
         </h3>
         {props.sectionSettings?.personal && props.allowedFields.includes("job_title") && (
           <p className="mt-1 max-w-full break-words text-sm font-semibold" style={{ color: mutedText }}>
@@ -1022,7 +1045,7 @@ function SplitCardLayout(props: LayoutProps) {
           <PaidAvatar cardData={cardData} theme={theme} size={compact ? 82 : 104} />
         )}
         <h3 className="mt-4 max-w-full break-words text-2xl font-black leading-tight">
-          {cardData.full_name || "Full Name"}
+          {displayName(cardData)}
         </h3>
         {props.sectionSettings?.personal && props.allowedFields.includes("job_title") && (
           <p className="mt-2 max-w-full break-words text-sm font-semibold" style={{ color: mutedText }}>
@@ -1086,12 +1109,12 @@ function MonogramCardLayout(props: LayoutProps) {
             color: theme.text,
           }}
         >
-          {initials(cardData.full_name)}
+          {initials(displayName(cardData))}
         </div>
 
         <div className="min-w-0 flex-1">
           <h3 className="max-w-full break-words text-2xl font-black leading-tight">
-            {cardData.full_name || "Full Name"}
+            {displayName(cardData)}
           </h3>
           {props.sectionSettings?.personal && props.allowedFields.includes("job_title") && (
             <p className="mt-1 max-w-full break-words text-sm font-semibold" style={{ color: mutedText }}>
@@ -1197,11 +1220,11 @@ function PaidAvatar({
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={cardData.profile_image_url}
-          alt={cardData.full_name || "Profile"}
+          alt={displayName(cardData, "Profile")}
           className="h-full w-full object-cover"
         />
       ) : (
-        initials(cardData.full_name)
+        initials(displayName(cardData))
       )}
     </div>
   );
@@ -1334,7 +1357,7 @@ function BannerLayout({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={cardData.profile_image_url}
-            alt={cardData.full_name || "Profile"}
+            alt={displayName(cardData, "Profile")}
             className="h-full w-full object-cover"
           />
         ) : (
@@ -1445,7 +1468,7 @@ function IdentityBlock({
           minimal ? "font-semibold" : ""
         }`}
       >
-        {cardData.full_name || "Full Name"}
+        {displayName(cardData)}
       </h3>
       <p className="mt-2 max-w-full break-words text-sm opacity-70">
         {[cardData.job_title, cardData.company_name].filter(Boolean).join(" · ") ||
@@ -1481,11 +1504,11 @@ function ProfileImage({
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={cardData.profile_image_url}
-          alt={cardData.full_name || "Profile"}
+          alt={displayName(cardData, "Profile")}
           className="h-full w-full object-cover"
         />
       ) : (
-        initials(cardData.full_name)
+        initials(displayName(cardData))
       )}
     </div>
   );
@@ -1860,6 +1883,9 @@ function isAllowedSectionField(section: ClassicSectionKey, field: string) {
 
 function builtInRow(field: string, cardData: CardRendererData): DisplayRow {
   const rows: Record<string, DisplayRow> = {
+    title: { label: "Title", value: toDisplayValue(cardData.title) },
+    first_name: { label: "First Name", value: toDisplayValue(cardData.first_name) },
+    last_name: { label: "Last Name", value: toDisplayValue(cardData.last_name) },
     job_title: { label: "Job Title", value: toDisplayValue(cardData.job_title) },
     department: {
       label: "Department",
@@ -1963,7 +1989,7 @@ function bioText(cardData: CardRendererData) {
   }
 
   if (cardData.company_name) {
-    return `Connect with ${cardData.full_name || "this contact"} at ${
+    return `Connect with ${displayName(cardData, "this contact")} at ${
       cardData.company_name
     }.`;
   }
