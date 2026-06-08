@@ -54,6 +54,8 @@ type TemplatePayload = Record<
   string | boolean | number | null | string[] | CustomFields
 >;
 
+const cardHeaderFields = ["title", "first_name", "last_name"];
+
 const sectionFieldGroups: {
   key: SectionKey;
   title: string;
@@ -64,7 +66,7 @@ const sectionFieldGroups: {
     key: "personal",
     title: "Personal Details",
     description: "Role and department details shown below the fixed name header.",
-    fields: ["title", "first_name", "last_name", "job_title", "department", "bio"],
+    fields: ["job_title", "department", "bio"],
   },
   {
     key: "company",
@@ -124,6 +126,9 @@ const defaultCustomFields: Required<CustomFields> = {
 };
 
 const paidFields = [
+  "title",
+  "first_name",
+  "last_name",
   "job_title",
   "department",
   "bio",
@@ -932,6 +937,12 @@ export default function TemplatesPage() {
               </p>
 
               <div className="mt-4 space-y-4">
+                <CardHeaderControl
+                  fields={cardHeaderFields}
+                  allowedFields={allowedFields}
+                  onToggleField={toggleAllowedField}
+                />
+
                 {sectionFieldGroups.map((section) => {
                   const { enabled, onChange } = sectionState(section.key);
 
@@ -1500,6 +1511,60 @@ function SectionControl({
   );
 }
 
+function CardHeaderControl({
+  fields,
+  allowedFields,
+  onToggleField,
+}: {
+  fields: string[];
+  allowedFields: string[];
+  onToggleField: (field: string) => void;
+}) {
+  return (
+    <div className="rounded-3xl border border-[#AC00FF]/35 bg-[#AC00FF]/10 p-5">
+      <div className="flex w-full items-start justify-between gap-4 text-left">
+        <span>
+          <span className="block font-semibold">Card Header</span>
+          <span className="mt-1 block text-xs leading-relaxed text-white/45">
+            Controls the name shown under the profile image.
+          </span>
+        </span>
+        <span className="shrink-0 rounded-full bg-[#AC00FF] px-3 py-1 text-xs font-medium text-white">
+          Fixed
+        </span>
+      </div>
+
+      <div className="mt-5 space-y-2.5">
+        {fields.map((field) => {
+          const active = allowedFields.includes(field);
+
+          return (
+            <div
+              key={`header-${field}`}
+              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 transition hover:border-[#AC00FF]/30 hover:bg-white/[0.07]"
+            >
+              <span className="min-w-0 flex-1 text-sm font-medium capitalize">
+                {formatFieldLabel(field)}
+              </span>
+              <button
+                type="button"
+                onClick={() => onToggleField(field)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                  active
+                    ? "bg-[#AC00FF] text-white"
+                    : "bg-white/10 text-white/45"
+                }`}
+              >
+                {active ? "On" : "Off"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function customFieldKey(section: SectionKey, label: string) {
   return `custom:${section}:${label}`;
 }
@@ -1520,6 +1585,7 @@ function normalizeCustomFields(customFields?: CustomFields | null) {
       const seen = new Set<string>();
       const fields = [...incomingFields, ...defaultFields]
         .filter((field) => field !== "full_name")
+        .filter((field) => !(section.key === "personal" && cardHeaderFields.includes(field)))
         .map((field) => normalizeSectionField(section.key, field))
         .filter((field) => {
           const key = field.toLowerCase();
