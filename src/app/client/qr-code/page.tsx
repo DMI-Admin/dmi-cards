@@ -36,12 +36,11 @@ type SavedQrCard = {
 };
 
 const freeQrColours = [
-  "#AC00FF",
-  "#7C3AED",
-  "#2563EB",
-  "#059669",
-  "#EF4444",
-  "#0F172A",
+  { name: "Purple", value: "#AC00FF" },
+  { name: "Blue", value: "#2563EB" },
+  { name: "Green", value: "#059669" },
+  { name: "Red", value: "#EF4444" },
+  { name: "Black", value: "#0F172A" },
 ];
 
 const qrStyles = isPaid
@@ -52,6 +51,7 @@ export default function ClientQrCodePage() {
   const [selectedCard, setSelectedCard] = useState<SavedQrCard | null>(null);
   const [loadingCard, setLoadingCard] = useState(true);
   const [actionMessage, setActionMessage] = useState("");
+  const [selectedColour, setSelectedColour] = useState(freeQrColours[0].value);
   const qrMatrix = useMemo(
     () => (selectedCard ? createQrMatrix(selectedCard.public_url) : []),
     [selectedCard]
@@ -130,7 +130,7 @@ export default function ClientQrCodePage() {
     if (!selectedCard || qrMatrix.length === 0) return;
 
     const canvas = document.createElement("canvas");
-    drawQrToCanvas(canvas, qrMatrix, 960);
+    drawQrToCanvas(canvas, qrMatrix, 960, selectedColour);
     const link = document.createElement("a");
     link.href = canvas.toDataURL("image/png");
     link.download = `dmi-card-qr-${slugifyFilename(selectedCard.slug)}.png`;
@@ -142,7 +142,7 @@ export default function ClientQrCodePage() {
     if (!selectedCard || qrMatrix.length === 0) return;
 
     const canvas = document.createElement("canvas");
-    drawQrToCanvas(canvas, qrMatrix, 720);
+    drawQrToCanvas(canvas, qrMatrix, 720, selectedColour);
     const imageUrl = canvas.toDataURL("image/png");
     const printWindow = window.open("", "_blank", "noopener,noreferrer");
 
@@ -307,21 +307,27 @@ export default function ClientQrCodePage() {
                         Free users can choose from admin-approved QR colours.
                       </p>
                       <div className="mt-4 flex flex-wrap gap-3">
-                        {freeQrColours.map((colour, index) => (
+                        {freeQrColours.map((colour) => {
+                          const selected = selectedColour === colour.value;
+
+                          return (
                           <button
-                            key={colour}
+                            key={colour.value}
                             type="button"
+                            onClick={() => setSelectedColour(colour.value)}
                             className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition ${
-                              index === 0
+                              selected
                                 ? "border-white shadow-lg shadow-purple-500/30"
                                 : "border-white/10 hover:border-white/30"
                             }`}
-                            style={{ backgroundColor: colour }}
-                            aria-label={`Select ${colour}`}
+                            style={{ backgroundColor: colour.value }}
+                            aria-label={`Select ${colour.name}`}
+                            title={colour.name}
                           >
-                            {index === 0 && <Check className="h-5 w-5" />}
+                            {selected && <Check className="h-5 w-5" />}
                           </button>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -393,7 +399,7 @@ export default function ClientQrCodePage() {
 
               <div className="mt-6 rounded-[2rem] border border-[#AC00FF]/25 bg-gradient-to-br from-[#1B1241] via-[#101935] to-[#070B1A] p-6 shadow-inner shadow-white/5">
                 <div className="rounded-3xl bg-white p-5 text-[#0F172A] shadow-2xl shadow-purple-950/30">
-                  <QrPreview matrix={qrMatrix} />
+                  <QrPreview matrix={qrMatrix} colour={selectedColour} />
                   <div className="mt-5 text-center">
                     <p className="text-sm font-semibold">Scan to open</p>
                     <p className="mt-1 text-sm text-slate-500">
@@ -538,7 +544,7 @@ function EmptyQrState() {
   );
 }
 
-function QrPreview({ matrix }: { matrix: boolean[][] }) {
+function QrPreview({ matrix, colour }: { matrix: boolean[][]; colour: string }) {
   const size = matrix.length;
 
   return (
@@ -550,7 +556,8 @@ function QrPreview({ matrix }: { matrix: boolean[][] }) {
         row.map((filled, colIndex) => (
           <span
             key={`${rowIndex}-${colIndex}`}
-            className={filled ? "bg-[#0F172A]" : "bg-white"}
+            className={filled ? "" : "bg-white"}
+            style={filled ? { backgroundColor: colour } : undefined}
           />
         ))
       )}
@@ -819,7 +826,8 @@ function bitsToByte(bits: boolean[]) {
 function drawQrToCanvas(
   canvas: HTMLCanvasElement,
   matrix: boolean[][],
-  size: number
+  size: number,
+  colour: string
 ) {
   const quietZone = 4;
   const moduleCount = matrix.length + quietZone * 2;
@@ -833,7 +841,7 @@ function drawQrToCanvas(
 
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, canvasSize, canvasSize);
-  context.fillStyle = "#0f172a";
+  context.fillStyle = colour;
   matrix.forEach((row, rowIndex) => {
     row.forEach((filled, colIndex) => {
       if (!filled) return;
