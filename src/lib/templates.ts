@@ -23,13 +23,6 @@ type TemplatePayload = Partial<SharedTemplate> & {
   slug?: string | null;
 };
 
-const templateColumnSupport = {
-  requires_banner: null as boolean | null,
-  gradient_enabled: null as boolean | null,
-  supports_company_banner: null as boolean | null,
-  supports_gradient: null as boolean | null,
-};
-
 export async function getAdminTemplates() {
   const { data, error } = await supabase
     .from("templates")
@@ -39,8 +32,6 @@ export async function getAdminTemplates() {
   if (error) {
     throw new Error(`Could not load templates from Supabase: ${error.message}`);
   }
-
-  learnTemplateColumns(data || []);
 
   return normalizeTemplates((data || []) as SharedTemplate[]);
 }
@@ -55,8 +46,6 @@ export async function getPublishedTemplates() {
   if (error) {
     throw new Error(`Could not load published templates from Supabase: ${error.message}`);
   }
-
-  learnTemplateColumns(data || []);
 
   return normalizeTemplates((data || []) as SharedTemplate[]).filter(
     isPublishedTemplate
@@ -85,32 +74,17 @@ export async function saveAdminTemplate(
     status: payload.status || (payload.is_published ? "published" : "draft"),
   });
   const result = editingTemplateId
-    ? await writeTemplateWithSchemaRetry((databasePayload) =>
-        supabase
-          .from("templates")
-          .update(databasePayload)
-          .eq("id", editingTemplateId)
-          .select("*")
-          .single(),
-        normalizedPayload
-      )
-    : await writeTemplateWithSchemaRetry((databasePayload) =>
-        supabase
-          .from("templates")
-          .insert([databasePayload])
-          .select("*")
-          .single(),
-        normalizedPayload
-      );
-
-  if (result.error) {
-    throw new Error(`Could not save template to Supabase: ${result.error.message}`);
-  }
-
-  learnTemplateColumns(result.data ? [result.data] : []);
+    ? await requestAdminTemplate(`/api/admin/templates/${editingTemplateId}`, {
+        method: "PATCH",
+        body: JSON.stringify(normalizedPayload),
+      })
+    : await requestAdminTemplate("/api/admin/templates", {
+        method: "POST",
+        body: JSON.stringify(normalizedPayload),
+      });
 
   return {
-    template: normalizeTemplate(result.data as SharedTemplate),
+    template: normalizeTemplate(result.template as SharedTemplate),
     source: "database" as const,
   };
 }
@@ -119,44 +93,57 @@ export async function publishAdminTemplate(
   template: SharedTemplate,
   published: boolean
 ) {
-  const result = await writeTemplateWithSchemaRetry((databasePayload) =>
-    supabase
-      .from("templates")
-      .update(databasePayload)
-      .eq("id", template.id)
-      .select("*")
-      .single(),
-    {
+  const normalizedPayload = normalizeTemplate({
       ...template,
       is_published: published,
       status: published ? "published" : "draft",
-    }
-  );
-
-  if (result.error) {
-    throw new Error(`Could not update template publish state: ${result.error.message}`);
-  }
-
-  learnTemplateColumns(result.data ? [result.data] : []);
+    });
+  const result = await requestAdminTemplate(`/api/admin/templates/${template.id}`, {
+    method: "PATCH",
+    body: JSON.stringify(normalizedPayload),
+  });
 
   return {
-    template: normalizeTemplate(result.data as SharedTemplate),
+    template: normalizeTemplate(result.template as SharedTemplate),
     source: "database" as const,
   };
 }
 
 export async function deleteAdminTemplate(templateId: string) {
-  const { error } = await supabase.from("templates").delete().eq("id", templateId);
-
-  if (error) {
-    throw new Error(`Could not delete template from Supabase: ${error.message}`);
-  }
+  await requestAdminTemplate(`/api/admin/templates/${templateId}`, {
+    method: "DELETE",
+  });
 
   return { source: "database" as const };
 }
 
 export function normalizeTemplates(templates: SharedTemplate[]) {
   return templates.map(normalizeTemplate);
+}
+
+async function requestAdminTemplate(
+  url: string,
+  init: RequestInit
+): Promise<{ template?: unknown; deleted?: boolean }> {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init.headers || {}),
+    },
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const message =
+      typeof result.error === "string"
+        ? result.error
+        : "Template could not be saved. Please try again.";
+
+    throw new Error(message);
+  }
+
+  return result;
 }
 
 export function normalizeTemplate(template: SharedTemplate | TemplatePayload): SharedTemplate {
@@ -236,86 +223,6 @@ export function normalizeColourPalette(value: unknown): string[] {
   }
 
   return [];
-}
-
-function stripLocalOnlyFields(template: SharedTemplate) {
-  const { id, created_at, updated_at, ...databasePayload } = template;
-  void id;
-  void created_at;
-  void updated_at;
-
-  if (templateColumnSupport.requires_banner === false) {
-    delete databasePayload.requires_banner;
-  }
-
-  if (templateColumnSupport.gradient_enabled === false) {
-    delete databasePayload.gradient_enabled;
-  }
-
-  if (templateColumnSupport.supports_company_banner === false) {
-    delete databasePayload.supports_company_banner;
-  }
-
-  if (templateColumnSupport.supports_gradient === false) {
-    delete databasePayload.supports_gradient;
-  }
-
-  return databasePayload;
-}
-
-async function writeTemplateWithSchemaRetry(
-  write: (databasePayload: ReturnType<typeof stripLocalOnlyFields>) => PromiseLike<{
-    data: unknown;
-    error: { message: string } | null;
-  }>,
-  template: SharedTemplate
-) {
-  let result = await write(stripLocalOnlyFields(template));
-
-  while (result.error) {
-    const missingColumn = missingColumnFromError(result.error);
-
-    if (!missingColumn || !markUnsupportedColumn(missingColumn)) {
-      break;
-    }
-
-    result = await write(stripLocalOnlyFields(template));
-  }
-
-  return result;
-}
-
-function learnTemplateColumns(rows: unknown[]) {
-  const firstRow = rows.find(
-    (row): row is Record<string, unknown> =>
-      Boolean(row) && typeof row === "object" && !Array.isArray(row)
-  );
-
-  if (!firstRow) return;
-
-  for (const column of Object.keys(templateColumnSupport) as Array<
-    keyof typeof templateColumnSupport
-  >) {
-    templateColumnSupport[column] = Object.prototype.hasOwnProperty.call(
-      firstRow,
-      column
-    );
-  }
-}
-
-function markUnsupportedColumn(column: string) {
-  if (column in templateColumnSupport) {
-    templateColumnSupport[column as keyof typeof templateColumnSupport] = false;
-    return true;
-  }
-
-  return false;
-}
-
-function missingColumnFromError(error: { message: string } | null) {
-  const message = error?.message || "";
-  const match = message.match(/'([^']+)' column of 'templates'/);
-  return match?.[1] || null;
 }
 
 function normalizeTemplateColourPalette(
