@@ -1022,9 +1022,9 @@ export default function TemplatesPage() {
                 }}
                 cardData={{
                   title: "Dr",
-                  first_name: name || "First Name",
+                  first_name: "First Name",
                   last_name: "Last Name",
-                  full_name: name || "Full Name",
+                  full_name: "Full Name",
                   job_title: "Creative Director",
                   bio:
                     "A short professional bio can describe experience, services, or the best way to connect.",
