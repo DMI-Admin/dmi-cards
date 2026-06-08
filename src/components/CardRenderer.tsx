@@ -632,7 +632,7 @@ function ClassicLayout({
           </h4>
           <div className="mt-4 space-y-3">
             {paidContactRows.map((item) => {
-              const Icon = item.icon;
+              const Icon = isPaid ? item.icon : null;
 
               return (
                 <div
@@ -1832,7 +1832,7 @@ function classicRows(
       if (isCustomFieldKey(field)) {
         const label = customFieldLabel(field);
         const value = toDisplayValue(
-          customFieldValue(section, label, cardData.custom_fields)
+          customFieldValue(section, field, cardData.custom_fields)
         );
 
         return {
@@ -1944,27 +1944,38 @@ function isCustomFieldKey(field: string) {
 }
 
 function customFieldLabel(field: string) {
-  return field.split(":").at(-1) || field;
+  return friendlyLabel(field.split(":").at(-1) || field);
 }
 
 function customFieldValue(
   section: ClassicSectionKey,
-  label: string,
+  field: string,
   values?: CustomFieldValues | null
 ): unknown {
   if (!values) return "";
+  const label = isCustomFieldKey(field) ? customFieldLabel(field) : field;
+  const rawLabel = isCustomFieldKey(field) ? field.split(":").at(-1) || field : field;
 
   const nestedValues = values[section];
 
   if (nestedValues && typeof nestedValues === "object") {
     const sectionValues = nestedValues as CustomFieldValues;
-    return sectionValues[label] || sectionValues[label.toLowerCase()] || "";
+    return (
+      sectionValues[label] ||
+      sectionValues[label.toLowerCase()] ||
+      sectionValues[rawLabel] ||
+      sectionValues[rawLabel.toLowerCase()] ||
+      ""
+    );
   }
 
   return (
+    values[field] ||
     values[label] ||
     values[label.toLowerCase()] ||
-    values[customFieldKey(section, label)] ||
+    values[rawLabel] ||
+    values[rawLabel.toLowerCase()] ||
+    values[customFieldKey(section, rawLabel)] ||
     ""
   );
 }
@@ -1975,6 +1986,12 @@ function hasDisplayValue(row: DisplayRow) {
 
 function customPlaceholder(label: string) {
   return `${label} details`;
+}
+
+function friendlyLabel(label: string) {
+  return label
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function displayUrl(value?: string | null) {

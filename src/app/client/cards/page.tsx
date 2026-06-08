@@ -328,9 +328,9 @@ const builderSteps: {
     subtitle: "Edit the fields enabled by your DMI template.",
   },
   {
-    title: "Set Up Your Card",
-    shortTitle: "Set Up",
-    subtitle: "Configure sharing and lead capture settings.",
+    title: "Setup & Publish",
+    shortTitle: "Setup & Publish",
+    subtitle: "Configure sharing and publish your card.",
   },
 ];
 
@@ -543,7 +543,6 @@ export default function ClientCardsPage() {
     fieldOrder,
   ]);
 
-  const publishedCards = cards.filter((card) => card.status === "published").length;
   const previewCard = showBuilder ? draftCard : selectedCard;
   const previewTemplate = showBuilder ? draftTemplate : selectedCardTemplate;
   const previewTitle = showBuilder ? "Live Edit Preview" : "Selected Card Preview";
@@ -894,10 +893,6 @@ export default function ClientCardsPage() {
     }
   }
 
-  function handleSaveDraft() {
-    void handleSaveCard("unpublished");
-  }
-
   function handlePublishCard() {
     void handleSaveCard("published");
   }
@@ -935,6 +930,7 @@ export default function ClientCardsPage() {
 
     const { data, error } = await writeCardPayload({
       cardId: card.id,
+      userId,
       payload,
       shouldUpdate,
     });
@@ -1084,16 +1080,6 @@ export default function ClientCardsPage() {
               lead capture setup.
             </p>
           </div>
-
-          <button
-            type="button"
-            onClick={openCreatePanel}
-            disabled={!currentDefaultTemplate || (!isPaid && cards.length >= 1)}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35 disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            <BadgePlus className="h-4 w-4" />
-            Create New Card
-          </button>
         </div>
 
         {loadingCards ? (
@@ -1139,15 +1125,6 @@ export default function ClientCardsPage() {
 
             <div className="grid gap-8 2xl:grid-cols-[minmax(0,1fr)_minmax(560px,600px)]">
               <div className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-3">
-                  <StatCard label="Current Plan" value={planLabel(currentPlan)} />
-                  <StatCard label="Total Cards" value={String(cards.length)} />
-                  <StatCard
-                    label="Published Cards"
-                    value={String(publishedCards)}
-                  />
-                </div>
-
                 {cards.length === 0 && !showBuilder ? (
                   <EmptyState onCreate={openCreatePanel} />
                 ) : cards.length > 0 ? (
@@ -1179,7 +1156,6 @@ export default function ClientCardsPage() {
                     onUpdateLeadSettings={updateLeadCaptureSettings}
                     onToggleFieldVisibility={toggleFieldVisibility}
                     onMoveField={moveField}
-                    onSaveDraft={handleSaveDraft}
                     onPublish={handlePublishCard}
                     saveStatus={saveStatus}
                     saveMessage={saveMessage}
@@ -1669,7 +1645,6 @@ function EditorPanel({
   onUpdateLeadSettings,
   onToggleFieldVisibility,
   onMoveField,
-  onSaveDraft,
   onPublish,
   saveStatus,
   saveMessage,
@@ -1689,14 +1664,21 @@ function EditorPanel({
   onUpdateLeadSettings: (settings: LeadCaptureSettings) => void;
   onToggleFieldVisibility: (field: string) => void;
   onMoveField: (section: SectionKey, draggedField: string, targetField: string) => void;
-  onSaveDraft: () => void;
   onPublish: () => void;
   saveStatus: SaveStatus;
   saveMessage: string;
   saveError: string;
 }) {
+  function goBack() {
+    onStepChange(Math.max(0, activeStep - 1) as BuilderStep);
+  }
+
+  function goNext() {
+    onStepChange(Math.min(2, activeStep + 1) as BuilderStep);
+  }
+
   return (
-    <section className="rounded-3xl border border-[#AC00FF]/25 bg-[#101935]/75 shadow-2xl shadow-purple-950/20">
+    <section className="overflow-hidden rounded-3xl border border-[#AC00FF]/25 bg-[#101935]/75 shadow-2xl shadow-purple-950/20">
       <div className="flex flex-col gap-4 border-b border-white/10 p-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#AC00FF]">
@@ -1766,13 +1748,49 @@ function EditorPanel({
           <SetUpStep
             settings={draftCard.lead_capture_settings || defaultLeadCaptureSettings}
             onSettingsChange={onUpdateLeadSettings}
-            onSaveDraft={onSaveDraft}
-            onPublish={onPublish}
             saveStatus={saveStatus}
             saveMessage={saveMessage}
             saveError={saveError}
           />
         )}
+      </div>
+
+      <div className="sticky bottom-0 z-20 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-[#101935]/95 p-5 backdrop-blur-xl">
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/35">
+          Step {activeStep + 1} of 3
+        </div>
+        <div className="flex flex-wrap gap-3">
+          {activeStep > 0 && (
+            <button
+              type="button"
+              onClick={goBack}
+              disabled={saveStatus === "saving"}
+              className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white/70 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Back
+            </button>
+          )}
+
+          {activeStep < 2 ? (
+            <button
+              type="button"
+              onClick={goNext}
+              className="rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35"
+            >
+              Next
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onPublish}
+              disabled={saveStatus === "saving"}
+              className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ExternalLink className="h-4 w-4" />
+              {saveStatus === "saving" ? "Publishing..." : "Publish"}
+            </button>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -2355,13 +2373,13 @@ function FieldRow({
       </div>
       {field === "bio" ? (
         <TextArea
-          label={fieldLabels[field] || labelize(field)}
+          label={fieldLabels[field] || friendlyFieldLabel(field)}
           value={String(value || "")}
           onChange={onChange}
         />
       ) : (
         <TextField
-          label={fieldLabels[field] || labelize(field)}
+          label={fieldLabels[field] || friendlyFieldLabel(field)}
           value={String(value || "")}
           onChange={onChange}
         />
@@ -2386,16 +2404,12 @@ function FieldRow({
 function SetUpStep({
   settings,
   onSettingsChange,
-  onSaveDraft,
-  onPublish,
   saveStatus,
   saveMessage,
   saveError,
 }: {
   settings: LeadCaptureSettings;
   onSettingsChange: (settings: LeadCaptureSettings) => void;
-  onSaveDraft: () => void;
-  onPublish: () => void;
   saveStatus: SaveStatus;
   saveMessage: string;
   saveError: string;
@@ -2503,27 +2517,6 @@ function SetUpStep({
           {settings.follow_up_enabled ? "On" : "Off"}
         </span>
       </button>
-
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={onSaveDraft}
-          disabled={saveStatus === "saving"}
-          className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white/75 transition hover:bg-white/10 hover:text-white"
-        >
-          <Save className="h-4 w-4" />
-          {saveStatus === "saving" ? "Saving..." : "Save Draft"}
-        </button>
-        <button
-          type="button"
-          onClick={onPublish}
-          disabled={saveStatus === "saving"}
-          className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35"
-        >
-          <ExternalLink className="h-4 w-4" />
-          {saveStatus === "saving" ? "Saving..." : "Publish Card"}
-        </button>
-      </div>
 
       {(saveStatus === "saving" || saveMessage || saveError) && (
         <div
@@ -2864,10 +2857,12 @@ async function getActiveUserForCardSave(isPublishing: boolean): Promise<User | n
 
 async function writeCardPayload({
   cardId,
+  userId,
   payload,
   shouldUpdate,
 }: {
   cardId: string;
+  userId: string;
   payload: Record<string, unknown>;
   shouldUpdate: boolean;
 }) {
@@ -2880,6 +2875,7 @@ async function writeCardPayload({
         .from("cards")
         .update(nextPayload)
         .eq("id", cardId)
+        .eq("user_id", userId)
         .select("*")
         .single()
     : await supabase.from("cards").insert([nextPayload]).select("*").single();
@@ -2899,6 +2895,7 @@ async function writeCardPayload({
           .from("cards")
           .update(nextPayload)
           .eq("id", cardId)
+          .eq("user_id", userId)
           .select("*")
           .single()
       : await supabase.from("cards").insert([nextPayload]).select("*").single();
@@ -3204,7 +3201,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
         className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20"
       >
         <BadgePlus className="h-4 w-4" />
-        Create Card
+        Create your first digital business card
       </button>
     </div>
   );
@@ -3346,15 +3343,6 @@ function UpgradeNotice({ message }: { message: string }) {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-h-32 rounded-3xl border border-white/10 bg-white/5 p-5">
-      <p className="text-sm text-white/45">{label}</p>
-      <p className="mt-4 text-3xl font-semibold">{value}</p>
-    </div>
-  );
-}
-
 function PlanBadge() {
   return (
     <span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-purple-100">
@@ -3416,8 +3404,12 @@ function ActionButton({
   );
 }
 
-function labelize(field: string) {
-  return field
+function friendlyFieldLabel(field: string) {
+  const label = field.startsWith("custom:")
+    ? field.split(":").at(-1) || field
+    : field;
+
+  return label
     .replace(/_/g, " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }

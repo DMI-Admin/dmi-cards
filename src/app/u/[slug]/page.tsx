@@ -3,6 +3,9 @@ import type { CardRendererTemplate } from "@/components/CardRenderer";
 import { supabase } from "@/lib/supabase";
 import { normalizeColourPalette, normalizeTemplate } from "@/lib/templates";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type PublicCardPageProps = {
   params: Promise<{
     slug: string;
