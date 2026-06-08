@@ -71,7 +71,7 @@ export default function ClientLoginPage() {
     });
 
     if (error) {
-      setLoginError(error.message);
+      setLoginError(await getFriendlyLoginError(error, email.trim()));
       setSubmitting(false);
       return;
     }
@@ -361,6 +361,45 @@ export default function ClientLoginPage() {
 
     </main>
   );
+}
+
+async function getFriendlyLoginError(
+  error: { message?: string },
+  email: string
+) {
+  const message = error.message || "";
+
+  if (/invalid login credentials/i.test(message)) {
+    const accountExists = await checkAccountExists(email);
+
+    if (accountExists === false) {
+      return "No account found with this email. Please create an account to get started.";
+    }
+
+    return "Email or password is incorrect.";
+  }
+
+  return message || "Could not log in. Please try again.";
+}
+
+async function checkAccountExists(email: string) {
+  try {
+    const response = await fetch("/api/auth/account-status", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email }),
+    });
+    const result = (await response.json().catch(() => null)) as {
+      exists?: boolean | null;
+    } | null;
+
+    return typeof result?.exists === "boolean" ? result.exists : null;
+  } catch (error) {
+    console.error("[DMI auth] account status lookup failed", error);
+    return null;
+  }
 }
 
 function PasswordResetModal({
