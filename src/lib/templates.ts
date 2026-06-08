@@ -24,9 +24,10 @@ type TemplatePayload = Partial<SharedTemplate> & {
 };
 
 export async function getAdminTemplates() {
-  const response = await fetch("/api/admin/templates", {
+  const response = await fetch(`/api/admin/templates?ts=${Date.now()}`, {
     method: "GET",
     cache: "no-store",
+    credentials: "same-origin",
   });
   const result = await response.json().catch(() => ({}));
 

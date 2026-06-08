@@ -594,7 +594,7 @@ export default function TemplatesPage() {
       const existingTemplate = templates.find(
         (template) => template.id === editingTemplateId
       );
-      await saveAdminTemplate(
+      const result = await saveAdminTemplate(
         {
           ...payload,
           is_published: existingTemplate?.is_published ?? false,
@@ -603,6 +603,13 @@ export default function TemplatesPage() {
         } as unknown as SharedTemplate,
         editingTemplateId
       );
+      const savedTemplate = result.template as Template;
+
+      setTemplates((current) => {
+        const withoutSaved = current.filter((template) => template.id !== savedTemplate.id);
+        return [savedTemplate, ...withoutSaved];
+      });
+      setTemplateSearch("");
 
       resetBuilder();
       await fetchTemplates();
