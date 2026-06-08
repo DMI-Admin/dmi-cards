@@ -42,6 +42,8 @@ const freeQrColours = [
   { name: "Red", value: "#EF4444" },
   { name: "Black", value: "#0F172A" },
 ];
+const defaultQrColour = "#0F172A";
+const qrColourStorageKey = "dmi-cards-qr-colour";
 
 const qrStyles = isPaid
   ? ["Classic", "Rounded", "Dots", "Modern", "Minimal"]
@@ -51,7 +53,9 @@ export default function ClientQrCodePage() {
   const [selectedCard, setSelectedCard] = useState<SavedQrCard | null>(null);
   const [loadingCard, setLoadingCard] = useState(true);
   const [actionMessage, setActionMessage] = useState("");
-  const [selectedColour, setSelectedColour] = useState(freeQrColours[0].value);
+  const [selectedColour, setSelectedColour] = useState(() =>
+    getInitialQrColour()
+  );
   const qrMatrix = useMemo(
     () => (selectedCard ? createQrMatrix(selectedCard.public_url) : []),
     [selectedCard]
@@ -118,6 +122,11 @@ export default function ClientQrCodePage() {
 
     await navigator.clipboard?.writeText(selectedCard.public_url);
     setActionMessage("Public link copied.");
+  }
+
+  function selectQrColour(colour: string) {
+    setSelectedColour(colour);
+    window.localStorage.setItem(qrColourStorageKey, colour);
   }
 
   function viewPublicPage() {
@@ -314,7 +323,7 @@ export default function ClientQrCodePage() {
                           <button
                             key={colour.value}
                             type="button"
-                            onClick={() => setSelectedColour(colour.value)}
+                            onClick={() => selectQrColour(colour.value)}
                             className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition ${
                               selected
                                 ? "border-white shadow-lg shadow-purple-500/30"
@@ -857,4 +866,15 @@ function drawQrToCanvas(
 
 function slugifyFilename(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "card";
+}
+
+function getInitialQrColour() {
+  if (typeof window === "undefined") return defaultQrColour;
+
+  const savedColour = window.localStorage.getItem(qrColourStorageKey);
+  const validSavedColour = freeQrColours.some(
+    (colour) => colour.value === savedColour
+  );
+
+  return validSavedColour && savedColour ? savedColour : defaultQrColour;
 }
