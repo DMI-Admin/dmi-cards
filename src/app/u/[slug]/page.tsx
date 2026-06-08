@@ -5,6 +5,7 @@ import { normalizeColourPalette, normalizeTemplate } from "@/lib/templates";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 type PublicCardPageProps = {
   params: Promise<{
@@ -148,30 +149,47 @@ function normalizeFieldOrder(
   fieldOrder: PublicCardRow["field_order"],
   template: CardRendererTemplate
 ) {
-  return {
-    personal: fieldOrder?.personal?.length
-      ? fieldOrder.personal
-      : template.custom_fields?.personal || ["job_title", "bio", "department"],
-    company: fieldOrder?.company?.length
-      ? fieldOrder.company
-      : template.custom_fields?.company || ["company_name", "website", "address"],
-    contact: fieldOrder?.contact?.length
-      ? fieldOrder.contact.filter((field) => field !== "website")
-      : (template.custom_fields?.contact || ["email", "phone"]).filter(
-          (field) => field !== "website"
-        ),
-    social: fieldOrder?.social?.length
-      ? fieldOrder.social
-      : template.custom_fields?.social || [
-          "whatsapp",
-          "linkedin",
-          "instagram",
-          "facebook",
-          "youtube",
-          "booking_link",
-          "custom_url",
-        ],
+  const templateOrder = {
+    personal: template.custom_fields?.personal || ["job_title", "bio", "department"],
+    company: template.custom_fields?.company || ["company_name", "website", "address"],
+    contact: (template.custom_fields?.contact || ["email", "phone"]).filter(
+      (field) => field !== "website"
+    ),
+    social: template.custom_fields?.social || [
+      "whatsapp",
+      "linkedin",
+      "instagram",
+      "facebook",
+      "youtube",
+      "booking_link",
+      "custom_url",
+    ],
   };
+
+  return {
+    personal: mergeSectionFields(fieldOrder?.personal, templateOrder.personal),
+    company: mergeSectionFields(fieldOrder?.company, templateOrder.company),
+    contact: mergeSectionFields(fieldOrder?.contact, templateOrder.contact).filter(
+      (field) => field !== "website"
+    ),
+    social: mergeSectionFields(fieldOrder?.social, templateOrder.social),
+  };
+}
+
+function mergeSectionFields(
+  savedFields: string[] | null | undefined,
+  templateFields: string[]
+) {
+  const seen = new Set<string>();
+
+  return [...(savedFields || []), ...templateFields].filter((field) => {
+    const key = field.toLowerCase();
+
+    if (seen.has(key)) return false;
+
+    seen.add(key);
+    return true;
+  });
 }
 
 function PublicMessage({

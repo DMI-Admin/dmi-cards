@@ -674,7 +674,7 @@ export default function ClientCardsPage() {
     setPanelMode("edit");
     setActiveStep(0);
     const cardTemplate = templateForCard(card, adminTemplates) || currentDefaultTemplate;
-    const savedFieldOrder = card.field_order || getInitialFieldOrder(cardTemplate);
+    const savedFieldOrder = mergeFieldOrderWithTemplate(card.field_order, cardTemplate);
     setFieldOrder(savedFieldOrder);
     setDraftCard({
       ...card,
@@ -946,7 +946,11 @@ export default function ClientCardsPage() {
       console.error("Client card save failed", error);
       console.error("Save error", error);
       const message =
-        error ? describeCardsDatabaseError(error) : "Failed to save card. Please try again.";
+        error
+          ? describeCardsDatabaseError(error)
+          : shouldUpdate
+          ? "Could not update this card. Please refresh My Cards and try again."
+          : "Failed to save card. Please try again.";
       setSaveError(message);
       setDatabaseNotice(message);
       return null;
@@ -2765,7 +2769,7 @@ function mapSupabaseCard(
     custom_fields: row.custom_fields || {},
     selected_colour: selectedColourForTemplate(rowTemplate, row.selected_colour),
     hidden_fields: row.hidden_fields || [],
-    field_order: row.field_order || getInitialFieldOrder(rowTemplate),
+    field_order: mergeFieldOrderWithTemplate(row.field_order, rowTemplate),
     lead_capture_settings: row.lead_capture_settings || defaultLeadCaptureSettings,
   };
 }
@@ -3128,6 +3132,38 @@ function getInitialFieldOrder(template: AdminTemplate | null): FieldOrder {
       ? [...template.custom_fields.social]
       : [...sectionDefaults.social],
   };
+}
+
+function mergeFieldOrderWithTemplate(
+  savedFieldOrder: FieldOrder | null | undefined,
+  template: AdminTemplate | CardRendererTemplate | null
+): FieldOrder {
+  const templateOrder = getInitialFieldOrder(template as AdminTemplate | null);
+
+  return {
+    personal: mergeSectionFields(savedFieldOrder?.personal, templateOrder.personal),
+    company: mergeSectionFields(savedFieldOrder?.company, templateOrder.company),
+    contact: mergeSectionFields(savedFieldOrder?.contact, templateOrder.contact).filter(
+      (field) => field !== "website"
+    ),
+    social: mergeSectionFields(savedFieldOrder?.social, templateOrder.social),
+  };
+}
+
+function mergeSectionFields(
+  savedFields: string[] | null | undefined,
+  templateFields: string[]
+) {
+  const seen = new Set<string>();
+
+  return [...(savedFields || []), ...templateFields].filter((field) => {
+    const key = field.toLowerCase();
+
+    if (seen.has(key)) return false;
+
+    seen.add(key);
+    return true;
+  });
 }
 
 function sectionEnabled(
