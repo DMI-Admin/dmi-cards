@@ -1918,6 +1918,19 @@ function CustomiseStep({
             const previewFieldOrder = selected
               ? fieldOrder
               : getInitialFieldOrder(templateOption);
+            const previewSelectedColour = selected
+              ? activeColour
+              : firstTemplateColour(templateOption);
+            const previewSelectedTextColour = selected
+              ? activeTextColour
+              : selectedTextColourForTemplate(
+                  templateOption,
+                  null,
+                  previewSelectedColour
+                );
+            const previewCardData = selected
+              ? draftCard
+              : { ...draftCard, selected_text_colour: null };
 
             return (
               <button
@@ -1940,12 +1953,12 @@ function CustomiseStep({
                     <CardRenderer
                       template={buildTemplatePreview(
                         templateOption,
-                        firstTemplateColour(templateOption),
-                        selectedTextColourForTemplate(templateOption, draftCard.selected_text_colour),
+                        previewSelectedColour,
+                        previewSelectedTextColour,
                         previewFieldOrder,
                         selected ? hiddenFieldsForCard(draftCard) : []
                       )}
-                      cardData={draftCard}
+                      cardData={previewCardData}
                       mode="compact"
                     />
                   </div>
