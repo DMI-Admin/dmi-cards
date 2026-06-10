@@ -2838,10 +2838,35 @@ function buildSupabaseCardPayload(
     hidden_fields: card.hidden_fields || [],
     field_order: card.field_order || getInitialFieldOrder(null),
     lead_capture_settings: card.lead_capture_settings || defaultLeadCaptureSettings,
-    custom_fields: card.custom_fields || {},
+    custom_fields: buildPersistedCustomFields(card),
     status: isPublished ? "published" : "draft",
     is_published: isPublished,
   };
+}
+
+function buildPersistedCustomFields(card: ClientCard) {
+  const values: Record<string, string> = {};
+  const fieldOrder = card.field_order || getInitialFieldOrder(null);
+  const fields = Object.values(fieldOrder).flat();
+
+  fields.forEach((field) => {
+    const value = isEditableCardField(field)
+      ? card[field]
+      : customFieldValue(card, field);
+    const textValue = typeof value === "string" ? value.trim() : "";
+
+    if (!textValue) return;
+
+    values[customFieldStorageKey(field)] = textValue;
+  });
+
+  return values;
+}
+
+function customFieldStorageKey(field: string) {
+  return field.startsWith("custom:")
+    ? field.split(":").at(-1)?.trim().toLowerCase() || field
+    : field;
 }
 
 async function getActiveUserForCardSave(isPublishing: boolean): Promise<User | null> {
@@ -3252,7 +3277,8 @@ function isEditableCardField(field: string): field is keyof ClientCard {
 }
 
 function customFieldValue(card: ClientCard, field: string) {
-  const value = card.custom_fields?.[field];
+  const storageKey = customFieldStorageKey(field);
+  const value = card.custom_fields?.[field] || card.custom_fields?.[storageKey];
 
   if (typeof value === "string") return value;
   if (!value || typeof value !== "object") return "";

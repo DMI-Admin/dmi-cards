@@ -1961,6 +1961,7 @@ function customFieldValue(
   if (nestedValues && typeof nestedValues === "object") {
     const sectionValues = nestedValues as CustomFieldValues;
     return (
+      values[field] ||
       sectionValues[label] ||
       sectionValues[label.toLowerCase()] ||
       sectionValues[rawLabel] ||
