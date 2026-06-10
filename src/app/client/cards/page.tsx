@@ -54,6 +54,7 @@ type CardStatus = "published" | "unpublished";
 type PanelMode = "create" | "edit";
 type SectionKey = "personal" | "company" | "contact" | "social";
 type BuilderStep = 0 | 1 | 2;
+type FieldVisibility = Record<string, boolean>;
 type DevicePreviewKey =
   | "iphone_se"
   | "iphone_se_2_3"
@@ -136,6 +137,7 @@ type ClientCard = CardRendererData & {
   last_updated: string;
   selected_colour?: string;
   hidden_fields?: string[];
+  field_visibility?: FieldVisibility;
   slug?: string;
   field_order?: FieldOrder;
   lead_capture_settings?: LeadCaptureSettings;
@@ -170,6 +172,7 @@ type SupabaseCardRow = CardRendererData & {
   company_banner_url?: string | null;
   selected_colour?: string | null;
   hidden_fields?: string[] | null;
+  field_visibility?: FieldVisibility | null;
   field_order?: FieldOrder | null;
   lead_capture_settings?: LeadCaptureSettings | null;
   updated_at?: string | null;
@@ -453,6 +456,7 @@ const blankCard: ClientCard = {
   custom_fields: {},
   selected_colour: fallbackColour,
   hidden_fields: [],
+  field_visibility: {},
   field_order: getInitialFieldOrder(null),
   lead_capture_settings: defaultLeadCaptureSettings,
 };
@@ -515,14 +519,12 @@ export default function ClientCardsPage() {
         selectedCard?.selected_colour || selectedCardFallbackColour
       ),
       selectedCard?.field_order || getInitialFieldOrder(selectedCardTemplateRecord),
-      selectedCard?.hidden_fields || []
+      hiddenFieldsForCard(selectedCard)
     );
   }, [
     selectedCardTemplateRecord,
     selectedCardFallbackColour,
-    selectedCard?.selected_colour,
-    selectedCard?.hidden_fields,
-    selectedCard?.field_order,
+    selectedCard,
   ]);
 
   const draftTemplate = useMemo(() => {
@@ -533,12 +535,11 @@ export default function ClientCardsPage() {
         draftCard.selected_colour || draftFallbackColour
       ),
       fieldOrder,
-      draftCard.hidden_fields || []
+      hiddenFieldsForCard(draftCard)
     );
   }, [
     draftTemplateRecord,
-    draftCard.selected_colour,
-    draftCard.hidden_fields,
+    draftCard,
     draftFallbackColour,
     fieldOrder,
   ]);
@@ -740,6 +741,7 @@ export default function ClientCardsPage() {
           ? firstTemplateColour(template)
           : current.selected_colour || fallbackColour,
       hidden_fields: [],
+      field_visibility: {},
       field_order: nextFieldOrder,
     }));
   }
@@ -763,13 +765,27 @@ export default function ClientCardsPage() {
 
   function toggleFieldVisibility(field: string) {
     setDraftCard((current) => {
+      const currentlyVisible = isFieldVisible(field, current);
+      const nextVisible = !currentlyVisible;
+      const fieldVisibility = normalizeFieldVisibility(current.field_visibility);
+      const visibilityKey = customFieldStorageKey(field);
       const hiddenFields = current.hidden_fields || [];
+      const hiddenFieldSet = new Set(hiddenFields);
+      const nextHiddenFields = nextVisible
+        ? hiddenFields.filter(
+            (hiddenField) => !fieldKeyMatches(hiddenField, visibilityKey)
+          )
+        : isFieldHidden(field, hiddenFieldSet)
+        ? hiddenFields
+        : [...hiddenFields, field];
 
       return {
         ...current,
-        hidden_fields: hiddenFields.includes(field)
-          ? hiddenFields.filter((hiddenField) => hiddenField !== field)
-          : [...hiddenFields, field],
+        field_visibility: {
+          ...fieldVisibility,
+          [visibilityKey]: nextVisible,
+        },
+        hidden_fields: nextHiddenFields,
       };
     });
   }
@@ -862,6 +878,7 @@ export default function ClientCardsPage() {
         hiddenFields: nextCard.hidden_fields || [],
         fieldOrder: nextCard.field_order,
         customFields: nextCard.custom_fields || {},
+        fieldVisibility: nextCard.field_visibility || {},
       });
 
       const savedCard = await saveCardToSupabase({
@@ -1904,7 +1921,7 @@ function CustomiseStep({
                         templateOption,
                         firstTemplateColour(templateOption),
                         previewFieldOrder,
-                        selected ? draftCard.hidden_fields || [] : []
+                        selected ? hiddenFieldsForCard(draftCard) : []
                       )}
                       cardData={draftCard}
                       mode="compact"
@@ -2342,7 +2359,7 @@ function BuilderSection({
                   ? draftCard[field]
                   : customFieldValue(draftCard, field)
               }
-              hidden={draftCard.hidden_fields?.includes(field) || false}
+              hidden={!isFieldVisible(field, draftCard)}
               onChange={(value) => {
                 if (isEditableCardField(field)) {
                   onUpdate(field, value);
@@ -2759,6 +2776,12 @@ function mapSupabaseCard(
   const templateName =
     rowTemplate?.name ||
     "Free Classic";
+  const fieldOrder = mergeFieldOrderWithTemplate(row.field_order, rowTemplate);
+  const fieldVisibility = fieldVisibilityWithHiddenFallback(
+    row.field_visibility,
+    row.hidden_fields,
+    fieldOrder
+  );
 
   return {
     id: row.id,
@@ -2794,7 +2817,8 @@ function mapSupabaseCard(
     custom_fields: row.custom_fields || {},
     selected_colour: selectedColourForTemplate(rowTemplate, row.selected_colour),
     hidden_fields: row.hidden_fields || [],
-    field_order: mergeFieldOrderWithTemplate(row.field_order, rowTemplate),
+    field_visibility: fieldVisibility,
+    field_order: fieldOrder,
     lead_capture_settings: row.lead_capture_settings || defaultLeadCaptureSettings,
   };
 }
@@ -2805,6 +2829,8 @@ function buildSupabaseCardPayload(
 ) {
   const isPublished = card.status === "published";
   const combinedName = displayName(card, "");
+  const fieldOrder = card.field_order || getInitialFieldOrder(null);
+  const fieldVisibility = buildPersistedFieldVisibility(card, fieldOrder);
 
   return {
     user_id: userId,
@@ -2835,13 +2861,51 @@ function buildSupabaseCardPayload(
     company_logo_url: card.company_logo_url || "",
     company_banner_url: card.company_banner_url || "",
     selected_colour: card.selected_colour || fallbackColour,
-    hidden_fields: card.hidden_fields || [],
-    field_order: card.field_order || getInitialFieldOrder(null),
+    hidden_fields: hiddenFieldsFromVisibility(fieldVisibility, fieldOrder),
+    field_visibility: fieldVisibility,
+    field_order: fieldOrder,
     lead_capture_settings: card.lead_capture_settings || defaultLeadCaptureSettings,
     custom_fields: buildPersistedCustomFields(card),
     status: isPublished ? "published" : "draft",
     is_published: isPublished,
   };
+}
+
+function buildPersistedFieldVisibility(
+  card: ClientCard,
+  fieldOrder: FieldOrder
+): FieldVisibility {
+  const currentVisibility = normalizeFieldVisibility(card.field_visibility);
+  const nextVisibility: FieldVisibility = { ...currentVisibility };
+
+  Object.values(fieldOrder)
+    .flat()
+    .forEach((field) => {
+      const key = customFieldStorageKey(field);
+      nextVisibility[key] = isFieldVisible(field, card);
+    });
+
+  return nextVisibility;
+}
+
+function hiddenFieldsFromVisibility(
+  fieldVisibility: FieldVisibility,
+  fieldOrder: FieldOrder
+) {
+  return Object.values(fieldOrder)
+    .flat()
+    .filter((field) => fieldVisibilityValue(field, fieldVisibility) === false);
+}
+
+function hiddenFieldsForCard(
+  card: Pick<ClientCard, "field_order" | "field_visibility" | "hidden_fields"> | null
+) {
+  if (!card) return [];
+
+  const fieldOrder = card.field_order || getInitialFieldOrder(null);
+  return Object.values(fieldOrder)
+    .flat()
+    .filter((field) => !isFieldVisible(field, card));
 }
 
 function buildPersistedCustomFields(card: ClientCard) {
@@ -3271,6 +3335,95 @@ function isFieldHidden(field: string, hiddenFieldSet: Set<string>) {
     hiddenFieldSet.has(`custom:contact:${storageKey}`) ||
     hiddenFieldSet.has(`custom:social:${storageKey}`)
   );
+}
+
+function isFieldVisible(
+  field: string,
+  card: Pick<ClientCard, "field_visibility" | "hidden_fields">
+) {
+  const visible = fieldVisibilityValue(field, card.field_visibility);
+
+  if (typeof visible === "boolean") return visible;
+
+  return !isFieldHidden(field, new Set(card.hidden_fields || []));
+}
+
+function fieldVisibilityValue(
+  field: string,
+  fieldVisibility: FieldVisibility | null | undefined
+) {
+  const visibility = normalizeFieldVisibility(fieldVisibility);
+  const storageKey = customFieldStorageKey(field);
+  const candidates = fieldKeyVariants(field);
+
+  for (const candidate of candidates) {
+    if (typeof visibility[candidate] === "boolean") {
+      return visibility[candidate];
+    }
+  }
+
+  if (typeof visibility[storageKey] === "boolean") {
+    return visibility[storageKey];
+  }
+
+  return null;
+}
+
+function fieldVisibilityWithHiddenFallback(
+  fieldVisibility: FieldVisibility | null | undefined,
+  hiddenFields: string[] | null | undefined,
+  fieldOrder: FieldOrder
+) {
+  const visibility = normalizeFieldVisibility(fieldVisibility);
+  const hasVisibility = Object.keys(visibility).length > 0;
+
+  if (hasVisibility) return visibility;
+
+  const hiddenFieldSet = new Set(hiddenFields || []);
+  const fallback: FieldVisibility = {};
+
+  Object.values(fieldOrder)
+    .flat()
+    .forEach((field) => {
+      if (isFieldHidden(field, hiddenFieldSet)) {
+        fallback[customFieldStorageKey(field)] = false;
+      }
+    });
+
+  return fallback;
+}
+
+function normalizeFieldVisibility(
+  fieldVisibility: FieldVisibility | null | undefined
+): FieldVisibility {
+  if (!fieldVisibility || typeof fieldVisibility !== "object") return {};
+
+  return Object.fromEntries(
+    Object.entries(fieldVisibility).filter(
+      (entry): entry is [string, boolean] => typeof entry[1] === "boolean"
+    )
+  );
+}
+
+function fieldKeyVariants(field: string) {
+  const storageKey = customFieldStorageKey(field);
+
+  return Array.from(
+    new Set([
+      field,
+      storageKey,
+      field.toLowerCase(),
+      storageKey.toLowerCase(),
+      `custom:personal:${storageKey}`,
+      `custom:company:${storageKey}`,
+      `custom:contact:${storageKey}`,
+      `custom:social:${storageKey}`,
+    ])
+  );
+}
+
+function fieldKeyMatches(field: string, storageKey: string) {
+  return fieldKeyVariants(field).includes(storageKey);
 }
 
 function sectionConfig(

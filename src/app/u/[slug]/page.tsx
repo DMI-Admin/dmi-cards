@@ -62,6 +62,7 @@ export default async function PublicCardPage({ params }: PublicCardPageProps) {
     updatedAt: card.updated_at || null,
     department: card.department || null,
     hiddenFields: card.hidden_fields || [],
+    fieldVisibility: card.field_visibility || {},
     fieldOrder: card.field_order || null,
     allowedFields: publicTemplate.allowed_fields || [],
     rendererFields: publicTemplate.custom_fields || null,
@@ -86,6 +87,7 @@ type PublicCardRow = {
   template_id?: string | null;
   selected_colour?: string | null;
   hidden_fields?: string[] | null;
+  field_visibility?: Record<string, boolean> | null;
   field_order?: Partial<Record<"personal" | "company" | "contact" | "social", string[]>> | null;
 };
 
@@ -121,18 +123,27 @@ function buildPublicTemplate(
   const hiddenFields = new Set(
     Array.isArray(card.hidden_fields) ? card.hidden_fields : []
   );
+  const fieldVisibility = normalizeFieldVisibility(card.field_visibility);
   const fieldOrder = normalizeFieldOrder(card.field_order, normalizedTemplate);
   const rendererFieldOrder = {
-    personal: fieldOrder.personal.filter((field) => !isFieldHidden(field, hiddenFields)),
-    company: fieldOrder.company.filter((field) => !isFieldHidden(field, hiddenFields)),
-    contact: fieldOrder.contact.filter(
-      (field) => field !== "website" && !isFieldHidden(field, hiddenFields)
+    personal: fieldOrder.personal.filter(
+      (field) => isFieldVisible(field, fieldVisibility, hiddenFields)
     ),
-    social: fieldOrder.social.filter((field) => !isFieldHidden(field, hiddenFields)),
+    company: fieldOrder.company.filter(
+      (field) => isFieldVisible(field, fieldVisibility, hiddenFields)
+    ),
+    contact: fieldOrder.contact.filter(
+      (field) =>
+        field !== "website" && isFieldVisible(field, fieldVisibility, hiddenFields)
+    ),
+    social: fieldOrder.social.filter(
+      (field) => isFieldVisible(field, fieldVisibility, hiddenFields)
+    ),
   };
   const allowedFields = mergeAllowedFieldsWithFieldOrder(
     normalizedTemplate.allowed_fields || [],
     rendererFieldOrder,
+    fieldVisibility,
     hiddenFields
   );
   const selectedColour =
@@ -166,6 +177,7 @@ function buildPublicTemplate(
 function mergeAllowedFieldsWithFieldOrder(
   allowedFields: string[],
   fieldOrder: Record<"personal" | "company" | "contact" | "social", string[]>,
+  fieldVisibility: Record<string, boolean>,
   hiddenFieldSet: Set<string>
 ) {
   const orderedFields = Object.values(fieldOrder).flat();
@@ -174,7 +186,9 @@ function mergeAllowedFieldsWithFieldOrder(
   return [...allowedFields, ...orderedFields].filter((field) => {
     const key = field.toLowerCase();
 
-    if (isFieldHidden(field, hiddenFieldSet) || seen.has(key)) return false;
+    if (!isFieldVisible(field, fieldVisibility, hiddenFieldSet) || seen.has(key)) {
+      return false;
+    }
 
     seen.add(key);
     return true;
@@ -191,6 +205,62 @@ function isFieldHidden(field: string, hiddenFieldSet: Set<string>) {
     hiddenFieldSet.has(`custom:company:${storageKey}`) ||
     hiddenFieldSet.has(`custom:contact:${storageKey}`) ||
     hiddenFieldSet.has(`custom:social:${storageKey}`)
+  );
+}
+
+function isFieldVisible(
+  field: string,
+  fieldVisibility: Record<string, boolean>,
+  hiddenFieldSet: Set<string>
+) {
+  const visible = fieldVisibilityValue(field, fieldVisibility);
+
+  if (typeof visible === "boolean") return visible;
+
+  return !isFieldHidden(field, hiddenFieldSet);
+}
+
+function fieldVisibilityValue(
+  field: string,
+  fieldVisibility: Record<string, boolean> | null | undefined
+) {
+  const visibility = normalizeFieldVisibility(fieldVisibility);
+
+  for (const candidate of fieldKeyVariants(field)) {
+    if (typeof visibility[candidate] === "boolean") {
+      return visibility[candidate];
+    }
+  }
+
+  return null;
+}
+
+function normalizeFieldVisibility(
+  fieldVisibility: Record<string, boolean> | null | undefined
+) {
+  if (!fieldVisibility || typeof fieldVisibility !== "object") return {};
+
+  return Object.fromEntries(
+    Object.entries(fieldVisibility).filter(
+      (entry): entry is [string, boolean] => typeof entry[1] === "boolean"
+    )
+  );
+}
+
+function fieldKeyVariants(field: string) {
+  const storageKey = customFieldStorageKey(field);
+
+  return Array.from(
+    new Set([
+      field,
+      storageKey,
+      field.toLowerCase(),
+      storageKey.toLowerCase(),
+      `custom:personal:${storageKey}`,
+      `custom:company:${storageKey}`,
+      `custom:contact:${storageKey}`,
+      `custom:social:${storageKey}`,
+    ])
   );
 }
 
