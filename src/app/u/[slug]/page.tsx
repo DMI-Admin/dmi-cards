@@ -123,12 +123,12 @@ function buildPublicTemplate(
   );
   const fieldOrder = normalizeFieldOrder(card.field_order, normalizedTemplate);
   const rendererFieldOrder = {
-    personal: fieldOrder.personal.filter((field) => !hiddenFields.has(field)),
-    company: fieldOrder.company.filter((field) => !hiddenFields.has(field)),
+    personal: fieldOrder.personal.filter((field) => !isFieldHidden(field, hiddenFields)),
+    company: fieldOrder.company.filter((field) => !isFieldHidden(field, hiddenFields)),
     contact: fieldOrder.contact.filter(
-      (field) => field !== "website" && !hiddenFields.has(field)
+      (field) => field !== "website" && !isFieldHidden(field, hiddenFields)
     ),
-    social: fieldOrder.social.filter((field) => !hiddenFields.has(field)),
+    social: fieldOrder.social.filter((field) => !isFieldHidden(field, hiddenFields)),
   };
   const allowedFields = mergeAllowedFieldsWithFieldOrder(
     normalizedTemplate.allowed_fields || [],
@@ -174,11 +174,30 @@ function mergeAllowedFieldsWithFieldOrder(
   return [...allowedFields, ...orderedFields].filter((field) => {
     const key = field.toLowerCase();
 
-    if (hiddenFieldSet.has(field) || seen.has(key)) return false;
+    if (isFieldHidden(field, hiddenFieldSet) || seen.has(key)) return false;
 
     seen.add(key);
     return true;
   });
+}
+
+function isFieldHidden(field: string, hiddenFieldSet: Set<string>) {
+  const storageKey = customFieldStorageKey(field);
+
+  return (
+    hiddenFieldSet.has(field) ||
+    hiddenFieldSet.has(storageKey) ||
+    hiddenFieldSet.has(`custom:personal:${storageKey}`) ||
+    hiddenFieldSet.has(`custom:company:${storageKey}`) ||
+    hiddenFieldSet.has(`custom:contact:${storageKey}`) ||
+    hiddenFieldSet.has(`custom:social:${storageKey}`)
+  );
+}
+
+function customFieldStorageKey(field: string) {
+  return field.startsWith("custom:")
+    ? field.split(":").at(-1)?.trim().toLowerCase() || field
+    : field;
 }
 
 function normalizeFieldOrder(

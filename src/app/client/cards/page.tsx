@@ -3157,13 +3157,13 @@ function fieldOrderForRenderer(
 
   return {
     personal: fieldOrder.personal.filter(
-      (field) => field !== "full_name" && !hiddenFieldSet.has(field)
+      (field) => field !== "full_name" && !isFieldHidden(field, hiddenFieldSet)
     ),
-    company: fieldOrder.company.filter((field) => !hiddenFieldSet.has(field)),
+    company: fieldOrder.company.filter((field) => !isFieldHidden(field, hiddenFieldSet)),
     contact: fieldOrder.contact.filter(
-      (field) => field !== "website" && !hiddenFieldSet.has(field)
+      (field) => field !== "website" && !isFieldHidden(field, hiddenFieldSet)
     ),
-    social: fieldOrder.social.filter((field) => !hiddenFieldSet.has(field)),
+    social: fieldOrder.social.filter((field) => !isFieldHidden(field, hiddenFieldSet)),
   };
 }
 
@@ -3253,11 +3253,24 @@ function mergeAllowedFieldsWithFieldOrder(
   return [...allowedFields, ...orderedFields].filter((field) => {
     const key = field.toLowerCase();
 
-    if (hiddenFieldSet.has(field) || seen.has(key)) return false;
+    if (isFieldHidden(field, hiddenFieldSet) || seen.has(key)) return false;
 
     seen.add(key);
     return true;
   });
+}
+
+function isFieldHidden(field: string, hiddenFieldSet: Set<string>) {
+  const storageKey = customFieldStorageKey(field);
+
+  return (
+    hiddenFieldSet.has(field) ||
+    hiddenFieldSet.has(storageKey) ||
+    hiddenFieldSet.has(`custom:personal:${storageKey}`) ||
+    hiddenFieldSet.has(`custom:company:${storageKey}`) ||
+    hiddenFieldSet.has(`custom:contact:${storageKey}`) ||
+    hiddenFieldSet.has(`custom:social:${storageKey}`)
+  );
 }
 
 function sectionConfig(
