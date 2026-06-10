@@ -125,6 +125,7 @@ export default function ClientDashboardPage() {
     slug?: string | null;
     card_name?: string | null;
     selected_colour?: string | null;
+    selected_text_colour?: string | null;
     status?: string | null;
     is_published?: boolean | null;
   }) | null>(null);
@@ -197,11 +198,17 @@ export default function ClientDashboardPage() {
             normalizeColourPalette(selectedTemplate.free_colour_palette)[0] ||
             "#AC00FF",
         ],
+        text_color: latestCard?.selected_text_colour || selectedTemplate.text_color,
       };
     }
 
     return selectedTemplate;
-  }, [latestCard?.selected_colour, latestCard?.template_id, templates]);
+  }, [
+    latestCard?.selected_colour,
+    latestCard?.selected_text_colour,
+    latestCard?.template_id,
+    templates,
+  ]);
   const publicUrl = latestCard?.slug ? `/u/${latestCard.slug}` : "/u/your-card-url";
   const hasSavedCard = Boolean(latestCard);
 

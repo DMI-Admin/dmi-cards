@@ -59,6 +59,7 @@ export type CardRendererTemplate = {
   gradient_enabled?: boolean | null;
   colour_palette?: string[] | null;
   free_colour_palette?: string[] | null;
+  text_colours?: string[] | null;
   allowed_fonts?: string[] | null;
   default_font?: string | null;
   supports_bio?: boolean | null;
@@ -91,6 +92,7 @@ export type CardRendererData = {
   youtube?: string | null;
   booking_link?: string | null;
   custom_url?: string | null;
+  selected_text_colour?: string | null;
   profile_image_url?: string | null;
   company_logo_url?: string | null;
   company_banner_url?: string | null;
@@ -200,7 +202,13 @@ export default function CardRenderer({
   const primary = template.primary_color || defaultPrimary;
   const secondary = template.secondary_color || defaultSecondary;
   const freeColour = sanitizeColourPalette(template.free_colour_palette)[0];
-  const text = template.text_color || defaultText;
+  const selectedTextColour = cardData.selected_text_colour
+    ? sanitizeColourPalette([cardData.selected_text_colour])[0]
+    : null;
+  const text =
+    selectedTextColour ||
+    template.text_color ||
+    (freeColour ? readableTextForBackground(freeColour) : defaultText);
   const buttonColor = template.button_color || defaultButton;
   const buttonTextColor = template.button_text_color || defaultButtonText;
   const fontFamily = isPaid
@@ -239,6 +247,7 @@ export default function CardRenderer({
         sectionSettings={sectionSettings}
         compact={compact}
         isPaid={isPaid}
+        theme={theme}
       />
     ),
     premium_classic: (
@@ -445,7 +454,19 @@ function ClassicLayout({
   requiresLogo,
   requiresBanner,
   isPaid,
+  theme,
 }: LayoutProps) {
+  const rendererTheme = getRendererTheme(theme);
+  const mutedText = colorAlpha(rendererTheme.text, 0.62);
+  const panelBackground = isPaid
+    ? "#0508168C"
+    : colorAlpha(rendererTheme.text, 0.1);
+  const panelBorder = isPaid
+    ? "rgba(255,255,255,0.15)"
+    : colorAlpha(rendererTheme.text, 0.18);
+  const rowBackground = isPaid
+    ? "rgba(255,255,255,0.07)"
+    : colorAlpha(rendererTheme.text, 0.1);
   const allowed = new Set(allowedFields);
   const previewMode = mode === "preview" || mode === "compact";
   const headerJobTitle =
@@ -549,12 +570,16 @@ function ClassicLayout({
             className={`max-w-full break-words text-center font-bold leading-tight ${
               compact ? "text-2xl" : "text-4xl"
             }`}
+            style={{ color: rendererTheme.text }}
           >
             {displayName(cardData)}
           </h3>
 
           {headerJobTitle && (
-            <p className="mt-2 max-w-full break-words text-center text-sm font-medium text-white/75">
+            <p
+              className="mt-2 max-w-full break-words text-center text-sm font-medium"
+              style={{ color: mutedText }}
+            >
               {headerJobTitle}
             </p>
           )}
@@ -600,34 +625,48 @@ function ClassicLayout({
           className={`mt-3 max-w-full break-words text-center font-bold leading-tight ${
             compact ? "text-2xl" : "text-4xl"
           }`}
+          style={{ color: rendererTheme.text }}
         >
           {displayName(cardData)}
         </h3>
 
         {headerJobTitle && (
-          <p className="mt-2 max-w-full break-words text-center text-sm font-medium text-white/75">
+          <p
+            className="mt-2 max-w-full break-words text-center text-sm font-medium"
+            style={{ color: mutedText }}
+          >
             {headerJobTitle}
           </p>
         )}
       </div>
 
       {hasPersonalDetails && (
-        <ClassicSection title="Personal Details" rows={paidPersonalRows} premium={isPaid} />
+        <ClassicSection
+          title="Personal Details"
+          rows={paidPersonalRows}
+          premium={isPaid}
+          theme={rendererTheme}
+        />
       )}
 
       {hasCompanyDetails && (
-        <ClassicSection title="Company Details" rows={companyRows} premium={isPaid} />
+        <ClassicSection
+          title="Company Details"
+          rows={companyRows}
+          premium={isPaid}
+          theme={rendererTheme}
+        />
       )}
 
       {hasContactDetails && (
         <div
-          className={`mt-6 max-w-full overflow-hidden rounded-3xl border p-4 text-left shadow-xl shadow-black/10 ${
-            isPaid
-              ? "border-white/15 bg-[#050816]/55"
-              : "border-white/10 bg-[#070B1A]/35"
-          }`}
+          className="mt-6 max-w-full overflow-hidden rounded-3xl border p-4 text-left shadow-xl shadow-black/10"
+          style={{ backgroundColor: panelBackground, borderColor: panelBorder }}
         >
-          <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-white/45">
+          <h4
+            className="text-xs font-semibold uppercase tracking-[0.18em]"
+            style={{ color: mutedText }}
+          >
             Contact
           </h4>
           <div className="mt-4 space-y-3">
@@ -637,11 +676,13 @@ function ClassicLayout({
               return (
                 <div
                   key={item.label}
-                  className={`grid min-w-0 grid-cols-[86px_minmax(0,1fr)] items-center gap-3 rounded-2xl px-3 py-3 text-sm ${
-                    isPaid ? "bg-white/[0.07]" : "bg-white/10"
-                  }`}
+                  className="grid min-w-0 grid-cols-[86px_minmax(0,1fr)] items-center gap-3 rounded-2xl px-3 py-3 text-sm"
+                  style={{ backgroundColor: rowBackground }}
                 >
-                  <span className="flex min-w-0 items-center gap-2 text-white/45">
+                  <span
+                    className="flex min-w-0 items-center gap-2"
+                    style={{ color: mutedText }}
+                  >
                     {Icon && (
                       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-[#101935] shadow-lg shadow-black/15">
                         <Icon size={14} />
@@ -649,7 +690,10 @@ function ClassicLayout({
                     )}
                     <span className="truncate text-xs">{item.label}</span>
                   </span>
-                  <span className="min-w-0 max-w-full break-words font-medium text-white">
+                  <span
+                    className="min-w-0 max-w-full break-words font-medium"
+                    style={{ color: rendererTheme.text }}
+                  >
                     {item.value}
                   </span>
                 </div>
@@ -660,7 +704,12 @@ function ClassicLayout({
       )}
 
       {hasSocialDetails && (
-        <ClassicSection title="Social Links" rows={socialRows} premium={isPaid} />
+        <ClassicSection
+          title="Social Links"
+          rows={socialRows}
+          premium={isPaid}
+          theme={rendererTheme}
+        />
       )}
     </div>
   );
@@ -671,24 +720,40 @@ function ClassicSection({
   rows,
   premium = false,
   className = "",
+  theme,
 }: {
   title: string;
   rows: DisplayRow[];
   premium?: boolean;
   className?: string;
+  theme?: RendererTheme;
 }) {
+  const rendererTheme = getRendererTheme(theme);
+  const mutedText = colorAlpha(rendererTheme.text, 0.62);
+  const panelBackground = premium
+    ? "#0508168C"
+    : colorAlpha(rendererTheme.text, 0.1);
+  const panelBorder = premium
+    ? "rgba(255,255,255,0.15)"
+    : colorAlpha(rendererTheme.text, 0.18);
+
   return (
     <div
-      className={`mt-6 max-w-full overflow-hidden rounded-3xl border p-4 text-left shadow-xl shadow-black/10 ${
-        premium
-          ? "border-white/15 bg-[#050816]/55"
-          : "border-white/10 bg-[#070B1A]/35"
-      } ${className}`}
+      className={`mt-6 max-w-full overflow-hidden rounded-3xl border p-4 text-left shadow-xl shadow-black/10 ${className}`}
+      style={{ backgroundColor: panelBackground, borderColor: panelBorder }}
     >
-      <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-white/45">
+      <h4
+        className="text-xs font-semibold uppercase tracking-[0.18em]"
+        style={{ color: mutedText }}
+      >
         {title}
       </h4>
-      <ClassicSectionContent rows={rows} className="mt-4" premium={premium} />
+      <ClassicSectionContent
+        rows={rows}
+        className="mt-4"
+        premium={premium}
+        theme={rendererTheme}
+      />
     </div>
   );
 }
@@ -697,11 +762,19 @@ function ClassicSectionContent({
   rows,
   className = "",
   premium = false,
+  theme,
 }: {
   rows: DisplayRow[];
   className?: string;
   premium?: boolean;
+  theme?: RendererTheme;
 }) {
+  const rendererTheme = getRendererTheme(theme);
+  const mutedText = colorAlpha(rendererTheme.text, 0.62);
+  const rowBackground = premium
+    ? "rgba(255,255,255,0.06)"
+    : colorAlpha(rendererTheme.text, 0.1);
+
   return (
     <div className={`${className} space-y-3`}>
       {rows.map(({ label, value, icon }) => {
@@ -713,13 +786,19 @@ function ClassicSectionContent({
               key={label}
               className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 border-b border-white/10 bg-white/[0.06] px-3 py-3 text-sm last:border-b-0 first:rounded-t-2xl last:rounded-b-2xl"
             >
-              <span className="flex min-w-0 items-center gap-3 text-white/52">
+            <span
+              className="flex min-w-0 items-center gap-3"
+              style={{ color: mutedText }}
+            >
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#AC00FF]/18 text-[#D78BFF]">
                   <Icon size={15} />
                 </span>
                 <span className="truncate text-xs">{label}</span>
               </span>
-              <span className="min-w-0 max-w-full whitespace-pre-wrap break-words text-right text-sm font-semibold text-white">
+              <span
+                className="min-w-0 max-w-full whitespace-pre-wrap break-words text-right text-sm font-semibold"
+                style={{ color: rendererTheme.text }}
+              >
                 {value}
               </span>
             </div>
@@ -729,12 +808,19 @@ function ClassicSectionContent({
         return (
           <div
             key={label}
-            className="grid min-w-0 grid-cols-[86px_minmax(0,1fr)] items-center gap-3 rounded-2xl bg-white/10 px-3 py-3 text-sm"
+            className="grid min-w-0 grid-cols-[86px_minmax(0,1fr)] items-center gap-3 rounded-2xl px-3 py-3 text-sm"
+            style={{ backgroundColor: rowBackground }}
           >
-            <span className="min-w-0 max-w-full break-words text-xs text-white/45">
+            <span
+              className="min-w-0 max-w-full break-words text-xs"
+              style={{ color: mutedText }}
+            >
               {label}
             </span>
-            <span className="min-w-0 max-w-full whitespace-pre-wrap break-words font-medium text-white">
+            <span
+              className="min-w-0 max-w-full whitespace-pre-wrap break-words font-medium"
+              style={{ color: rendererTheme.text }}
+            >
               {value}
             </span>
           </div>
@@ -1776,6 +1862,19 @@ function cardBackgroundFromTheme(theme: RendererTheme) {
   return theme.primary.toLowerCase() === theme.secondary.toLowerCase()
     ? theme.primary
     : `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})`;
+}
+
+function readableTextForBackground(colour: string) {
+  const hex = colour.replace("#", "");
+
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return defaultText;
+
+  const red = parseInt(hex.slice(0, 2), 16);
+  const green = parseInt(hex.slice(2, 4), 16);
+  const blue = parseInt(hex.slice(4, 6), 16);
+  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+
+  return luminance > 0.62 ? "#0F172A" : "#FFFFFF";
 }
 
 function colorAlpha(colour: string, alpha: number) {

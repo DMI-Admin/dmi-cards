@@ -455,6 +455,7 @@ const blankCard: ClientCard = {
   custom_url: "",
   custom_fields: {},
   selected_colour: fallbackColour,
+  selected_text_colour: "",
   hidden_fields: [],
   field_visibility: {},
   field_order: getInitialFieldOrder(null),
@@ -518,6 +519,10 @@ export default function ClientCardsPage() {
         selectedCardTemplateRecord,
         selectedCard?.selected_colour || selectedCardFallbackColour
       ),
+      selectedTextColourForTemplate(
+        selectedCardTemplateRecord,
+        selectedCard?.selected_text_colour
+      ),
       selectedCard?.field_order || getInitialFieldOrder(selectedCardTemplateRecord),
       hiddenFieldsForCard(selectedCard)
     );
@@ -534,6 +539,7 @@ export default function ClientCardsPage() {
         draftTemplateRecord,
         draftCard.selected_colour || draftFallbackColour
       ),
+      selectedTextColourForTemplate(draftTemplateRecord, draftCard.selected_text_colour),
       fieldOrder,
       hiddenFieldsForCard(draftCard)
     );
@@ -664,6 +670,7 @@ export default function ClientCardsPage() {
       template_id: currentDefaultTemplate.id,
       template_name: currentDefaultTemplate.name,
       selected_colour: firstTemplateColour(currentDefaultTemplate),
+      selected_text_colour: firstTemplateTextColour(currentDefaultTemplate),
       field_order: initialFieldOrder,
       lead_capture_settings: defaultLeadCaptureSettings,
     });
@@ -680,6 +687,10 @@ export default function ClientCardsPage() {
     setDraftCard({
       ...card,
       selected_colour: selectedColourForTemplate(cardTemplate, card.selected_colour),
+      selected_text_colour: selectedTextColourForTemplate(
+        cardTemplate,
+        card.selected_text_colour
+      ),
       custom_fields: { ...(card.custom_fields || {}) },
     });
     setSelectedCardId(card.id);
@@ -740,6 +751,10 @@ export default function ClientCardsPage() {
         template.access_level === "free"
           ? firstTemplateColour(template)
           : current.selected_colour || fallbackColour,
+      selected_text_colour: selectedTextColourForTemplate(
+        template,
+        current.selected_text_colour
+      ),
       hidden_fields: [],
       field_visibility: {},
       field_order: nextFieldOrder,
@@ -1858,6 +1873,12 @@ function CustomiseStep({
   const palette = templateColourPalette(template);
   const approvedPalette = palette.length ? palette : [fallbackColour];
   const activeColour = selectedColourForTemplate(template, draftCard.selected_colour);
+  const textPalette = templateTextColourPalette(template, activeColour);
+  const activeTextColour = selectedTextColourForTemplate(
+    template,
+    draftCard.selected_text_colour,
+    activeColour
+  );
 
   return (
     <div className="space-y-5">
@@ -1920,6 +1941,7 @@ function CustomiseStep({
                       template={buildTemplatePreview(
                         templateOption,
                         firstTemplateColour(templateOption),
+                        selectedTextColourForTemplate(templateOption, draftCard.selected_text_colour),
                         previewFieldOrder,
                         selected ? hiddenFieldsForCard(draftCard) : []
                       )}
@@ -1968,7 +1990,7 @@ function CustomiseStep({
       {template.access_level === "free" && (
         <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
           <p className="text-sm font-semibold text-white/65">
-            Free colour palette
+            Template Colour
           </p>
           <p className="mt-1 text-sm text-white/40">
             Free users can only choose admin-approved swatches.
@@ -1992,6 +2014,36 @@ function CustomiseStep({
                 )}
               </button>
             ))}
+          </div>
+
+          <div className="mt-6 border-t border-white/10 pt-5">
+            <p className="text-sm font-semibold text-white/65">Text Colour</p>
+            <p className="mt-1 text-sm text-white/40">
+              Choose from the text colours approved for this template.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              {textPalette.map((colour) => (
+                <button
+                  key={colour}
+                  type="button"
+                  onClick={() => onUpdate("selected_text_colour", colour)}
+                  className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition ${
+                    activeTextColour === colour
+                      ? "border-white shadow-lg shadow-purple-500/30"
+                      : "border-white/10"
+                  }`}
+                  style={{ backgroundColor: colour }}
+                  aria-label={`Select text colour ${colour}`}
+                >
+                  {activeTextColour === colour && (
+                    <Check
+                      className="h-5 w-5"
+                      style={{ color: readableTextForColour(colour) }}
+                    />
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
 
         {!isPaid && (
@@ -2582,6 +2634,7 @@ function SetUpStep({
 function buildTemplatePreview(
   template: AdminTemplate | null,
   selectedColour: string,
+  selectedTextColour: string,
   fieldOrder: FieldOrder,
   hiddenFields: string[] = []
 ): CardRendererTemplate {
@@ -2604,6 +2657,7 @@ function buildTemplatePreview(
       colour_palette: [selectedColour],
       primary_color: selectedColour,
       secondary_color: selectedColour,
+      text_color: selectedTextColour,
       show_personal_section:
         (template.show_personal_section ?? true) &&
         rendererFieldOrder.personal.length > 0,
@@ -2623,6 +2677,7 @@ function buildTemplatePreview(
     ...template,
     allowed_fields: allowedFields,
     custom_fields: rendererFieldOrder,
+    text_color: selectedTextColour || template.text_color,
     show_personal_section:
       (template.show_personal_section ?? true) &&
       rendererFieldOrder.personal.length > 0,
@@ -2654,6 +2709,31 @@ function firstTemplateColour(template: AdminTemplate | CardRendererTemplate | nu
   return templateColourPalette(template)[0] || fallbackColour;
 }
 
+function templateTextColourPalette(
+  template: AdminTemplate | CardRendererTemplate | null,
+  backgroundColour?: string | null
+) {
+  if (!template) return [readableTextForColour(backgroundColour || fallbackColour)];
+
+  const templateRecord = template as CardRendererTemplate & {
+    text_colours?: string[] | null;
+  };
+  const textPalette = normalizeColourPalette(templateRecord.text_colours);
+
+  if (textPalette.length) return textPalette;
+
+  const textColor = normalizeColourPalette(template.text_color);
+  if (textColor.length) return textColor;
+
+  return [readableTextForColour(backgroundColour || firstTemplateColour(template))];
+}
+
+function firstTemplateTextColour(
+  template: AdminTemplate | CardRendererTemplate | null
+) {
+  return templateTextColourPalette(template, firstTemplateColour(template))[0] || "";
+}
+
 function selectedColourForTemplate(
   template: AdminTemplate | CardRendererTemplate | null,
   selectedColour: string | null | undefined
@@ -2671,6 +2751,36 @@ function selectedColourForTemplate(
   }
 
   return selectedColour || palette[0];
+}
+
+function selectedTextColourForTemplate(
+  template: AdminTemplate | CardRendererTemplate | null,
+  selectedTextColour: string | null | undefined,
+  backgroundColour?: string | null
+) {
+  const palette = templateTextColourPalette(
+    template,
+    backgroundColour || firstTemplateColour(template)
+  );
+
+  if (selectedTextColour && palette.includes(selectedTextColour)) {
+    return selectedTextColour;
+  }
+
+  return palette[0] || readableTextForColour(backgroundColour || fallbackColour);
+}
+
+function readableTextForColour(colour: string) {
+  const hex = colour.replace("#", "");
+
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return "#FFFFFF";
+
+  const red = parseInt(hex.slice(0, 2), 16);
+  const green = parseInt(hex.slice(2, 4), 16);
+  const blue = parseInt(hex.slice(4, 6), 16);
+  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+
+  return luminance > 0.62 ? "#0F172A" : "#FFFFFF";
 }
 
 async function loadPublishedTemplates(): Promise<AdminTemplate[]> {
@@ -2816,6 +2926,11 @@ function mapSupabaseCard(
     company_banner_url: row.company_banner_url || "",
     custom_fields: row.custom_fields || {},
     selected_colour: selectedColourForTemplate(rowTemplate, row.selected_colour),
+    selected_text_colour: selectedTextColourForTemplate(
+      rowTemplate,
+      row.selected_text_colour,
+      row.selected_colour || undefined
+    ),
     hidden_fields: row.hidden_fields || [],
     field_visibility: fieldVisibility,
     field_order: fieldOrder,
@@ -2861,6 +2976,9 @@ function buildSupabaseCardPayload(
     company_logo_url: card.company_logo_url || "",
     company_banner_url: card.company_banner_url || "",
     selected_colour: card.selected_colour || fallbackColour,
+    selected_text_colour:
+      card.selected_text_colour ||
+      selectedTextColourForTemplate(null, null, card.selected_colour || fallbackColour),
     hidden_fields: hiddenFieldsFromVisibility(fieldVisibility, fieldOrder),
     field_visibility: fieldVisibility,
     field_order: fieldOrder,

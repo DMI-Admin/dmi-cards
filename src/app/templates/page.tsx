@@ -26,6 +26,7 @@ type Template = {
   gradient_enabled?: boolean | null;
   colour_palette?: string[] | null;
   free_colour_palette?: string[] | null;
+  text_colours?: string[] | null;
   allowed_fonts?: string[] | null;
   default_font?: string | null;
   supports_bio: boolean | null;
@@ -166,6 +167,7 @@ const defaultFreeColourPalette = [
   "#DC2626",
   "#0F172A",
 ];
+const defaultTextColourPalette = ["#FFFFFF", "#0F172A"];
 
 const fontChoices = [
   "Inter",
@@ -213,6 +215,9 @@ export default function TemplatesPage() {
   const [gradientEnabled, setGradientEnabled] = useState(true);
   const [freeColourPalette, setFreeColourPalette] = useState<string[]>(
     defaultFreeColourPalette
+  );
+  const [textColourPalette, setTextColourPalette] = useState<string[]>(
+    defaultTextColourPalette
   );
   const [allowedFonts, setAllowedFonts] =
     useState<string[]>(defaultAllowedFonts);
@@ -293,6 +298,7 @@ export default function TemplatesPage() {
     setRequiresBanner(false);
     setGradientEnabled(true);
     setFreeColourPalette(defaultFreeColourPalette);
+    setTextColourPalette(defaultTextColourPalette);
     setAllowedFonts(defaultAllowedFonts);
     setDefaultFont("");
     setAllowedFields(freeFields);
@@ -318,6 +324,7 @@ export default function TemplatesPage() {
       setRequiresBanner(false);
       setGradientEnabled(false);
       setFreeColourPalette(defaultFreeColourPalette);
+      setTextColourPalette(defaultTextColourPalette);
       setAllowedFonts(defaultAllowedFonts);
       setDefaultFont("");
       setAllowedFields(freeFields);
@@ -433,6 +440,14 @@ export default function TemplatesPage() {
     );
   }
 
+  function updateTextPaletteColour(index: number, value: string) {
+    setTextColourPalette((current) =>
+      sanitizeFreeColourPalette(current).map((colour, colourIndex) =>
+        colourIndex === index ? value : colour
+      )
+    );
+  }
+
   function addFreePaletteColour() {
     setFreeColourPalette((current) => {
       const palette = sanitizeFreeColourPalette(current);
@@ -443,6 +458,16 @@ export default function TemplatesPage() {
     });
   }
 
+  function addTextPaletteColour() {
+    setTextColourPalette((current) => {
+      const palette = sanitizeFreeColourPalette(current);
+
+      if (palette.length >= 6) return palette;
+
+      return [...palette, "#0F172A"];
+    });
+  }
+
   function removeFreePaletteColour(index: number) {
     setFreeColourPalette((current) => {
       const palette = sanitizeFreeColourPalette(current).filter(
@@ -450,6 +475,16 @@ export default function TemplatesPage() {
       );
 
       return palette.length ? palette : ["#AC00FF"];
+    });
+  }
+
+  function removeTextPaletteColour(index: number) {
+    setTextColourPalette((current) => {
+      const palette = sanitizeFreeColourPalette(current).filter(
+        (_, colourIndex) => colourIndex !== index
+      );
+
+      return palette.length ? palette : defaultTextColourPalette;
     });
   }
 
@@ -522,6 +557,9 @@ export default function TemplatesPage() {
     setFreeColourPalette(
       sanitizeFreeColourPalette(template.free_colour_palette)
     );
+    setTextColourPalette(
+      sanitizeTextColourPalette(template.text_colours, template.text_color)
+    );
     const normalizedAllowedFonts = sanitizeAllowedFonts(
       template.allowed_fonts || defaultAllowedFonts
     );
@@ -570,6 +608,7 @@ export default function TemplatesPage() {
       text_color: textColor,
       button_color: buttonColor,
       button_text_color: buttonTextColor,
+      text_colours: sanitizeTextColourPalette(textColourPalette, textColor),
       requires_profile_image: requiresProfileImage,
       requires_logo: accessLevel === "paid" && requiresLogo,
       requires_banner: accessLevel === "paid" && requiresBanner,
@@ -644,6 +683,10 @@ export default function TemplatesPage() {
       text_color: template.text_color || "#FFFFFF",
       button_color: template.button_color || "#FFFFFF",
       button_text_color: template.button_text_color || "#0F0E38",
+      text_colours: sanitizeTextColourPalette(
+        template.text_colours,
+        template.text_color
+      ),
       requires_profile_image: template.requires_profile_image ?? true,
       requires_logo:
         template.access_level !== "free" && (template.requires_logo ?? false),
@@ -883,12 +926,28 @@ export default function TemplatesPage() {
             </div>
 
             {accessLevel === "free" ? (
-              <FreeColourPalette
-                colours={freeColourPalette}
-                onChange={updateFreePaletteColour}
-                onAdd={addFreePaletteColour}
-                onRemove={removeFreePaletteColour}
-              />
+              <>
+                <ColourPalette
+                  title="Template Colours"
+                  description="Free templates use admin-approved solid colours only. The first colour becomes the default card background."
+                  colours={freeColourPalette}
+                  addLabel="Add Colour"
+                  itemLabel="Colour"
+                  onChange={updateFreePaletteColour}
+                  onAdd={addFreePaletteColour}
+                  onRemove={removeFreePaletteColour}
+                />
+                <ColourPalette
+                  title="Text Colours"
+                  description="Clients can choose from these text colours for the card name and main card text."
+                  colours={textColourPalette}
+                  addLabel="Add Text Colour"
+                  itemLabel="Text"
+                  onChange={updateTextPaletteColour}
+                  onAdd={addTextPaletteColour}
+                  onRemove={removeTextPaletteColour}
+                />
+              </>
             ) : (
               <>
                 <div className="mt-8">
@@ -1008,6 +1067,7 @@ export default function TemplatesPage() {
                   requires_banner: accessLevel === "paid" && requiresBanner,
                   gradient_enabled: accessLevel === "paid" && gradientEnabled,
                   free_colour_palette: sanitizeFreeColourPalette(freeColourPalette),
+                  text_colours: sanitizeTextColourPalette(textColourPalette, textColor),
                   allowed_fonts:
                     accessLevel === "paid"
                       ? sanitizeTemplateFonts(allowedFonts)
@@ -1226,13 +1286,21 @@ function ColorField({
   );
 }
 
-function FreeColourPalette({
+function ColourPalette({
+  title,
+  description,
   colours,
+  addLabel,
+  itemLabel,
   onChange,
   onAdd,
   onRemove,
 }: {
+  title: string;
+  description: string;
   colours: string[];
+  addLabel: string;
+  itemLabel: string;
   onChange: (index: number, value: string) => void;
   onAdd: () => void;
   onRemove: (index: number) => void;
@@ -1243,11 +1311,8 @@ function FreeColourPalette({
     <div className="mt-8 rounded-3xl border border-white/10 bg-[#101935]/50 p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold">Free Colour Palette</h3>
-          <p className="mt-1 text-sm text-white/45">
-            Free templates use admin-approved solid colours only. The first
-            colour becomes the default card background.
-          </p>
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <p className="mt-1 text-sm text-white/45">{description}</p>
         </div>
 
         <button
@@ -1256,19 +1321,19 @@ function FreeColourPalette({
           disabled={palette.length >= 6}
           className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-medium transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-45"
         >
-          Add Colour
+          {addLabel}
         </button>
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-3">
         {palette.map((colour, index) => (
           <div
-            key={`free-colour-${index}`}
+            key={`${title}-${index}`}
             className="rounded-2xl border border-white/10 bg-white/5 p-3"
           >
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs font-medium text-white/50">
-                Colour {index + 1}
+                {itemLabel} {index + 1}
               </span>
               {palette.length > 1 && (
                 <button
@@ -1652,6 +1717,7 @@ function buildTemplatePayload({
   primary_color,
   secondary_color,
   text_color,
+  text_colours,
   button_color,
   button_text_color,
   requires_profile_image,
@@ -1675,6 +1741,7 @@ function buildTemplatePayload({
   primary_color: string;
   secondary_color: string;
   text_color: string;
+  text_colours: string[];
   button_color: string;
   button_text_color: string;
   requires_profile_image: boolean;
@@ -1701,6 +1768,7 @@ function buildTemplatePayload({
     primary_color,
     secondary_color,
     text_color,
+    text_colours: sanitizeTextColourPalette(text_colours, text_color),
     button_color,
     button_text_color,
     requires_profile_image,
@@ -1738,6 +1806,14 @@ function sanitizeFreeColourPalette(colours?: unknown) {
   const palette = normalizeColourPalette(colours);
 
   return palette.length ? palette : ["#AC00FF"];
+}
+
+function sanitizeTextColourPalette(colours?: unknown, fallback?: string | null) {
+  const palette = normalizeColourPalette(colours);
+  const fallbackPalette = normalizeColourPalette(fallback);
+  const nextPalette = palette.length ? palette : fallbackPalette;
+
+  return nextPalette.length ? nextPalette : defaultTextColourPalette;
 }
 
 function sanitizeTemplateFonts(fonts?: string[] | null) {

@@ -86,6 +86,7 @@ export default async function PublicCardPage({ params }: PublicCardPageProps) {
 type PublicCardRow = {
   template_id?: string | null;
   selected_colour?: string | null;
+  selected_text_colour?: string | null;
   hidden_fields?: string[] | null;
   field_visibility?: Record<string, boolean> | null;
   field_order?: Partial<Record<"personal" | "company" | "contact" | "social", string[]>> | null;
@@ -150,11 +151,17 @@ function buildPublicTemplate(
     card.selected_colour ||
     normalizeColourPalette(normalizedTemplate.free_colour_palette)[0] ||
     "#AC00FF";
+  const selectedTextColour = selectedTextColourForTemplate(
+    normalizedTemplate,
+    card.selected_text_colour,
+    selectedColour
+  );
 
   return {
     ...normalizedTemplate,
     allowed_fields: allowedFields,
     custom_fields: rendererFieldOrder,
+    text_color: selectedTextColour,
     free_colour_palette:
       normalizedTemplate.access_level === "free"
         ? [selectedColour]
@@ -172,6 +179,40 @@ function buildPublicTemplate(
       (normalizedTemplate.show_social_section ?? false) &&
       rendererFieldOrder.social.length > 0,
   };
+}
+
+function selectedTextColourForTemplate(
+  template: CardRendererTemplate,
+  selectedTextColour: string | null | undefined,
+  backgroundColour: string
+) {
+  const palette = normalizeColourPalette(template.text_colours);
+
+  if (selectedTextColour && palette.includes(selectedTextColour)) {
+    return selectedTextColour;
+  }
+
+  if (selectedTextColour && palette.length === 0) {
+    return selectedTextColour;
+  }
+
+  const templateTextColor = normalizeColourPalette(template.text_color)[0];
+  if (templateTextColor) return templateTextColor;
+
+  return readableTextForColour(backgroundColour);
+}
+
+function readableTextForColour(colour: string) {
+  const hex = colour.replace("#", "");
+
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return "#FFFFFF";
+
+  const red = parseInt(hex.slice(0, 2), 16);
+  const green = parseInt(hex.slice(2, 4), 16);
+  const blue = parseInt(hex.slice(4, 6), 16);
+  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+
+  return luminance > 0.62 ? "#0F172A" : "#FFFFFF";
 }
 
 function mergeAllowedFieldsWithFieldOrder(

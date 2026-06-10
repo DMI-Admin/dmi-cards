@@ -155,6 +155,7 @@ async function requestAdminTemplate(
 
 export function normalizeTemplate(template: SharedTemplate | TemplatePayload): SharedTemplate {
   const sanitizedPalette = normalizeTemplateColourPalette(template);
+  const textColours = normalizeTextColourPalette(template);
   const isPublished = isPublishedTemplate(template);
   const requiresBanner =
     template.requires_banner ?? template.supports_company_banner ?? false;
@@ -181,6 +182,7 @@ export function normalizeTemplate(template: SharedTemplate | TemplatePayload): S
     font_family: defaultFont,
     colour_palette: sanitizedPalette,
     free_colour_palette: sanitizedPalette,
+    text_colours: textColours,
     allowed_fields: template.allowed_fields || [],
     custom_fields: normalizeTemplateCustomFields(template.custom_fields),
     show_personal_section: template.show_personal_section ?? true,
@@ -188,6 +190,17 @@ export function normalizeTemplate(template: SharedTemplate | TemplatePayload): S
     show_contact_section: template.show_contact_section ?? true,
     show_social_section: template.show_social_section ?? false,
   };
+}
+
+function normalizeTextColourPalette(template: SharedTemplate | TemplatePayload) {
+  const templateRecord = template as Record<string, unknown>;
+  const palette = normalizeColourPalette(templateRecord.text_colours);
+
+  if (palette.length > 0) return palette;
+
+  const textColor = normalizeColourPalette(templateRecord.text_color);
+
+  return textColor.length > 0 ? textColor : [];
 }
 
 function normalizeTemplateCustomFields(value: SharedTemplate["custom_fields"]) {
