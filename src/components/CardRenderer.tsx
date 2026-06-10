@@ -1883,56 +1883,86 @@ function isAllowedSectionField(section: ClassicSectionKey, field: string) {
 
 function builtInRow(field: string, cardData: CardRendererData): DisplayRow {
   const rows: Record<string, DisplayRow> = {
-    title: { label: "Title", value: toDisplayValue(cardData.title) },
-    first_name: { label: "First Name", value: toDisplayValue(cardData.first_name) },
-    last_name: { label: "Last Name", value: toDisplayValue(cardData.last_name) },
-    job_title: { label: "Job Title", value: toDisplayValue(cardData.job_title) },
+    title: { label: "Title", value: cardFieldValue(cardData, "title", cardData.title) },
+    first_name: {
+      label: "First Name",
+      value: cardFieldValue(cardData, "first_name", cardData.first_name),
+    },
+    last_name: {
+      label: "Last Name",
+      value: cardFieldValue(cardData, "last_name", cardData.last_name),
+    },
+    job_title: {
+      label: "Job Title",
+      value: cardFieldValue(cardData, "job_title", cardData.job_title),
+    },
     department: {
       label: "Department",
-      value: toDisplayValue(cardData.department),
+      value: cardFieldValue(cardData, "department", cardData.department),
       icon: Building2,
     },
-    bio: { label: "Bio", value: toDisplayValue(cardData.bio) },
+    bio: { label: "Bio", value: cardFieldValue(cardData, "bio", cardData.bio) },
     company_name: {
       label: "Company Name",
-      value: toDisplayValue(cardData.company_name),
+      value: cardFieldValue(cardData, "company_name", cardData.company_name),
       icon: Building2,
     },
     website: {
       label: "Website",
-      value: toDisplayValue(displayUrl(cardData.website)),
+      value: toDisplayValue(displayUrl(cardFieldValue(cardData, "website", cardData.website))),
       icon: Globe,
     },
-    address: { label: "Address", value: toDisplayValue(cardData.address), icon: MapPin },
-    email: { label: "Email", value: toDisplayValue(cardData.email), icon: Mail },
-    phone: { label: "Phone", value: toDisplayValue(cardData.phone), icon: Phone },
-    whatsapp: { label: "WhatsApp", value: toDisplayValue(cardData.whatsapp) },
+    address: {
+      label: "Address",
+      value: cardFieldValue(cardData, "address", cardData.address),
+      icon: MapPin,
+    },
+    email: { label: "Email", value: cardFieldValue(cardData, "email", cardData.email), icon: Mail },
+    phone: { label: "Phone", value: cardFieldValue(cardData, "phone", cardData.phone), icon: Phone },
+    whatsapp: {
+      label: "WhatsApp",
+      value: cardFieldValue(cardData, "whatsapp", cardData.whatsapp),
+    },
     linkedin: {
       label: "LinkedIn",
-      value: toDisplayValue(displayUrl(cardData.linkedin)),
+      value: toDisplayValue(displayUrl(cardFieldValue(cardData, "linkedin", cardData.linkedin))),
     },
-    instagram: { label: "Instagram", value: toDisplayValue(cardData.instagram) },
+    instagram: {
+      label: "Instagram",
+      value: cardFieldValue(cardData, "instagram", cardData.instagram),
+    },
     facebook: {
       label: "Facebook",
-      value: toDisplayValue(displayUrl(cardData.facebook)),
+      value: toDisplayValue(displayUrl(cardFieldValue(cardData, "facebook", cardData.facebook))),
     },
     youtube: {
       label: "YouTube",
-      value: toDisplayValue(displayUrl(cardData.youtube)),
+      value: toDisplayValue(displayUrl(cardFieldValue(cardData, "youtube", cardData.youtube))),
     },
     booking_link: {
       label: "Booking",
-      value: toDisplayValue(displayUrl(cardData.booking_link)),
+      value: toDisplayValue(displayUrl(cardFieldValue(cardData, "booking_link", cardData.booking_link))),
       icon: LinkIcon,
     },
     custom_url: {
       label: "Custom Link",
-      value: toDisplayValue(displayUrl(cardData.custom_url)),
+      value: toDisplayValue(displayUrl(cardFieldValue(cardData, "custom_url", cardData.custom_url))),
       icon: LinkIcon,
     },
   };
 
   return rows[field] || { label: field.replaceAll("_", " "), value: null };
+}
+
+function cardFieldValue(
+  cardData: CardRendererData,
+  field: string,
+  directValue?: string | null
+) {
+  return (
+    toDisplayValue(directValue) ||
+    toDisplayValue(customFieldValue("personal", field, cardData.custom_fields))
+  );
 }
 
 function customFieldKey(section: ClassicSectionKey, label: string) {
@@ -1960,14 +1990,29 @@ function customFieldValue(
 
   if (nestedValues && typeof nestedValues === "object") {
     const sectionValues = nestedValues as CustomFieldValues;
-    return (
+    const selectedSectionValue =
       values[field] ||
       sectionValues[label] ||
       sectionValues[label.toLowerCase()] ||
       sectionValues[rawLabel] ||
       sectionValues[rawLabel.toLowerCase()] ||
-      ""
-    );
+      "";
+
+    if (selectedSectionValue) return selectedSectionValue;
+  }
+
+  for (const nestedValue of Object.values(values)) {
+    if (!nestedValue || typeof nestedValue !== "object") continue;
+
+    const sectionValues = nestedValue as CustomFieldValues;
+    const sectionValue =
+      sectionValues[label] ||
+      sectionValues[label.toLowerCase()] ||
+      sectionValues[rawLabel] ||
+      sectionValues[rawLabel.toLowerCase()] ||
+      "";
+
+    if (sectionValue) return sectionValue;
   }
 
   return (

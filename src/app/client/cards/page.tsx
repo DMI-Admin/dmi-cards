@@ -2773,21 +2773,21 @@ function mapSupabaseCard(
     first_name: row.first_name || "",
     last_name: row.last_name || "",
     full_name: row.full_name || rowName,
-    job_title: row.job_title || "",
-    department: row.department || "",
-    bio: row.bio || "",
-    company_name: row.company_name || "",
-    email: row.email || "",
-    phone: row.phone || "",
-    website: row.website || "",
-    address: row.address || "",
-    whatsapp: row.whatsapp || "",
-    linkedin: row.linkedin || "",
-    instagram: row.instagram || "",
-    facebook: row.facebook || "",
-    youtube: row.youtube || "",
-    booking_link: row.booking_link || "",
-    custom_url: row.custom_url || "",
+    job_title: row.job_title || customFieldValue(row, "job_title"),
+    department: row.department || customFieldValue(row, "department"),
+    bio: row.bio || customFieldValue(row, "bio"),
+    company_name: row.company_name || customFieldValue(row, "company_name"),
+    email: row.email || customFieldValue(row, "email"),
+    phone: row.phone || customFieldValue(row, "phone"),
+    website: row.website || customFieldValue(row, "website"),
+    address: row.address || customFieldValue(row, "address"),
+    whatsapp: row.whatsapp || customFieldValue(row, "whatsapp"),
+    linkedin: row.linkedin || customFieldValue(row, "linkedin"),
+    instagram: row.instagram || customFieldValue(row, "instagram"),
+    facebook: row.facebook || customFieldValue(row, "facebook"),
+    youtube: row.youtube || customFieldValue(row, "youtube"),
+    booking_link: row.booking_link || customFieldValue(row, "booking_link"),
+    custom_url: row.custom_url || customFieldValue(row, "custom_url"),
     profile_image_url: row.profile_image_url || "",
     company_logo_url: row.company_logo_url || "",
     company_banner_url: row.company_banner_url || "",
@@ -3276,18 +3276,39 @@ function isEditableCardField(field: string): field is keyof ClientCard {
   return editableCardFields.has(field);
 }
 
-function customFieldValue(card: ClientCard, field: string) {
+function customFieldValue(
+  card: { custom_fields?: ClientCard["custom_fields"] | null },
+  field: string
+) {
   const storageKey = customFieldStorageKey(field);
   const value = card.custom_fields?.[field] || card.custom_fields?.[storageKey];
 
   if (typeof value === "string") return value;
-  if (!value || typeof value !== "object") return "";
+  if (value && typeof value === "object") {
+    const firstValue = Object.values(value).find(
+      (nestedValue) => typeof nestedValue === "string" && nestedValue
+    );
 
-  const firstValue = Object.values(value).find(
-    (nestedValue) => typeof nestedValue === "string" && nestedValue
-  );
+    if (firstValue) return firstValue;
+  }
 
-  return firstValue || "";
+  if (!card.custom_fields) return "";
+
+  for (const nestedValue of Object.values(card.custom_fields)) {
+    if (!nestedValue || typeof nestedValue !== "object") continue;
+
+    const sectionValues = nestedValue as Record<string, string | null | undefined>;
+    const sectionValue =
+      sectionValues[field] ||
+      sectionValues[field.toLowerCase()] ||
+      sectionValues[storageKey] ||
+      sectionValues[storageKey.toLowerCase()] ||
+      "";
+
+    if (sectionValue) return sectionValue;
+  }
+
+  return "";
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
