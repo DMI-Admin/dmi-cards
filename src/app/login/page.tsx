@@ -181,9 +181,18 @@ export default function ClientLoginPage() {
     setResetSubmitting(true);
 
     try {
-      await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
-        redirectTo: `${window.location.origin}/reset-password`,
+      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
+        redirectTo: `${window.location.origin}/auth/reset-password`,
       });
+
+      if (error) {
+        console.error("[DMI auth] password reset request failed", {
+          name: error.name,
+          message: error.message,
+          status: error.status,
+        });
+      }
+
       setResetMessage(
         "If an account exists for this email, we’ve sent password reset instructions."
       );
