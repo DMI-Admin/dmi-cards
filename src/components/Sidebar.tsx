@@ -50,12 +50,12 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="sticky top-0 flex h-screen w-72 shrink-0 flex-col border-r border-white/5 bg-[#0F0E38] text-white">
+    <aside className="dmi-sidebar sticky top-0 flex h-screen w-72 shrink-0 flex-col border-r border-white/5 bg-[#0F0E38] text-white">
       <div className="flex h-40 flex-col items-center justify-center border-b border-white/10 px-6 py-6">
         <div className="relative h-20 w-20 shrink-0">
           <Image
-            src="/logo.png"
-            alt="DevMaster Inc Logo"
+            src="/dmi-cards-logo.svg"
+            alt="DMI Cards Logo"
             fill
             sizes="80px"
             className="object-contain"
@@ -63,7 +63,10 @@ export default function Sidebar() {
           />
         </div>
 
-        <p className="mt-4 text-[10px] font-semibold tracking-[0.34em] text-white/55">
+        <p className="mt-4 text-sm font-semibold text-white">
+          DMI Cards
+        </p>
+        <p className="mt-1 text-[10px] font-semibold tracking-[0.26em] text-white/55">
           ADMIN PANEL
         </p>
       </div>

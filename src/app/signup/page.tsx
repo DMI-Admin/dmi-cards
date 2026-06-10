@@ -250,8 +250,8 @@ export default function ClientSignupPage() {
           <div className="relative">
             <div className="relative mb-8 h-24 w-24">
               <Image
-                src="/logo.png"
-                alt="DevMaster Inc Logo"
+                src="/dmi-cards-logo.svg"
+                alt="DMI Cards Logo"
                 fill
                 sizes="96px"
                 className="object-contain"
@@ -294,8 +294,8 @@ export default function ClientSignupPage() {
             <div className="mb-8 flex flex-col items-center text-center lg:hidden">
               <div className="relative mb-4 h-20 w-20">
                 <Image
-                  src="/logo.png"
-                  alt="DevMaster Inc Logo"
+                  src="/dmi-cards-logo.svg"
+                  alt="DMI Cards Logo"
                   fill
                   sizes="80px"
                   className="object-contain"

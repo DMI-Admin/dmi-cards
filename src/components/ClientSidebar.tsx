@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
@@ -47,17 +48,24 @@ export default function ClientSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 flex h-screen w-72 shrink-0 flex-col border-r border-white/5 bg-[#0F0E38] text-white">
+    <aside className="dmi-sidebar sticky top-0 flex h-screen w-72 shrink-0 flex-col border-r border-white/5 bg-[#0F0E38] text-white">
       <div className="border-b border-white/10 px-6 py-8">
         <div className="rounded-3xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 p-4 shadow-2xl shadow-purple-950/20">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[#AC00FF] to-[#5B2CFF] text-lg font-bold shadow-lg shadow-purple-500/25">
-              D
+            <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg shadow-purple-500/20">
+              <Image
+                src="/dmi-cards-logo.svg"
+                alt="DMI Cards Logo"
+                fill
+                sizes="48px"
+                className="object-contain p-1.5"
+                priority
+              />
             </div>
             <div>
               <p className="text-sm font-semibold">DMI Cards</p>
               <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/45">
-                Client Portal
+                Powered by DevMaster
               </p>
             </div>
           </div>

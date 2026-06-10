@@ -69,7 +69,7 @@ export default async function PublicCardPage({ params }: PublicCardPageProps) {
   });
 
   return (
-    <main className="min-h-screen bg-[#070B1A] px-4 py-8 text-white sm:px-6">
+    <main className="public-card-page min-h-screen bg-[#070B1A] px-4 py-8 text-white sm:px-6">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md items-center justify-center">
         <div className="w-full">
           <CardRenderer

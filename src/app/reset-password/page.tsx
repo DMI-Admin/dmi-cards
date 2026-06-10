@@ -121,8 +121,8 @@ function ResetPasswordContent() {
           <div className="relative">
             <div className="relative mb-8 h-24 w-24">
               <Image
-                src="/logo.png"
-                alt="DevMaster Inc Logo"
+                src="/dmi-cards-logo.svg"
+                alt="DMI Cards Logo"
                 fill
                 sizes="96px"
                 className="object-contain"

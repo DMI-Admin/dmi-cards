@@ -8,8 +8,8 @@ export default function SignInPage() {
         <div>
           <div className="relative h-24 w-24 mb-8">
             <Image
-              src="/logo.png"
-              alt="DevMaster Inc Logo"
+              src="/dmi-cards-logo.svg"
+              alt="DMI Cards Logo"
               fill
               sizes="96px"
               className="object-contain"
@@ -60,8 +60,8 @@ export default function SignInPage() {
           <div className="mb-8 lg:hidden flex flex-col items-center">
             <div className="relative h-20 w-20 mb-4">
               <Image
-                src="/logo.png"
-                alt="DevMaster Inc Logo"
+                src="/dmi-cards-logo.svg"
+                alt="DMI Cards Logo"
                 fill
                 sizes="80px"
                 className="object-contain"

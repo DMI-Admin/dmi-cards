@@ -1,8 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --background: #f6f7fb;
+  --foreground: #0f0e38;
+  --dmi-surface: #ffffff;
+  --dmi-surface-soft: #f1f2f7;
+  --dmi-border: rgba(15, 14, 56, 0.1);
+  --dmi-muted: #777b99;
+  --dmi-card-shadow: 0 18px 45px rgba(15, 14, 56, 0.08);
+  --dmi-brand-red: #ff424a;
+  --dmi-brand-purple: #ac00ff;
+  --dmi-brand-navy: #0f0e38;
 }
 
 @theme inline {
@@ -14,8 +23,14 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #020617;
-    --foreground: #ededed;
+    color-scheme: dark;
+    --background: #070b1a;
+    --foreground: #ffffff;
+    --dmi-surface: #101322;
+    --dmi-surface-soft: #151827;
+    --dmi-border: rgba(255, 255, 255, 0.1);
+    --dmi-muted: rgba(255, 255, 255, 0.58);
+    --dmi-card-shadow: 0 22px 55px rgba(0, 0, 0, 0.32);
   }
 }
 
@@ -23,6 +38,119 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* =========================
+   DMI SYSTEM THEME
+========================= */
+
+body {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+::selection {
+  background: rgba(172, 0, 255, 0.24);
+}
+
+[class*="from-[#AC00FF]"],
+[class*="bg-[#AC00FF]"],
+[class*="bg-gradient-to-r"],
+[class*="bg-gradient-to-br"] {
+  color: #ffffff;
+}
+
+.dmi-sidebar {
+  background: var(--dmi-surface) !important;
+  color: var(--foreground) !important;
+  border-color: var(--dmi-border) !important;
+  box-shadow: var(--dmi-card-shadow);
+}
+
+.dmi-sidebar [class*="border-white/"] {
+  border-color: var(--dmi-border) !important;
+}
+
+.dmi-sidebar [class*="bg-white/5"],
+.dmi-sidebar [class*="bg-white/10"] {
+  background: color-mix(in srgb, var(--dmi-surface-soft) 80%, transparent) !important;
+}
+
+.dmi-sidebar [class*="text-white/"] {
+  color: var(--dmi-muted) !important;
+}
+
+.dmi-sidebar [class*="text-white"] {
+  color: var(--foreground);
+}
+
+.dmi-sidebar [class*="bg-[#AC00FF]"],
+.dmi-sidebar [class*="bg-[#AC00FF]"] *,
+.dmi-sidebar [class*="from-[#AC00FF]"],
+.dmi-sidebar [class*="from-[#AC00FF]"] * {
+  color: #ffffff !important;
+}
+
+@media (prefers-color-scheme: light) {
+  body:not(:has(.public-card-page)) [class*="bg-[#070B1A]"],
+  body:not(:has(.public-card-page)) [class*="bg-[#090B14]"] {
+    background-color: var(--background) !important;
+    color: var(--foreground) !important;
+  }
+
+  body:not(:has(.public-card-page)) [class*="bg-[#0F0E38]"],
+  body:not(:has(.public-card-page)) [class*="bg-[#101935]"] {
+    background-color: var(--dmi-surface) !important;
+    color: var(--foreground) !important;
+  }
+
+  body:not(:has(.public-card-page)) [class*="bg-[#070B1A]/"],
+  body:not(:has(.public-card-page)) [class*="bg-[#101935]/"],
+  body:not(:has(.public-card-page)) [class*="bg-[#0F0E38]/"],
+  body:not(:has(.public-card-page)) [class*="bg-white/5"],
+  body:not(:has(.public-card-page)) [class*="bg-white/10"],
+  body:not(:has(.public-card-page)) [class*="bg-white/[0.07]"] {
+    background-color: rgba(255, 255, 255, 0.78) !important;
+  }
+
+  body:not(:has(.public-card-page)) [class*="border-white/"] {
+    border-color: var(--dmi-border) !important;
+  }
+
+  body:not(:has(.public-card-page)) main [class*="text-white/"],
+  body:not(:has(.public-card-page)) section [class*="text-white/"],
+  body:not(:has(.public-card-page)) div [class*="text-white/"],
+  body:not(:has(.public-card-page)) p[class*="text-white/"],
+  body:not(:has(.public-card-page)) span[class*="text-white/"] {
+    color: var(--dmi-muted) !important;
+  }
+
+  body:not(:has(.public-card-page)) main [class*="text-white"],
+  body:not(:has(.public-card-page)) section [class*="text-white"],
+  body:not(:has(.public-card-page)) div [class*="text-white"],
+  body:not(:has(.public-card-page)) p[class*="text-white"],
+  body:not(:has(.public-card-page)) h1[class*="text-white"],
+  body:not(:has(.public-card-page)) h2[class*="text-white"],
+  body:not(:has(.public-card-page)) h3[class*="text-white"],
+  body:not(:has(.public-card-page)) h4[class*="text-white"],
+  body:not(:has(.public-card-page)) span[class*="text-white"] {
+    color: var(--foreground);
+  }
+
+  [class*="bg-[#AC00FF]"],
+  [class*="bg-[#AC00FF]"] *,
+  [class*="from-[#AC00FF]"],
+  [class*="from-[#AC00FF]"] *,
+  [class*="bg-gradient-to-r"],
+  [class*="bg-gradient-to-r"] *,
+  [class*="bg-gradient-to-br"],
+  [class*="bg-gradient-to-br"] * {
+    color: #ffffff !important;
+  }
+
+  [class*="shadow-purple"],
+  [class*="shadow-black"] {
+    box-shadow: var(--dmi-card-shadow) !important;
+  }
 }
 
 /* =========================
@@ -34,15 +162,15 @@ body {
   height: 54px;
   min-height: 54px;
 
-  background: rgba(10, 18, 50, 0.9);
+  background: var(--dmi-surface);
 
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--dmi-border);
 
   border-radius: 18px;
 
   padding: 0 18px;
 
-  color: white;
+  color: var(--foreground);
 
   font-size: 15px;
 
@@ -69,11 +197,28 @@ select.inputStyle {
 
 /* Placeholder */
 .inputStyle::placeholder {
-  color: rgba(255, 255, 255, 0.35);
+  color: color-mix(in srgb, var(--dmi-muted) 72%, transparent);
 }
 
 /* Dropdown options */
 select.inputStyle option {
-  background: #0b1023;
-  color: white;
+  background: var(--dmi-surface);
+  color: var(--foreground);
+}
+
+@media (prefers-color-scheme: dark) {
+  .inputStyle {
+    background: rgba(10, 18, 50, 0.9);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+  }
+
+  .inputStyle::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+  }
+
+  select.inputStyle option {
+    background: #0b1023;
+    color: #ffffff;
+  }
 }
