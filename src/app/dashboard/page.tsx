@@ -6,8 +6,11 @@ export default function DashboardPage() {
       <Sidebar />
 
       <section className="flex-1 p-10">
-        <div className="mb-10">
-          <h1 className="text-4xl font-bold">Dashboard</h1>
+        <div className="dmi-hero-panel mb-10 rounded-3xl border border-white/10 p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/70">
+            DMI Cards Admin
+          </p>
+          <h1 className="mt-3 text-4xl font-bold">Dashboard</h1>
 
           <p className="text-white/50 mt-2">
             Welcome back to DMI Cards Admin Panel.

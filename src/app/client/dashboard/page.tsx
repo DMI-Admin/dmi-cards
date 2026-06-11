@@ -327,7 +327,7 @@ function WelcomePlanCard({ profile }: { profile: ClientProfile | null }) {
   const displayEmail = profile?.email || "Signed in with Supabase";
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#101935] to-[#AC00FF]/15 p-6 shadow-2xl shadow-purple-950/10">
+    <div className="dmi-hero-panel rounded-3xl border border-white/10 bg-gradient-to-br from-[#101935] to-[#AC00FF]/15 p-6 shadow-2xl shadow-purple-950/10">
       <div>
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white/60">
