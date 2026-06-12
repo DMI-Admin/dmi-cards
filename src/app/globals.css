@@ -2,27 +2,40 @@
 
 :root {
   color-scheme: light;
-  --background: #f6f7fb;
+  --background: #f8f9fc;
   --foreground: #0f0e38;
+  --dmi-text-primary: #0f0e38;
+  --dmi-text-secondary: rgba(15, 14, 56, 0.7);
+  --dmi-text-tertiary: rgba(15, 14, 56, 0.56);
   --dmi-surface: #ffffff;
-  --dmi-surface-soft: #f1f2f7;
-  --dmi-border: rgba(15, 14, 56, 0.1);
-  --dmi-muted: #777b99;
-  --dmi-card-shadow: 0 18px 45px rgba(15, 14, 56, 0.08);
+  --dmi-surface-soft: #f1f3f8;
+  --dmi-surface-raised: #ffffff;
+  --dmi-surface-hover: #eef1f8;
+  --dmi-border: rgba(15, 14, 56, 0.12);
+  --dmi-border-strong: rgba(15, 14, 56, 0.2);
+  --dmi-muted: var(--dmi-text-secondary);
+  --dmi-disabled-bg: #e8ebf2;
+  --dmi-disabled-text: rgba(15, 14, 56, 0.38);
+  --dmi-card-shadow: 0 18px 45px rgba(15, 14, 56, 0.1);
   --dmi-brand-red: #ff424a;
   --dmi-brand-purple: #ac00ff;
   --dmi-brand-navy: #0f0e38;
-  --dmi-gradient: linear-gradient(105deg, #ff424a 0%, #ec1f8f 44%, #ac00ff 100%);
-  --dmi-gradient-soft:
-    radial-gradient(circle at 12% 18%, rgba(255, 66, 74, 0.18), transparent 32%),
-    radial-gradient(circle at 78% 10%, rgba(172, 0, 255, 0.16), transparent 34%),
-    linear-gradient(180deg, #ffffff 0%, #f6f7fb 100%);
-  --dmi-gradient-glow: 0 22px 60px rgba(172, 0, 255, 0.2), 0 10px 28px rgba(255, 66, 74, 0.12);
+  --dmi-gradient:
+    linear-gradient(105deg, rgba(15, 14, 56, 0.16), rgba(15, 14, 56, 0.16)),
+    linear-gradient(105deg, #ff424a 0%, #ec1f8f 46%, #ac00ff 100%);
+  --dmi-gradient-soft: linear-gradient(180deg, #ffffff 0%, #f8f9fc 100%);
+  --dmi-gradient-glow: 0 18px 44px rgba(172, 0, 255, 0.18), 0 8px 22px rgba(255, 66, 74, 0.14);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-dmi-background: var(--background);
+  --color-dmi-surface: var(--dmi-surface);
+  --color-dmi-surface-soft: var(--dmi-surface-soft);
+  --color-dmi-navy: var(--dmi-brand-navy);
+  --color-dmi-purple: var(--dmi-brand-purple);
+  --color-dmi-red: var(--dmi-brand-red);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -46,8 +59,7 @@
 }
 
 body {
-  background: var(--dmi-gradient-soft);
-  background-attachment: fixed;
+  background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
@@ -64,10 +76,11 @@ body {
   background: rgba(172, 0, 255, 0.24);
 }
 
-[class*="from-[#AC00FF]"],
-[class*="bg-[#AC00FF]"],
-[class*="bg-gradient-to-r"],
-[class*="bg-gradient-to-br"] {
+body:not(:has(.public-card-page)) [class*="from-[#AC00FF]"],
+body:not(:has(.public-card-page)) [class*="from-[#FF424A]"],
+body:not(:has(.public-card-page)) [class*="bg-[#AC00FF]"],
+body:not(:has(.public-card-page)) [class*="bg-gradient-to-r"],
+body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"] {
   color: #ffffff;
 }
 
@@ -99,9 +112,10 @@ body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]"],
 body:not(:has(.public-card-page)) [class~="from-[#AC00FF]"][class~="to-[#6C2CFF]"],
 body:not(:has(.public-card-page)) [class~="from-[#AC00FF]"][class~="to-[#5B2CFF]"],
 body:not(:has(.public-card-page)) [class~="from-[#AC00FF]"][class~="to-purple-200/80"],
-body:not(:has(.public-card-page)) [class~="from-[#AC00FF]/70"] {
+body:not(:has(.public-card-page)) [class~="from-[#AC00FF]/70"],
+body:not(:has(.public-card-page)) [class~="from-[#FF424A]"] {
   background-image: var(--dmi-gradient) !important;
-  background-color: #ac00ff !important;
+  background-color: var(--dmi-brand-purple) !important;
   border-color: rgba(255, 255, 255, 0.24) !important;
   box-shadow: var(--dmi-gradient-glow) !important;
   color: #ffffff !important;
@@ -111,15 +125,17 @@ body:not(:has(.public-card-page)) [class~="border-[#AC00FF]/25"],
 body:not(:has(.public-card-page)) [class~="border-[#AC00FF]/30"],
 body:not(:has(.public-card-page)) [class~="border-[#AC00FF]/35"],
 body:not(:has(.public-card-page)) [class~="border-[#AC00FF]/40"] {
-  border-color: rgba(172, 0, 255, 0.28) !important;
-  box-shadow: 0 0 0 1px rgba(255, 66, 74, 0.06), 0 18px 42px rgba(172, 0, 255, 0.08);
+  border-color: rgba(172, 0, 255, 0.34) !important;
+  box-shadow: 0 0 0 1px rgba(255, 66, 74, 0.08), 0 14px 34px rgba(172, 0, 255, 0.08);
 }
 
 body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/10"],
 body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/15"],
 body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
   background:
-    linear-gradient(135deg, rgba(255, 66, 74, 0.12), rgba(172, 0, 255, 0.13)) !important;
+    linear-gradient(135deg, rgba(255, 66, 74, 0.14), rgba(172, 0, 255, 0.16)) !important;
+  border-color: rgba(172, 0, 255, 0.24) !important;
+  color: #5a0f79 !important;
 }
 
 .dmi-sidebar {
@@ -135,7 +151,7 @@ body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
 
 .dmi-sidebar [class*="bg-white/5"],
 .dmi-sidebar [class*="bg-white/10"] {
-  background: color-mix(in srgb, var(--dmi-surface-soft) 80%, transparent) !important;
+  background: var(--dmi-surface-soft) !important;
 }
 
 .dmi-sidebar [class*="text-white/"] {
@@ -151,6 +167,16 @@ body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
 .dmi-sidebar [class*="from-[#AC00FF]"],
 .dmi-sidebar [class*="from-[#AC00FF]"] * {
   color: #ffffff !important;
+}
+
+.dmi-sidebar [class*="bg-[#AC00FF]"] {
+  background-image: var(--dmi-gradient) !important;
+}
+
+.dmi-sidebar [class*="rounded-full"][class*="text-white/"] {
+  border-color: rgba(172, 0, 255, 0.24) !important;
+  background: #f5e9ff !important;
+  color: #4a1269 !important;
 }
 
 @media (prefers-color-scheme: light) {
@@ -171,8 +197,10 @@ body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
   body:not(:has(.public-card-page)) [class*="bg-[#0F0E38]/"],
   body:not(:has(.public-card-page)) [class*="bg-white/5"],
   body:not(:has(.public-card-page)) [class*="bg-white/10"],
+  body:not(:has(.public-card-page)) [class*="bg-white/[0.03]"],
+  body:not(:has(.public-card-page)) [class*="bg-white/[0.04]"],
   body:not(:has(.public-card-page)) [class*="bg-white/[0.07]"] {
-    background-color: rgba(255, 255, 255, 0.78) !important;
+    background-color: var(--dmi-surface-raised) !important;
   }
 
   body:not(:has(.public-card-page)) [class*="border-white/"] {
@@ -184,7 +212,7 @@ body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
   body:not(:has(.public-card-page)) div [class*="text-white/"],
   body:not(:has(.public-card-page)) p[class*="text-white/"],
   body:not(:has(.public-card-page)) span[class*="text-white/"] {
-    color: var(--dmi-muted) !important;
+    color: var(--dmi-text-secondary) !important;
   }
 
   body:not(:has(.public-card-page)) main [class*="text-white"],
@@ -196,22 +224,114 @@ body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
   body:not(:has(.public-card-page)) h3[class*="text-white"],
   body:not(:has(.public-card-page)) h4[class*="text-white"],
   body:not(:has(.public-card-page)) span[class*="text-white"] {
-    color: var(--foreground);
+    color: var(--foreground) !important;
   }
 
-  [class*="bg-[#AC00FF]"],
-  [class*="bg-[#AC00FF]"] *,
-  [class*="from-[#AC00FF]"],
-  [class*="from-[#AC00FF]"] *,
-  [class*="bg-gradient-to-r"],
-  [class*="bg-gradient-to-r"] *,
-  [class*="bg-gradient-to-br"],
-  [class*="bg-gradient-to-br"] * {
+  body:not(:has(.public-card-page)) [class*="text-purple-100"],
+  body:not(:has(.public-card-page)) [class*="text-purple-200"],
+  body:not(:has(.public-card-page)) [class*="text-purple-300"],
+  body:not(:has(.public-card-page)) [class*="text-slate-500"],
+  body:not(:has(.public-card-page)) [class*="text-gray-500"],
+  body:not(:has(.public-card-page)) [class*="text-zinc-500"] {
+    color: var(--dmi-text-secondary) !important;
+  }
+
+  body:not(:has(.public-card-page)) [class*="text-slate-950"],
+  body:not(:has(.public-card-page)) [class*="text-gray-950"],
+  body:not(:has(.public-card-page)) [class*="text-zinc-950"] {
+    color: var(--foreground) !important;
+  }
+
+  body:not(:has(.public-card-page)) button[class*="bg-white/"],
+  body:not(:has(.public-card-page)) a[class*="bg-white/"] {
+    border-color: rgba(15, 14, 56, 0.18) !important;
+    color: var(--foreground) !important;
+    background-color: var(--dmi-surface) !important;
+  }
+
+  body:not(:has(.public-card-page)) button[class*="bg-white/"]:hover,
+  body:not(:has(.public-card-page)) a[class*="bg-white/"]:hover {
+    border-color: rgba(172, 0, 255, 0.35) !important;
+    background-color: #f5e9ff !important;
+    color: var(--foreground) !important;
+  }
+
+  body:not(:has(.public-card-page)) button[class*="bg-[#AC00FF]/"],
+  body:not(:has(.public-card-page)) a[class*="bg-[#AC00FF]/"] {
+    color: #ffffff !important;
+    background-image: var(--dmi-gradient) !important;
+    background-color: var(--dmi-brand-purple) !important;
+    box-shadow: 0 12px 28px rgba(172, 0, 255, 0.2) !important;
+  }
+
+  body:not(:has(.public-card-page)) input,
+  body:not(:has(.public-card-page)) textarea,
+  body:not(:has(.public-card-page)) select {
+    background-color: #ffffff !important;
+    border-color: var(--dmi-border) !important;
+    color: var(--foreground) !important;
+  }
+
+  body:not(:has(.public-card-page)) input::placeholder,
+  body:not(:has(.public-card-page)) textarea::placeholder {
+    color: var(--dmi-text-tertiary) !important;
+  }
+
+  body:not(:has(.public-card-page)) input:focus,
+  body:not(:has(.public-card-page)) textarea:focus,
+  body:not(:has(.public-card-page)) select:focus {
+    border-color: rgba(172, 0, 255, 0.72) !important;
+    box-shadow: 0 0 0 4px rgba(172, 0, 255, 0.14) !important;
+  }
+
+  body:not(:has(.public-card-page)) :disabled,
+  body:not(:has(.public-card-page)) [aria-disabled="true"] {
+    background-color: var(--dmi-disabled-bg) !important;
+    color: var(--dmi-disabled-text) !important;
+    cursor: not-allowed !important;
+    opacity: 0.62 !important;
+  }
+
+  body:not(:has(.public-card-page)) [class*="opacity-30"]:not(:disabled):not([aria-disabled="true"]),
+  body:not(:has(.public-card-page)) [class*="opacity-35"]:not(:disabled):not([aria-disabled="true"]),
+  body:not(:has(.public-card-page)) [class*="opacity-40"]:not(:disabled):not([aria-disabled="true"]),
+  body:not(:has(.public-card-page)) [class*="opacity-45"]:not(:disabled):not([aria-disabled="true"]),
+  body:not(:has(.public-card-page)) [class*="opacity-50"]:not(:disabled):not([aria-disabled="true"]),
+  body:not(:has(.public-card-page)) [class*="opacity-55"]:not(:disabled):not([aria-disabled="true"]),
+  body:not(:has(.public-card-page)) [class*="opacity-60"]:not(:disabled):not([aria-disabled="true"]),
+  body:not(:has(.public-card-page)) [class*="opacity-70"]:not(:disabled):not([aria-disabled="true"]),
+  body:not(:has(.public-card-page)) [class*="opacity-75"]:not(:disabled):not([aria-disabled="true"]),
+  body:not(:has(.public-card-page)) [class*="opacity-80"]:not(:disabled):not([aria-disabled="true"]) {
+    opacity: 1 !important;
+  }
+
+  body:not(:has(.public-card-page)) [style*="font-family"] [class*="text-white"],
+  body:not(:has(.public-card-page)) [style*="font-family"] [class*="text-white/"],
+  body:not(:has(.public-card-page)) [style*="font-family"] [class*="text-purple-"] {
+    color: inherit !important;
+  }
+
+  body:not(:has(.public-card-page)) [style*="font-family"] [class*="bg-white/"],
+  body:not(:has(.public-card-page)) [style*="font-family"] [class*="bg-[#AC00FF]/"] {
+    background-color: revert !important;
+    background-image: revert !important;
+  }
+
+  body:not(:has(.public-card-page)) [class*="bg-[#AC00FF]"],
+  body:not(:has(.public-card-page)) [class*="bg-[#AC00FF]"] *,
+  body:not(:has(.public-card-page)) [class*="from-[#FF424A]"],
+  body:not(:has(.public-card-page)) [class*="from-[#FF424A]"] *,
+  body:not(:has(.public-card-page)) [class*="from-[#AC00FF]"],
+  body:not(:has(.public-card-page)) [class*="from-[#AC00FF]"] *,
+  body:not(:has(.public-card-page)) [class*="bg-gradient-to-r"],
+  body:not(:has(.public-card-page)) [class*="bg-gradient-to-r"] *,
+  body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"],
+  body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"] * {
     color: #ffffff !important;
   }
 
-  [class*="shadow-purple"],
-  [class*="shadow-black"] {
+  body:not(:has(.public-card-page)) [class*="shadow-purple"],
+  body:not(:has(.public-card-page)) [class*="shadow-black"] {
     box-shadow: var(--dmi-card-shadow) !important;
   }
 }
@@ -260,7 +380,7 @@ select.inputStyle {
 
 /* Placeholder */
 .inputStyle::placeholder {
-  color: color-mix(in srgb, var(--dmi-muted) 72%, transparent);
+  color: var(--dmi-text-tertiary);
 }
 
 /* Dropdown options */
