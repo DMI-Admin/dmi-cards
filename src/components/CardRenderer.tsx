@@ -21,6 +21,7 @@ type DisplayRow = {
   label: string;
   value?: string | null;
   icon?: LucideIcon;
+  href?: string | null;
 };
 
 function toDisplayValue(value: unknown): string | null {
@@ -222,6 +223,9 @@ export default function CardRenderer({
     buttonTextColor,
     fontFamily,
   };
+  const saveContactHref = mode === "public" ? vCardDataHref(cardData) : null;
+  const saveContactFilename =
+    mode === "public" ? `${slugifyFilename(displayName(cardData, "dmi-card"))}.vcf` : undefined;
   const shellClass = compact
     ? "min-h-[420px] rounded-3xl p-4"
     : "min-h-[650px] rounded-[2rem] p-6";
@@ -424,6 +428,15 @@ export default function CardRenderer({
         >
           Save Contact
         </div>
+      ) : saveContactHref ? (
+        <a
+          href={saveContactHref}
+          download={saveContactFilename}
+          className="mt-8 block w-full rounded-2xl py-4 text-center font-bold transition hover:opacity-90"
+          style={{ backgroundColor: buttonColor, color: buttonTextColor }}
+        >
+          Save Contact
+        </a>
       ) : (
         <button
           type="button"
@@ -469,6 +482,7 @@ function ClassicLayout({
     : colorAlpha(rendererTheme.text, 0.1);
   const allowed = new Set(allowedFields);
   const previewMode = mode === "preview" || mode === "compact";
+  const publicMode = mode === "public";
   const headerJobTitle =
     isPaid && sectionSettings.personal && allowed.has("job_title")
       ? toDisplayValue(cardData.job_title) || (previewMode ? "Job Title" : null)
@@ -502,7 +516,8 @@ function ClassicLayout({
     allowed,
     previewMode
   );
-  const paidPersonalRows = isPaid
+  const paidPersonalRows = addPublicRowActions(
+    isPaid
     ? buildPaidPersonalRows({
         personalRows,
         contactRows,
@@ -510,19 +525,26 @@ function ClassicLayout({
         allowed,
         previewMode,
       })
-    : personalRows;
-  const paidContactRows = isPaid
+    : personalRows,
+    publicMode
+  );
+  const companyActionRows = addPublicRowActions(companyRows, publicMode);
+  const paidContactRows = addPublicRowActions(
+    isPaid
     ? contactRows.filter(
         (row) => !["Email", "Phone", "Website"].includes(row.label)
       )
-    : contactRows;
+    : contactRows,
+    publicMode
+  );
+  const socialActionRows = addPublicRowActions(socialRows, publicMode);
 
   const hasPersonalDetails =
     sectionSettings.personal && paidPersonalRows.length > 0;
-  const hasCompanyDetails = sectionSettings.company && companyRows.length > 0;
+  const hasCompanyDetails = sectionSettings.company && companyActionRows.length > 0;
   const hasContactDetails =
     sectionSettings.contact && paidContactRows.length > 0;
-  const hasSocialDetails = sectionSettings.social && socialRows.length > 0;
+  const hasSocialDetails = sectionSettings.social && socialActionRows.length > 0;
   const profileCircle = (
     <div
       className={`flex ${
@@ -590,7 +612,7 @@ function ClassicLayout({
         )}
 
         {hasCompanyDetails && (
-          <ClassicSection title="Company Details" rows={companyRows} premium />
+          <ClassicSection title="Company Details" rows={companyActionRows} premium />
         )}
 
         {hasContactDetails && (
@@ -598,7 +620,7 @@ function ClassicLayout({
         )}
 
         {hasSocialDetails && (
-          <ClassicSection title="Social Links" rows={socialRows} premium />
+          <ClassicSection title="Social Links" rows={socialActionRows} premium />
         )}
       </div>
     );
@@ -652,7 +674,7 @@ function ClassicLayout({
       {hasCompanyDetails && (
         <ClassicSection
           title="Company Details"
-          rows={companyRows}
+          rows={companyActionRows}
           premium={isPaid}
           theme={rendererTheme}
         />
@@ -672,10 +694,14 @@ function ClassicLayout({
           <div className="mt-4 space-y-3">
             {paidContactRows.map((item) => {
               const Icon = isPaid ? item.icon : null;
+              const RowTag = item.href ? "a" : "div";
 
               return (
-                <div
+                <RowTag
                   key={item.label}
+                  href={item.href || undefined}
+                  target={item.href?.startsWith("http") ? "_blank" : undefined}
+                  rel={item.href?.startsWith("http") ? "noopener noreferrer" : undefined}
                   className="grid min-w-0 grid-cols-[86px_minmax(0,1fr)] items-center gap-3 rounded-2xl px-3 py-3 text-sm"
                   style={{ backgroundColor: rowBackground }}
                 >
@@ -696,7 +722,7 @@ function ClassicLayout({
                   >
                     {item.value}
                   </span>
-                </div>
+                </RowTag>
               );
             })}
           </div>
@@ -706,7 +732,7 @@ function ClassicLayout({
       {hasSocialDetails && (
         <ClassicSection
           title="Social Links"
-          rows={socialRows}
+          rows={socialActionRows}
           premium={isPaid}
           theme={rendererTheme}
         />
@@ -777,19 +803,24 @@ function ClassicSectionContent({
 
   return (
     <div className={`${className} space-y-3`}>
-      {rows.map(({ label, value, icon }) => {
+      {rows.map(({ label, value, icon, href }) => {
         const Icon = icon || iconForLabel(label);
 
         if (premium) {
+          const RowTag = href ? "a" : "div";
+
           return (
-            <div
+            <RowTag
               key={label}
+              href={href || undefined}
+              target={href?.startsWith("http") ? "_blank" : undefined}
+              rel={href?.startsWith("http") ? "noopener noreferrer" : undefined}
               className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 border-b border-white/10 bg-white/[0.06] px-3 py-3 text-sm last:border-b-0 first:rounded-t-2xl last:rounded-b-2xl"
             >
-            <span
-              className="flex min-w-0 items-center gap-3"
-              style={{ color: mutedText }}
-            >
+              <span
+                className="flex min-w-0 items-center gap-3"
+                style={{ color: mutedText }}
+              >
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#AC00FF]/18 text-[#D78BFF]">
                   <Icon size={15} />
                 </span>
@@ -801,13 +832,18 @@ function ClassicSectionContent({
               >
                 {value}
               </span>
-            </div>
+            </RowTag>
           );
         }
 
+        const RowTag = href ? "a" : "div";
+
         return (
-          <div
+          <RowTag
             key={label}
+            href={href || undefined}
+            target={href?.startsWith("http") ? "_blank" : undefined}
+            rel={href?.startsWith("http") ? "noopener noreferrer" : undefined}
             className="grid min-w-0 grid-cols-[86px_minmax(0,1fr)] items-center gap-3 rounded-2xl px-3 py-3 text-sm"
             style={{ backgroundColor: rowBackground }}
           >
@@ -823,7 +859,7 @@ function ClassicSectionContent({
             >
               {value}
             </span>
-          </div>
+          </RowTag>
         );
       })}
     </div>
@@ -923,7 +959,10 @@ function layoutRows({
     .map(([title, key, enabled]) => ({
       title,
       rows: enabled
-        ? classicRows(key, templateCustomFields, cardData, allowed, previewMode)
+        ? addPublicRowActions(
+            classicRows(key, templateCustomFields, cardData, allowed, previewMode),
+            mode === "public"
+          )
         : [],
     }))
     .filter((section) => section.rows.length > 0);
@@ -1007,7 +1046,13 @@ function GlassmorphismLayout(props: LayoutProps) {
           </div>
         )}
 
-        <TemplateSaveButton compact={compact} theme={theme} className="mx-5 mb-5 mt-auto" />
+        <TemplateSaveButton
+          compact={compact}
+          theme={theme}
+          cardData={cardData}
+          mode={props.mode || "preview"}
+          className="mx-5 mb-5 mt-auto"
+        />
       </div>
     </div>
   );
@@ -1084,7 +1129,13 @@ function BannerCardLayout(props: LayoutProps) {
 
       <PaidRowList rows={detailRows} theme={theme} className="px-5 py-5" emptyPanelColor={softPanel} />
 
-      <TemplateSaveButton compact={compact} theme={theme} className="mx-5 mb-5 mt-auto" />
+      <TemplateSaveButton
+        compact={compact}
+        theme={theme}
+        cardData={cardData}
+        mode={props.mode || "preview"}
+        className="mx-5 mb-5 mt-auto"
+      />
     </div>
   );
 }
@@ -1154,7 +1205,13 @@ function SplitCardLayout(props: LayoutProps) {
 
         <PaidRowList rows={detailRows} theme={theme} className="flex-1" />
 
-        <TemplateSaveButton compact={compact} theme={theme} className="mt-auto" />
+        <TemplateSaveButton
+          compact={compact}
+          theme={theme}
+          cardData={cardData}
+          mode={props.mode || "preview"}
+          className="mt-auto"
+        />
       </div>
     </div>
   );
@@ -1219,7 +1276,13 @@ function MonogramCardLayout(props: LayoutProps) {
 
       <PaidRowList rows={detailRows} theme={theme} className="px-5 py-5" />
 
-      <TemplateSaveButton compact={compact} theme={theme} className="mx-5 mb-5 mt-auto" />
+      <TemplateSaveButton
+        compact={compact}
+        theme={theme}
+        cardData={cardData}
+        mode={props.mode || "preview"}
+        className="mx-5 mb-5 mt-auto"
+      />
     </div>
   );
 }
@@ -1258,10 +1321,14 @@ function PaidRowList({
       <div className="divide-y" style={{ borderColor: line } as React.CSSProperties}>
         {rows.map((row) => {
           const Icon = row.icon || iconForLabel(row.label);
+          const RowTag = row.href ? "a" : "div";
 
           return (
-            <div
+            <RowTag
               key={row.key}
+              href={row.href || undefined}
+              target={row.href?.startsWith("http") ? "_blank" : undefined}
+              rel={row.href?.startsWith("http") ? "noopener noreferrer" : undefined}
               className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-start gap-3 py-3 text-sm"
               style={{ borderColor: line }}
             >
@@ -1274,7 +1341,7 @@ function PaidRowList({
               <span className="min-w-0 max-w-full whitespace-pre-wrap break-words text-right text-sm font-semibold" style={{ color: theme.text }}>
                 {row.value}
               </span>
-            </div>
+            </RowTag>
           );
         })}
       </div>
@@ -1360,6 +1427,7 @@ function ModernLayout({
   logoSize,
   supportsBio,
   compact,
+  mode,
 }: LayoutProps) {
   return (
     <>
@@ -1369,7 +1437,7 @@ function ModernLayout({
       </div>
       {requiresLogo && <LogoBlock cardData={cardData} size={logoSize} />}
       {supportsBio && <BioBlock cardData={cardData} />}
-      <FieldGrid cardData={cardData} fields={allowedFields} />
+      <FieldGrid cardData={cardData} fields={allowedFields} publicMode={mode === "public"} />
     </>
   );
 }
@@ -1382,6 +1450,7 @@ function CenteredLayout({
   logoSize,
   supportsBio,
   compact,
+  mode,
 }: LayoutProps) {
   return (
     <div className="text-center">
@@ -1391,7 +1460,7 @@ function CenteredLayout({
       )}
       <IdentityBlock cardData={cardData} className="mt-5" compact={compact} />
       {supportsBio && <BioBlock cardData={cardData} />}
-      <FieldStack cardData={cardData} fields={allowedFields} center />
+      <FieldStack cardData={cardData} fields={allowedFields} center publicMode={mode === "public"} />
     </div>
   );
 }
@@ -1404,6 +1473,7 @@ function SplitLayout({
   logoSize,
   supportsBio,
   compact,
+  mode,
 }: LayoutProps) {
   return (
     <>
@@ -1422,7 +1492,7 @@ function SplitLayout({
           {supportsBio && <BioText cardData={cardData} />}
         </div>
       </div>
-      <FieldStack cardData={cardData} fields={allowedFields} />
+      <FieldStack cardData={cardData} fields={allowedFields} publicMode={mode === "public"} />
     </>
   );
 }
@@ -1435,6 +1505,7 @@ function BannerLayout({
   logoSize,
   supportsBio,
   compact,
+  mode,
 }: LayoutProps) {
   return (
     <>
@@ -1455,7 +1526,7 @@ function BannerLayout({
       {requiresLogo && <LogoBlock cardData={cardData} size={logoSize} />}
       <IdentityBlock cardData={cardData} compact={compact} />
       {supportsBio && <BioBlock cardData={cardData} />}
-      <FieldStack cardData={cardData} fields={allowedFields} />
+      <FieldStack cardData={cardData} fields={allowedFields} publicMode={mode === "public"} />
     </>
   );
 }
@@ -1467,6 +1538,7 @@ function CompactLayout({
   requiresLogo,
   logoSize,
   supportsBio,
+  mode,
 }: Omit<LayoutProps, "compact">) {
   return (
     <>
@@ -1480,7 +1552,7 @@ function CompactLayout({
           {bioText(cardData)}
         </p>
       )}
-      <FieldStack cardData={cardData} fields={allowedFields} compact />
+      <FieldStack cardData={cardData} fields={allowedFields} compact publicMode={mode === "public"} />
     </>
   );
 }
@@ -1493,6 +1565,7 @@ function MinimalLayout({
   logoSize,
   supportsBio,
   compact,
+  mode,
 }: LayoutProps) {
   return (
     <>
@@ -1507,12 +1580,22 @@ function MinimalLayout({
         </p>
       )}
       <div className="mt-6 space-y-3">
-        {fieldItems(cardData, allowedFields).map((item) => (
-          <div key={item.label} className="border-b border-white/20 pb-3 text-sm">
-            <span className="block text-xs capitalize opacity-55">{item.label}</span>
-            <span className="mt-1 block break-words">{item.value}</span>
-          </div>
-        ))}
+        {fieldItems(cardData, allowedFields, mode === "public").map((item) => {
+          const ItemTag = item.href ? "a" : "div";
+
+          return (
+            <ItemTag
+              key={item.label}
+              href={item.href || undefined}
+              target={item.href?.startsWith("http") ? "_blank" : undefined}
+              rel={item.href?.startsWith("http") ? "noopener noreferrer" : undefined}
+              className="block border-b border-white/20 pb-3 text-sm"
+            >
+              <span className="block text-xs capitalize opacity-55">{item.label}</span>
+              <span className="mt-1 block break-words">{item.value}</span>
+            </ItemTag>
+          );
+        })}
       </div>
     </>
   );
@@ -1736,16 +1819,24 @@ function FieldStack({
   fields,
   center = false,
   compact = false,
+  publicMode = false,
 }: {
   cardData: CardRendererData;
   fields: string[];
   center?: boolean;
   compact?: boolean;
+  publicMode?: boolean;
 }) {
   return (
     <div className={`mt-6 min-w-0 space-y-3 ${center ? "text-center" : ""}`}>
-      {fieldItems(cardData, fields).map((item) => (
-        <FieldBlock key={item.label} label={item.label} value={item.value} compact={compact} />
+      {fieldItems(cardData, fields, publicMode).map((item) => (
+        <FieldBlock
+          key={item.label}
+          label={item.label}
+          value={item.value}
+          href={item.href}
+          compact={compact}
+        />
       ))}
     </div>
   );
@@ -1754,14 +1845,22 @@ function FieldStack({
 function FieldGrid({
   cardData,
   fields,
+  publicMode = false,
 }: {
   cardData: CardRendererData;
   fields: string[];
+  publicMode?: boolean;
 }) {
   return (
     <div className="mt-6 grid min-w-0 grid-cols-2 gap-3">
-      {fieldItems(cardData, fields).map((item) => (
-        <FieldBlock key={item.label} label={item.label} value={item.value} center />
+      {fieldItems(cardData, fields, publicMode).map((item) => (
+        <FieldBlock
+          key={item.label}
+          label={item.label}
+          value={item.value}
+          href={item.href}
+          center
+        />
       ))}
     </div>
   );
@@ -1770,16 +1869,23 @@ function FieldGrid({
 function FieldBlock({
   label,
   value,
+  href,
   center = false,
   compact = false,
 }: {
   label: string;
   value: string;
+  href?: string | null;
   center?: boolean;
   compact?: boolean;
 }) {
+  const BlockTag = href ? "a" : "div";
+
   return (
-    <div
+    <BlockTag
+      href={href || undefined}
+      target={href?.startsWith("http") ? "_blank" : undefined}
+      rel={href?.startsWith("http") ? "noopener noreferrer" : undefined}
       className={`rounded-2xl bg-white/10 ${
         compact ? "p-3 text-xs" : "p-4 text-sm"
       } ${center ? "text-center" : ""}`}
@@ -1788,7 +1894,7 @@ function FieldBlock({
       <span className="mt-1 block min-w-0 max-w-full break-words">
         {value}
       </span>
-    </div>
+    </BlockTag>
   );
 }
 
@@ -1810,10 +1916,14 @@ function DmiFooter() {
 function TemplateSaveButton({
   compact,
   theme,
+  cardData,
+  mode,
   className = "",
 }: {
   compact: boolean;
   theme: RendererTheme;
+  cardData: CardRendererData;
+  mode: CardRendererMode;
   className?: string;
 }) {
   const buttonClass = `${className} w-auto rounded-2xl py-4 text-center font-bold transition hover:opacity-90`;
@@ -1822,6 +1932,9 @@ function TemplateSaveButton({
     color: theme.buttonTextColor,
     fontFamily: theme.fontFamily,
   };
+  const href = mode === "public" ? vCardDataHref(cardData) : null;
+  const filename =
+    mode === "public" ? `${slugifyFilename(displayName(cardData, "dmi-card"))}.vcf` : undefined;
 
   if (compact) {
     return (
@@ -1831,10 +1944,23 @@ function TemplateSaveButton({
     );
   }
 
+  if (!href) {
+    return (
+      <button type="button" className={buttonClass} style={buttonStyle}>
+        Save Contact
+      </button>
+    );
+  }
+
   return (
-    <button type="button" className={buttonClass} style={buttonStyle}>
+    <a
+      href={href}
+      download={filename}
+      className={`block ${buttonClass}`}
+      style={buttonStyle}
+    >
       Save Contact
-    </button>
+    </a>
   );
 }
 
@@ -1892,7 +2018,7 @@ function colorAlpha(colour: string, alpha: number) {
   return fallback;
 }
 
-function fieldItems(cardData: CardRendererData, fields: string[]) {
+function fieldItems(cardData: CardRendererData, fields: string[], publicMode = false) {
   const values: Record<string, string | null | undefined> = {
     company_name: cardData.company_name,
     department: cardData.department,
@@ -1911,11 +2037,115 @@ function fieldItems(cardData: CardRendererData, fields: string[]) {
   };
 
   return fields
-    .map((field) => ({
-      label: field.replace("_", " "),
-      value: values[field] || "",
-    }))
+    .map((field) => {
+      const value = values[field] || "";
+
+      return {
+        label: field.replace("_", " "),
+        value,
+        href: publicMode ? actionHrefForField(field, value) : null,
+      };
+    })
     .filter((item) => item.value);
+}
+
+function addPublicRowActions(rows: DisplayRow[], publicMode: boolean): DisplayRow[] {
+  if (!publicMode) return rows;
+
+  return rows.map((row) => ({
+    ...row,
+    href: actionHrefForField(row.label, row.value || ""),
+  }));
+}
+
+function actionHrefForField(field: string, value: string | null | undefined) {
+  const displayValue = toDisplayValue(value);
+  if (!displayValue) return null;
+
+  const normalizedField = field.toLowerCase().replace(/\s+/g, "_");
+
+  if (normalizedField.includes("website")) {
+    return websiteHref(displayValue);
+  }
+
+  if (normalizedField.includes("address")) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      displayValue
+    )}`;
+  }
+
+  if (normalizedField.includes("email")) {
+    return `mailto:${displayValue}`;
+  }
+
+  if (normalizedField.includes("phone")) {
+    return `tel:${displayValue.replace(/\s+/g, "")}`;
+  }
+
+  return null;
+}
+
+function websiteHref(value: string) {
+  const trimmed = value.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+function vCardDataHref(cardData: CardRendererData) {
+  return `data:text/vcard;charset=utf-8,${encodeURIComponent(vCardText(cardData))}`;
+}
+
+function vCardText(cardData: CardRendererData) {
+  const title = toDisplayValue(cardData.title);
+  const firstName = toDisplayValue(cardData.first_name);
+  const lastName = toDisplayValue(cardData.last_name);
+  const fallbackName =
+    [title, firstName, lastName].filter(Boolean).join(" ") || "DMI Card";
+  const fullName = displayName(cardData, fallbackName);
+  const jobTitle = toDisplayValue(cardData.job_title);
+  const companyName = toDisplayValue(cardData.company_name);
+  const email = toDisplayValue(cardData.email);
+  const phone = toDisplayValue(cardData.phone);
+  const website = toDisplayValue(cardData.website);
+  const address = toDisplayValue(cardData.address);
+  const lines = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `N:${vCardEscape(lastName || "")};${vCardEscape(firstName || "")};;;${vCardEscape(
+      title || ""
+    )}`,
+    `FN:${vCardEscape(fullName)}`,
+  ];
+
+  if (jobTitle) lines.push(`TITLE:${vCardEscape(jobTitle)}`);
+  if (companyName) lines.push(`ORG:${vCardEscape(companyName)}`);
+  if (email) lines.push(`EMAIL;TYPE=INTERNET:${vCardEscape(email)}`);
+  if (phone) lines.push(`TEL;TYPE=CELL:${vCardEscape(phone)}`);
+  if (website) lines.push(`URL:${vCardEscape(websiteHref(website))}`);
+  if (address) lines.push(`ADR;TYPE=WORK:;;${vCardEscape(address)};;;;`);
+
+  lines.push("END:VCARD");
+
+  return lines.join("\r\n");
+}
+
+function vCardEscape(value: string) {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;");
+}
+
+function slugifyFilename(value: string) {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return slug || "dmi-card";
 }
 
 function classicRows(
