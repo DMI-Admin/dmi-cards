@@ -20,7 +20,7 @@
   --dmi-brand-red: #ff424a;
   --dmi-brand-purple: #ac00ff;
   --dmi-brand-navy: #0f0e38;
-  --dmi-gradient: linear-gradient(135deg, #ff424a 0%, #e91e8f 45%, #ac00ff 100%);
+  --dmi-gradient: linear-gradient(to right, #e8437a, #c2359e, #8b2fc9);
   --dmi-gradient-soft: linear-gradient(180deg, #ffffff 0%, #f8f9fc 100%);
   --dmi-gradient-glow: 0 16px 36px rgba(172, 0, 255, 0.14), 0 8px 20px rgba(255, 66, 74, 0.1);
 }
