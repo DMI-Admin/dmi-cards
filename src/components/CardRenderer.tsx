@@ -18,6 +18,7 @@ type CustomFieldValues = Record<
 >;
 type ClassicSectionKey = "personal" | "company" | "contact" | "social";
 type DisplayRow = {
+  field?: string;
   label: string;
   value?: string | null;
   icon?: LucideIcon;
@@ -907,6 +908,7 @@ function buildPaidPersonalRows({
   paidContactRows.forEach((row) => {
     if (allowed.has(row.field) && row.value && !existingLabels.has(row.label)) {
       rows.push({
+        field: row.field,
         label: row.label,
         value: row.value,
         icon:
@@ -2054,7 +2056,7 @@ function addPublicRowActions(rows: DisplayRow[], publicMode: boolean): DisplayRo
 
   return rows.map((row) => ({
     ...row,
-    href: actionHrefForField(row.label, row.value || ""),
+    href: row.field ? actionHrefForField(row.field, row.value || "") : null,
   }));
 }
 
@@ -2062,23 +2064,23 @@ function actionHrefForField(field: string, value: string | null | undefined) {
   const displayValue = toDisplayValue(value);
   if (!displayValue) return null;
 
-  const normalizedField = field.toLowerCase().replace(/\s+/g, "_");
+  const normalizedField = field.toLowerCase();
 
-  if (normalizedField.includes("website")) {
+  if (normalizedField === "website") {
     return websiteHref(displayValue);
   }
 
-  if (normalizedField.includes("address")) {
+  if (normalizedField === "address") {
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
       displayValue
     )}`;
   }
 
-  if (normalizedField.includes("email")) {
+  if (normalizedField === "email") {
     return `mailto:${displayValue}`;
   }
 
-  if (normalizedField.includes("phone")) {
+  if (normalizedField === "phone") {
     return `tel:${displayValue.replace(/\s+/g, "")}`;
   }
 
@@ -2212,68 +2214,82 @@ function isAllowedSectionField(section: ClassicSectionKey, field: string) {
 
 function builtInRow(field: string, cardData: CardRendererData): DisplayRow {
   const rows: Record<string, DisplayRow> = {
-    title: { label: "Title", value: cardFieldValue(cardData, "title", cardData.title) },
+    title: { field: "title", label: "Title", value: cardFieldValue(cardData, "title", cardData.title) },
     first_name: {
+      field: "first_name",
       label: "First Name",
       value: cardFieldValue(cardData, "first_name", cardData.first_name),
     },
     last_name: {
+      field: "last_name",
       label: "Last Name",
       value: cardFieldValue(cardData, "last_name", cardData.last_name),
     },
     job_title: {
+      field: "job_title",
       label: "Job Title",
       value: cardFieldValue(cardData, "job_title", cardData.job_title),
     },
     department: {
+      field: "department",
       label: "Department",
       value: cardFieldValue(cardData, "department", cardData.department),
       icon: Building2,
     },
-    bio: { label: "Bio", value: cardFieldValue(cardData, "bio", cardData.bio) },
+    bio: { field: "bio", label: "Bio", value: cardFieldValue(cardData, "bio", cardData.bio) },
     company_name: {
+      field: "company_name",
       label: "Company Name",
       value: cardFieldValue(cardData, "company_name", cardData.company_name),
       icon: Building2,
     },
     website: {
+      field: "website",
       label: "Website",
       value: toDisplayValue(displayUrl(cardFieldValue(cardData, "website", cardData.website))),
       icon: Globe,
     },
     address: {
+      field: "address",
       label: "Address",
       value: cardFieldValue(cardData, "address", cardData.address),
       icon: MapPin,
     },
-    email: { label: "Email", value: cardFieldValue(cardData, "email", cardData.email), icon: Mail },
-    phone: { label: "Phone", value: cardFieldValue(cardData, "phone", cardData.phone), icon: Phone },
+    email: { field: "email", label: "Email", value: cardFieldValue(cardData, "email", cardData.email), icon: Mail },
+    phone: { field: "phone", label: "Phone", value: cardFieldValue(cardData, "phone", cardData.phone), icon: Phone },
     whatsapp: {
+      field: "whatsapp",
       label: "WhatsApp",
       value: cardFieldValue(cardData, "whatsapp", cardData.whatsapp),
     },
     linkedin: {
+      field: "linkedin",
       label: "LinkedIn",
       value: toDisplayValue(displayUrl(cardFieldValue(cardData, "linkedin", cardData.linkedin))),
     },
     instagram: {
+      field: "instagram",
       label: "Instagram",
       value: cardFieldValue(cardData, "instagram", cardData.instagram),
     },
     facebook: {
+      field: "facebook",
       label: "Facebook",
       value: toDisplayValue(displayUrl(cardFieldValue(cardData, "facebook", cardData.facebook))),
     },
     youtube: {
+      field: "youtube",
       label: "YouTube",
       value: toDisplayValue(displayUrl(cardFieldValue(cardData, "youtube", cardData.youtube))),
     },
     booking_link: {
+      field: "booking_link",
       label: "Booking",
       value: toDisplayValue(displayUrl(cardFieldValue(cardData, "booking_link", cardData.booking_link))),
       icon: LinkIcon,
     },
     custom_url: {
+      field: "custom_url",
       label: "Custom Link",
       value: toDisplayValue(displayUrl(cardFieldValue(cardData, "custom_url", cardData.custom_url))),
       icon: LinkIcon,
