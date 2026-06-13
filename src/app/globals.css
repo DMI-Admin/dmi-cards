@@ -38,15 +38,47 @@
   --font-mono: var(--font-geist-mono);
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #070b1a;
+  --foreground: #ffffff;
+  --dmi-text-primary: #ffffff;
+  --dmi-text-secondary: rgba(255, 255, 255, 0.72);
+  --dmi-text-tertiary: rgba(255, 255, 255, 0.56);
+  --dmi-surface: #101322;
+  --dmi-surface-soft: #151827;
+  --dmi-surface-raised: #101935;
+  --dmi-surface-hover: rgba(172, 0, 255, 0.16);
+  --dmi-border: rgba(255, 255, 255, 0.1);
+  --dmi-border-strong: rgba(255, 255, 255, 0.18);
+  --dmi-muted: var(--dmi-text-secondary);
+  --dmi-disabled-bg: #1d2235;
+  --dmi-disabled-text: rgba(255, 255, 255, 0.36);
+  --dmi-card-shadow: 0 22px 55px rgba(0, 0, 0, 0.32);
+  --dmi-gradient-soft:
+    radial-gradient(circle at 18% 12%, rgba(255, 66, 74, 0.18), transparent 30%),
+    radial-gradient(circle at 82% 6%, rgba(172, 0, 255, 0.18), transparent 32%),
+    linear-gradient(180deg, #070b1a 0%, #0b1024 100%);
+  --dmi-gradient-glow: 0 24px 70px rgba(172, 0, 255, 0.25), 0 10px 35px rgba(255, 66, 74, 0.14);
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
     --background: #070b1a;
     --foreground: #ffffff;
+    --dmi-text-primary: #ffffff;
+    --dmi-text-secondary: rgba(255, 255, 255, 0.72);
+    --dmi-text-tertiary: rgba(255, 255, 255, 0.56);
     --dmi-surface: #101322;
     --dmi-surface-soft: #151827;
+    --dmi-surface-raised: #101935;
+    --dmi-surface-hover: rgba(172, 0, 255, 0.16);
     --dmi-border: rgba(255, 255, 255, 0.1);
-    --dmi-muted: rgba(255, 255, 255, 0.58);
+    --dmi-border-strong: rgba(255, 255, 255, 0.18);
+    --dmi-muted: var(--dmi-text-secondary);
+    --dmi-disabled-bg: #1d2235;
+    --dmi-disabled-text: rgba(255, 255, 255, 0.36);
     --dmi-card-shadow: 0 22px 55px rgba(0, 0, 0, 0.32);
     --dmi-gradient-soft:
       radial-gradient(circle at 18% 12%, rgba(255, 66, 74, 0.18), transparent 30%),
@@ -180,8 +212,7 @@ body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
   color: #4a1269 !important;
 }
 
-@media (prefers-color-scheme: light) {
-  body:not(:has(.public-card-page)) [class*="bg-[#070B1A]"],
+body:not(:has(.public-card-page)) [class*="bg-[#070B1A]"],
   body:not(:has(.public-card-page)) [class*="bg-[#090B14]"] {
     background-color: var(--background) !important;
     color: var(--foreground) !important;
@@ -245,10 +276,27 @@ body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
 
   body:not(:has(.public-card-page)) button[class*="bg-white/"],
   body:not(:has(.public-card-page)) a[class*="bg-white/"] {
-    border-color: rgba(15, 14, 56, 0.18) !important;
+    border-color: var(--dmi-border-strong) !important;
     color: var(--foreground) !important;
     background-color: var(--dmi-surface) !important;
   }
+
+body:not(:has(.public-card-page)) button[class*="bg-white "],
+body:not(:has(.public-card-page)) a[class*="bg-white "],
+body:not(:has(.public-card-page)) button[class$="bg-white"],
+body:not(:has(.public-card-page)) a[class$="bg-white"] {
+  border-color: var(--dmi-border-strong) !important;
+  background-color: #ffffff !important;
+  color: #0f0e38 !important;
+}
+
+body:not(:has(.public-card-page)) button[class*="bg-black"],
+body:not(:has(.public-card-page)) button[class*="bg-black"] *,
+body:not(:has(.public-card-page)) a[class*="bg-black"],
+body:not(:has(.public-card-page)) a[class*="bg-black"] * {
+  background-color: #050505 !important;
+  color: #ffffff !important;
+}
 
   body:not(:has(.public-card-page)) button[class*="bg-white/"]:hover,
   body:not(:has(.public-card-page)) a[class*="bg-white/"]:hover {
@@ -269,7 +317,7 @@ body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
   body:not(:has(.public-card-page)) input,
   body:not(:has(.public-card-page)) textarea,
   body:not(:has(.public-card-page)) select {
-    background-color: #ffffff !important;
+    background-color: var(--dmi-surface) !important;
     border-color: var(--dmi-border) !important;
     color: var(--foreground) !important;
   }
@@ -293,6 +341,11 @@ body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
     cursor: not-allowed !important;
     opacity: 0.62 !important;
   }
+
+body:not(:has(.public-card-page)) :disabled *,
+body:not(:has(.public-card-page)) [aria-disabled="true"] * {
+  color: var(--dmi-disabled-text) !important;
+}
 
   body:not(:has(.public-card-page)) [class*="opacity-30"]:not(:disabled):not([aria-disabled="true"]),
   body:not(:has(.public-card-page)) [class*="opacity-35"]:not(:disabled):not([aria-disabled="true"]),
@@ -333,9 +386,8 @@ body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
   }
 
   body:not(:has(.public-card-page)) [class*="shadow-purple"],
-  body:not(:has(.public-card-page)) [class*="shadow-black"] {
-    box-shadow: var(--dmi-card-shadow) !important;
-  }
+body:not(:has(.public-card-page)) [class*="shadow-black"] {
+  box-shadow: var(--dmi-card-shadow) !important;
 }
 
 /* =========================

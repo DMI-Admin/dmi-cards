@@ -23,6 +23,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
+import ThemeSelector from "@/components/ThemeSelector";
 
 const currentPlan = "free";
 
@@ -128,6 +129,8 @@ export default function ClientSettingsPage() {
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="space-y-6">
+            <ThemeSelector />
+
             <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-6 shadow-2xl shadow-black/20">
               <SectionTitle
                 title="Account Profile"
