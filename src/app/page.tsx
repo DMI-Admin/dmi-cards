@@ -2,43 +2,43 @@ import Sidebar from "@/components/Sidebar";
 
 export default function HomePage() {
   return (
-    <div className="flex h-screen bg-[#F8FAFC]">
+    <div className="dmi-app-shell flex min-h-screen">
       <Sidebar />
 
-      <main className="flex-1 p-10 overflow-auto">
+      <main className="dmi-page overflow-auto">
         <div className="mb-10">
-          <h1 className="text-4xl font-bold text-[#111827]">
+          <h1 className="text-4xl font-bold">
             Dashboard
           </h1>
 
-          <p className="mt-2 text-gray-500">
+          <p className="dmi-muted mt-2">
             Welcome to your DMI Cards admin platform.
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="rounded-3xl bg-white p-6 shadow-sm border border-gray-100">
-            <p className="text-sm text-gray-500">Total Clients</p>
+          <div className="dmi-card p-6">
+            <p className="dmi-muted text-sm">Total Clients</p>
 
-            <h2 className="mt-3 text-4xl font-bold text-[#0F0E38]">
+            <h2 className="mt-3 text-4xl font-bold">
               128
             </h2>
           </div>
 
-          <div className="rounded-3xl bg-white p-6 shadow-sm border border-gray-100">
-            <p className="text-sm text-gray-500">
+          <div className="dmi-card p-6">
+            <p className="dmi-muted text-sm">
               Monthly Revenue
             </p>
 
-            <h2 className="mt-3 text-4xl font-bold text-[#D621A2]">
+            <h2 className="gradient-text mt-3 text-4xl font-bold">
               £4,820
             </h2>
           </div>
 
-          <div className="rounded-3xl bg-white p-6 shadow-sm border border-gray-100">
-            <p className="text-sm text-gray-500">Active Cards</p>
+          <div className="dmi-card p-6">
+            <p className="dmi-muted text-sm">Active Cards</p>
 
-            <h2 className="mt-3 text-4xl font-bold text-[#0F0E38]">
+            <h2 className="mt-3 text-4xl font-bold">
               742
             </h2>
           </div>

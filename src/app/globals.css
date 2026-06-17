@@ -133,6 +133,43 @@ body:not(:has(.public-card-page)) h6 {
   color: var(--text-accent);
 }
 
+.dmi-app-shell {
+  min-height: 100vh;
+  background: var(--gradient-page);
+  color: var(--foreground);
+}
+
+.dmi-page {
+  flex: 1;
+  min-width: 0;
+  padding: clamp(24px, 4vw, 40px);
+}
+
+.dmi-card {
+  border: 1px solid var(--dmi-border);
+  border-radius: var(--radius-xl);
+  background: var(--dmi-surface);
+  box-shadow: var(--dmi-card-shadow);
+}
+
+.dmi-card-muted {
+  border: 1px solid var(--dmi-border);
+  border-radius: var(--radius-lg);
+  background: var(--dmi-surface-soft);
+}
+
+.dmi-kicker {
+  color: var(--text-accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.dmi-muted {
+  color: var(--dmi-muted);
+}
+
 body:not(:has(.public-card-page)) [class*="from-[#AC00FF]"],
 body:not(:has(.public-card-page)) [class*="from-[#FF424A]"],
 body:not(:has(.public-card-page)) [class*="bg-[#AC00FF]"],

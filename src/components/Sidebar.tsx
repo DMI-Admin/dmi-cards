@@ -50,8 +50,8 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="dmi-sidebar sticky top-0 flex h-screen w-72 shrink-0 flex-col border-r border-white/5 bg-[#0F0E38] text-white">
-      <div className="flex h-40 flex-col items-center justify-center border-b border-white/10 px-6 py-6">
+    <aside className="dmi-sidebar sticky top-0 flex h-screen w-72 shrink-0 flex-col border-r">
+      <div className="flex h-40 flex-col items-center justify-center border-b px-6 py-6">
         <div className="relative h-20 w-20 shrink-0">
           <Image
             src="/dmi-cards-logo.svg"
@@ -66,7 +66,7 @@ export default function Sidebar() {
         <p className="mt-4 text-sm font-semibold text-white">
           DMI Cards
         </p>
-        <p className="mt-1 text-[10px] font-semibold tracking-[0.26em] text-white/55">
+        <p className="mt-1 text-[10px] font-semibold tracking-[0.26em] text-[var(--dmi-muted)]">
           ADMIN PANEL
         </p>
       </div>
@@ -74,7 +74,7 @@ export default function Sidebar() {
       <nav className="flex-1 space-y-5 overflow-y-auto px-4 py-6">
         {sections.map((section) => (
           <div key={section.title}>
-            <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.22em] text-white/35">
+            <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--dmi-muted)]">
               {section.title}
             </p>
 
@@ -88,10 +88,10 @@ export default function Sidebar() {
                   <Link
                     key={item.name}
                     href={item.href}
-                    className={`block w-full rounded-2xl px-3 py-2.5 text-left text-sm font-medium leading-5 transition-all duration-200 ${
+                    className={`block w-full rounded-[var(--radius-md)] px-3 py-2.5 text-left text-sm font-medium leading-5 transition-all duration-200 ${
                       isActive
-                        ? "bg-[#AC00FF] text-white shadow-lg shadow-purple-500/25"
-                        : "text-white/65 hover:bg-white/10 hover:text-white"
+                        ? "bg-[image:var(--brand-gradient-subtle)] text-[var(--text-accent)] ring-1 ring-[var(--border-brand)]"
+                        : "text-[var(--dmi-muted)] hover:bg-[var(--dmi-surface-soft)] hover:text-[var(--foreground)]"
                     }`}
                   >
                     {item.name}
@@ -103,11 +103,11 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-white/10 p-4">
+      <div className="border-t p-4">
         <button
           type="button"
           onClick={handleSignOut}
-          className="w-full rounded-2xl bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-red-500/20 hover:text-red-200"
+          className="w-full rounded-[var(--radius-md)] border border-[var(--dmi-border)] bg-[var(--button-secondary-bg)] px-4 py-3 text-sm font-medium text-[var(--button-secondary-text)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] hover:text-[var(--foreground)]"
         >
           Sign Out
         </button>

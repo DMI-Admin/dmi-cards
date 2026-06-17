@@ -40,7 +40,7 @@ export default function ThemeSelector() {
   }
 
   return (
-    <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-5 shadow-[var(--shadow-card)]">
+    <div className="dmi-card p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-semibold">Theme</p>
@@ -49,13 +49,13 @@ export default function ThemeSelector() {
           </p>
         </div>
 
-        <div className="inline-flex rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-soft)] p-1">
+        <div className="inline-flex rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-soft)] p-1">
           {themeOptions.map((option) => (
             <button
               key={option.value}
               type="button"
               onClick={() => selectTheme(option.value)}
-              className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+              className={`rounded-[calc(var(--radius-md)-2px)] px-4 py-2 text-sm font-semibold transition ${
                 theme === option.value
                   ? "bg-[image:var(--brand-gradient)] text-white shadow-[var(--brand-glow)]"
                   : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"

@@ -48,11 +48,11 @@ export default function ClientSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="dmi-sidebar sticky top-0 flex h-screen w-72 shrink-0 flex-col border-r border-white/5 bg-[#0F0E38] text-white">
-      <div className="border-b border-white/10 px-6 py-8">
-        <div className="rounded-3xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 p-4 shadow-2xl shadow-purple-950/20">
+    <aside className="dmi-sidebar sticky top-0 flex h-screen w-72 shrink-0 flex-col border-r">
+      <div className="border-b px-6 py-8">
+        <div className="rounded-[var(--radius-lg)] border border-[var(--border-brand)] bg-[image:var(--brand-gradient-subtle)] p-4">
           <div className="flex items-center gap-3">
-            <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg shadow-purple-500/20">
+            <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-[var(--radius-md)] bg-white shadow-[var(--shadow-sm)]">
               <Image
                 src="/dmi-cards-logo.svg"
                 alt="DMI Cards Logo"
@@ -64,7 +64,7 @@ export default function ClientSidebar() {
             </div>
             <div>
               <p className="text-sm font-semibold">DMI Cards</p>
-              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/45">
+              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--dmi-muted)]">
                 Powered by DevMaster
               </p>
             </div>
@@ -73,7 +73,7 @@ export default function ClientSidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-4 py-6">
-        <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.22em] text-white/35">
+        <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--dmi-muted)]">
           Client Portal
         </p>
 
@@ -87,16 +87,16 @@ export default function ClientSidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition-all duration-200 ${
+                className={`flex items-center gap-3 rounded-[var(--radius-md)] px-3 py-3 text-sm font-medium transition-all duration-200 ${
                   isActive
-                    ? "bg-[#AC00FF] text-white shadow-lg shadow-purple-500/25"
-                    : "text-white/65 hover:bg-white/10 hover:text-white"
+                    ? "bg-[image:var(--brand-gradient-subtle)] text-[var(--text-accent)] ring-1 ring-[var(--border-brand)]"
+                    : "text-[var(--dmi-muted)] hover:bg-[var(--dmi-surface-soft)] hover:text-[var(--foreground)]"
                 }`}
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 <span className="min-w-0 flex-1">{item.label}</span>
                 {item.locked && (
-                  <span className="flex items-center gap-1 rounded-full border border-white/10 bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/60">
+                  <span className="flex items-center gap-1 rounded-full border border-[var(--border-brand)] bg-[var(--badge-pro-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--badge-pro-text)]">
                     <Lock className="h-3 w-3" />
                     Pro
                   </span>
@@ -107,13 +107,13 @@ export default function ClientSidebar() {
         </div>
       </nav>
 
-      <div className="border-t border-white/10 p-4">
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="border-t p-4">
+        <div className="rounded-[var(--radius-lg)] border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-4">
           <div className="flex items-center gap-2">
-            <Landmark className="h-4 w-4 text-purple-200" />
+            <Landmark className="h-4 w-4 text-[var(--text-accent)]" />
             <p className="text-sm font-semibold">Free plan</p>
           </div>
-          <p className="mt-1 text-xs leading-5 text-white/45">
+          <p className="mt-1 text-xs leading-5 text-[var(--dmi-muted)]">
             Upgrade to Individual Pro for contacts, wallet, tap sharing,
             analytics, and integrations.
           </p>
