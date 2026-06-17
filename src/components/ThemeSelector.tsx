@@ -40,16 +40,16 @@ export default function ThemeSelector() {
   }
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/10">
+    <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-5 shadow-[var(--shadow-card)]">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-semibold">Theme</p>
-          <p className="mt-1 text-sm text-white/50">
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Choose how DMI Cards appears on this device.
           </p>
         </div>
 
-        <div className="inline-flex rounded-2xl border border-white/10 bg-white/5 p-1">
+        <div className="inline-flex rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-soft)] p-1">
           {themeOptions.map((option) => (
             <button
               key={option.value}
@@ -57,8 +57,8 @@ export default function ThemeSelector() {
               onClick={() => selectTheme(option.value)}
               className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
                 theme === option.value
-                  ? "bg-[#AC00FF] text-white shadow-lg shadow-purple-500/20"
-                  : "text-white/65 hover:bg-white/10 hover:text-white"
+                  ? "bg-[image:var(--brand-gradient)] text-white shadow-[var(--brand-glow)]"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
               }`}
             >
               {option.label}

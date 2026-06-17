@@ -1,29 +1,5 @@
 @import "tailwindcss";
-
-:root {
-  color-scheme: light;
-  --background: #f8f9fc;
-  --foreground: #0f0e38;
-  --dmi-text-primary: #0f0e38;
-  --dmi-text-secondary: rgba(15, 14, 56, 0.7);
-  --dmi-text-tertiary: rgba(15, 14, 56, 0.56);
-  --dmi-surface: #ffffff;
-  --dmi-surface-soft: #f1f3f8;
-  --dmi-surface-raised: #ffffff;
-  --dmi-surface-hover: #f4f0ff;
-  --dmi-border: rgba(15, 14, 56, 0.1);
-  --dmi-border-strong: rgba(15, 14, 56, 0.16);
-  --dmi-muted: var(--dmi-text-secondary);
-  --dmi-disabled-bg: #e8ebf2;
-  --dmi-disabled-text: rgba(15, 14, 56, 0.38);
-  --dmi-card-shadow: 0 18px 42px rgba(15, 14, 56, 0.07);
-  --dmi-brand-red: #ff424a;
-  --dmi-brand-purple: #ac00ff;
-  --dmi-brand-navy: #0f0e38;
-  --dmi-gradient: linear-gradient(to right, #e8437a, #c2359e, #8b2fc9);
-  --dmi-gradient-soft: linear-gradient(180deg, #ffffff 0%, #f8f9fc 100%);
-  --dmi-gradient-glow: 0 16px 36px rgba(172, 0, 255, 0.14), 0 8px 20px rgba(255, 66, 74, 0.1);
-}
+@import "./theme.css";
 
 @theme inline {
   --color-background: var(--background);
@@ -38,60 +14,11 @@
   --font-mono: var(--font-geist-mono);
 }
 
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --background: #070b1a;
-  --foreground: #ffffff;
-  --dmi-text-primary: #ffffff;
-  --dmi-text-secondary: rgba(255, 255, 255, 0.72);
-  --dmi-text-tertiary: rgba(255, 255, 255, 0.56);
-  --dmi-surface: #101322;
-  --dmi-surface-soft: #151827;
-  --dmi-surface-raised: #101935;
-  --dmi-surface-hover: rgba(172, 0, 255, 0.16);
-  --dmi-border: rgba(255, 255, 255, 0.1);
-  --dmi-border-strong: rgba(255, 255, 255, 0.18);
-  --dmi-muted: var(--dmi-text-secondary);
-  --dmi-disabled-bg: #1d2235;
-  --dmi-disabled-text: rgba(255, 255, 255, 0.36);
-  --dmi-card-shadow: 0 22px 55px rgba(0, 0, 0, 0.32);
-  --dmi-gradient-soft:
-    radial-gradient(circle at 18% 12%, rgba(255, 66, 74, 0.18), transparent 30%),
-    radial-gradient(circle at 82% 6%, rgba(172, 0, 255, 0.18), transparent 32%),
-    linear-gradient(180deg, #070b1a 0%, #0b1024 100%);
-  --dmi-gradient-glow: 0 24px 70px rgba(172, 0, 255, 0.25), 0 10px 35px rgba(255, 66, 74, 0.14);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --background: #070b1a;
-    --foreground: #ffffff;
-    --dmi-text-primary: #ffffff;
-    --dmi-text-secondary: rgba(255, 255, 255, 0.72);
-    --dmi-text-tertiary: rgba(255, 255, 255, 0.56);
-    --dmi-surface: #101322;
-    --dmi-surface-soft: #151827;
-    --dmi-surface-raised: #101935;
-    --dmi-surface-hover: rgba(172, 0, 255, 0.16);
-    --dmi-border: rgba(255, 255, 255, 0.1);
-    --dmi-border-strong: rgba(255, 255, 255, 0.18);
-    --dmi-muted: var(--dmi-text-secondary);
-    --dmi-disabled-bg: #1d2235;
-    --dmi-disabled-text: rgba(255, 255, 255, 0.36);
-    --dmi-card-shadow: 0 22px 55px rgba(0, 0, 0, 0.32);
-    --dmi-gradient-soft:
-      radial-gradient(circle at 18% 12%, rgba(255, 66, 74, 0.18), transparent 30%),
-      radial-gradient(circle at 82% 6%, rgba(172, 0, 255, 0.18), transparent 32%),
-      linear-gradient(180deg, #070b1a 0%, #0b1024 100%);
-    --dmi-gradient-glow: 0 24px 70px rgba(172, 0, 255, 0.25), 0 10px 35px rgba(255, 66, 74, 0.14);
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-family);
+  line-height: 1.6;
 }
 
 /* =========================
@@ -103,7 +30,107 @@ body {
 }
 
 ::selection {
-  background: rgba(172, 0, 255, 0.24);
+  background: color-mix(in srgb, var(--brand-secondary) 24%, transparent);
+}
+
+body:not(:has(.public-card-page)) a {
+  color: inherit;
+  text-decoration: none;
+}
+
+body:not(:has(.public-card-page)) button {
+  font-family: inherit;
+}
+
+body:not(:has(.public-card-page)) h1,
+body:not(:has(.public-card-page)) h2,
+body:not(:has(.public-card-page)) h3,
+body:not(:has(.public-card-page)) h4,
+body:not(:has(.public-card-page)) h5,
+body:not(:has(.public-card-page)) h6 {
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.gradient-text {
+  background: var(--brand-gradient);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.btn-gradient {
+  display: inline-flex;
+  position: relative;
+  align-items: center;
+  gap: var(--space-sm);
+  overflow: hidden;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--brand-gradient);
+  color: #ffffff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.btn-gradient::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--brand-gradient-hover);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.btn-gradient:hover::before {
+  opacity: 1;
+}
+
+.btn-gradient:hover {
+  box-shadow: var(--brand-glow);
+  transform: translateY(-1px);
+}
+
+.btn-gradient > * {
+  position: relative;
+  z-index: 1;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-full);
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.badge-success {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.badge-warning {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.badge-error {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.badge-info {
+  background: var(--info-bg);
+  color: var(--info);
+}
+
+.badge-brand {
+  background: var(--brand-gradient-subtle);
+  color: var(--text-accent);
 }
 
 body:not(:has(.public-card-page)) [class*="from-[#AC00FF]"],
@@ -112,7 +139,7 @@ body:not(:has(.public-card-page)) [class*="bg-[#AC00FF]"],
 body:not(:has(.public-card-page)) [class*="bg-gradient-to-r"],
 body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"] {
   color: #ffffff;
-  text-shadow: 0 1px 1px rgba(15, 14, 56, 0.22);
+  text-shadow: 0 1px 1px color-mix(in srgb, var(--brand-navy) 22%, transparent);
 }
 
 .dmi-hero-panel {
@@ -125,7 +152,7 @@ body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"] {
     var(--dmi-gradient) !important;
   color: #ffffff !important;
   box-shadow: var(--dmi-gradient-glow) !important;
-  text-shadow: 0 1px 1px rgba(15, 14, 56, 0.22);
+  text-shadow: 0 1px 1px color-mix(in srgb, var(--brand-navy) 22%, transparent);
 }
 
 .dmi-hero-panel * {
@@ -147,28 +174,29 @@ body:not(:has(.public-card-page)) [class~="from-[#AC00FF]"][class~="to-purple-20
 body:not(:has(.public-card-page)) [class~="from-[#AC00FF]/70"],
 body:not(:has(.public-card-page)) [class~="from-[#FF424A]"] {
   background-image: var(--dmi-gradient) !important;
-  background-color: var(--dmi-brand-purple) !important;
+  background-color: var(--brand-secondary) !important;
   border-color: rgba(255, 255, 255, 0.24) !important;
   box-shadow: var(--dmi-gradient-glow) !important;
   color: #ffffff !important;
-  text-shadow: 0 1px 1px rgba(15, 14, 56, 0.22);
+  text-shadow: 0 1px 1px color-mix(in srgb, var(--brand-navy) 22%, transparent);
 }
 
 body:not(:has(.public-card-page)) [class~="border-[#AC00FF]/25"],
 body:not(:has(.public-card-page)) [class~="border-[#AC00FF]/30"],
 body:not(:has(.public-card-page)) [class~="border-[#AC00FF]/35"],
 body:not(:has(.public-card-page)) [class~="border-[#AC00FF]/40"] {
-  border-color: rgba(172, 0, 255, 0.24) !important;
-  box-shadow: 0 0 0 1px rgba(255, 66, 74, 0.04), 0 12px 28px rgba(172, 0, 255, 0.05);
+  border-color: var(--border-brand) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--brand-primary) 4%, transparent),
+    0 12px 28px color-mix(in srgb, var(--brand-secondary) 5%, transparent);
 }
 
 body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/10"],
 body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/15"],
 body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
-  background:
-    linear-gradient(135deg, rgba(255, 66, 74, 0.1), rgba(172, 0, 255, 0.12)) !important;
-  border-color: rgba(172, 0, 255, 0.2) !important;
-  color: #5a0f79 !important;
+  background: var(--gradient-brand-soft) !important;
+  border-color: var(--border-brand) !important;
+  color: var(--badge-pro-text) !important;
 }
 
 .dmi-sidebar {
@@ -203,83 +231,86 @@ body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
 }
 
 .dmi-sidebar [class*="bg-[#AC00FF]"] {
-  background-image: var(--dmi-gradient) !important;
+  background: var(--brand-gradient-subtle) !important;
+  color: var(--text-accent) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
 }
 
 .dmi-sidebar [class*="rounded-full"][class*="text-white/"] {
-  border-color: rgba(172, 0, 255, 0.24) !important;
-  background: #f5e9ff !important;
-  color: #4a1269 !important;
+  border-color: var(--border-brand) !important;
+  background: var(--badge-pro-bg) !important;
+  color: var(--badge-pro-text) !important;
 }
 
 body:not(:has(.public-card-page)) [class*="bg-[#070B1A]"],
-  body:not(:has(.public-card-page)) [class*="bg-[#090B14]"] {
-    background-color: var(--background) !important;
-    color: var(--foreground) !important;
-  }
+body:not(:has(.public-card-page)) [class*="bg-[#090B14]"] {
+  background-color: var(--background) !important;
+  color: var(--foreground) !important;
+}
 
-  body:not(:has(.public-card-page)) [class*="bg-[#0F0E38]"],
-  body:not(:has(.public-card-page)) [class*="bg-[#101935]"] {
-    background-color: var(--dmi-surface) !important;
-    color: var(--foreground) !important;
-  }
+body:not(:has(.public-card-page)) [class*="bg-[#0F0E38]"],
+body:not(:has(.public-card-page)) [class*="bg-[#101935]"] {
+  background-color: var(--dmi-surface) !important;
+  color: var(--foreground) !important;
+}
 
-  body:not(:has(.public-card-page)) [class*="bg-[#070B1A]/"],
-  body:not(:has(.public-card-page)) [class*="bg-[#101935]/"],
-  body:not(:has(.public-card-page)) [class*="bg-[#0F0E38]/"],
-  body:not(:has(.public-card-page)) [class*="bg-white/5"],
-  body:not(:has(.public-card-page)) [class*="bg-white/10"],
-  body:not(:has(.public-card-page)) [class*="bg-white/[0.03]"],
-  body:not(:has(.public-card-page)) [class*="bg-white/[0.04]"],
-  body:not(:has(.public-card-page)) [class*="bg-white/[0.07]"] {
-    background-color: var(--dmi-surface-raised) !important;
-  }
+body:not(:has(.public-card-page)) [class*="bg-[#070B1A]/"],
+body:not(:has(.public-card-page)) [class*="bg-[#101935]/"],
+body:not(:has(.public-card-page)) [class*="bg-[#0F0E38]/"],
+body:not(:has(.public-card-page)) [class*="bg-white/5"],
+body:not(:has(.public-card-page)) [class*="bg-white/10"],
+body:not(:has(.public-card-page)) [class*="bg-white/[0.03]"],
+body:not(:has(.public-card-page)) [class*="bg-white/[0.04]"],
+body:not(:has(.public-card-page)) [class*="bg-white/[0.07]"] {
+  background-color: var(--dmi-surface-raised) !important;
+}
 
-  body:not(:has(.public-card-page)) [class*="border-white/"] {
-    border-color: var(--dmi-border) !important;
-  }
+body:not(:has(.public-card-page)) [class*="border-white/"] {
+  border-color: var(--dmi-border) !important;
+}
 
-  body:not(:has(.public-card-page)) main [class*="text-white/"],
-  body:not(:has(.public-card-page)) section [class*="text-white/"],
-  body:not(:has(.public-card-page)) div [class*="text-white/"],
-  body:not(:has(.public-card-page)) p[class*="text-white/"],
-  body:not(:has(.public-card-page)) span[class*="text-white/"] {
-    color: var(--dmi-text-secondary) !important;
-  }
+body:not(:has(.public-card-page)) main [class*="text-white/"],
+body:not(:has(.public-card-page)) section [class*="text-white/"],
+body:not(:has(.public-card-page)) div [class*="text-white/"],
+body:not(:has(.public-card-page)) p[class*="text-white/"],
+body:not(:has(.public-card-page)) span[class*="text-white/"] {
+  color: var(--dmi-text-secondary) !important;
+}
 
-  body:not(:has(.public-card-page)) main [class*="text-white"],
-  body:not(:has(.public-card-page)) section [class*="text-white"],
-  body:not(:has(.public-card-page)) div [class*="text-white"],
-  body:not(:has(.public-card-page)) p[class*="text-white"],
-  body:not(:has(.public-card-page)) h1[class*="text-white"],
-  body:not(:has(.public-card-page)) h2[class*="text-white"],
-  body:not(:has(.public-card-page)) h3[class*="text-white"],
-  body:not(:has(.public-card-page)) h4[class*="text-white"],
-  body:not(:has(.public-card-page)) span[class*="text-white"] {
-    color: var(--foreground) !important;
-  }
+body:not(:has(.public-card-page)) main [class*="text-white"],
+body:not(:has(.public-card-page)) section [class*="text-white"],
+body:not(:has(.public-card-page)) div [class*="text-white"],
+body:not(:has(.public-card-page)) p[class*="text-white"],
+body:not(:has(.public-card-page)) h1[class*="text-white"],
+body:not(:has(.public-card-page)) h2[class*="text-white"],
+body:not(:has(.public-card-page)) h3[class*="text-white"],
+body:not(:has(.public-card-page)) h4[class*="text-white"],
+body:not(:has(.public-card-page)) span[class*="text-white"] {
+  color: var(--foreground) !important;
+}
 
-  body:not(:has(.public-card-page)) [class*="text-purple-100"],
-  body:not(:has(.public-card-page)) [class*="text-purple-200"],
-  body:not(:has(.public-card-page)) [class*="text-purple-300"],
-  body:not(:has(.public-card-page)) [class*="text-slate-500"],
-  body:not(:has(.public-card-page)) [class*="text-gray-500"],
-  body:not(:has(.public-card-page)) [class*="text-zinc-500"] {
-    color: var(--dmi-text-secondary) !important;
-  }
+body:not(:has(.public-card-page)) [class*="text-purple-100"],
+body:not(:has(.public-card-page)) [class*="text-purple-200"],
+body:not(:has(.public-card-page)) [class*="text-purple-300"],
+body:not(:has(.public-card-page)) [class*="text-slate-500"],
+body:not(:has(.public-card-page)) [class*="text-gray-500"],
+body:not(:has(.public-card-page)) [class*="text-zinc-500"] {
+  color: var(--dmi-text-secondary) !important;
+}
 
-  body:not(:has(.public-card-page)) [class*="text-slate-950"],
-  body:not(:has(.public-card-page)) [class*="text-gray-950"],
-  body:not(:has(.public-card-page)) [class*="text-zinc-950"] {
-    color: var(--foreground) !important;
-  }
+body:not(:has(.public-card-page)) [class*="text-slate-950"],
+body:not(:has(.public-card-page)) [class*="text-gray-950"],
+body:not(:has(.public-card-page)) [class*="text-zinc-950"] {
+  color: var(--foreground) !important;
+}
 
-  body:not(:has(.public-card-page)) button[class*="bg-white/"],
-  body:not(:has(.public-card-page)) a[class*="bg-white/"] {
-    border-color: var(--dmi-border-strong) !important;
-    color: var(--foreground) !important;
-    background-color: var(--dmi-surface) !important;
-  }
+body:not(:has(.public-card-page)) button[class*="bg-white/"],
+body:not(:has(.public-card-page)) a[class*="bg-white/"] {
+  border-color: var(--button-secondary-border) !important;
+  color: var(--button-secondary-text) !important;
+  background-color: var(--button-secondary-bg) !important;
+}
 
 body:not(:has(.public-card-page)) button[class*="bg-white "],
 body:not(:has(.public-card-page)) a[class*="bg-white "],
@@ -287,105 +318,127 @@ body:not(:has(.public-card-page)) button[class$="bg-white"],
 body:not(:has(.public-card-page)) a[class$="bg-white"] {
   border-color: var(--dmi-border-strong) !important;
   background-color: #ffffff !important;
-  color: #0f0e38 !important;
+  color: var(--brand-navy) !important;
 }
 
 body:not(:has(.public-card-page)) button[class*="bg-black"],
-body:not(:has(.public-card-page)) button[class*="bg-black"] *,
 body:not(:has(.public-card-page)) a[class*="bg-black"],
-body:not(:has(.public-card-page)) a[class*="bg-black"] * {
+body:not(:has(.public-card-page)) a[class*="bg-black"] {
   background-color: #050505 !important;
   color: #ffffff !important;
 }
 
-  body:not(:has(.public-card-page)) button[class*="bg-white/"]:hover,
-  body:not(:has(.public-card-page)) a[class*="bg-white/"]:hover {
-    border-color: rgba(172, 0, 255, 0.28) !important;
-    background-color: var(--dmi-surface-hover) !important;
-    color: var(--foreground) !important;
-  }
+body:not(:has(.public-card-page)) button[class*="bg-black"] *,
+body:not(:has(.public-card-page)) a[class*="bg-black"] * {
+  color: #ffffff !important;
+}
 
-  body:not(:has(.public-card-page)) button[class*="bg-[#AC00FF]/"],
-  body:not(:has(.public-card-page)) a[class*="bg-[#AC00FF]/"] {
-    color: #ffffff !important;
-    background-image: var(--dmi-gradient) !important;
-    background-color: var(--dmi-brand-purple) !important;
-    box-shadow: 0 10px 24px rgba(172, 0, 255, 0.14) !important;
-    text-shadow: 0 1px 1px rgba(15, 14, 56, 0.22);
-  }
+body:not(:has(.public-card-page)) button[class*="bg-white/"]:hover,
+body:not(:has(.public-card-page)) a[class*="bg-white/"]:hover {
+  border-color: var(--border-brand) !important;
+  background-color: var(--button-hover-bg) !important;
+  color: var(--foreground) !important;
+}
 
-  body:not(:has(.public-card-page)) input,
-  body:not(:has(.public-card-page)) textarea,
-  body:not(:has(.public-card-page)) select {
-    background-color: var(--dmi-surface) !important;
-    border-color: var(--dmi-border) !important;
-    color: var(--foreground) !important;
-  }
+body:not(:has(.public-card-page)) button[class*="bg-[#AC00FF]/"],
+body:not(:has(.public-card-page)) a[class*="bg-[#AC00FF]/"] {
+  color: var(--button-primary-text) !important;
+  background-image: var(--button-primary-bg) !important;
+  background-color: var(--brand-secondary) !important;
+  box-shadow: var(--shadow-brand) !important;
+  text-shadow: 0 1px 1px color-mix(in srgb, var(--brand-navy) 22%, transparent);
+}
 
-  body:not(:has(.public-card-page)) input::placeholder,
-  body:not(:has(.public-card-page)) textarea::placeholder {
-    color: var(--dmi-text-tertiary) !important;
-  }
+body:not(:has(.public-card-page)) input,
+body:not(:has(.public-card-page)) textarea,
+body:not(:has(.public-card-page)) select {
+  background-color: var(--input-bg) !important;
+  border-color: var(--input-border) !important;
+  color: var(--input-text) !important;
+}
 
-  body:not(:has(.public-card-page)) input:focus,
-  body:not(:has(.public-card-page)) textarea:focus,
-  body:not(:has(.public-card-page)) select:focus {
-    border-color: rgba(172, 0, 255, 0.72) !important;
-    box-shadow: 0 0 0 4px rgba(172, 0, 255, 0.14) !important;
-  }
+body:not(:has(.public-card-page)) input::placeholder,
+body:not(:has(.public-card-page)) textarea::placeholder {
+  color: var(--dmi-text-tertiary) !important;
+}
 
-  body:not(:has(.public-card-page)) :disabled,
-  body:not(:has(.public-card-page)) [aria-disabled="true"] {
-    background-color: var(--dmi-disabled-bg) !important;
-    color: var(--dmi-disabled-text) !important;
-    cursor: not-allowed !important;
-    opacity: 0.62 !important;
-  }
+body:not(:has(.public-card-page)) input:focus,
+body:not(:has(.public-card-page)) textarea:focus,
+body:not(:has(.public-card-page)) select:focus {
+  border-color: var(--input-focus) !important;
+  box-shadow: 0 0 0 4px var(--input-focus-ring) !important;
+}
+
+body:not(:has(.public-card-page)) :disabled,
+body:not(:has(.public-card-page)) [aria-disabled="true"] {
+  background-color: var(--dmi-disabled-bg) !important;
+  color: var(--dmi-disabled-text) !important;
+  cursor: not-allowed !important;
+  opacity: var(--disabled-opacity) !important;
+}
 
 body:not(:has(.public-card-page)) :disabled *,
 body:not(:has(.public-card-page)) [aria-disabled="true"] * {
   color: var(--dmi-disabled-text) !important;
 }
 
-  body:not(:has(.public-card-page)) [class*="opacity-30"]:not(:disabled):not([aria-disabled="true"]),
-  body:not(:has(.public-card-page)) [class*="opacity-35"]:not(:disabled):not([aria-disabled="true"]),
-  body:not(:has(.public-card-page)) [class*="opacity-40"]:not(:disabled):not([aria-disabled="true"]),
-  body:not(:has(.public-card-page)) [class*="opacity-45"]:not(:disabled):not([aria-disabled="true"]),
-  body:not(:has(.public-card-page)) [class*="opacity-50"]:not(:disabled):not([aria-disabled="true"]),
-  body:not(:has(.public-card-page)) [class*="opacity-55"]:not(:disabled):not([aria-disabled="true"]),
-  body:not(:has(.public-card-page)) [class*="opacity-60"]:not(:disabled):not([aria-disabled="true"]),
-  body:not(:has(.public-card-page)) [class*="opacity-70"]:not(:disabled):not([aria-disabled="true"]),
-  body:not(:has(.public-card-page)) [class*="opacity-75"]:not(:disabled):not([aria-disabled="true"]),
-  body:not(:has(.public-card-page)) [class*="opacity-80"]:not(:disabled):not([aria-disabled="true"]) {
-    opacity: 1 !important;
-  }
+body:not(:has(.public-card-page)) [class*="opacity-30"]:not(:disabled):not([aria-disabled="true"]),
+body:not(:has(.public-card-page)) [class*="opacity-35"]:not(:disabled):not([aria-disabled="true"]),
+body:not(:has(.public-card-page)) [class*="opacity-40"]:not(:disabled):not([aria-disabled="true"]),
+body:not(:has(.public-card-page)) [class*="opacity-45"]:not(:disabled):not([aria-disabled="true"]),
+body:not(:has(.public-card-page)) [class*="opacity-50"]:not(:disabled):not([aria-disabled="true"]),
+body:not(:has(.public-card-page)) [class*="opacity-55"]:not(:disabled):not([aria-disabled="true"]),
+body:not(:has(.public-card-page)) [class*="opacity-60"]:not(:disabled):not([aria-disabled="true"]),
+body:not(:has(.public-card-page)) [class*="opacity-70"]:not(:disabled):not([aria-disabled="true"]),
+body:not(:has(.public-card-page)) [class*="opacity-75"]:not(:disabled):not([aria-disabled="true"]),
+body:not(:has(.public-card-page)) [class*="opacity-80"]:not(:disabled):not([aria-disabled="true"]) {
+  opacity: 1 !important;
+}
 
-  body:not(:has(.public-card-page)) [style*="font-family"] [class*="text-white"],
-  body:not(:has(.public-card-page)) [style*="font-family"] [class*="text-white/"],
-  body:not(:has(.public-card-page)) [style*="font-family"] [class*="text-purple-"] {
-    color: inherit !important;
-  }
+body:not(:has(.public-card-page)) [style*="font-family"] [class*="text-white"],
+body:not(:has(.public-card-page)) [style*="font-family"] [class*="text-white/"],
+body:not(:has(.public-card-page)) [style*="font-family"] [class*="text-purple-"] {
+  color: inherit !important;
+}
 
-  body:not(:has(.public-card-page)) [style*="font-family"] [class*="bg-white/"],
-  body:not(:has(.public-card-page)) [style*="font-family"] [class*="bg-[#AC00FF]/"] {
-    background-color: revert !important;
-    background-image: revert !important;
-  }
+body:not(:has(.public-card-page)) [style*="font-family"] [class*="bg-white/"],
+body:not(:has(.public-card-page)) [style*="font-family"] [class*="bg-[#AC00FF]/"] {
+  background-color: revert !important;
+  background-image: revert !important;
+}
 
-  body:not(:has(.public-card-page)) [class*="bg-[#AC00FF]"],
-  body:not(:has(.public-card-page)) [class*="bg-[#AC00FF]"] *,
-  body:not(:has(.public-card-page)) [class*="from-[#FF424A]"],
-  body:not(:has(.public-card-page)) [class*="from-[#FF424A]"] *,
-  body:not(:has(.public-card-page)) [class*="from-[#AC00FF]"],
-  body:not(:has(.public-card-page)) [class*="from-[#AC00FF]"] *,
-  body:not(:has(.public-card-page)) [class*="bg-gradient-to-r"],
-  body:not(:has(.public-card-page)) [class*="bg-gradient-to-r"] *,
-  body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"],
-  body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"] * {
-    color: #ffffff !important;
-  }
+body:not(:has(.public-card-page)) [class*="bg-[#AC00FF]"],
+body:not(:has(.public-card-page)) [class*="bg-[#AC00FF]"] *,
+body:not(:has(.public-card-page)) [class*="from-[#FF424A]"],
+body:not(:has(.public-card-page)) [class*="from-[#FF424A]"] *,
+body:not(:has(.public-card-page)) [class*="from-[#AC00FF]"],
+body:not(:has(.public-card-page)) [class*="from-[#AC00FF]"] *,
+body:not(:has(.public-card-page)) [class*="bg-gradient-to-r"],
+body:not(:has(.public-card-page)) [class*="bg-gradient-to-r"] *,
+body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"],
+body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"] * {
+  color: #ffffff !important;
+}
 
-  body:not(:has(.public-card-page)) [class*="shadow-purple"],
+.dmi-sidebar [class*="bg-[#AC00FF]"],
+.dmi-sidebar [class*="bg-[#AC00FF]"] * {
+  background-image: none !important;
+  color: var(--text-accent) !important;
+  text-shadow: none !important;
+}
+
+.dmi-sidebar [class*="bg-[#AC00FF]"] {
+  background: var(--brand-gradient-subtle) !important;
+  border-color: var(--border-accent) !important;
+  box-shadow: none !important;
+}
+
+.dmi-sidebar [class*="bg-[#AC00FF]"] [class*="rounded-full"] {
+  background: var(--brand-gradient) !important;
+  color: #ffffff !important;
+}
+
+body:not(:has(.public-card-page)) [class*="shadow-purple"],
 body:not(:has(.public-card-page)) [class*="shadow-black"] {
   box-shadow: var(--dmi-card-shadow) !important;
 }
@@ -399,15 +452,15 @@ body:not(:has(.public-card-page)) [class*="shadow-black"] {
   height: 54px;
   min-height: 54px;
 
-  background: var(--dmi-surface);
+  background: var(--input-bg);
 
-  border: 1px solid var(--dmi-border);
+  border: 1px solid var(--input-border);
 
   border-radius: 18px;
 
   padding: 0 18px;
 
-  color: var(--foreground);
+  color: var(--input-text);
 
   font-size: 15px;
 
@@ -427,9 +480,9 @@ select.inputStyle {
 
 /* Focus state */
 .inputStyle:focus {
-  border-color: rgba(172, 0, 255, 0.8);
+  border-color: var(--input-focus);
 
-  box-shadow: 0 0 0 4px rgba(172, 0, 255, 0.15);
+  box-shadow: 0 0 0 4px var(--input-focus-ring);
 }
 
 /* Placeholder */
@@ -439,23 +492,6 @@ select.inputStyle {
 
 /* Dropdown options */
 select.inputStyle option {
-  background: var(--dmi-surface);
-  color: var(--foreground);
-}
-
-@media (prefers-color-scheme: dark) {
-  .inputStyle {
-    background: rgba(10, 18, 50, 0.9);
-    border-color: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
-  }
-
-  .inputStyle::placeholder {
-    color: rgba(255, 255, 255, 0.35);
-  }
-
-  select.inputStyle option {
-    background: #0b1023;
-    color: #ffffff;
-  }
+  background: var(--input-bg);
+  color: var(--input-text);
 }
