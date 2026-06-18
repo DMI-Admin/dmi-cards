@@ -30,7 +30,7 @@ const navItems: {
   { label: "My Cards", href: "/client/cards", icon: CreditCard },
   { label: "Contacts", href: "/client/contacts", icon: ContactRound, locked: true },
   { label: "QR Code", href: "/client/qr-code", icon: QrCode },
-  { label: "Wallet", href: "/client/wallet", icon: WalletCards, locked: true },
+  { label: "Wallet", href: "/client/wallet", icon: WalletCards },
   {
     label: "Tap to Share",
     href: "/client/tap-to-share",
@@ -114,8 +114,8 @@ export default function ClientSidebar() {
             <p className="text-sm font-semibold">Free plan</p>
           </div>
           <p className="mt-1 text-xs leading-5 text-[var(--dmi-muted)]">
-            Upgrade to Individual Pro for contacts, wallet, tap sharing,
-            analytics, and integrations.
+            Upgrade to Individual Pro for contacts, tap sharing, analytics,
+            and integrations.
           </p>
         </div>
 
