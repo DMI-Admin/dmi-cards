@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
+import {
+  emailFromClerkUser,
+  requireAdminAccess,
+} from "@/lib/admin-auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
 type ClientRecord = {
@@ -20,10 +24,15 @@ export async function DELETE(
   _request: Request,
   context: { params: Promise<{ clientId: string }> }
 ) {
-  const { userId: adminUserId } = await auth();
+  const adminAccess = await requireAdminAccess(await auth(), async () =>
+    emailFromClerkUser(await currentUser())
+  );
 
-  if (!adminUserId) {
-    return NextResponse.json({ error: "Admin sign-in is required." }, { status: 401 });
+  if (!adminAccess.authorized) {
+    return NextResponse.json(
+      { error: adminAccess.error },
+      { status: adminAccess.status }
+    );
   }
 
   const { clientId } = await context.params;

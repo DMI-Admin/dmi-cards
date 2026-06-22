@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
+import {
+  emailFromClerkUser,
+  requireAdminAccess,
+} from "@/lib/admin-auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
 type TemplatePayload = Record<string, unknown>;
@@ -12,10 +16,15 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ templateId: string }> }
 ) {
-  const { userId } = await auth();
+  const adminAccess = await requireAdminAccess(await auth(), async () =>
+    emailFromClerkUser(await currentUser())
+  );
 
-  if (!userId) {
-    return NextResponse.json({ error: "Admin sign-in is required." }, { status: 401 });
+  if (!adminAccess.authorized) {
+    return NextResponse.json(
+      { error: adminAccess.error },
+      { status: adminAccess.status }
+    );
   }
 
   const { templateId } = await context.params;
@@ -69,10 +78,15 @@ export async function DELETE(
   _request: Request,
   context: { params: Promise<{ templateId: string }> }
 ) {
-  const { userId } = await auth();
+  const adminAccess = await requireAdminAccess(await auth(), async () =>
+    emailFromClerkUser(await currentUser())
+  );
 
-  if (!userId) {
-    return NextResponse.json({ error: "Admin sign-in is required." }, { status: 401 });
+  if (!adminAccess.authorized) {
+    return NextResponse.json(
+      { error: adminAccess.error },
+      { status: adminAccess.status }
+    );
   }
 
   const { templateId } = await context.params;

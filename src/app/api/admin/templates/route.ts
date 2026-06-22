@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
+import {
+  emailFromClerkUser,
+  requireAdminAccess,
+} from "@/lib/admin-auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
 type TemplatePayload = Record<string, unknown>;
@@ -12,10 +16,15 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET() {
-  const { userId } = await auth();
+  const adminAccess = await requireAdminAccess(await auth(), async () =>
+    emailFromClerkUser(await currentUser())
+  );
 
-  if (!userId) {
-    return NextResponse.json({ error: "Admin sign-in is required." }, { status: 401 });
+  if (!adminAccess.authorized) {
+    return NextResponse.json(
+      { error: adminAccess.error },
+      { status: adminAccess.status }
+    );
   }
 
   let supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>;
@@ -47,10 +56,15 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { userId } = await auth();
+  const adminAccess = await requireAdminAccess(await auth(), async () =>
+    emailFromClerkUser(await currentUser())
+  );
 
-  if (!userId) {
-    return NextResponse.json({ error: "Admin sign-in is required." }, { status: 401 });
+  if (!adminAccess.authorized) {
+    return NextResponse.json(
+      { error: adminAccess.error },
+      { status: adminAccess.status }
+    );
   }
 
   let payload: TemplatePayload;

@@ -89,14 +89,14 @@ export default function ClientSidebar() {
                 href={item.href}
                 className={`flex items-center gap-3 rounded-[var(--radius-md)] px-3 py-3 text-sm font-medium transition-all duration-200 ${
                   isActive
-                    ? "bg-[image:var(--brand-gradient-subtle)] text-[var(--text-accent)] ring-1 ring-[var(--border-brand)]"
+                    ? "dmi-nav-active text-white"
                     : "text-[var(--dmi-muted)] hover:bg-[var(--dmi-surface-soft)] hover:text-[var(--foreground)]"
                 }`}
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 <span className="min-w-0 flex-1">{item.label}</span>
                 {item.locked && (
-                  <span className="flex items-center gap-1 rounded-full border border-[var(--border-brand)] bg-[var(--badge-pro-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--badge-pro-text)]">
+                  <span className="flex items-center gap-1 rounded-full border border-[var(--border-brand)] bg-[var(--badge-pro-bg)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--badge-pro-text)]">
                     <Lock className="h-3 w-3" />
                     Pro
                   </span>

@@ -10,7 +10,7 @@
   --color-dmi-navy: var(--dmi-brand-navy);
   --color-dmi-purple: var(--dmi-brand-purple);
   --color-dmi-red: var(--dmi-brand-red);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-family);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -19,6 +19,8 @@ body {
   color: var(--foreground);
   font-family: var(--font-family);
   line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* =========================
@@ -135,7 +137,7 @@ body:not(:has(.public-card-page)) h6 {
 
 .dmi-app-shell {
   min-height: 100vh;
-  background: var(--gradient-page);
+  background: var(--background);
   color: var(--foreground);
 }
 
@@ -240,7 +242,7 @@ body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
   background: var(--dmi-surface) !important;
   color: var(--foreground) !important;
   border-color: var(--dmi-border) !important;
-  box-shadow: var(--dmi-card-shadow);
+  box-shadow: var(--shadow-sm);
 }
 
 .dmi-sidebar [class*="border-white/"] {
@@ -260,6 +262,8 @@ body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
   color: var(--foreground);
 }
 
+.dmi-sidebar .dmi-nav-active,
+.dmi-sidebar .dmi-nav-active *,
 .dmi-sidebar [class*="bg-[#AC00FF]"],
 .dmi-sidebar [class*="bg-[#AC00FF]"] *,
 .dmi-sidebar [class*="from-[#AC00FF]"],
@@ -267,17 +271,20 @@ body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]/20"] {
   color: #ffffff !important;
 }
 
+.dmi-sidebar .dmi-nav-active,
 .dmi-sidebar [class*="bg-[#AC00FF]"] {
-  background: var(--brand-gradient-subtle) !important;
-  color: var(--text-accent) !important;
-  box-shadow: none !important;
-  text-shadow: none !important;
+  background: var(--brand-gradient) !important;
+  color: #ffffff !important;
+  box-shadow: var(--brand-glow) !important;
+  text-shadow: 0 1px 1px color-mix(in srgb, var(--brand-navy) 24%, transparent);
 }
 
+.dmi-sidebar .dmi-nav-active [class*="rounded-full"],
 .dmi-sidebar [class*="rounded-full"][class*="text-white/"] {
-  border-color: var(--border-brand) !important;
-  background: var(--badge-pro-bg) !important;
-  color: var(--badge-pro-text) !important;
+  border-color: rgba(255, 255, 255, 0.72) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: var(--brand-navy) !important;
+  text-shadow: none !important;
 }
 
 body:not(:has(.public-card-page)) [class*="bg-[#070B1A]"],
@@ -359,7 +366,6 @@ body:not(:has(.public-card-page)) a[class$="bg-white"] {
 }
 
 body:not(:has(.public-card-page)) button[class*="bg-black"],
-body:not(:has(.public-card-page)) a[class*="bg-black"],
 body:not(:has(.public-card-page)) a[class*="bg-black"] {
   background-color: #050505 !important;
   color: #ffffff !important;
@@ -432,6 +438,30 @@ body:not(:has(.public-card-page)) [class*="opacity-80"]:not(:disabled):not([aria
   opacity: 1 !important;
 }
 
+body:not(:has(.public-card-page)) .badge,
+body:not(:has(.public-card-page)) [class*="rounded-full"][class*="uppercase"],
+body:not(:has(.public-card-page)) [class*="rounded-full"][class*="tracking"] {
+  opacity: 1 !important;
+}
+
+body:not(:has(.public-card-page)) [class*="text-green"],
+body:not(:has(.public-card-page)) [class*="text-emerald"] {
+  color: var(--success) !important;
+}
+
+body:not(:has(.public-card-page)) [class*="bg-green"],
+body:not(:has(.public-card-page)) [class*="bg-emerald"] {
+  background-color: var(--success-bg) !important;
+}
+
+body:not(:has(.public-card-page)) [class*="text-red"] {
+  color: var(--error) !important;
+}
+
+body:not(:has(.public-card-page)) [class*="bg-red"] {
+  background-color: var(--error-bg) !important;
+}
+
 body:not(:has(.public-card-page)) [style*="font-family"] [class*="text-white"],
 body:not(:has(.public-card-page)) [style*="font-family"] [class*="text-white/"],
 body:not(:has(.public-card-page)) [style*="font-family"] [class*="text-purple-"] {
@@ -454,24 +484,6 @@ body:not(:has(.public-card-page)) [class*="bg-gradient-to-r"],
 body:not(:has(.public-card-page)) [class*="bg-gradient-to-r"] *,
 body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"],
 body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"] * {
-  color: #ffffff !important;
-}
-
-.dmi-sidebar [class*="bg-[#AC00FF]"],
-.dmi-sidebar [class*="bg-[#AC00FF]"] * {
-  background-image: none !important;
-  color: var(--text-accent) !important;
-  text-shadow: none !important;
-}
-
-.dmi-sidebar [class*="bg-[#AC00FF]"] {
-  background: var(--brand-gradient-subtle) !important;
-  border-color: var(--border-accent) !important;
-  box-shadow: none !important;
-}
-
-.dmi-sidebar [class*="bg-[#AC00FF]"] [class*="rounded-full"] {
-  background: var(--brand-gradient) !important;
   color: #ffffff !important;
 }
 

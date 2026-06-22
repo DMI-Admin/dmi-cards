@@ -49,11 +49,12 @@ export default function ThemeSelector() {
           </p>
         </div>
 
-        <div className="inline-flex rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-soft)] p-1">
+        <div className="inline-flex rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-soft)] p-1 shadow-[var(--shadow-sm)]">
           {themeOptions.map((option) => (
             <button
               key={option.value}
               type="button"
+              aria-pressed={theme === option.value}
               onClick={() => selectTheme(option.value)}
               className={`rounded-[calc(var(--radius-md)-2px)] px-4 py-2 text-sm font-semibold transition ${
                 theme === option.value

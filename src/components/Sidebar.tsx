@@ -4,42 +4,64 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useClerk } from "@clerk/nextjs";
+import type { LucideIcon } from "lucide-react";
+import {
+  BarChart3,
+  CreditCard,
+  FileText,
+  Headphones,
+  LayoutDashboard,
+  LogOut,
+  QrCode,
+  ScrollText,
+  Settings,
+  ShieldCheck,
+  UploadCloud,
+  UsersRound,
+  WalletCards,
+} from "lucide-react";
+
+type NavItem = {
+  name: string;
+  href: string;
+  icon: LucideIcon;
+};
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { signOut } = useClerk();
 
-  const sections = [
+  const sections: { title: string; items: NavItem[] }[] = [
     {
       title: "Overview",
-      items: [{ name: "Dashboard", href: "/dashboard" }],
+      items: [{ name: "Dashboard", href: "/dashboard", icon: LayoutDashboard }],
     },
     {
       title: "Management",
       items: [
-        { name: "Client Onboarding", href: "/clients" },
-        { name: "Templates", href: "/templates" },
-        { name: "Cards", href: "/cards" },
-        { name: "Public Pages", href: "/public-pages" },
-        { name: "QR Codes", href: "/qr-codes" },
+        { name: "Client Onboarding", href: "/clients", icon: UsersRound },
+        { name: "Templates", href: "/templates", icon: FileText },
+        { name: "Cards", href: "/cards", icon: CreditCard },
+        { name: "Public Pages", href: "/public-pages", icon: WalletCards },
+        { name: "QR Codes", href: "/qr-codes", icon: QrCode },
       ],
     },
     {
       title: "Business",
       items: [
-        { name: "Subscriptions", href: "/subscriptions" },
-        { name: "Finance", href: "/finance" },
-        { name: "Analytics", href: "/analytics" },
+        { name: "Subscriptions", href: "/subscriptions", icon: ScrollText },
+        { name: "Finance", href: "/finance", icon: WalletCards },
+        { name: "Analytics", href: "/analytics", icon: BarChart3 },
       ],
     },
     {
       title: "Operations",
       items: [
-        { name: "Uploads", href: "/uploads" },
-        { name: "Support", href: "/support" },
-        { name: "Audit Logs", href: "/audit-logs" },
-        { name: "Security", href: "/security" },
-        { name: "Settings", href: "/settings" },
+        { name: "Uploads", href: "/uploads", icon: UploadCloud },
+        { name: "Support", href: "/support", icon: Headphones },
+        { name: "Audit Logs", href: "/audit-logs", icon: ScrollText },
+        { name: "Security", href: "/security", icon: ShieldCheck },
+        { name: "Settings", href: "/settings", icon: Settings },
       ],
     },
   ];
@@ -51,24 +73,29 @@ export default function Sidebar() {
 
   return (
     <aside className="dmi-sidebar sticky top-0 flex h-screen w-72 shrink-0 flex-col border-r">
-      <div className="flex h-40 flex-col items-center justify-center border-b px-6 py-6">
-        <div className="relative h-20 w-20 shrink-0">
-          <Image
-            src="/dmi-cards-logo.svg"
-            alt="DMI Cards Logo"
-            fill
-            sizes="80px"
-            className="object-contain"
-            priority
-          />
+      <div className="border-b px-6 py-8">
+        <div className="rounded-[var(--radius-lg)] border border-[var(--border-brand)] bg-[image:var(--brand-gradient-subtle)] p-4">
+          <div className="flex items-center gap-3">
+            <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-md)] bg-white shadow-[var(--shadow-sm)]">
+              <Image
+                src="/dmi-cards-logo.svg"
+                alt="DMI Cards Logo"
+                fill
+                sizes="48px"
+                className="object-contain p-1.5"
+                priority
+              />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-[var(--text-primary)]">
+                DMI Cards
+              </p>
+              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--dmi-muted)]">
+                Admin Panel
+              </p>
+            </div>
+          </div>
         </div>
-
-        <p className="mt-4 text-sm font-semibold text-white">
-          DMI Cards
-        </p>
-        <p className="mt-1 text-[10px] font-semibold tracking-[0.26em] text-[var(--dmi-muted)]">
-          ADMIN PANEL
-        </p>
       </div>
 
       <nav className="flex-1 space-y-5 overflow-y-auto px-4 py-6">
@@ -80,6 +107,7 @@ export default function Sidebar() {
 
             <div className="space-y-1">
               {section.items.map((item) => {
+                const Icon = item.icon;
                 const isActive =
                   pathname === item.href ||
                   pathname.startsWith(`${item.href}/`);
@@ -88,13 +116,14 @@ export default function Sidebar() {
                   <Link
                     key={item.name}
                     href={item.href}
-                    className={`block w-full rounded-[var(--radius-md)] px-3 py-2.5 text-left text-sm font-medium leading-5 transition-all duration-200 ${
+                    className={`flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-left text-sm font-medium leading-5 transition-all duration-200 ${
                       isActive
-                        ? "bg-[image:var(--brand-gradient-subtle)] text-[var(--text-accent)] ring-1 ring-[var(--border-brand)]"
+                        ? "dmi-nav-active text-white"
                         : "text-[var(--dmi-muted)] hover:bg-[var(--dmi-surface-soft)] hover:text-[var(--foreground)]"
                     }`}
                   >
-                    {item.name}
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0 flex-1">{item.name}</span>
                   </Link>
                 );
               })}
@@ -107,8 +136,9 @@ export default function Sidebar() {
         <button
           type="button"
           onClick={handleSignOut}
-          className="w-full rounded-[var(--radius-md)] border border-[var(--dmi-border)] bg-[var(--button-secondary-bg)] px-4 py-3 text-sm font-medium text-[var(--button-secondary-text)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] hover:text-[var(--foreground)]"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--dmi-border)] bg-[var(--button-secondary-bg)] px-4 py-3 text-sm font-semibold text-[var(--button-secondary-text)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] hover:text-[var(--foreground)]"
         >
+          <LogOut className="h-4 w-4" />
           Sign Out
         </button>
       </div>

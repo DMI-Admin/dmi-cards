@@ -1,25 +1,48 @@
+import { NextResponse } from "next/server";
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import {
+  adminForbiddenMessage,
+  adminRoutePatterns,
+  adminUnauthorizedPath,
+  isApprovedAdmin,
+} from "@/lib/admin-auth";
 
-const isProtectedRoute = createRouteMatcher([
-  "/dashboard(.*)",
-  "/clients(.*)",
-  "/templates(.*)",
-  "/cards(.*)",
-  "/public-pages(.*)",
-  "/qr-codes(.*)",
-  "/subscriptions(.*)",
-  "/finance(.*)",
-  "/analytics(.*)",
-  "/uploads(.*)",
-  "/support(.*)",
-  "/audit-logs(.*)",
-  "/settings(.*)",
-  "/security(.*)",
-]);
+const isAdminRoute = createRouteMatcher(adminRoutePatterns);
+const isAdminUnauthorizedRoute = createRouteMatcher([adminUnauthorizedPath]);
+const isAdminApiRoute = createRouteMatcher(["/api/admin(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
-  if (isProtectedRoute(req)) {
-    await auth.protect();
+  if (!isAdminRoute(req) || isAdminUnauthorizedRoute(req)) {
+    return;
+  }
+
+  const adminAuth = await auth();
+
+  if (!adminAuth.userId) {
+    if (isAdminApiRoute(req)) {
+      return NextResponse.json(
+        { error: adminForbiddenMessage },
+        { status: 403 }
+      );
+    }
+
+    return adminAuth.redirectToSignIn({ returnBackUrl: req.url });
+  }
+
+  if (
+    !isApprovedAdmin({
+      userId: adminAuth.userId,
+      sessionClaims: adminAuth.sessionClaims,
+    })
+  ) {
+    if (isAdminApiRoute(req)) {
+      return NextResponse.json(
+        { error: adminForbiddenMessage },
+        { status: 403 }
+      );
+    }
+
+    return NextResponse.redirect(new URL(adminUnauthorizedPath, req.url));
   }
 });
 
