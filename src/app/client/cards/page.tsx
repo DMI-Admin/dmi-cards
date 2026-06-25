@@ -1406,7 +1406,14 @@ function CardList({
           </p>
         </div>
         {!isPaid && (
-          <span className="rounded-full border border-[#AC00FF]/25 bg-[#AC00FF]/10 px-3 py-1 text-xs font-semibold text-purple-100">
+          <span
+            className="rounded-full border px-3 py-1 text-xs font-semibold"
+            style={{
+              borderColor: "var(--border-accent)",
+              background: "var(--brand-gradient-subtle)",
+              color: "var(--text-accent)",
+            }}
+          >
             Free plan: 1 card limit
           </span>
         )}
@@ -1474,7 +1481,7 @@ function CardList({
                   <button
                     type="button"
                     onClick={() => onDelete(card)}
-                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-200 transition hover:bg-red-500/20"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-red-500/40 bg-red-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-red-500/20 transition hover:border-red-400 hover:bg-red-600 focus:text-white"
                   >
                     <Trash2 className="h-4 w-4" />
                     Delete
@@ -2023,7 +2030,10 @@ function CustomiseStep({
                 aria-label={`Select ${colour}`}
               >
                 {activeColour === colour && (
-                  <Check className="h-5 w-5" />
+                  <Check
+                    className="h-5 w-5"
+                    style={{ color: readableTextForColour(colour) }}
+                  />
                 )}
               </button>
             ))}
@@ -2059,9 +2069,9 @@ function CustomiseStep({
             </div>
           </div>
 
-        {!isPaid && (
-          <UpgradeNotice message="Upgrade to Pro for paid templates, colour pickers, gradients, fonts, logos, banners, socials, and integrations." />
-        )}
+          {!isPaid && (
+            <UpgradeNotice message="Upgrade to Pro for paid templates, colour pickers, gradients, fonts, logos, banners, socials, and integrations." />
+          )}
         </div>
       )}
     </div>
@@ -2355,21 +2365,24 @@ function ProfilePictureUpload({
               <button
                 type="button"
                 onClick={resetCrop}
-                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/65 transition hover:bg-white/10 hover:text-white"
+                className="rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/15 hover:text-white focus:text-white"
+                style={{ color: "#FFFFFF" }}
               >
                 Reset
               </button>
               <button
                 type="button"
                 onClick={cancelCrop}
-                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/65 transition hover:bg-white/10 hover:text-white"
+                className="rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/15 hover:text-white focus:text-white"
+                style={{ color: "#FFFFFF" }}
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => void saveCrop()}
-                className="rounded-2xl bg-[#AC00FF] px-5 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+                className="rounded-2xl bg-[#AC00FF] px-5 py-2 text-sm font-semibold text-white transition hover:opacity-90 focus:text-white"
+                style={{ color: "#FFFFFF" }}
               >
                 Save crop
               </button>
@@ -2587,45 +2600,53 @@ function SetUpStep({
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <TextArea
-          label="Consent notice"
-          value={settings.consent_notice}
-          onChange={(value) =>
-            onSettingsChange({ ...settings, consent_notice: value })
-          }
-        />
-        <TextField
-          label="Terms URL"
-          value={settings.terms_url}
-          onChange={(value) => onSettingsChange({ ...settings, terms_url: value })}
-        />
-      </div>
+      {isPaid && (
+        <>
+          <div className="grid gap-4 md:grid-cols-2">
+            <TextArea
+              label="Consent notice"
+              value={settings.consent_notice}
+              onChange={(value) =>
+                onSettingsChange({ ...settings, consent_notice: value })
+              }
+            />
+            <TextField
+              label="Terms URL"
+              value={settings.terms_url}
+              onChange={(value) =>
+                onSettingsChange({ ...settings, terms_url: value })
+              }
+            />
+          </div>
 
-      <button
-        type="button"
-        onClick={() =>
-          onSettingsChange({
-            ...settings,
-            follow_up_enabled: !settings.follow_up_enabled,
-          })
-        }
-        className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left transition hover:bg-white/10"
-      >
-        <div>
-          <p className="font-semibold">Follow-up email</p>
-          <p className="mt-1 text-sm text-white/40">Placeholder toggle for V1.</p>
-        </div>
-        <span
-          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-            settings.follow_up_enabled
-              ? "bg-[#AC00FF]/20 text-purple-100"
-              : "bg-white/10 text-white/50"
-          }`}
-        >
-          {settings.follow_up_enabled ? "On" : "Off"}
-        </span>
-      </button>
+          <button
+            type="button"
+            onClick={() =>
+              onSettingsChange({
+                ...settings,
+                follow_up_enabled: !settings.follow_up_enabled,
+              })
+            }
+            className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left transition hover:bg-white/10"
+          >
+            <div>
+              <p className="font-semibold">Follow-up email</p>
+              <p className="mt-1 text-sm text-white/40">
+                Placeholder toggle for V1.
+              </p>
+            </div>
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                settings.follow_up_enabled
+                  ? "bg-[#AC00FF]/20 text-purple-100"
+                  : "bg-white/10 text-white/50"
+              }`}
+            >
+              {settings.follow_up_enabled ? "On" : "Off"}
+            </span>
+          </button>
+        </>
+      )}
 
       {(saveStatus === "saving" || saveMessage || saveError) && (
         <div
@@ -3697,7 +3718,7 @@ function TextField({
       <input
         value={value || ""}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-2xl border border-white/10 bg-[#070B1A]/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60"
+        className="h-12 w-full rounded-2xl border border-white/10 bg-[#070B1A]/70 px-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60"
       />
     </label>
   );
@@ -3722,7 +3743,7 @@ function SelectField({
       <select
         value={value || ""}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-2xl border border-white/10 bg-[#070B1A]/70 px-4 py-3 text-sm text-white outline-none transition focus:border-[#AC00FF]/60"
+        className="h-12 w-full rounded-2xl border border-white/10 bg-[#070B1A]/70 px-4 text-sm text-white outline-none transition focus:border-[#AC00FF]/60"
       >
         {options.map((option) => (
           <option key={option || "none"} value={option}>
@@ -3760,9 +3781,19 @@ function TextArea({
 
 function UpgradeNotice({ message }: { message: string }) {
   return (
-    <div className="mt-5 rounded-2xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 p-4 text-sm text-purple-100">
+    <div
+      className="mt-5 rounded-2xl border p-4 text-sm"
+      style={{
+        borderColor: "var(--border-accent)",
+        background: "var(--brand-gradient-subtle)",
+        color: "var(--text-primary)",
+      }}
+    >
       <div className="flex gap-3">
-        <Lock className="mt-0.5 h-4 w-4 shrink-0" />
+        <Lock
+          className="mt-0.5 h-4 w-4 shrink-0"
+          style={{ color: "var(--text-accent)" }}
+        />
         <p>{message}</p>
       </div>
     </div>
@@ -3771,7 +3802,14 @@ function UpgradeNotice({ message }: { message: string }) {
 
 function PlanBadge() {
   return (
-    <span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-purple-100">
+    <span
+      className="rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]"
+      style={{
+        borderColor: "var(--border-accent)",
+        background: "var(--brand-gradient-subtle)",
+        color: "var(--text-accent)",
+      }}
+    >
       {planLabel(currentPlan)} Plan
     </span>
   );
@@ -3796,13 +3834,22 @@ function AccessPill({ template }: { template: AdminTemplate }) {
 }
 
 function StatusBadge({ status }: { status: CardStatus }) {
+  const published = status === "published";
+
   return (
     <span
-      className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold capitalize ${
-        status === "published"
-          ? "bg-green-500/15 text-green-300"
-          : "bg-white/10 text-white/55"
+      className={`inline-flex w-fit rounded-full border px-3 py-1 text-xs font-semibold capitalize ${
+        published ? "" : "border-white/10 bg-white/10 text-white/55"
       }`}
+      style={
+        published
+          ? {
+              borderColor: "color-mix(in srgb, var(--success) 28%, transparent)",
+              background: "var(--success-bg)",
+              color: "var(--success)",
+            }
+          : undefined
+      }
     >
       {status}
     </span>
