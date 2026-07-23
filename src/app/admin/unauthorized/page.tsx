@@ -1,7 +1,13 @@
 import Link from "next/link";
-import { ShieldAlert } from "lucide-react";
+import { SignOutButton } from "@clerk/nextjs";
+import { currentUser } from "@clerk/nextjs/server";
+import { LogOut, ShieldAlert } from "lucide-react";
 
-export default function AdminUnauthorizedPage() {
+import { emailFromClerkUser } from "@/lib/admin-auth";
+
+export default async function AdminUnauthorizedPage() {
+  const email = emailFromClerkUser(await currentUser());
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#070B1A] px-6 text-white">
       <div className="max-w-md rounded-3xl border border-red-400/20 bg-red-500/10 p-7 text-center shadow-2xl shadow-black/25">
@@ -13,12 +19,28 @@ export default function AdminUnauthorizedPage() {
           Your account is signed in, but it is not approved for the DMI Cards
           admin area.
         </p>
-        <Link
-          href="/client/dashboard"
-          className="mt-6 inline-flex rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-[#0F172A]"
-        >
-          Go to client portal
-        </Link>
+        {email && (
+          <p className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-red-50">
+            Signed in as: <span className="font-semibold">{email}</span>
+          </p>
+        )}
+        <div className="mt-6 flex flex-col gap-3">
+          <Link
+            href="/client/dashboard"
+            className="inline-flex justify-center rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-[#0F172A] transition hover:bg-red-50"
+          >
+            Go to client portal
+          </Link>
+          <SignOutButton redirectUrl="/sign-in">
+            <button
+              type="button"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/10"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out and use another account
+            </button>
+          </SignOutButton>
+        </div>
       </div>
     </main>
   );

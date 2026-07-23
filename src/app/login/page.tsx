@@ -166,8 +166,10 @@ export default function ClientLoginPage() {
       return;
     }
 
-    const nextPath = new URLSearchParams(window.location.search).get("next");
-    router.push(nextPath || "/client/dashboard");
+    const nextPath = safeNextPath(
+      new URLSearchParams(window.location.search).get("next")
+    );
+    router.push(nextPath);
   }
 
   function handleSocialLogin() {
@@ -515,6 +517,28 @@ function SocialLoginSection({
       </p>
     </div>
   );
+}
+
+function safeNextPath(nextPath: string | null) {
+  if (!nextPath) {
+    return "/client/dashboard";
+  }
+
+  if (!nextPath.startsWith("/") || nextPath.startsWith("//")) {
+    return "/client/dashboard";
+  }
+
+  try {
+    const nextUrl = new URL(nextPath, window.location.origin);
+
+    if (nextUrl.origin !== window.location.origin) {
+      return "/client/dashboard";
+    }
+
+    return `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
+  } catch {
+    return "/client/dashboard";
+  }
 }
 
 function InfoCard({ label, value }: { label: string; value: string }) {

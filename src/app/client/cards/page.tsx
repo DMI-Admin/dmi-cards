@@ -855,19 +855,7 @@ export default function ClientCardsPage() {
         return;
       }
 
-      const baseSlug = slugify(
-        draftCard.slug ||
-          displayName(draftCard, "") ||
-          draftCard.card_name ||
-          "digital-card"
-      );
-      const slug =
-        databaseReady
-          ? await ensureUniqueCardSlug(
-              baseSlug,
-              draftCard.id.startsWith("card-") ? null : draftCard.id
-            )
-          : baseSlug;
+      const slug = buildCardSlugBase(draftCard);
 
       const nextCard: ClientCard = {
         ...draftCard,
@@ -963,8 +951,18 @@ export default function ClientCardsPage() {
       return null;
     }
 
-    const payload = buildSupabaseCardPayload(card, userId);
     const shouldUpdate = mode === "edit" && !card.id.startsWith("card-");
+    const currentCardId = shouldUpdate ? card.id : null;
+    const slugBase = buildCardSlugBase(card);
+    const slug = await ensureUniqueCardSlug(slugBase, currentCardId);
+    const payload = buildSupabaseCardPayload(
+      {
+        ...card,
+        slug,
+        public_url: `/u/${slug}`,
+      },
+      userId
+    );
 
     console.log("[DMI cards] save payload", {
       shouldUpdate,
@@ -986,6 +984,8 @@ export default function ClientCardsPage() {
       userId,
       payload,
       shouldUpdate,
+      slugBase,
+      currentCardId,
     });
 
     if (isPublishing) {
@@ -3085,6 +3085,33 @@ function customFieldStorageKey(field: string) {
     : field;
 }
 
+function buildCardSlugBase(
+  card: Pick<ClientCard, "id" | "title" | "first_name" | "last_name" | "full_name">
+) {
+  const nameSlug = slugify(displayName(card, ""));
+
+  if (nameSlug) {
+    return nameSlug;
+  }
+
+  return `card-${shortCardId(card.id)}`;
+}
+
+function shortCardId(cardId: string) {
+  const cleanId = cardId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toLowerCase();
+  const normalizedId = cleanId.replace(/^card/, "") || cleanId;
+
+  if (normalizedId) {
+    return normalizedId;
+  }
+
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  }
+
+  return Math.random().toString(36).slice(2, 10);
+}
+
 async function getActiveUserForCardSave(isPublishing: boolean): Promise<User | null> {
   const {
     data: { session },
@@ -3130,27 +3157,62 @@ async function writeCardPayload({
   userId,
   payload,
   shouldUpdate,
+  slugBase,
+  currentCardId,
 }: {
   cardId: string;
   userId: string;
   payload: Record<string, unknown>;
   shouldUpdate: boolean;
+  slugBase: string;
+  currentCardId: string | null;
 }) {
   const timestamp = new Date().toISOString();
   let nextPayload: Record<string, unknown> = shouldUpdate
     ? { ...payload, updated_at: timestamp }
     : { ...payload, created_at: timestamp, updated_at: timestamp };
-  let result = shouldUpdate
-    ? await supabase
-        .from("cards")
-        .update(nextPayload)
-        .eq("id", cardId)
-        .eq("user_id", userId)
-        .select("*")
-        .single()
-    : await supabase.from("cards").insert([nextPayload]).select("*").single();
+  const attemptedSlugs = new Set<string>();
+  const writePayload = async () =>
+    shouldUpdate
+      ? await supabase
+          .from("cards")
+          .update(nextPayload)
+          .eq("id", cardId)
+          .eq("user_id", userId)
+          .select("*")
+          .single()
+      : await supabase.from("cards").insert([nextPayload]).select("*").single();
+
+  let result = await writePayload();
 
   while (result.error) {
+    if (isDuplicateCardSlugError(result.error)) {
+      const attemptedSlug =
+        typeof nextPayload.slug === "string" ? nextPayload.slug : "";
+
+      if (attemptedSlug) {
+        attemptedSlugs.add(attemptedSlug);
+      }
+
+      const nextSlug = await nextUniqueCardSlugCandidate(
+        slugBase,
+        currentCardId,
+        attemptedSlugs
+      );
+
+      if (!nextSlug) {
+        break;
+      }
+
+      nextPayload = {
+        ...nextPayload,
+        slug: nextSlug,
+      };
+      attemptedSlugs.add(nextSlug);
+      result = await writePayload();
+      continue;
+    }
+
     const missingColumn = missingCardColumnFromError(result.error);
 
     if (!missingColumn || !(missingColumn in nextPayload)) {
@@ -3160,15 +3222,7 @@ async function writeCardPayload({
     const { [missingColumn]: _removed, ...reducedPayload } = nextPayload;
     void _removed;
     nextPayload = reducedPayload;
-    result = shouldUpdate
-      ? await supabase
-          .from("cards")
-          .update(nextPayload)
-          .eq("id", cardId)
-          .eq("user_id", userId)
-          .select("*")
-          .single()
-      : await supabase.from("cards").insert([nextPayload]).select("*").single();
+    result = await writePayload();
   }
 
   if (result.error) {
@@ -3180,15 +3234,46 @@ async function writeCardPayload({
 
 async function ensureUniqueCardSlug(baseSlug: string, currentCardId: string | null) {
   const cleanBase = slugify(baseSlug) || "digital-card";
-  let candidate = cleanBase;
-  let suffix = 2;
+  let suffix = 1;
 
-  while (await cardSlugExists(candidate, currentCardId)) {
-    candidate = `${cleanBase}-${suffix}`;
+  while (suffix <= 100) {
+    const candidate = cardSlugCandidate(cleanBase, suffix);
+
+    if (!(await cardSlugExists(candidate, currentCardId))) {
+      return candidate;
+    }
+
     suffix += 1;
   }
 
-  return candidate;
+  return `${cleanBase}-${Date.now().toString(36)}`;
+}
+
+async function nextUniqueCardSlugCandidate(
+  baseSlug: string,
+  currentCardId: string | null,
+  attemptedSlugs: Set<string>
+) {
+  const cleanBase = slugify(baseSlug) || "digital-card";
+
+  for (let suffix = 1; suffix <= 100; suffix += 1) {
+    const candidate = cardSlugCandidate(cleanBase, suffix);
+
+    if (attemptedSlugs.has(candidate)) {
+      continue;
+    }
+
+    if (!(await cardSlugExists(candidate, currentCardId))) {
+      return candidate;
+    }
+  }
+
+  const timestampedCandidate = `${cleanBase}-${Date.now().toString(36)}`;
+  return attemptedSlugs.has(timestampedCandidate) ? null : timestampedCandidate;
+}
+
+function cardSlugCandidate(baseSlug: string, suffix: number) {
+  return suffix <= 1 ? baseSlug : `${baseSlug}-${suffix}`;
 }
 
 async function cardSlugExists(slug: string, currentCardId: string | null) {
@@ -3208,6 +3293,15 @@ async function cardSlugExists(slug: string, currentCardId: string | null) {
   return Boolean(data);
 }
 
+function isDuplicateCardSlugError(error: { code?: string; message?: string } | null) {
+  const message = error?.message || "";
+
+  return (
+    error?.code === "23505" &&
+    /cards_slug_key|cards_slug_unique_idx|slug|duplicate key value/i.test(message)
+  );
+}
+
 function missingCardColumnFromError(error: { message?: string } | null) {
   const message = error?.message || "";
   const quotedColumnMatch = message.match(/'([^']+)' column of 'cards'/);
@@ -3225,6 +3319,10 @@ function missingCardColumnFromError(error: { message?: string } | null) {
 function describeCardsDatabaseError(error: { code?: string; message?: string } | null) {
   const message = error?.message || "Unknown Supabase error.";
   const missingColumn = missingCardColumnFromError(error);
+
+  if (isDuplicateCardSlugError(error)) {
+    return "That public card link is already in use. Please publish again and we will create a unique link automatically.";
+  }
 
   if (missingColumn) {
     return `Database schema issue: public.cards is missing column "${missingColumn}". Run the cards schema migration before publishing.`;
