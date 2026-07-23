@@ -34,7 +34,7 @@ export default function Sidebar() {
   const sections: { title: string; items: NavItem[] }[] = [
     {
       title: "Overview",
-      items: [{ name: "Dashboard", href: "/dashboard", icon: LayoutDashboard }],
+      items: [{ name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard }],
     },
     {
       title: "Management",
@@ -68,7 +68,7 @@ export default function Sidebar() {
 
   const handleSignOut = async () => {
     await signOut();
-    window.location.href = "/sign-in";
+    window.location.href = "/admin";
   };
 
   return (

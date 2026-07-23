@@ -468,7 +468,7 @@ function AccountMenu({
     console.log("[DMI auth] logout result", {
       error: error ? { name: error.name, message: error.message, status: error.status } : null,
     });
-    onNavigate("/login");
+    onNavigate("/");
   }
 
   return (

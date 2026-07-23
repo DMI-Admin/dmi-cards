@@ -96,7 +96,7 @@ function EmailVerificationErrorContent() {
         </form>
 
         <Link
-          href="/login"
+          href="/"
           className="mt-4 inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white/65 transition hover:bg-white/10 hover:text-white"
         >
           Back to login

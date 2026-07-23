@@ -32,7 +32,7 @@ export default function ClientPortalLayout({
             pathname,
             redirectDecision: "redirect-login-no-session",
           });
-          router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+          router.replace("/");
           return;
         }
 
@@ -41,9 +41,7 @@ export default function ClientPortalLayout({
             pathname,
             redirectDecision: "redirect-login-suspended",
           });
-          router.replace(
-            `/login?suspended=1&next=${encodeURIComponent(pathname)}`
-          );
+          router.replace("/?suspended=1");
           return;
         }
 
@@ -72,7 +70,7 @@ export default function ClientPortalLayout({
       });
 
       if (event === "SIGNED_OUT") {
-        router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+        router.replace("/");
       }
     });
 

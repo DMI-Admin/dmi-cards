@@ -8,11 +8,16 @@ import {
 } from "@/lib/admin-auth";
 
 const isAdminRoute = createRouteMatcher(adminRoutePatterns);
+const isAdminEntryRoute = createRouteMatcher(["/admin"]);
 const isAdminUnauthorizedRoute = createRouteMatcher([adminUnauthorizedPath]);
 const isAdminApiRoute = createRouteMatcher(["/api/admin(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
   if (!isAdminRoute(req) || isAdminUnauthorizedRoute(req)) {
+    return;
+  }
+
+  if (isAdminEntryRoute(req)) {
     return;
   }
 
@@ -26,7 +31,7 @@ export default clerkMiddleware(async (auth, req) => {
       );
     }
 
-    return adminAuth.redirectToSignIn({ returnBackUrl: req.url });
+    return NextResponse.redirect(new URL("/admin", req.url));
   }
 
   if (

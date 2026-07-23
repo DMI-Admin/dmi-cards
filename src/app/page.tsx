@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import ClientLogin from "@/components/ClientLogin";
 
 export default function HomePage() {
-  redirect("/login?next=%2Fclient%2Fdashboard");
+  return <ClientLogin />;
 }

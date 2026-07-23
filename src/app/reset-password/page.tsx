@@ -163,7 +163,7 @@ function ResetPasswordContent() {
                     {statusMessage}
                   </div>
                   <Link
-                    href="/login"
+                    href="/"
                     className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35"
                   >
                     Back to login

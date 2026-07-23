@@ -170,7 +170,7 @@ function AuthCallbackContent() {
           <h1 className="text-xl font-semibold">Could not verify your login</h1>
           <p className="mt-3 text-sm leading-6 text-red-100/80">{errorMessage}</p>
           <Link
-            href="/login"
+            href="/"
             className="mt-5 inline-flex rounded-2xl bg-[#AC00FF] px-5 py-3 text-sm font-semibold text-white"
           >
             Back to login

@@ -313,7 +313,7 @@ export default function ClientSignupPage() {
                   email={createdEmail}
                   message={signupMessage}
                   resending={resending}
-                  onGoToLogin={() => router.push("/login")}
+                  onGoToLogin={() => router.push("/")}
                   onResend={resendVerificationEmail}
                 />
               ) : (
@@ -466,7 +466,7 @@ export default function ClientSignupPage() {
               <SocialLoginSection onSocialLogin={handleSocialSignup} />
 
               <div className="mt-6 flex flex-col gap-3 text-center text-sm text-white/45 sm:flex-row sm:items-center sm:justify-between">
-                <Link href="/login" className="transition hover:text-purple-100">
+                <Link href="/" className="transition hover:text-purple-100">
                   Already have an account? Log in
                 </Link>
                 <div className="flex justify-center gap-3">

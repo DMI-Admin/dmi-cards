@@ -599,7 +599,7 @@ export default function ClientCardsPage() {
         if (ignore) return;
 
         if (error instanceof ClientAuthRequiredError) {
-          router.replace("/login?next=/client/cards");
+          router.replace("/");
         } else {
           console.error("Client auth load failed", error);
           setSaveError("Could not confirm your login session.");
@@ -838,7 +838,7 @@ export default function ClientCardsPage() {
 
     if (!authUser) {
       setSaveStatus("failed");
-      router.replace("/login?next=/client/cards");
+      router.replace("/");
       setSaveError("Please log in to save your card.");
       return;
     }
@@ -1021,7 +1021,7 @@ export default function ClientCardsPage() {
     const authUser = await getActiveUserForCardSave(isPublishing);
 
     if (!authUser) {
-      router.replace("/login?next=/client/cards");
+      router.replace("/");
       setSaveError("Please log in to save your card.");
       return;
     }
@@ -1072,7 +1072,7 @@ export default function ClientCardsPage() {
       const authUser = await getActiveUserForCardSave(false);
 
       if (!authUser) {
-        router.replace("/login?next=/client/cards");
+        router.replace("/");
         setSaveError("Please log in to delete your card.");
         return;
       }

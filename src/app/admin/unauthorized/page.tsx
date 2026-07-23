@@ -31,7 +31,7 @@ export default async function AdminUnauthorizedPage() {
           >
             Go to client portal
           </Link>
-          <SignOutButton redirectUrl="/sign-in">
+          <SignOutButton redirectUrl="/admin">
             <button
               type="button"
               className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/10"
