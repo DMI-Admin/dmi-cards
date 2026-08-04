@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { inflateRawSync } from "node:zlib";
 
 const requiredFiles = [
   "pass.json",
@@ -24,7 +25,8 @@ if (buffer.length < 22 || buffer.readUInt32LE(0) !== 0x04034b50) {
   process.exit(1);
 }
 
-const names = centralDirectoryNames(buffer);
+const entries = centralDirectoryEntries(buffer);
+const names = new Set(entries.map((entry) => entry.name));
 const missing = requiredFiles.filter((name) => !names.has(name));
 
 if (missing.length > 0) {
@@ -32,14 +34,35 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-console.log(`Valid pkpass structure: ${requiredFiles.join(", ")} found.`);
+const passJson = JSON.parse(readZipEntry(buffer, requiredEntry(entries, "pass.json")).toString("utf8"));
+const barcode = firstBarcode(passJson);
+const barcodeMessage = typeof barcode?.message === "string" ? barcode.message : "";
 
-function centralDirectoryNames(zipBuffer) {
+if (!/^https:\/\/app\.dmicards\.com\/u\/[^/]+/.test(barcodeMessage)) {
+  console.error("Invalid pkpass: QR barcode does not contain the public card URL.");
+  process.exit(1);
+}
+
+if (typeof barcode?.altText === "string" && barcode.altText.trim()) {
+  console.error("Invalid pkpass: QR barcode includes visible altText.");
+  process.exit(1);
+}
+
+if (visibleFieldsContainValue(passJson, barcodeMessage)) {
+  console.error("Invalid pkpass: public card URL is present in visible pass fields.");
+  process.exit(1);
+}
+
+console.log(
+  `Valid pkpass structure and Wallet fields: ${requiredFiles.join(", ")} found.`
+);
+
+function centralDirectoryEntries(zipBuffer) {
   const endOffset = findEndOfCentralDirectory(zipBuffer);
   const centralDirectorySize = zipBuffer.readUInt32LE(endOffset + 12);
   const centralDirectoryOffset = zipBuffer.readUInt32LE(endOffset + 16);
   const centralDirectoryEnd = centralDirectoryOffset + centralDirectorySize;
-  const names = new Set();
+  const entries = [];
   let offset = centralDirectoryOffset;
 
   while (offset < centralDirectoryEnd) {
@@ -50,14 +73,82 @@ function centralDirectoryNames(zipBuffer) {
     const fileNameLength = zipBuffer.readUInt16LE(offset + 28);
     const extraFieldLength = zipBuffer.readUInt16LE(offset + 30);
     const commentLength = zipBuffer.readUInt16LE(offset + 32);
+    const localHeaderOffset = zipBuffer.readUInt32LE(offset + 42);
     const fileNameStart = offset + 46;
     const fileNameEnd = fileNameStart + fileNameLength;
+    const name = zipBuffer.subarray(fileNameStart, fileNameEnd).toString("utf8");
 
-    names.add(zipBuffer.subarray(fileNameStart, fileNameEnd).toString("utf8"));
+    entries.push({
+      name,
+      compressionMethod: zipBuffer.readUInt16LE(offset + 10),
+      compressedSize: zipBuffer.readUInt32LE(offset + 20),
+      localHeaderOffset,
+    });
     offset = fileNameEnd + extraFieldLength + commentLength;
   }
 
-  return names;
+  return entries;
+}
+
+function requiredEntry(entries, name) {
+  const entry = entries.find((item) => item.name === name);
+
+  if (!entry) {
+    throw new Error(`Missing ${name}.`);
+  }
+
+  return entry;
+}
+
+function readZipEntry(zipBuffer, entry) {
+  const offset = entry.localHeaderOffset;
+
+  if (zipBuffer.readUInt32LE(offset) !== 0x04034b50) {
+    throw new Error("Invalid ZIP local file header.");
+  }
+
+  const fileNameLength = zipBuffer.readUInt16LE(offset + 26);
+  const extraFieldLength = zipBuffer.readUInt16LE(offset + 28);
+  const dataStart = offset + 30 + fileNameLength + extraFieldLength;
+  const data = zipBuffer.subarray(dataStart, dataStart + entry.compressedSize);
+
+  if (entry.compressionMethod === 0) {
+    return data;
+  }
+
+  if (entry.compressionMethod === 8) {
+    return inflateRawSync(data);
+  }
+
+  throw new Error(`Unsupported ZIP compression method: ${entry.compressionMethod}.`);
+}
+
+function firstBarcode(passJson) {
+  if (Array.isArray(passJson.barcodes) && passJson.barcodes.length > 0) {
+    return passJson.barcodes[0];
+  }
+
+  return passJson.barcode || null;
+}
+
+function visibleFieldsContainValue(passJson, value) {
+  const passType = ["boardingPass", "coupon", "eventTicket", "generic", "storeCard"].find(
+    (type) => passJson[type]
+  );
+
+  if (!passType || !value) {
+    return false;
+  }
+
+  return [
+    "headerFields",
+    "primaryFields",
+    "secondaryFields",
+    "auxiliaryFields",
+    "backFields",
+  ].some((fieldGroup) =>
+    (passJson[passType][fieldGroup] || []).some((field) => field?.value === value)
+  );
 }
 
 function findEndOfCentralDirectory(zipBuffer) {

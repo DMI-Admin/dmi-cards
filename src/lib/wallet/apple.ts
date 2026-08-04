@@ -4,11 +4,22 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import forge from "node-forge";
 import { PKPass, type Barcode, type OverridablePassProps } from "passkit-generator";
+import sharp from "sharp";
 import type { WalletCardForPass } from "@/lib/wallet/card-loader";
 
 const productionAppUrl = "https://app.dmicards.com";
 const dmiBrandColor = "#AC00FF";
 const walletAssetDirectory = path.join(process.cwd(), "public", "apple-wallet");
+const walletLogoSize = 50;
+const walletLogoScale = 2;
+const maxProfileImageBytes = 5 * 1024 * 1024;
+const allowedProfileImageTypes = new Set([
+  "image/avif",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 
 const requiredAppleWalletVariables = [
   "APPLE_WALLET_TEAM_ID",
@@ -129,7 +140,7 @@ export function buildApplePassData(
 
 export async function generateAppleWalletPass(data: ApplePassData, config: AppleWalletConfig) {
   const certificates = decodeAppleWalletCertificates(config);
-  const pass = new PKPass(await loadAppleWalletAssetBuffers(), certificates, buildPassProps(data));
+  const pass = new PKPass(await loadAppleWalletAssetBuffers(data), certificates, buildPassProps(data));
 
   pass.type = "generic";
   pass.primaryFields.push({
@@ -154,30 +165,10 @@ export async function generateAppleWalletPass(data: ApplePassData, config: Apple
     });
   }
 
-  pass.auxiliaryFields.push({
-    key: "publicUrl",
-    label: "Public Card",
-    value: data.publicCardUrl,
-  });
-
-  pass.backFields.push(
-    {
-      key: "instructions",
-      label: "How to use",
-      value: "Scan or tap to view this digital business card",
-    },
-    {
-      key: "publicCardUrl",
-      label: "Public card URL",
-      value: data.publicCardUrl,
-    }
-  );
-
   pass.setBarcodes({
     format: "PKBarcodeFormatQR",
     message: data.publicCardUrl,
     messageEncoding: "iso-8859-1",
-    altText: `${data.displayName} public DMI Card`,
   } satisfies Barcode);
 
   try {
@@ -202,29 +193,7 @@ export function buildApplePassSerialNumber(cardId: string) {
 }
 
 function buildPublicCardUrl(slug: string) {
-  const baseUrl = applicationBaseUrl();
-
-  return `${baseUrl}/u/${encodeURIComponent(slug)}`;
-}
-
-function applicationBaseUrl() {
-  const configuredUrl = process.env.DMI_CARDS_APP_URL?.trim();
-
-  if (!configuredUrl) {
-    return productionAppUrl;
-  }
-
-  try {
-    const url = new URL(configuredUrl);
-
-    if (url.protocol !== "https:" && process.env.NODE_ENV === "production") {
-      return productionAppUrl;
-    }
-
-    return url.origin.replace(/\/$/, "");
-  } catch {
-    return productionAppUrl;
-  }
+  return `${productionAppUrl}/u/${encodeURIComponent(slug)}`;
 }
 
 function buildPassProps(data: ApplePassData): OverridablePassProps {
@@ -239,23 +208,29 @@ function buildPassProps(data: ApplePassData): OverridablePassProps {
     organizationName: data.organizationName,
     serialNumber: data.serialNumber,
     description: "DMI Cards Digital Business Card",
-    logoText: "DMI Cards",
+    logoText: compactWalletText(data.companyName || "DMI Cards", 32),
     foregroundColor,
     backgroundColor,
     labelColor,
   };
 }
 
-async function loadAppleWalletAssetBuffers() {
+async function loadAppleWalletAssetBuffers(data: ApplePassData) {
   try {
-    const entries = await Promise.all(
-      ["icon.png", "icon@2x.png", "logo.png", "logo@2x.png"].map(async (name) => [
-        name,
-        await readFile(path.join(walletAssetDirectory, name)),
-      ])
-    );
+    const [icon, icon2x, fallbackLogo, fallbackLogo2x] = await Promise.all([
+      readWalletAsset("icon.png"),
+      readWalletAsset("icon@2x.png"),
+      readWalletAsset("logo.png"),
+      readWalletAsset("logo@2x.png"),
+    ]);
+    const profileLogos = await loadProfileLogoAssets(data.profileImageUrl);
 
-    return Object.fromEntries(entries);
+    return {
+      "icon.png": icon,
+      "icon@2x.png": icon2x,
+      "logo.png": profileLogos?.logo || fallbackLogo,
+      "logo@2x.png": profileLogos?.logo2x || fallbackLogo2x,
+    };
   } catch (error) {
     console.error("Apple Wallet asset load failed", {
       code: "APPLE_WALLET_ASSET_LOAD_FAILED",
@@ -263,6 +238,112 @@ async function loadAppleWalletAssetBuffers() {
     });
     throw new ApplePassGenerationError("APPLE_WALLET_ASSET_LOAD_FAILED");
   }
+}
+
+async function readWalletAsset(name: string) {
+  return readFile(path.join(walletAssetDirectory, name));
+}
+
+async function loadProfileLogoAssets(profileImageUrl: string) {
+  if (!profileImageUrl) {
+    return null;
+  }
+
+  try {
+    const source = await fetchProfileImage(profileImageUrl);
+    const [logo, logo2x] = await Promise.all([
+      processProfileLogo(source, walletLogoSize),
+      processProfileLogo(source, walletLogoSize * walletLogoScale),
+    ]);
+
+    return { logo, logo2x };
+  } catch (error) {
+    console.warn("Apple Wallet profile image fallback used", {
+      code: "APPLE_WALLET_PROFILE_IMAGE_FALLBACK",
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
+    return null;
+  }
+}
+
+async function fetchProfileImage(profileImageUrl: string) {
+  const url = new URL(profileImageUrl);
+
+  if (url.protocol !== "https:" || isBlockedProfileImageHost(url.hostname)) {
+    throw new Error("Profile image URL is not allowed.");
+  }
+
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(5000),
+    redirect: "error",
+  });
+
+  if (!response.ok) {
+    throw new Error("Profile image fetch failed.");
+  }
+
+  const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+
+  if (!contentType || !allowedProfileImageTypes.has(contentType)) {
+    throw new Error("Profile image content type is not allowed.");
+  }
+
+  const contentLength = Number(response.headers.get("content-length") || 0);
+
+  if (contentLength > maxProfileImageBytes) {
+    throw new Error("Profile image is too large.");
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  if (buffer.length === 0 || buffer.length > maxProfileImageBytes) {
+    throw new Error("Profile image size is invalid.");
+  }
+
+  return buffer;
+}
+
+function isBlockedProfileImageHost(hostname: string) {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const ipv4Match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+
+  if (host === "localhost" || host.endsWith(".localhost")) {
+    return true;
+  }
+
+  if (host === "::1" || host.startsWith("fc") || host.startsWith("fd")) {
+    return true;
+  }
+
+  if (!ipv4Match) {
+    return false;
+  }
+
+  const octets = ipv4Match.slice(1).map(Number);
+  const [first, second] = octets;
+
+  if (octets.some((octet) => octet < 0 || octet > 255)) {
+    return true;
+  }
+
+  return (
+    first === 10 ||
+    first === 127 ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  );
+}
+
+async function processProfileLogo(source: Buffer, size: number) {
+  return sharp(source, { limitInputPixels: 16_000_000, animated: false })
+    .rotate()
+    .resize(size, size, {
+      fit: "cover",
+      position: "center",
+    })
+    .png()
+    .toBuffer();
 }
 
 function decodeAppleWalletCertificates(config: AppleWalletConfig) {
@@ -348,4 +429,14 @@ function readableTextForColor(color: string) {
   const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
 
   return luminance > 0.55 ? "#111827" : "#FFFFFF";
+}
+
+function compactWalletText(value: string, maxLength: number) {
+  const compacted = value.replace(/\s+/g, " ").trim();
+
+  if (compacted.length <= maxLength) {
+    return compacted;
+  }
+
+  return `${compacted.slice(0, maxLength - 3).trim()}...`;
 }
