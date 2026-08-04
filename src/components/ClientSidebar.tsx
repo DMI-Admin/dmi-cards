@@ -19,26 +19,27 @@ import {
   SmartphoneNfc,
   WalletCards,
 } from "lucide-react";
+import { isClientFeatureLocked, type ClientFeature } from "@/lib/client-feature-access";
 
 const navItems: {
   label: string;
   href: string;
   icon: LucideIcon;
-  locked?: boolean;
+  feature?: ClientFeature;
 }[] = [
   { label: "Dashboard", href: "/client/dashboard", icon: LayoutDashboard },
   { label: "My Cards", href: "/client/cards", icon: CreditCard },
-  { label: "Contacts", href: "/client/contacts", icon: ContactRound, locked: true },
+  { label: "Contacts", href: "/client/contacts", icon: ContactRound, feature: "contacts" },
   { label: "QR Code", href: "/client/qr-code", icon: QrCode },
-  { label: "Wallet", href: "/client/wallet", icon: WalletCards },
+  { label: "Wallet", href: "/client/wallet", icon: WalletCards, feature: "wallet" },
   {
     label: "Tap to Share",
     href: "/client/tap-to-share",
     icon: SmartphoneNfc,
-    locked: true,
+    feature: "tap-to-share",
   },
-  { label: "Analytics", href: "/client/analytics", icon: BarChart3, locked: true },
-  { label: "Integrations", href: "/client/integrations", icon: Plug, locked: true },
+  { label: "Analytics", href: "/client/analytics", icon: BarChart3, feature: "analytics" },
+  { label: "Integrations", href: "/client/integrations", icon: Plug, feature: "integrations" },
   { label: "Billing", href: "/client/billing", icon: CircleDollarSign },
   { label: "Settings", href: "/client/settings", icon: Settings },
   { label: "Support", href: "/client/support", icon: Headphones },
@@ -82,6 +83,9 @@ export default function ClientSidebar() {
             const Icon = item.icon;
             const isActive =
               pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const locked = item.feature
+              ? isClientFeatureLocked(item.feature, "free")
+              : false;
 
             return (
               <Link
@@ -95,7 +99,7 @@ export default function ClientSidebar() {
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 <span className="min-w-0 flex-1">{item.label}</span>
-                {item.locked && (
+                {locked && (
                   <span className="flex items-center gap-1 rounded-full border border-[var(--border-brand)] bg-[var(--badge-pro-bg)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--badge-pro-text)]">
                     <Lock className="h-3 w-3" />
                     Pro

@@ -37,6 +37,10 @@ import {
 } from "@/lib/templates";
 import type { ClientProfile } from "@/lib/profiles";
 import { requireClientUser } from "@/lib/client-auth";
+import {
+  isClientFeatureLocked,
+  type ClientFeature,
+} from "@/lib/client-feature-access";
 
 type ThemeChoice = "system" | "light" | "dark";
 
@@ -291,19 +295,22 @@ export default function ClientDashboardPage() {
                 title="QR Code"
                 description="Open your shareable QR code tools."
                 icon={QrCode}
-                locked={false}
+                href="/client/qr-code"
+                feature="qr-code"
               />
               <ShortcutCard
                 title="Wallet"
                 description="Add your card to mobile wallets."
                 icon={WalletCards}
-                locked={!isPaid}
+                href="/client/wallet"
+                feature="wallet"
               />
               <ShortcutCard
                 title="Tap to Share"
                 description="Manage NFC and tap sharing."
                 icon={SmartphoneNfc}
-                locked={!isPaid}
+                href="/client/tap-to-share"
+                feature="tap-to-share"
               />
             </div>
 
@@ -591,7 +598,6 @@ function UpgradeTeaser() {
   const features = [
     "Premium templates",
     "Contacts",
-    "Wallet",
     "Tap to Share",
     "Analytics",
     "Integrations",
@@ -739,21 +745,18 @@ function ShortcutCard({
   title,
   description,
   icon: Icon,
-  locked,
+  href,
+  feature,
 }: {
   title: string;
   description: string;
   icon: typeof QrCode;
-  locked: boolean;
+  href: string;
+  feature: ClientFeature;
 }) {
-  return (
-    <div
-      className={`rounded-[var(--radius-xl)] border p-5 shadow-[var(--shadow-md)] transition ${
-        locked
-          ? "border-[var(--dmi-border)] bg-[var(--dmi-surface)] text-[var(--text-secondary)]"
-          : "border-[var(--dmi-border)] bg-[var(--dmi-surface)] hover:-translate-y-0.5 hover:border-[var(--border-brand)]"
-      }`}
-    >
+  const locked = isClientFeatureLocked(feature, currentPlan);
+  const content = (
+    <>
       <div className="flex items-start justify-between gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--brand-gradient-subtle)] text-[var(--text-accent)]">
           <Icon className="h-5 w-5" />
@@ -772,6 +775,25 @@ function ShortcutCard({
           Upgrade to Individual Pro to unlock this feature.
         </p>
       )}
+    </>
+  );
+
+  if (!locked) {
+    return (
+      <a
+        href={href}
+        className="block rounded-[var(--radius-xl)] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-5 shadow-[var(--shadow-md)] transition hover:-translate-y-0.5 hover:border-[var(--border-brand)]"
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <div
+      className="rounded-[var(--radius-xl)] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-5 text-[var(--text-secondary)] shadow-[var(--shadow-md)] transition"
+    >
+      {content}
     </div>
   );
 }

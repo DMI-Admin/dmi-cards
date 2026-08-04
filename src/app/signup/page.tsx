@@ -22,7 +22,7 @@ const plans = [
   {
     name: "Free",
     description: "Start with one polished public digital business card.",
-    features: ["1 digital card", "Free Classic template", "QR code", "Public page"],
+    features: ["1 digital card", "Free Classic template", "QR code", "Wallet", "Public page"],
     selected: true,
   },
   {
@@ -30,7 +30,6 @@ const plans = [
     description: "Unlock advanced sharing, lead capture, and premium branding.",
     features: [
       "Premium templates",
-      "Wallet",
       "Tap to Share",
       "Contacts",
       "Analytics",

@@ -41,6 +41,7 @@ const freeFeatures = [
   "1 digital card",
   "Free Classic template",
   "QR code",
+  "Wallet",
   "Public page",
   "Limited colours",
 ];
@@ -50,7 +51,7 @@ const plans = [
     name: "Free",
     price: "GBP 0",
     description: "Start with one public digital card.",
-    features: ["1 card", "QR code", "Public page", "Free colours"],
+    features: ["1 card", "QR code", "Wallet", "Public page", "Free colours"],
     active: true,
   },
   {
@@ -59,7 +60,6 @@ const plans = [
     description: "Unlock premium personal branding and lead tools.",
     features: [
       "premium templates",
-      "wallet",
       "tap to share",
       "contacts",
       "analytics",
