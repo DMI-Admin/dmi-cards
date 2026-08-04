@@ -1,5 +1,7 @@
 import "server-only";
 
+import { lookup } from "node:dns/promises";
+import net from "node:net";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import forge from "node-forge";
@@ -13,6 +15,7 @@ const walletAssetDirectory = path.join(process.cwd(), "public", "apple-wallet");
 const walletLogoSize = 50;
 const walletLogoScale = 2;
 const maxProfileImageBytes = 5 * 1024 * 1024;
+const maxProfileImageRedirects = 3;
 const allowedProfileImageTypes = new Set([
   "image/avif",
   "image/gif",
@@ -66,7 +69,18 @@ export type ApplePassData = {
   profileImageUrl: string;
   cardSlug: string;
   backgroundColor: string;
+  updatedAt: string;
 };
+
+class WalletProfileImageError extends Error {
+  code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "WalletProfileImageError";
+    this.code = code;
+  }
+}
 
 export class AppleWalletCertificateError extends Error {
   code: string;
@@ -135,6 +149,7 @@ export function buildApplePassData(
     profileImageUrl: card.profileImageUrl,
     cardSlug: card.slug,
     backgroundColor: card.backgroundColor || dmiBrandColor,
+    updatedAt: card.updatedAt,
   };
 }
 
@@ -145,23 +160,20 @@ export async function generateAppleWalletPass(data: ApplePassData, config: Apple
   pass.type = "generic";
   pass.primaryFields.push({
     key: "name",
-    label: "Name",
-    value: data.displayName,
+    value: compactWalletText(data.displayName, 42),
   });
 
   if (data.jobTitle) {
     pass.secondaryFields.push({
       key: "jobTitle",
-      label: "Job Title",
-      value: data.jobTitle,
+      value: compactWalletText(data.jobTitle, 32),
     });
   }
 
   if (data.companyName) {
     pass.secondaryFields.push({
       key: "company",
-      label: "Company",
-      value: data.companyName,
+      value: compactWalletText(data.companyName, 32),
     });
   }
 
@@ -212,7 +224,16 @@ function buildPassProps(data: ApplePassData): OverridablePassProps {
     foregroundColor,
     backgroundColor,
     labelColor,
+    userInfo: {
+      walletContentRevision: buildWalletContentRevision(data),
+    },
   };
+}
+
+function buildWalletContentRevision(data: ApplePassData) {
+  return [data.updatedAt || new Date().toISOString(), data.profileImageUrl ? "profile" : "fallback"]
+    .join("|")
+    .trim();
 }
 
 async function loadAppleWalletAssetBuffers(data: ApplePassData) {
@@ -246,11 +267,12 @@ async function readWalletAsset(name: string) {
 
 async function loadProfileLogoAssets(profileImageUrl: string) {
   if (!profileImageUrl) {
+    logWalletProfileImageFallback("WALLET_PROFILE_IMAGE_MISSING");
     return null;
   }
 
   try {
-    const source = await fetchProfileImage(profileImageUrl);
+    const source = await loadProfileImageSource(profileImageUrl);
     const [logo, logo2x] = await Promise.all([
       processProfileLogo(source, walletLogoSize),
       processProfileLogo(source, walletLogoSize * walletLogoScale),
@@ -258,49 +280,184 @@ async function loadProfileLogoAssets(profileImageUrl: string) {
 
     return { logo, logo2x };
   } catch (error) {
-    console.warn("Apple Wallet profile image fallback used", {
-      code: "APPLE_WALLET_PROFILE_IMAGE_FALLBACK",
-      errorName: error instanceof Error ? error.name : "UnknownError",
-    });
+    const code =
+      error instanceof WalletProfileImageError
+        ? error.code
+        : "WALLET_PROFILE_IMAGE_PROCESSING_FAILED";
+    logWalletProfileImageFallback(code);
     return null;
   }
 }
 
+async function loadProfileImageSource(profileImageUrl: string) {
+  const trimmed = profileImageUrl.trim();
+
+  if (trimmed.startsWith("data:")) {
+    return decodeProfileImageDataUrl(trimmed);
+  }
+
+  return fetchProfileImage(trimmed);
+}
+
+function decodeProfileImageDataUrl(value: string) {
+  const match = value.match(/^data:([^;,]+);base64,([a-z0-9+/=\s]+)$/i);
+
+  if (!match) {
+    throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_BLOCKED");
+  }
+
+  const contentType = match[1].toLowerCase();
+
+  if (!allowedProfileImageTypes.has(contentType)) {
+    throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_INVALID_TYPE");
+  }
+
+  const buffer = Buffer.from(match[2].replace(/\s/g, ""), "base64");
+
+  if (buffer.length === 0) {
+    throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_FETCH_FAILED");
+  }
+
+  if (buffer.length > maxProfileImageBytes) {
+    throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_TOO_LARGE");
+  }
+
+  return buffer;
+}
+
 async function fetchProfileImage(profileImageUrl: string) {
-  const url = new URL(profileImageUrl);
+  let url: URL;
 
-  if (url.protocol !== "https:" || isBlockedProfileImageHost(url.hostname)) {
-    throw new Error("Profile image URL is not allowed.");
+  try {
+    url = new URL(profileImageUrl);
+  } catch {
+    throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_BLOCKED");
   }
 
-  const response = await fetch(url, {
-    signal: AbortSignal.timeout(5000),
-    redirect: "error",
-  });
+  await validateProfileImageUrl(url);
 
-  if (!response.ok) {
-    throw new Error("Profile image fetch failed.");
-  }
-
+  const response = await fetchProfileImageWithSafeRedirects(url);
   const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
 
   if (!contentType || !allowedProfileImageTypes.has(contentType)) {
-    throw new Error("Profile image content type is not allowed.");
+    throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_INVALID_TYPE");
   }
 
   const contentLength = Number(response.headers.get("content-length") || 0);
 
   if (contentLength > maxProfileImageBytes) {
-    throw new Error("Profile image is too large.");
+    throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_TOO_LARGE");
   }
 
   const buffer = Buffer.from(await response.arrayBuffer());
 
-  if (buffer.length === 0 || buffer.length > maxProfileImageBytes) {
-    throw new Error("Profile image size is invalid.");
+  if (buffer.length === 0) {
+    throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_FETCH_FAILED");
+  }
+
+  if (buffer.length > maxProfileImageBytes) {
+    throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_TOO_LARGE");
   }
 
   return buffer;
+}
+
+async function fetchProfileImageWithSafeRedirects(initialUrl: URL) {
+  let currentUrl = initialUrl;
+
+  for (let redirectCount = 0; redirectCount <= maxProfileImageRedirects; redirectCount += 1) {
+    const response = await fetch(currentUrl, {
+      signal: AbortSignal.timeout(5000),
+      redirect: "manual",
+    }).catch(() => {
+      throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_FETCH_FAILED");
+    });
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+
+      if (!location || redirectCount === maxProfileImageRedirects) {
+        throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_BLOCKED");
+      }
+
+      currentUrl = new URL(location, currentUrl);
+      await validateProfileImageUrl(currentUrl);
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_FETCH_FAILED");
+    }
+
+    return response;
+  }
+
+  throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_BLOCKED");
+}
+
+async function validateProfileImageUrl(url: URL) {
+  if (url.protocol !== "https:" || isBlockedProfileImageHost(url.hostname)) {
+    throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_BLOCKED");
+  }
+
+  await assertPublicHostname(url.hostname);
+}
+
+async function assertPublicHostname(hostname: string) {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const ipVersion = net.isIP(host);
+
+  if (ipVersion) {
+    if (isBlockedIpAddress(host, ipVersion)) {
+      throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_BLOCKED");
+    }
+    return;
+  }
+
+  const addresses = await lookup(host, { all: true }).catch(() => {
+    throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_FETCH_FAILED");
+  });
+
+  if (
+    addresses.length === 0 ||
+    addresses.some((address) => isBlockedIpAddress(address.address, address.family))
+  ) {
+    throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_BLOCKED");
+  }
+}
+
+function isBlockedIpAddress(address: string, family: number) {
+  if (family === 4) {
+    const octets = address.split(".").map(Number);
+    const [first, second] = octets;
+
+    if (octets.length !== 4 || octets.some((octet) => octet < 0 || octet > 255)) {
+      return true;
+    }
+
+    return (
+      first === 0 ||
+      first === 10 ||
+      first === 127 ||
+      (first === 169 && second === 254) ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168)
+    );
+  }
+
+  if (family === 6) {
+    const normalized = address.toLowerCase();
+
+    return (
+      normalized === "::1" ||
+      normalized === "::" ||
+      normalized.startsWith("fc") ||
+      normalized.startsWith("fd") ||
+      normalized.startsWith("fe80:")
+    );
+  }
+
+  return true;
 }
 
 function isBlockedProfileImageHost(hostname: string) {
@@ -311,7 +468,13 @@ function isBlockedProfileImageHost(hostname: string) {
     return true;
   }
 
-  if (host === "::1" || host.startsWith("fc") || host.startsWith("fd")) {
+  if (
+    host === "::1" ||
+    host === "::" ||
+    host.startsWith("fc") ||
+    host.startsWith("fd") ||
+    host.startsWith("fe80:")
+  ) {
     return true;
   }
 
@@ -336,14 +499,22 @@ function isBlockedProfileImageHost(hostname: string) {
 }
 
 async function processProfileLogo(source: Buffer, size: number) {
-  return sharp(source, { limitInputPixels: 16_000_000, animated: false })
-    .rotate()
-    .resize(size, size, {
-      fit: "cover",
-      position: "center",
-    })
-    .png()
-    .toBuffer();
+  try {
+    return await sharp(source, { limitInputPixels: 16_000_000, animated: false })
+      .rotate()
+      .resize(size, size, {
+        fit: "cover",
+        position: "attention",
+      })
+      .png()
+      .toBuffer();
+  } catch {
+    throw new WalletProfileImageError("WALLET_PROFILE_IMAGE_PROCESSING_FAILED");
+  }
+}
+
+function logWalletProfileImageFallback(code: string) {
+  console.warn("Apple Wallet profile image fallback used", { code });
 }
 
 function decodeAppleWalletCertificates(config: AppleWalletConfig) {
