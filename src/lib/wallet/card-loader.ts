@@ -13,6 +13,7 @@ type WalletCardRow = {
   company_name: string | null;
   job_title: string | null;
   profile_image_url: string | null;
+  selected_colour: string | null;
   status: string | null;
   is_published: boolean | null;
 };
@@ -24,6 +25,7 @@ export type WalletCardForPass = {
   companyName: string;
   jobTitle: string;
   profileImageUrl: string;
+  backgroundColor: string;
 };
 
 export class WalletRouteError extends Error {
@@ -73,7 +75,7 @@ export async function loadWalletCardForRequest(request: Request, cardId: string)
   const { data, error } = await supabase
     .from("cards")
     .select(
-      "id, slug, card_name, title, first_name, last_name, full_name, company_name, job_title, profile_image_url, status, is_published"
+      "id, slug, card_name, title, first_name, last_name, full_name, company_name, job_title, profile_image_url, selected_colour, status, is_published"
     )
     .eq("id", cardId)
     .eq("user_id", user.id)
@@ -143,5 +145,12 @@ function normalizeWalletCardForPass(card: WalletCardRow): WalletCardForPass {
     companyName: card.company_name || "",
     jobTitle: card.job_title || "",
     profileImageUrl: card.profile_image_url || "",
+    backgroundColor: safeHexColor(card.selected_colour) || "",
   };
+}
+
+function safeHexColor(color: string | null) {
+  const value = color?.trim() || "";
+
+  return /^#[0-9a-fA-F]{6}$/.test(value) ? value.toUpperCase() : "";
 }

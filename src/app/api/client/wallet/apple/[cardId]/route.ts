@@ -3,7 +3,13 @@ import {
   WalletRouteError,
   loadWalletCardForRequest,
 } from "@/lib/wallet/card-loader";
-import { buildApplePassData, getAppleWalletConfig } from "@/lib/wallet/apple";
+import {
+  ApplePassGenerationError,
+  AppleWalletCertificateError,
+  buildApplePassData,
+  generateAppleWalletPass,
+  getAppleWalletConfig,
+} from "@/lib/wallet/apple";
 
 type AppleWalletRouteContext = {
   params: Promise<{
@@ -13,6 +19,7 @@ type AppleWalletRouteContext = {
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const runtime = "nodejs";
 
 export async function GET(request: Request, context: AppleWalletRouteContext) {
   const { cardId } = await context.params;
@@ -52,13 +59,55 @@ export async function GET(request: Request, context: AppleWalletRouteContext) {
 
   const passData = buildApplePassData(card, appleConfig.config);
 
-  return NextResponse.json(
-    {
-      ready: true,
-      cardId: passData.cardId,
-      serialNumber: passData.serialNumber,
-      nextStep: "APPLE_PASS_GENERATION",
-    },
-    { status: 200 }
-  );
+  try {
+    const passBuffer = await generateAppleWalletPass(passData, appleConfig.config);
+
+    return new NextResponse(new Uint8Array(passBuffer), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/vnd.apple.pkpass",
+        "Content-Disposition": `attachment; filename="${passData.serialNumber}.pkpass"`,
+        "Cache-Control": "private, no-store",
+      },
+    });
+  } catch (error) {
+    if (error instanceof AppleWalletCertificateError) {
+      return NextResponse.json(
+        {
+          ready: false,
+          cardId: card.id,
+          code: error.code,
+          message: "Apple Wallet configuration is invalid.",
+        },
+        { status: 503 }
+      );
+    }
+
+    if (error instanceof ApplePassGenerationError) {
+      return NextResponse.json(
+        {
+          ready: false,
+          cardId: card.id,
+          code: error.code,
+          message: "Could not generate Apple Wallet pass.",
+        },
+        { status: 500 }
+      );
+    }
+
+    console.error("Apple Wallet pass generation failed", {
+      code: "APPLE_PASS_UNEXPECTED_ERROR",
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
+
+    return NextResponse.json(
+      {
+        ready: false,
+        cardId: card.id,
+        code: "APPLE_PASS_GENERATION_FAILED",
+        message: "Could not generate Apple Wallet pass.",
+      },
+      { status: 500 }
+    );
+  }
 }

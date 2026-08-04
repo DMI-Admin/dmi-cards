@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   CreditCard,
+  Loader2,
   ExternalLink,
   QrCode,
   Smartphone,
@@ -137,6 +138,56 @@ export default function ClientWalletPage() {
 }
 
 function WalletReadyState({ card }: { card: PublishedWalletCard }) {
+  const [appleLoading, setAppleLoading] = useState(false);
+  const [appleError, setAppleError] = useState("");
+
+  async function handleAppleWalletDownload() {
+    if (appleLoading) return;
+
+    setAppleLoading(true);
+    setAppleError("");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        setAppleError("Please sign in again before adding this pass.");
+        return;
+      }
+
+      const response = await fetch(`/api/client/wallet/apple/${encodeURIComponent(card.id)}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        setAppleError(await appleWalletErrorMessage(response));
+        return;
+      }
+
+      const passBlob = await response.blob();
+      const downloadUrl = URL.createObjectURL(passBlob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `dmi-card-${safeFileId(card.id)}.pkpass`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 30_000);
+    } catch (error) {
+      console.error("Apple Wallet download failed", error);
+      setAppleError("Could not generate your Apple Wallet pass. Please try again.");
+    } finally {
+      setAppleLoading(false);
+    }
+  }
+
   return (
     <>
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -165,10 +216,12 @@ function WalletReadyState({ card }: { card: PublishedWalletCard }) {
               Wallet Actions
             </p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <DisabledWalletButton
+              <AppleWalletButton
                 icon={WalletCards}
                 label="Add to Apple Wallet"
-                message="Apple Wallet setup requires pass certificates."
+                loading={appleLoading}
+                error={appleError}
+                onClick={handleAppleWalletDownload}
               />
               <DisabledWalletButton
                 icon={Smartphone}
@@ -193,6 +246,41 @@ function WalletReadyState({ card }: { card: PublishedWalletCard }) {
         </aside>
       </div>
     </>
+  );
+}
+
+function AppleWalletButton({
+  icon: Icon,
+  label,
+  loading,
+  error,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  loading: boolean;
+  error: string;
+  onClick: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 p-4">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={loading}
+        className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-[#171123] shadow-lg shadow-purple-950/20 transition hover:bg-purple-50 disabled:cursor-wait disabled:bg-white/70"
+      >
+        {loading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Icon className="h-4 w-4" />
+        )}
+        {loading ? "Generating Pass..." : label}
+      </button>
+      <p className="mt-3 text-sm leading-6 text-white/55">
+        {error || "Creates a signed pass from your published DMI card."}
+      </p>
+    </div>
   );
 }
 
@@ -445,4 +533,31 @@ function normalizeWalletCard(row: SupabaseWalletCard): PublishedWalletCard {
     jobTitle,
     profileImageUrl: row.profile_image_url || "",
   };
+}
+
+async function appleWalletErrorMessage(response: Response) {
+  try {
+    const body = (await response.json()) as { message?: string; code?: string };
+
+    if (body.message) {
+      return body.message;
+    }
+  } catch {
+    // The API should return JSON for errors, but keep a readable fallback.
+  }
+
+  if (response.status === 401) return "Please sign in again before adding this pass.";
+  if (response.status === 404) return "Could not find a published card for this account.";
+  if (response.status === 409) return "Publish this card before adding it to Apple Wallet.";
+  if (response.status === 503) return "Apple Wallet is not configured yet.";
+
+  return "Could not generate your Apple Wallet pass. Please try again.";
+}
+
+function safeFileId(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
