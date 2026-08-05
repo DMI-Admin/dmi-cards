@@ -416,7 +416,7 @@ export default function ClientContactsPage() {
               </div>
             </div>
 
-            <div className="max-h-[620px] overflow-auto">
+            <div className="max-h-[620px] max-w-full overflow-auto">
               <table className="w-full min-w-[960px] text-sm">
                 <thead className="sticky top-0 z-10 bg-[#070B1A] text-left text-white/45">
                   <tr className="border-b border-white/10">
@@ -482,19 +482,19 @@ export default function ClientContactsPage() {
 
 function LockedOverlay() {
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center rounded-3xl bg-[#070B1A]/55 p-6 backdrop-blur-[1px]">
-      <div className="max-w-xl rounded-3xl border border-[#AC00FF]/30 bg-[#101935]/95 p-8 text-center shadow-2xl shadow-purple-950/40">
+    <div className="absolute inset-0 z-20 flex items-start justify-center rounded-3xl bg-[#070B1A]/55 p-4 pt-8 backdrop-blur-[1px] sm:items-center sm:p-6">
+      <div className="w-full max-w-xl rounded-3xl border border-[#AC00FF]/30 bg-[#101935]/95 p-6 text-center shadow-2xl shadow-purple-950/40 sm:p-8">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-3xl bg-[#AC00FF]/20">
           <Lock className="h-7 w-7 text-purple-100" />
         </div>
-        <h2 className="mt-5 text-3xl font-semibold">Unlock Contacts</h2>
+        <h2 className="mt-5 text-2xl font-semibold sm:text-3xl">Unlock Contacts</h2>
         <p className="mt-3 text-sm leading-6 text-white/60">
           Contacts is a paid lead management inbox. Upgrade to capture,
           filter, export, sync, and follow up with leads from your digital card.
         </p>
         <button
           type="button"
-          className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20"
+          className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 sm:w-auto"
         >
           <Sparkles className="h-4 w-4" />
           Upgrade to Individual Pro
@@ -608,7 +608,7 @@ function IconAction({
         type="button"
         aria-label={label}
         onClick={onClick}
-        className={`flex h-9 w-9 items-center justify-center rounded-xl border transition ${
+        className={`flex h-11 w-11 items-center justify-center rounded-xl border transition ${
           danger
             ? "border-red-300/20 bg-red-500/10 text-red-200 hover:bg-red-500/15"
             : "border-white/10 bg-white/5 text-white/60 hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10 hover:text-white"
@@ -667,7 +667,7 @@ function ContactFormModal({
         onClick={onClose}
         className="absolute inset-0 bg-black/55 backdrop-blur-sm"
       />
-      <div className="absolute inset-x-4 top-8 mx-auto max-w-3xl rounded-3xl border border-white/10 bg-[#101935] p-6 shadow-2xl shadow-black/40">
+      <div className="absolute inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] mx-auto max-h-[calc(100dvh-1.5rem)] max-w-3xl overflow-y-auto rounded-3xl border border-white/10 bg-[#101935] p-5 shadow-2xl shadow-black/40 sm:inset-x-4 sm:top-8 sm:max-h-[calc(100dvh-4rem)] sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#AC00FF]">
@@ -680,7 +680,7 @@ function ContactFormModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/60"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/60"
           >
             <X className="h-4 w-4" />
           </button>
@@ -701,12 +701,12 @@ function ContactFormModal({
           <TextArea label="Notes" value={formState.notes} onChange={(value) => update("notes", value)} />
         </div>
 
-        <div className="mt-6 flex flex-wrap justify-end gap-3">
+        <div className="mt-6 grid gap-3 sm:flex sm:flex-wrap sm:justify-end">
           <ActionButton icon={X} onClick={onClose}>Cancel</ActionButton>
           <button
             type="button"
             onClick={onSave}
-            className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20"
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20"
           >
             <Plus className="h-4 w-4" />
             Save Contact
@@ -732,20 +732,20 @@ function ContactDrawer({
         onClick={onClose}
         className="absolute inset-0 bg-black/55 backdrop-blur-sm"
       />
-      <aside className="absolute inset-y-0 right-0 w-full max-w-xl overflow-y-auto border-l border-white/10 bg-[#070B1A]/95 p-6 shadow-2xl shadow-black/40">
-        <div className="rounded-3xl border border-white/10 bg-[#101935]/85 p-6">
+      <aside className="absolute inset-y-0 right-0 w-full max-w-xl overflow-y-auto border-l border-white/10 bg-[#070B1A]/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl shadow-black/40 sm:p-6">
+        <div className="rounded-3xl border border-white/10 bg-[#101935]/85 p-5 sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#AC00FF]">
                 Contact Details
               </p>
-              <h2 className="mt-2 text-3xl font-semibold">{contact.name}</h2>
+              <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">{contact.name}</h2>
               <p className="mt-1 text-white/50">{contact.company}</p>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/60 transition hover:bg-white/10 hover:text-white"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/60 transition hover:bg-white/10 hover:text-white"
             >
               <X className="h-4 w-4" />
             </button>

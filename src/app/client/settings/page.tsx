@@ -93,7 +93,7 @@ export default function ClientSettingsPage() {
 
           <button
             type="button"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35 sm:w-auto"
           >
             <Save className="h-4 w-4" />
             Save Settings
@@ -154,7 +154,7 @@ export default function ClientSettingsPage() {
 
               <button
                 type="button"
-                className="mt-6 inline-flex items-center justify-center gap-2 rounded-2xl bg-[#AC00FF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/20 transition hover:bg-[#BE35FF]"
+                className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#AC00FF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/20 transition hover:bg-[#BE35FF] sm:w-auto"
               >
                 <Save className="h-4 w-4" />
                 Save Changes
@@ -169,7 +169,7 @@ export default function ClientSettingsPage() {
                 />
                 <button
                   type="button"
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#AC00FF]/45 bg-[#AC00FF]/15 px-4 py-3 text-sm font-semibold text-purple-100 transition hover:bg-[#AC00FF]/25"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#AC00FF]/45 bg-[#AC00FF]/15 px-4 py-3 text-sm font-semibold text-purple-100 transition hover:bg-[#AC00FF]/25 sm:w-auto"
                 >
                   Upgrade
                   <ArrowUpRight className="h-4 w-4" />
@@ -475,12 +475,12 @@ function ServiceRow({
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#AC00FF]/15 text-purple-200">
             <Icon className="h-5 w-5" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="font-semibold">{label}</p>
             <p className="mt-1 text-sm text-white/45">{value}</p>
           </div>
         </div>
-        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/55">
+        <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/55">
           {status}
         </span>
       </div>

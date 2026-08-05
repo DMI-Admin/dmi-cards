@@ -8,6 +8,7 @@ import {
   ClientSuspendedError,
   requireClientUser,
 } from "@/lib/client-auth";
+import { ClientMobileHeader } from "@/components/ClientSidebar";
 
 export default function ClientPortalLayout({
   children,
@@ -90,5 +91,10 @@ export default function ClientPortalLayout({
     );
   }
 
-  return children;
+  return (
+    <div className="client-portal-root min-h-screen bg-[#070B1A]">
+      <ClientMobileHeader />
+      {children}
+    </div>
+  );
 }

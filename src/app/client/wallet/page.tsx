@@ -198,7 +198,7 @@ function WalletReadyState({ card }: { card: PublishedWalletCard }) {
       </div>
 
       <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_430px]">
-        <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-6 shadow-2xl shadow-black/20">
+        <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-5 shadow-2xl shadow-black/20 sm:p-6">
           <SectionTitle
             title="Free Wallet Pass"
             description="This pass will be generated from your existing published card data. No separate wallet profile is created."
@@ -233,13 +233,13 @@ function WalletReadyState({ card }: { card: PublishedWalletCard }) {
         </section>
 
         <aside className="xl:sticky xl:top-8 xl:self-start">
-          <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-6 shadow-2xl shadow-black/20">
+          <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-5 shadow-2xl shadow-black/20 sm:p-6">
             <SectionTitle
               title="Pass Preview"
               description="Preview of the data the wallet pass will contain."
             />
 
-            <div className="mt-6 rounded-[2rem] border border-[#AC00FF]/25 bg-gradient-to-br from-[#1B1241] via-[#101935] to-[#070B1A] p-5 shadow-inner shadow-white/5">
+            <div className="mt-6 rounded-[2rem] border border-[#AC00FF]/25 bg-gradient-to-br from-[#1B1241] via-[#101935] to-[#070B1A] p-3 shadow-inner shadow-white/5 sm:p-5">
               <WalletPassPreview card={card} />
             </div>
           </section>
@@ -286,7 +286,7 @@ function AppleWalletButton({
 
 function PublishFirstState() {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center shadow-2xl shadow-black/20">
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-center shadow-2xl shadow-black/20 sm:p-8">
       <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#AC00FF]/15 text-purple-100">
         <WalletCards className="h-7 w-7" />
       </div>
@@ -297,7 +297,7 @@ function PublishFirstState() {
       </p>
       <a
         href="/client/cards"
-        className="mt-6 inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35"
+        className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35 sm:w-auto"
       >
         <ExternalLink className="h-4 w-4" />
         Create or Publish Card
@@ -308,19 +308,19 @@ function PublishFirstState() {
 
 function WalletPassPreview({ card }: { card: PublishedWalletCard }) {
   return (
-    <div className="mx-auto max-w-sm overflow-hidden rounded-[2rem] border border-white/20 bg-[#AC00FF] shadow-2xl shadow-black/30">
-      <div className="p-5">
+    <div className="mx-auto w-full max-w-sm overflow-hidden rounded-[2rem] border border-white/20 bg-[#AC00FF] shadow-2xl shadow-black/30">
+      <div className="p-4 sm:p-5">
         <div className="flex items-center justify-between gap-4 border-b border-white/20 pb-4">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <ProfilePhoto card={card} />
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/60">
                 DMI Cards
               </p>
-              <p className="text-sm font-semibold">{card.name}</p>
+              <p className="truncate text-sm font-semibold">{card.name}</p>
             </div>
           </div>
-          <span className="rounded-full bg-white/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/75">
+          <span className="shrink-0 rounded-full bg-white/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/75">
             Free
           </span>
         </div>
@@ -329,10 +329,10 @@ function WalletPassPreview({ card }: { card: PublishedWalletCard }) {
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/55">
             Digital Business Card
           </p>
-          <h3 className="mt-2 text-3xl font-bold tracking-tight">
+          <h3 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
             {card.fullName}
           </h3>
-          <div className="mt-5 grid grid-cols-2 gap-4">
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <PreviewField label="Company" value={card.company} />
             <PreviewField label="Job title" value={card.jobTitle} />
           </div>

@@ -108,7 +108,7 @@ export default function ClientBillingPage() {
 
           <button
             type="button"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35 sm:w-auto"
           >
             <Sparkles className="h-4 w-4" />
             Upgrade to Individual Pro
@@ -161,7 +161,7 @@ export default function ClientBillingPage() {
 
                 <button
                   type="button"
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#AC00FF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/20 transition hover:bg-[#BE35FF]"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#AC00FF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/20 transition hover:bg-[#BE35FF] sm:w-auto"
                 >
                   Upgrade to Individual Pro
                   <ArrowUpRight className="h-4 w-4" />
@@ -218,7 +218,7 @@ export default function ClientBillingPage() {
                 </button>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="max-w-full overflow-x-auto">
                 <table className="w-full min-w-[720px]">
                   <thead className="bg-[#0B1024] text-left text-xs uppercase tracking-[0.14em] text-white/40">
                     <tr>
@@ -285,7 +285,7 @@ export default function ClientBillingPage() {
                 </p>
                 <button
                   type="button"
-                  className="mt-5 inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/70 transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:text-white"
+                  className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/70 transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:text-white sm:w-auto"
                 >
                   Add Payment Method
                 </button>
@@ -400,7 +400,7 @@ function PlanCard({
 
       <button
         type="button"
-        className={`mt-6 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+        className={`mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
           highlighted
             ? "bg-[#AC00FF] text-white shadow-lg shadow-purple-500/20 hover:bg-[#BE35FF]"
             : "border border-white/10 bg-white/5 text-white/70 hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:text-white"

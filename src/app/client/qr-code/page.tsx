@@ -247,7 +247,7 @@ export default function ClientQrCodePage() {
             </div>
             <button
               type="button"
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35 md:w-auto"
             >
               <Sparkles className="h-4 w-4" />
               View Upgrade
@@ -257,7 +257,7 @@ export default function ClientQrCodePage() {
 
             <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_430px]">
           <div className="space-y-6">
-            <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-6 shadow-2xl shadow-black/20">
+            <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-5 shadow-2xl shadow-black/20 sm:p-6">
               <SectionTitle
                 title="QR Settings"
                 description="Choose the card, style, colour, and download format."
@@ -380,7 +380,7 @@ export default function ClientQrCodePage() {
                 </SettingsBlock>
 
                 <SettingsBlock title="Download">
-                  <div className="flex flex-wrap gap-3">
+                  <div className="grid gap-3 sm:flex sm:flex-wrap">
                     <ActionButton icon={Download} onClick={downloadPng}>Download PNG</ActionButton>
                     <ActionButton icon={Printer} onClick={printQr}>
                       Print QR
@@ -388,7 +388,7 @@ export default function ClientQrCodePage() {
                     <button
                       type="button"
                       disabled={!isPaid}
-                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/45 transition enabled:text-white enabled:hover:border-[#AC00FF]/50 enabled:hover:bg-[#AC00FF]/15 disabled:cursor-not-allowed"
+                      className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/45 transition enabled:text-white enabled:hover:border-[#AC00FF]/50 enabled:hover:bg-[#AC00FF]/15 disabled:cursor-not-allowed"
                     >
                       <Lock className="h-4 w-4" />
                       Download SVG
@@ -400,14 +400,14 @@ export default function ClientQrCodePage() {
           </div>
 
           <aside className="xl:sticky xl:top-8 xl:self-start">
-            <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-6 shadow-2xl shadow-black/20">
+            <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-5 shadow-2xl shadow-black/20 sm:p-6">
               <SectionTitle
                 title="Live QR Preview"
                 description="Preview the QR code clients will scan."
               />
 
-              <div className="mt-6 rounded-[2rem] border border-[#AC00FF]/25 bg-gradient-to-br from-[#1B1241] via-[#101935] to-[#070B1A] p-6 shadow-inner shadow-white/5">
-                <div className="rounded-3xl bg-white p-5 text-[#0F172A] shadow-2xl shadow-purple-950/30">
+              <div className="mt-6 rounded-[2rem] border border-[#AC00FF]/25 bg-gradient-to-br from-[#1B1241] via-[#101935] to-[#070B1A] p-3 shadow-inner shadow-white/5 sm:p-6">
+                <div className="rounded-3xl bg-white p-4 text-[#0F172A] shadow-2xl shadow-purple-950/30 sm:p-5">
                   <QrPreview matrix={qrMatrix} colour={selectedColour} />
                   <div className="mt-5 text-center">
                     <p className="text-sm font-semibold">Scan to open</p>
@@ -522,7 +522,7 @@ function ActionButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:shadow-lg hover:shadow-purple-500/10"
+      className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:shadow-lg hover:shadow-purple-500/10 sm:w-auto"
     >
       <Icon className="h-4 w-4" />
       {children}
@@ -532,7 +532,7 @@ function ActionButton({
 
 function EmptyQrState() {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center shadow-2xl shadow-black/20">
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-center shadow-2xl shadow-black/20 sm:p-8">
       <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#AC00FF]/15 text-purple-100">
         <QrCode className="h-7 w-7" />
       </div>
@@ -544,7 +544,7 @@ function EmptyQrState() {
       </p>
       <a
         href="/client/cards"
-        className="mt-6 inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35"
+        className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35 sm:w-auto"
       >
         <ExternalLink className="h-4 w-4" />
         Create or Publish Card

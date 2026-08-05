@@ -240,20 +240,6 @@ export default function ClientDashboardPage() {
       </div>
 
       <section className="min-w-0 flex-1 px-5 py-6 sm:px-7 lg:px-10 lg:py-9">
-        <div className="mb-6 rounded-[var(--radius-xl)] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-4 shadow-[var(--shadow-sm)] lg:hidden">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--text-accent)]">
-                DMI Cards
-              </p>
-              <p className="mt-1 text-lg font-semibold text-[var(--text-primary)]">
-                Client Portal
-              </p>
-            </div>
-            <AccountMenu profile={profile} onNavigate={(href) => router.push(href)} />
-          </div>
-        </div>
-
         <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.28em] text-[var(--text-accent)]">
@@ -857,7 +843,7 @@ function RecentContacts() {
       </div>
 
       {isPaid ? (
-        <div className="mt-5 overflow-hidden rounded-2xl border border-[var(--dmi-border)]">
+        <div className="mt-5 max-w-full overflow-x-auto rounded-2xl border border-[var(--dmi-border)]">
           <table className="w-full text-sm">
             <thead className="bg-[var(--dmi-surface-soft)] text-left text-[var(--text-secondary)]">
               <tr>

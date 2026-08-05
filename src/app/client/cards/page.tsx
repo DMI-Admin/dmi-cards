@@ -1249,7 +1249,7 @@ export default function ClientCardsPage() {
             <button
               type="button"
               onClick={() => setPreviewDrawerOpen(true)}
-              className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-2xl border border-[#AC00FF]/40 bg-[#AC00FF] px-4 py-3 text-sm font-semibold text-white shadow-2xl shadow-purple-500/35 transition hover:shadow-purple-500/50 md:bottom-auto md:right-0 md:top-1/2 md:-translate-y-1/2 md:flex-col md:rounded-l-2xl md:rounded-r-none md:px-3 md:py-5 2xl:hidden"
+              className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-11 items-center gap-2 rounded-2xl border border-[#AC00FF]/40 bg-[#AC00FF] px-4 py-3 text-sm font-semibold text-white shadow-2xl shadow-purple-500/35 transition hover:shadow-purple-500/50 md:bottom-auto md:right-0 md:top-1/2 md:-translate-y-1/2 md:flex-col md:rounded-l-2xl md:rounded-r-none md:px-3 md:py-5 2xl:hidden"
             >
               <CreditCard className="h-4 w-4" />
               <span className="md:[writing-mode:vertical-rl] md:rotate-180">

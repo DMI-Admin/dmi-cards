@@ -170,7 +170,7 @@ export default function ClientIntegrationsPage() {
           <button
             type="button"
             onClick={() => placeholder("Manual sync")}
-            className="inline-flex w-fit items-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35 sm:w-fit"
           >
             <RefreshCw className="h-4 w-4" />
             Sync Contacts Now
@@ -222,7 +222,7 @@ export default function ClientIntegrationsPage() {
                     <button
                       type="button"
                       onClick={() => placeholder("Retry failed syncs")}
-                      className="inline-flex w-fit items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/70 transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/70 transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10 sm:w-fit"
                     >
                       <RefreshCw className="h-4 w-4" />
                       Retry Failed
@@ -230,7 +230,7 @@ export default function ClientIntegrationsPage() {
                   </div>
 
                   <div className="mt-6 overflow-hidden rounded-3xl border border-white/10">
-                    <div className="overflow-x-auto">
+                    <div className="max-w-full overflow-x-auto">
                       <table className="w-full min-w-[860px] text-sm">
                         <thead className="bg-[#070B1A] text-left text-white/45">
                           <tr>
@@ -398,9 +398,9 @@ function IntegrationStatusBadge({ status }: { status: IntegrationStatus }) {
   };
 
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/65">
+    <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/65">
       <span className={`h-2 w-2 rounded-full ${dot[status]}`} />
-      {labels[status]}
+      <span className="truncate">{labels[status]}</span>
     </span>
   );
 }
@@ -418,9 +418,9 @@ function SyncBadge({ status }: { status: SyncStatus }) {
   };
 
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/65">
+    <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/65">
       <span className={`h-2 w-2 rounded-full ${dot[status]}`} />
-      {labels[status]}
+      <span className="truncate">{labels[status]}</span>
     </span>
   );
 }
@@ -438,7 +438,7 @@ function ToggleRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left transition hover:border-[#AC00FF]/35 hover:bg-white/10"
+      className="flex w-full items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left transition hover:border-[#AC00FF]/35 hover:bg-white/10"
     >
       <span className="text-sm font-semibold">{label}</span>
       <span
@@ -469,18 +469,18 @@ function SectionTitle({
 
 function LockedOverlay() {
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center rounded-3xl bg-[#070B1A]/55 p-6 backdrop-blur-[1px]">
-      <div className="max-w-xl rounded-3xl border border-[#AC00FF]/30 bg-[#101935]/95 p-8 text-center shadow-2xl shadow-purple-950/40">
+    <div className="absolute inset-0 z-20 flex items-start justify-center rounded-3xl bg-[#070B1A]/55 p-4 pt-8 backdrop-blur-[1px] sm:items-center sm:p-6">
+      <div className="w-full max-w-xl rounded-3xl border border-[#AC00FF]/30 bg-[#101935]/95 p-6 text-center shadow-2xl shadow-purple-950/40 sm:p-8">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-3xl bg-[#AC00FF]/20">
           <Lock className="h-7 w-7 text-purple-100" />
         </div>
-        <h2 className="mt-5 text-3xl font-semibold">Unlock Integrations</h2>
+        <h2 className="mt-5 text-2xl font-semibold sm:text-3xl">Unlock Integrations</h2>
         <p className="mt-3 text-sm leading-6 text-white/60">
           Upgrade to Individual Pro to connect CRM and automation tools.
         </p>
         <button
           type="button"
-          className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20"
+          className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 sm:w-auto"
         >
           <Sparkles className="h-4 w-4" />
           Upgrade to Individual Pro

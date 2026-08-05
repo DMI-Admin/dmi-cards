@@ -206,6 +206,92 @@ body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"] {
   background-color: rgba(255, 255, 255, 0.16) !important;
 }
 
+/* =========================
+   CLIENT PORTAL MOBILE SHELL
+========================= */
+
+.client-portal-root {
+  width: 100%;
+  overflow-x: clip;
+}
+
+.client-portal-root * {
+  min-width: 0;
+}
+
+.client-portal-root img,
+.client-portal-root video,
+.client-portal-root canvas,
+.client-portal-root svg {
+  max-width: 100%;
+}
+
+@media (max-width: 767px) {
+  .client-portal-root {
+    min-height: 100dvh;
+  }
+
+  .client-portal-root .dmi-sidebar {
+    display: none !important;
+  }
+
+  .client-portal-root main {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: clip;
+  }
+
+  .client-portal-root main > section {
+    width: 100%;
+    max-width: 100vw;
+    padding: 1rem !important;
+    padding-bottom: max(1.25rem, env(safe-area-inset-bottom)) !important;
+  }
+
+  .client-portal-root h1 {
+    overflow-wrap: anywhere;
+    font-size: clamp(2rem, 12vw, 2.75rem);
+  }
+
+  .client-portal-root h2,
+  .client-portal-root h3,
+  .client-portal-root p,
+  .client-portal-root span,
+  .client-portal-root a,
+  .client-portal-root td,
+  .client-portal-root th {
+    overflow-wrap: anywhere;
+  }
+
+  .client-portal-root input,
+  .client-portal-root select,
+  .client-portal-root textarea,
+  .client-portal-root button {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .client-portal-root table {
+    max-width: 100%;
+  }
+
+  .client-portal-root .overflow-x-auto {
+    max-width: calc(100vw - 2rem);
+    overscroll-behavior-x: contain;
+  }
+
+  .client-portal-root section,
+  .client-portal-root article,
+  .client-portal-root aside {
+    max-width: 100%;
+  }
+
+  .client-portal-root [class*="rounded-3xl"],
+  .client-portal-root [class*="rounded-[2rem]"] {
+    overflow-wrap: anywhere;
+  }
+}
+
 body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]"],
 body:not(:has(.public-card-page)) [class~="from-[#AC00FF]"][class~="to-[#6C2CFF]"],
 body:not(:has(.public-card-page)) [class~="from-[#AC00FF]"][class~="to-[#5B2CFF]"],

@@ -144,7 +144,7 @@ export default function ClientAnalyticsPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="grid gap-3 sm:flex sm:flex-wrap">
             <ActionButton icon={Download}>Export PDF</ActionButton>
             <ActionButton icon={FileSpreadsheet}>Export CSV</ActionButton>
             <ActionButton icon={CalendarDays}>Schedule Monthly Report</ActionButton>
@@ -453,7 +453,7 @@ function ActionButton({
   return (
     <button
       type="button"
-      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/75 transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:text-white"
+      className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/75 transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:text-white sm:w-auto"
     >
       <Icon className="h-4 w-4" />
       {children}
@@ -478,12 +478,12 @@ function SectionTitle({
 
 function LockedOverlay() {
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center rounded-3xl bg-[#070B1A]/55 p-6 backdrop-blur-[1px]">
-      <div className="max-w-xl rounded-3xl border border-[#AC00FF]/30 bg-[#101935]/95 p-8 text-center shadow-2xl shadow-purple-950/40">
+    <div className="absolute inset-0 z-20 flex items-start justify-center rounded-3xl bg-[#070B1A]/55 p-4 pt-8 backdrop-blur-[1px] sm:items-center sm:p-6">
+      <div className="w-full max-w-xl rounded-3xl border border-[#AC00FF]/30 bg-[#101935]/95 p-6 text-center shadow-2xl shadow-purple-950/40 sm:p-8">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-3xl bg-[#AC00FF]/20">
           <Lock className="h-7 w-7 text-purple-100" />
         </div>
-        <h2 className="mt-5 text-3xl font-semibold">Unlock Analytics</h2>
+        <h2 className="mt-5 text-2xl font-semibold sm:text-3xl">Unlock Analytics</h2>
         <p className="mt-3 text-sm leading-6 text-white/60">
           Upgrade to Individual Pro to unlock performance analytics, lead
           attribution, device breakdowns, and reporting exports.
