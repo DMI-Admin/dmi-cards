@@ -19,14 +19,10 @@ import {
   Zap,
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
+import { clientFeaturePreviewPlans, isPaidPlan } from "@/lib/entitlements";
 
-const currentPlan = "pro" as
-  | "free"
-  | "pro"
-  | "individual_pro"
-  | "business"
-  | "enterprise";
-const isPaid = currentPlan !== "free";
+const currentPlan = clientFeaturePreviewPlans.integrations;
+const isPaid = isPaidPlan(currentPlan);
 
 type IntegrationStatus = "connected" | "not_connected" | "failed" | "coming_soon";
 type SyncStatus = "synced" | "pending" | "failed";

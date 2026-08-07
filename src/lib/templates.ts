@@ -1,7 +1,8 @@
 import { supabase } from "@/lib/supabase";
 import type { CardRendererTemplate } from "@/components/CardRenderer";
+import type { DmiPlan } from "@/lib/entitlements";
 
-export type TemplatePlan = "free" | "individual_pro" | "business" | "enterprise";
+export type TemplatePlan = DmiPlan;
 
 export type SharedTemplate = CardRendererTemplate & {
   id: string;

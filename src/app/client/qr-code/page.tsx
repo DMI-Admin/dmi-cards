@@ -15,15 +15,12 @@ import {
   Sparkles,
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
+import { clientFeaturePreviewPlans, isPaidPlan } from "@/lib/entitlements";
 import { supabase } from "@/lib/supabase";
 import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
 
-const currentPlan = "free" as
-  | "free"
-  | "individual_pro"
-  | "business"
-  | "enterprise";
-const isPaid = currentPlan !== "free";
+const currentPlan = clientFeaturePreviewPlans.qrCode;
+const isPaid = isPaidPlan(currentPlan);
 
 const publicSiteOrigin = "https://dmi-cards.vercel.app";
 

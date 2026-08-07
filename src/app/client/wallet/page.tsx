@@ -15,6 +15,7 @@ import type { LucideIcon } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
 import { supabase } from "@/lib/supabase";
 import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
+import { getPublishedCardForUser } from "@/lib/services/card-service";
 
 type PublishedWalletCard = {
   id: string;
@@ -54,16 +55,7 @@ export default function ClientWalletPage() {
       try {
         const { user } = await requireClientUser();
 
-        const { data, error } = await supabase
-          .from("cards")
-          .select(
-            "id, card_name, slug, full_name, first_name, last_name, company_name, job_title, profile_image_url"
-          )
-          .eq("user_id", user.id)
-          .or("status.eq.published,is_published.eq.true")
-          .order("updated_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const { data, error } = await getPublishedCardForUser(user.id);
 
         if (ignore) return;
 

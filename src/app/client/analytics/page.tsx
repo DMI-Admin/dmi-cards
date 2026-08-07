@@ -21,15 +21,11 @@ import {
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
 import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
+import { clientFeaturePreviewPlans, isPaidPlan } from "@/lib/entitlements";
 import { supabase } from "@/lib/supabase";
 
-const currentPlan = "pro" as
-  | "free"
-  | "pro"
-  | "individual_pro"
-  | "business"
-  | "enterprise";
-const isPaid = currentPlan !== "free";
+const currentPlan = clientFeaturePreviewPlans.analytics;
+const isPaid = isPaidPlan(currentPlan);
 
 const mockCard = {
   name: "Primary Digital Card",

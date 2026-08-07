@@ -41,12 +41,13 @@ import {
   isClientFeatureLocked,
   type ClientFeature,
 } from "@/lib/client-feature-access";
+import { clientFeaturePreviewPlans, isPaidPlan } from "@/lib/entitlements";
 
 type ThemeChoice = "system" | "light" | "dark";
 
 const themeStorageKey = "dmi-theme";
-const currentPlan = "free" as "free" | "individual_pro" | "business" | "enterprise";
-const isPaid = currentPlan !== "free";
+const currentPlan = clientFeaturePreviewPlans.dashboard;
+const isPaid = isPaidPlan(currentPlan);
 
 const fallbackTemplate: CardRendererTemplate = {
   access_level: "free",

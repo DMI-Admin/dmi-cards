@@ -23,14 +23,10 @@ import {
   X,
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
+import { clientFeaturePreviewPlans, isPaidPlan } from "@/lib/entitlements";
 
-const currentPlan = "pro" as
-  | "free"
-  | "pro"
-  | "individual_pro"
-  | "business"
-  | "enterprise";
-const isPaid = currentPlan !== "free";
+const currentPlan = clientFeaturePreviewPlans.contacts;
+const isPaid = isPaidPlan(currentPlan);
 
 type ContactSource = "QR" | "Wallet" | "Tap to Share" | "Public Page" | "Manual";
 type ContactStatus = "New" | "Contacted" | "Qualified" | "Archived";

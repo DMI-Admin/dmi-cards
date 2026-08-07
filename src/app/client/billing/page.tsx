@@ -13,8 +13,9 @@ import {
   Sparkles,
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
+import { clientFeaturePreviewPlans } from "@/lib/entitlements";
 
-const currentPlan = "free";
+const currentPlan = clientFeaturePreviewPlans.billing;
 
 const invoices = [
   {

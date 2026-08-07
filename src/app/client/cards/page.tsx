@@ -30,31 +30,71 @@ import {
 import CardRenderer, {
   combineNameParts,
   displayName,
-  type CardRendererData,
   type CardRendererTemplate,
 } from "@/components/CardRenderer";
 import ClientSidebar from "@/components/ClientSidebar";
 import { supabase } from "@/lib/supabase";
 import {
   getClientVisibleTemplates,
-  normalizeColourPalette,
   type SharedTemplate,
 } from "@/lib/templates";
 import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
+import {
+  clientFeaturePreviewPlans,
+  isPaidPlan,
+  planLabel as entitlementPlanLabel,
+} from "@/lib/entitlements";
+import {
+  deleteCardForUser,
+  listCardsForUser,
+  saveClientCard,
+  type CardWriteMode,
+} from "@/lib/services/card-service";
+import {
+  buildCardSlugBase,
+  canSelectTemplate as canSelectTemplateForPlan,
+  customFieldStorageKey,
+  customFieldValue,
+  defaultLeadCaptureSettings,
+  defaultTemplateForPlan as defaultTemplateForPlanForPlan,
+  describeCardsDatabaseError,
+  fallbackColour,
+  fieldKeyMatches,
+  firstTemplateColour,
+  firstTemplateTextColour,
+  getInitialFieldOrder,
+  hiddenFieldsForCard,
+  isFieldHidden,
+  isFieldVisible,
+  isEditableCardField,
+  isPaidTemplate,
+  mapSupabaseCard as mapSupabaseCardForPlan,
+  mergeAllowedFieldsWithFieldOrder,
+  mergeFieldOrderWithTemplate,
+  normalizeFieldVisibility,
+  readableTextForColour,
+  selectedColourForTemplate,
+  selectedTextColourForTemplate,
+  templateColourPalette,
+  templateForCard as templateForCardForPlan,
+  templateTextColourPalette,
+  visibleTemplatesForPlan as visibleTemplatesForPlanForPlan,
+  type CardFieldOrder,
+  type CardSectionKey,
+  type ClientCardPlan,
+  type ClientCardStatus,
+  type LeadCaptureSettings,
+  type LeadField,
+  type SharedClientCard,
+  type SupabaseCardRow,
+} from "@/lib/services/card-payload";
 import { useRouter } from "next/navigation";
 
-const currentPlan = "free" as
-  | "free"
-  | "individual_pro"
-  | "business"
-  | "enterprise";
-const isPaid = currentPlan !== "free";
+const currentPlan = clientFeaturePreviewPlans.cards as ClientCardPlan;
+const isPaid = isPaidPlan(currentPlan);
 
-type CardStatus = "published" | "unpublished";
 type PanelMode = "create" | "edit";
-type SectionKey = "personal" | "company" | "contact" | "social";
 type BuilderStep = 0 | 1 | 2;
-type FieldVisibility = Record<string, boolean>;
 type DevicePreviewKey =
   | "iphone_se"
   | "iphone_se_2_3"
@@ -127,56 +167,15 @@ type DevicePreviewKey =
 
 type AdminTemplate = SharedTemplate;
 
-type ClientCard = CardRendererData & {
-  id: string;
-  card_name: string;
-  template_id: string;
-  template_name: string;
-  status: CardStatus;
-  public_url: string;
-  last_updated: string;
-  selected_colour?: string;
-  hidden_fields?: string[];
-  field_visibility?: FieldVisibility;
-  slug?: string;
-  field_order?: FieldOrder;
-  lead_capture_settings?: LeadCaptureSettings;
-};
-
-type FieldOrder = Record<SectionKey, string[]>;
-type LeadField = "name" | "email" | "phone" | "company" | "job_title" | "website" | "message";
-type LeadCaptureSettings = {
-  flow: "collect_first" | "share_first";
-  fields: LeadField[];
-  consent_notice: string;
-  terms_url: string;
-  follow_up_enabled: boolean;
-};
+type ClientCard = SharedClientCard;
+type CardStatus = ClientCardStatus;
+type SectionKey = CardSectionKey;
+type FieldOrder = CardFieldOrder;
 type SectionConfig = {
   key: SectionKey;
   label: string;
   enabled: boolean;
   fields: string[];
-};
-
-type SupabaseCardRow = CardRendererData & {
-  id: string;
-  card_name?: string | null;
-  template_id?: string | null;
-  profile_id?: string | null;
-  status?: string | null;
-  is_published?: boolean | null;
-  slug?: string | null;
-  profile_image_url?: string | null;
-  company_logo_url?: string | null;
-  company_banner_url?: string | null;
-  selected_colour?: string | null;
-  hidden_fields?: string[] | null;
-  field_visibility?: FieldVisibility | null;
-  field_order?: FieldOrder | null;
-  lead_capture_settings?: LeadCaptureSettings | null;
-  updated_at?: string | null;
-  created_at?: string | null;
 };
 
 type SaveStatus = "idle" | "saving" | "saved" | "published" | "failed";
@@ -344,21 +343,6 @@ const sectionLabels: Record<SectionKey, string> = {
   social: "Social & Links",
 };
 
-const sectionDefaults: FieldOrder = {
-  personal: ["job_title", "bio", "department"],
-  company: ["company_name", "website", "address"],
-  contact: ["email", "phone"],
-  social: [
-    "whatsapp",
-    "linkedin",
-    "instagram",
-    "facebook",
-    "youtube",
-    "booking_link",
-    "custom_url",
-  ],
-};
-
 const fieldLabels: Record<string, string> = {
   title: "Title",
   first_name: "First Name",
@@ -382,28 +366,6 @@ const fieldLabels: Record<string, string> = {
   employee_id: "Employee ID",
 };
 
-const editableCardFields = new Set<string>([
-  "title",
-  "first_name",
-  "last_name",
-  "full_name",
-  "job_title",
-  "bio",
-  "company_name",
-  "department",
-  "website",
-  "address",
-  "email",
-  "phone",
-  "whatsapp",
-  "linkedin",
-  "instagram",
-  "facebook",
-  "youtube",
-  "booking_link",
-  "custom_url",
-]);
-
 const leadFields: { key: LeadField; label: string }[] = [
   { key: "name", label: "Name" },
   { key: "email", label: "Email" },
@@ -414,16 +376,6 @@ const leadFields: { key: LeadField; label: string }[] = [
   { key: "message", label: "Message" },
 ];
 
-const defaultLeadCaptureSettings: LeadCaptureSettings = {
-  flow: "share_first",
-  fields: ["name", "email"],
-  consent_notice:
-    "I consent to sharing my details so this card owner can follow up.",
-  terms_url: "https://www.devmasterinc.com/terms",
-  follow_up_enabled: false,
-};
-
-const fallbackColour = "#AC00FF";
 const titleOptions = ["Mr", "Mrs", "Miss", "Ms", "Mx", "Dr", "Prof", "Sir", "Dame", "Lord", "Lady", "Other"];
 
 const blankCard: ClientCard = {
@@ -611,11 +563,7 @@ export default function ClientCardsPage() {
 
       if (ignore) return;
 
-      const { data, error } = await supabase
-        .from("cards")
-        .select("*")
-        .eq("user_id", userId)
-        .order("updated_at", { ascending: false });
+      const { data, error } = await listCardsForUser(userId);
 
       if (ignore) return;
 
@@ -952,40 +900,17 @@ export default function ClientCardsPage() {
     }
 
     const shouldUpdate = mode === "edit" && !card.id.startsWith("card-");
-    const currentCardId = shouldUpdate ? card.id : null;
-    const slugBase = buildCardSlugBase(card);
-    const slug = await ensureUniqueCardSlug(slugBase, currentCardId);
-    const payload = buildSupabaseCardPayload(
-      {
-        ...card,
-        slug,
-        public_url: `/u/${slug}`,
-      },
-      userId
-    );
 
-    console.log("[DMI cards] save payload", {
+    console.log("[DMI cards] save request", {
       shouldUpdate,
       cardId: card.id,
       userId,
-      payload,
     });
-
-    if (isPublishing) {
-      console.log("[DMI publish] publish payload", {
-        shouldUpdate,
-        cardId: card.id,
-        payload,
-      });
-    }
-
-    const { data, error } = await writeCardPayload({
-      cardId: card.id,
+    const { data, error } = await saveClientCard({
+      card,
       userId,
-      payload,
-      shouldUpdate,
-      slugBase,
-      currentCardId,
+      mode: mode as CardWriteMode,
+      isPublishing,
     });
 
     if (isPublishing) {
@@ -1082,13 +1007,7 @@ export default function ClientCardsPage() {
         authenticatedUserId: authUser.id,
       });
 
-      const { data, error } = await supabase
-        .from("cards")
-        .delete()
-        .eq("id", card.id)
-        .eq("user_id", authUser.id)
-        .select("id")
-        .maybeSingle();
+      const { data, error } = await deleteCardForUser(card.id, authUser.id);
 
       console.log("[DMI cards] delete result", {
         cardId: card.id,
@@ -2727,184 +2646,31 @@ function buildTemplatePreview(
   };
 }
 
-function templateColourPalette(template: AdminTemplate | CardRendererTemplate | null) {
-  if (!template) return [];
-
-  const freePalette = normalizeColourPalette(template.free_colour_palette);
-  if (freePalette.length) return freePalette;
-
-  const colourPalette = normalizeColourPalette(template.colour_palette);
-  if (colourPalette.length) return colourPalette;
-
-  return normalizeColourPalette(template.primary_color);
-}
-
-function firstTemplateColour(template: AdminTemplate | CardRendererTemplate | null) {
-  return templateColourPalette(template)[0] || fallbackColour;
-}
-
-function templateTextColourPalette(
-  template: AdminTemplate | CardRendererTemplate | null,
-  backgroundColour?: string | null
-) {
-  if (!template) return [readableTextForColour(backgroundColour || fallbackColour)];
-
-  const templateRecord = template as CardRendererTemplate & {
-    text_colours?: string[] | null;
-  };
-  const textPalette = normalizeColourPalette(templateRecord.text_colours);
-
-  if (textPalette.length) return textPalette;
-
-  const textColor = normalizeColourPalette(template.text_color);
-  if (textColor.length) return textColor;
-
-  return [readableTextForColour(backgroundColour || firstTemplateColour(template))];
-}
-
-function firstTemplateTextColour(
-  template: AdminTemplate | CardRendererTemplate | null
-) {
-  return templateTextColourPalette(template, firstTemplateColour(template))[0] || "";
-}
-
-function selectedColourForTemplate(
-  template: AdminTemplate | CardRendererTemplate | null,
-  selectedColour: string | null | undefined
-) {
-  const palette = templateColourPalette(template);
-
-  if (!palette.length) {
-    return selectedColour || fallbackColour;
-  }
-
-  if (template?.access_level === "free") {
-    return selectedColour && palette.includes(selectedColour)
-      ? selectedColour
-      : palette[0];
-  }
-
-  return selectedColour || palette[0];
-}
-
-function selectedTextColourForTemplate(
-  template: AdminTemplate | CardRendererTemplate | null,
-  selectedTextColour: string | null | undefined,
-  backgroundColour?: string | null
-) {
-  const palette = templateTextColourPalette(
-    template,
-    backgroundColour || firstTemplateColour(template)
-  );
-
-  if (selectedTextColour && palette.includes(selectedTextColour)) {
-    return selectedTextColour;
-  }
-
-  return palette[0] || readableTextForColour(backgroundColour || fallbackColour);
-}
-
-function readableTextForColour(colour: string) {
-  const hex = colour.replace("#", "");
-
-  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return "#FFFFFF";
-
-  const red = parseInt(hex.slice(0, 2), 16);
-  const green = parseInt(hex.slice(2, 4), 16);
-  const blue = parseInt(hex.slice(4, 6), 16);
-  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
-
-  return luminance > 0.62 ? "#0F172A" : "#FFFFFF";
-}
-
 async function loadPublishedTemplates(): Promise<AdminTemplate[]> {
   return (await getClientVisibleTemplates(currentPlan)) as AdminTemplate[];
 }
 
-function normalizeAdminTemplates(templates: AdminTemplate[]) {
-  return templates
-    .filter((template) => template.status === "published")
-    .map((template) => {
-      const colourPalette = normalizeColourPalette(template.colour_palette);
-      const freeColourPalette = normalizeColourPalette(template.free_colour_palette);
-      const primaryPalette = normalizeColourPalette(template.primary_color);
-      const templatePalette =
-        freeColourPalette.length
-          ? freeColourPalette
-          : colourPalette.length
-            ? colourPalette
-            : primaryPalette;
-
-      return {
-        ...template,
-        access_level: template.access_level === "free" ? "free" : "paid",
-        layout_type:
-          template.access_level === "free"
-            ? "classic_free"
-            : template.layout_type || "premium_classic",
-        colour_palette: colourPalette.length ? colourPalette : templatePalette,
-        free_colour_palette: templatePalette,
-      };
-    });
-}
-
 function visibleTemplatesForPlan(templates: AdminTemplate[]) {
-  const published = normalizeAdminTemplates(templates);
-
-  if (currentPlan === "free") return published;
-
-  return published.filter(
-    (template) => template.access_level === "free" || isPaidTemplate(template)
-  );
+  return visibleTemplatesForPlanForPlan(templates, currentPlan);
 }
 
 function defaultTemplateForPlan(templates: AdminTemplate[]) {
-  const published = normalizeAdminTemplates(templates);
-  const freeTemplate =
-    published.find((template) => template.access_level === "free") || null;
-
-  if (currentPlan === "free") return freeTemplate;
-
-  return (
-    published.find((template) => canSelectTemplate(template)) ||
-    freeTemplate ||
-    null
-  );
+  return defaultTemplateForPlanForPlan(templates, currentPlan);
 }
 
 function templateForCard(
   card: Pick<ClientCard, "template_id"> | null,
   templates: AdminTemplate[]
 ) {
-  if (!card?.template_id) return null;
-
-  const template =
-    normalizeAdminTemplates(templates).find((item) => item.id === card.template_id) ||
-    null;
-
-  if (template && canSelectTemplate(template)) return template;
-
-  return null;
-}
-
-function isPaidTemplate(template: AdminTemplate | CardRendererTemplate) {
-  return template.access_level !== "free";
+  return templateForCardForPlan(card, templates, currentPlan);
 }
 
 function canSelectTemplate(template: AdminTemplate | CardRendererTemplate) {
-  if (!isPaidTemplate(template)) {
-    return template.layout_type === "classic_free" || template.layout_type === "classic";
-  }
-
-  return currentPlan !== "free";
+  return canSelectTemplateForPlan(template, currentPlan);
 }
 
-function planLabel(plan: typeof currentPlan) {
-  if (plan === "individual_pro") return "Individual Pro";
-  if (plan === "business") return "Business";
-  if (plan === "enterprise") return "Enterprise";
-
-  return "Free";
+function planLabel(plan: ClientCardPlan) {
+  return entitlementPlanLabel(plan);
 }
 
 function mapSupabaseCard(
@@ -2912,204 +2678,7 @@ function mapSupabaseCard(
   templates: AdminTemplate[] = [],
   defaultTemplate = defaultTemplateForPlan(templates)
 ): ClientCard {
-  const rowName = displayName(row, "");
-  const slug = row.slug || slugify(rowName || row.card_name || "digital-card");
-  const rowTemplate =
-    templateForCard({ template_id: row.template_id || "" }, templates) ||
-    defaultTemplate;
-  const templateName =
-    rowTemplate?.name ||
-    "Free Classic";
-  const fieldOrder = mergeFieldOrderWithTemplate(row.field_order, rowTemplate);
-  const fieldVisibility = fieldVisibilityWithHiddenFallback(
-    row.field_visibility,
-    row.hidden_fields,
-    fieldOrder
-  );
-
-  return {
-    id: row.id,
-    card_name: row.card_name || "Primary Digital Card",
-    template_id: rowTemplate?.id || row.template_id || "",
-    template_name: templateName,
-    status: row.is_published || row.status === "published" ? "published" : "unpublished",
-    public_url: `/u/${slug}`,
-    last_updated: row.updated_at || row.created_at || "Saved",
-    slug,
-    title: row.title || "",
-    first_name: row.first_name || "",
-    last_name: row.last_name || "",
-    full_name: row.full_name || rowName,
-    job_title: row.job_title || customFieldValue(row, "job_title"),
-    department: row.department || customFieldValue(row, "department"),
-    bio: row.bio || customFieldValue(row, "bio"),
-    company_name: row.company_name || customFieldValue(row, "company_name"),
-    email: row.email || customFieldValue(row, "email"),
-    phone: row.phone || customFieldValue(row, "phone"),
-    website: row.website || customFieldValue(row, "website"),
-    address: row.address || customFieldValue(row, "address"),
-    whatsapp: row.whatsapp || customFieldValue(row, "whatsapp"),
-    linkedin: row.linkedin || customFieldValue(row, "linkedin"),
-    instagram: row.instagram || customFieldValue(row, "instagram"),
-    facebook: row.facebook || customFieldValue(row, "facebook"),
-    youtube: row.youtube || customFieldValue(row, "youtube"),
-    booking_link: row.booking_link || customFieldValue(row, "booking_link"),
-    custom_url: row.custom_url || customFieldValue(row, "custom_url"),
-    profile_image_url: row.profile_image_url || "",
-    company_logo_url: row.company_logo_url || "",
-    company_banner_url: row.company_banner_url || "",
-    custom_fields: row.custom_fields || {},
-    selected_colour: selectedColourForTemplate(rowTemplate, row.selected_colour),
-    selected_text_colour: selectedTextColourForTemplate(
-      rowTemplate,
-      row.selected_text_colour,
-      row.selected_colour || undefined
-    ),
-    hidden_fields: row.hidden_fields || [],
-    field_visibility: fieldVisibility,
-    field_order: fieldOrder,
-    lead_capture_settings: row.lead_capture_settings || defaultLeadCaptureSettings,
-  };
-}
-
-function buildSupabaseCardPayload(
-  card: ClientCard,
-  userId: string
-) {
-  const isPublished = card.status === "published";
-  const combinedName = displayName(card, "");
-  const fieldOrder = card.field_order || getInitialFieldOrder(null);
-  const fieldVisibility = buildPersistedFieldVisibility(card, fieldOrder);
-
-  return {
-    user_id: userId,
-    profile_id: userId,
-    template_id: card.template_id || null,
-    card_name: card.card_name || "Primary Digital Card",
-    slug: card.slug || slugify(combinedName || card.card_name || "digital-card"),
-    title: card.title || null,
-    first_name: card.first_name || "",
-    last_name: card.last_name || "",
-    full_name: combinedName || card.full_name || "",
-    job_title: card.job_title || "",
-    department: card.department || "",
-    bio: card.bio || "",
-    company_name: card.company_name || "",
-    email: card.email || "",
-    phone: card.phone || "",
-    website: card.website || "",
-    address: card.address || "",
-    whatsapp: card.whatsapp || "",
-    linkedin: card.linkedin || "",
-    instagram: card.instagram || "",
-    facebook: card.facebook || "",
-    youtube: card.youtube || "",
-    booking_link: card.booking_link || "",
-    custom_url: card.custom_url || "",
-    profile_image_url: card.profile_image_url || "",
-    company_logo_url: card.company_logo_url || "",
-    company_banner_url: card.company_banner_url || "",
-    selected_colour: card.selected_colour || fallbackColour,
-    selected_text_colour:
-      card.selected_text_colour ||
-      selectedTextColourForTemplate(null, null, card.selected_colour || fallbackColour),
-    hidden_fields: hiddenFieldsFromVisibility(fieldVisibility, fieldOrder),
-    field_visibility: fieldVisibility,
-    field_order: fieldOrder,
-    lead_capture_settings: card.lead_capture_settings || defaultLeadCaptureSettings,
-    custom_fields: buildPersistedCustomFields(card),
-    status: isPublished ? "published" : "draft",
-    is_published: isPublished,
-  };
-}
-
-function buildPersistedFieldVisibility(
-  card: ClientCard,
-  fieldOrder: FieldOrder
-): FieldVisibility {
-  const currentVisibility = normalizeFieldVisibility(card.field_visibility);
-  const nextVisibility: FieldVisibility = { ...currentVisibility };
-
-  Object.values(fieldOrder)
-    .flat()
-    .forEach((field) => {
-      const key = customFieldStorageKey(field);
-      nextVisibility[key] = isFieldVisible(field, card);
-    });
-
-  return nextVisibility;
-}
-
-function hiddenFieldsFromVisibility(
-  fieldVisibility: FieldVisibility,
-  fieldOrder: FieldOrder
-) {
-  return Object.values(fieldOrder)
-    .flat()
-    .filter((field) => fieldVisibilityValue(field, fieldVisibility) === false);
-}
-
-function hiddenFieldsForCard(
-  card: Pick<ClientCard, "field_order" | "field_visibility" | "hidden_fields"> | null
-) {
-  if (!card) return [];
-
-  const fieldOrder = card.field_order || getInitialFieldOrder(null);
-  return Object.values(fieldOrder)
-    .flat()
-    .filter((field) => !isFieldVisible(field, card));
-}
-
-function buildPersistedCustomFields(card: ClientCard) {
-  const values: Record<string, string> = {};
-  const fieldOrder = card.field_order || getInitialFieldOrder(null);
-  const fields = Object.values(fieldOrder).flat();
-
-  fields.forEach((field) => {
-    const value = isEditableCardField(field)
-      ? card[field]
-      : customFieldValue(card, field);
-    const textValue = typeof value === "string" ? value.trim() : "";
-
-    if (!textValue) return;
-
-    values[customFieldStorageKey(field)] = textValue;
-  });
-
-  return values;
-}
-
-function customFieldStorageKey(field: string) {
-  return field.startsWith("custom:")
-    ? field.split(":").at(-1)?.trim().toLowerCase() || field
-    : field;
-}
-
-function buildCardSlugBase(
-  card: Pick<ClientCard, "id" | "title" | "first_name" | "last_name" | "full_name">
-) {
-  const nameSlug = slugify(displayName(card, ""));
-
-  if (nameSlug) {
-    return nameSlug;
-  }
-
-  return `card-${shortCardId(card.id)}`;
-}
-
-function shortCardId(cardId: string) {
-  const cleanId = cardId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toLowerCase();
-  const normalizedId = cleanId.replace(/^card/, "") || cleanId;
-
-  if (normalizedId) {
-    return normalizedId;
-  }
-
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-  }
-
-  return Math.random().toString(36).slice(2, 10);
+  return mapSupabaseCardForPlan(row, templates, currentPlan, defaultTemplate);
 }
 
 async function getActiveUserForCardSave(isPublishing: boolean): Promise<User | null> {
@@ -3150,193 +2719,6 @@ async function getActiveUserForCardSave(isPublishing: boolean): Promise<User | n
   }
 
   return user;
-}
-
-async function writeCardPayload({
-  cardId,
-  userId,
-  payload,
-  shouldUpdate,
-  slugBase,
-  currentCardId,
-}: {
-  cardId: string;
-  userId: string;
-  payload: Record<string, unknown>;
-  shouldUpdate: boolean;
-  slugBase: string;
-  currentCardId: string | null;
-}) {
-  const timestamp = new Date().toISOString();
-  let nextPayload: Record<string, unknown> = shouldUpdate
-    ? { ...payload, updated_at: timestamp }
-    : { ...payload, created_at: timestamp, updated_at: timestamp };
-  const attemptedSlugs = new Set<string>();
-  const writePayload = async () =>
-    shouldUpdate
-      ? await supabase
-          .from("cards")
-          .update(nextPayload)
-          .eq("id", cardId)
-          .eq("user_id", userId)
-          .select("*")
-          .single()
-      : await supabase.from("cards").insert([nextPayload]).select("*").single();
-
-  let result = await writePayload();
-
-  while (result.error) {
-    if (isDuplicateCardSlugError(result.error)) {
-      const attemptedSlug =
-        typeof nextPayload.slug === "string" ? nextPayload.slug : "";
-
-      if (attemptedSlug) {
-        attemptedSlugs.add(attemptedSlug);
-      }
-
-      const nextSlug = await nextUniqueCardSlugCandidate(
-        slugBase,
-        currentCardId,
-        attemptedSlugs
-      );
-
-      if (!nextSlug) {
-        break;
-      }
-
-      nextPayload = {
-        ...nextPayload,
-        slug: nextSlug,
-      };
-      attemptedSlugs.add(nextSlug);
-      result = await writePayload();
-      continue;
-    }
-
-    const missingColumn = missingCardColumnFromError(result.error);
-
-    if (!missingColumn || !(missingColumn in nextPayload)) {
-      break;
-    }
-
-    const { [missingColumn]: _removed, ...reducedPayload } = nextPayload;
-    void _removed;
-    nextPayload = reducedPayload;
-    result = await writePayload();
-  }
-
-  if (result.error) {
-    return { data: null, error: result.error };
-  }
-
-  return { data: result.data as SupabaseCardRow, error: null };
-}
-
-async function ensureUniqueCardSlug(baseSlug: string, currentCardId: string | null) {
-  const cleanBase = slugify(baseSlug) || "digital-card";
-  let suffix = 1;
-
-  while (suffix <= 100) {
-    const candidate = cardSlugCandidate(cleanBase, suffix);
-
-    if (!(await cardSlugExists(candidate, currentCardId))) {
-      return candidate;
-    }
-
-    suffix += 1;
-  }
-
-  return `${cleanBase}-${Date.now().toString(36)}`;
-}
-
-async function nextUniqueCardSlugCandidate(
-  baseSlug: string,
-  currentCardId: string | null,
-  attemptedSlugs: Set<string>
-) {
-  const cleanBase = slugify(baseSlug) || "digital-card";
-
-  for (let suffix = 1; suffix <= 100; suffix += 1) {
-    const candidate = cardSlugCandidate(cleanBase, suffix);
-
-    if (attemptedSlugs.has(candidate)) {
-      continue;
-    }
-
-    if (!(await cardSlugExists(candidate, currentCardId))) {
-      return candidate;
-    }
-  }
-
-  const timestampedCandidate = `${cleanBase}-${Date.now().toString(36)}`;
-  return attemptedSlugs.has(timestampedCandidate) ? null : timestampedCandidate;
-}
-
-function cardSlugCandidate(baseSlug: string, suffix: number) {
-  return suffix <= 1 ? baseSlug : `${baseSlug}-${suffix}`;
-}
-
-async function cardSlugExists(slug: string, currentCardId: string | null) {
-  let query = supabase.from("cards").select("id").eq("slug", slug).limit(1);
-
-  if (currentCardId) {
-    query = query.neq("id", currentCardId);
-  }
-
-  const { data, error } = await query.maybeSingle();
-
-  if (error) {
-    console.error("Slug uniqueness check failed", error);
-    return false;
-  }
-
-  return Boolean(data);
-}
-
-function isDuplicateCardSlugError(error: { code?: string; message?: string } | null) {
-  const message = error?.message || "";
-
-  return (
-    error?.code === "23505" &&
-    /cards_slug_key|cards_slug_unique_idx|slug|duplicate key value/i.test(message)
-  );
-}
-
-function missingCardColumnFromError(error: { message?: string } | null) {
-  const message = error?.message || "";
-  const quotedColumnMatch = message.match(/'([^']+)' column of 'cards'/);
-  const qualifiedColumnMatch = message.match(/column cards\.([a-zA-Z0-9_]+) does not exist/);
-  const missingColumnMatch = message.match(/Could not find the '([^']+)' column of 'cards'/);
-
-  return (
-    quotedColumnMatch?.[1] ||
-    qualifiedColumnMatch?.[1] ||
-    missingColumnMatch?.[1] ||
-    null
-  );
-}
-
-function describeCardsDatabaseError(error: { code?: string; message?: string } | null) {
-  const message = error?.message || "Unknown Supabase error.";
-  const missingColumn = missingCardColumnFromError(error);
-
-  if (isDuplicateCardSlugError(error)) {
-    return "That public card link is already in use. Please publish again and we will create a unique link automatically.";
-  }
-
-  if (missingColumn) {
-    return `Database schema issue: public.cards is missing column "${missingColumn}". Run the cards schema migration before publishing.`;
-  }
-
-  if (
-    message.includes("relation \"public.cards\" does not exist") ||
-    message.includes("Could not find the table") ||
-    message.includes("public.cards")
-  ) {
-    return `Database schema issue: public.cards table is missing or unavailable. Run the cards schema migration before publishing.`;
-  }
-
-  return `Database save failed: ${message}`;
 }
 
 function readFileAsDataUrl(file: File) {
@@ -3481,55 +2863,6 @@ function fieldOrderForRenderer(
   };
 }
 
-function getInitialFieldOrder(template: AdminTemplate | null): FieldOrder {
-  return {
-    personal: template?.custom_fields?.personal?.length
-      ? [...template.custom_fields.personal]
-      : [...sectionDefaults.personal],
-    company: template?.custom_fields?.company?.length
-      ? [...template.custom_fields.company]
-      : [...sectionDefaults.company],
-    contact: template?.custom_fields?.contact?.length
-      ? template.custom_fields.contact.filter((field) => field !== "website")
-      : [...sectionDefaults.contact],
-    social: template?.custom_fields?.social?.length
-      ? [...template.custom_fields.social]
-      : [...sectionDefaults.social],
-  };
-}
-
-function mergeFieldOrderWithTemplate(
-  savedFieldOrder: FieldOrder | null | undefined,
-  template: AdminTemplate | CardRendererTemplate | null
-): FieldOrder {
-  const templateOrder = getInitialFieldOrder(template as AdminTemplate | null);
-
-  return {
-    personal: mergeSectionFields(savedFieldOrder?.personal, templateOrder.personal),
-    company: mergeSectionFields(savedFieldOrder?.company, templateOrder.company),
-    contact: mergeSectionFields(savedFieldOrder?.contact, templateOrder.contact).filter(
-      (field) => field !== "website"
-    ),
-    social: mergeSectionFields(savedFieldOrder?.social, templateOrder.social),
-  };
-}
-
-function mergeSectionFields(
-  savedFields: string[] | null | undefined,
-  templateFields: string[]
-) {
-  const seen = new Set<string>();
-
-  return [...(savedFields || []), ...templateFields].filter((field) => {
-    const key = field.toLowerCase();
-
-    if (seen.has(key)) return false;
-
-    seen.add(key);
-    return true;
-  });
-}
-
 function sectionEnabled(
   template: CardRendererTemplate,
   section: SectionKey
@@ -3556,126 +2889,6 @@ function fieldsForSection(
   );
 }
 
-function mergeAllowedFieldsWithFieldOrder(
-  allowedFields: string[],
-  fieldOrder: FieldOrder,
-  hiddenFieldSet: Set<string>
-) {
-  const orderedFields = Object.values(fieldOrder).flat();
-  const seen = new Set<string>();
-
-  return [...allowedFields, ...orderedFields].filter((field) => {
-    const key = field.toLowerCase();
-
-    if (isFieldHidden(field, hiddenFieldSet) || seen.has(key)) return false;
-
-    seen.add(key);
-    return true;
-  });
-}
-
-function isFieldHidden(field: string, hiddenFieldSet: Set<string>) {
-  const storageKey = customFieldStorageKey(field);
-
-  return (
-    hiddenFieldSet.has(field) ||
-    hiddenFieldSet.has(storageKey) ||
-    hiddenFieldSet.has(`custom:personal:${storageKey}`) ||
-    hiddenFieldSet.has(`custom:company:${storageKey}`) ||
-    hiddenFieldSet.has(`custom:contact:${storageKey}`) ||
-    hiddenFieldSet.has(`custom:social:${storageKey}`)
-  );
-}
-
-function isFieldVisible(
-  field: string,
-  card: Pick<ClientCard, "field_visibility" | "hidden_fields">
-) {
-  const visible = fieldVisibilityValue(field, card.field_visibility);
-
-  if (typeof visible === "boolean") return visible;
-
-  return !isFieldHidden(field, new Set(card.hidden_fields || []));
-}
-
-function fieldVisibilityValue(
-  field: string,
-  fieldVisibility: FieldVisibility | null | undefined
-) {
-  const visibility = normalizeFieldVisibility(fieldVisibility);
-  const storageKey = customFieldStorageKey(field);
-  const candidates = fieldKeyVariants(field);
-
-  for (const candidate of candidates) {
-    if (typeof visibility[candidate] === "boolean") {
-      return visibility[candidate];
-    }
-  }
-
-  if (typeof visibility[storageKey] === "boolean") {
-    return visibility[storageKey];
-  }
-
-  return null;
-}
-
-function fieldVisibilityWithHiddenFallback(
-  fieldVisibility: FieldVisibility | null | undefined,
-  hiddenFields: string[] | null | undefined,
-  fieldOrder: FieldOrder
-) {
-  const visibility = normalizeFieldVisibility(fieldVisibility);
-  const hasVisibility = Object.keys(visibility).length > 0;
-
-  if (hasVisibility) return visibility;
-
-  const hiddenFieldSet = new Set(hiddenFields || []);
-  const fallback: FieldVisibility = {};
-
-  Object.values(fieldOrder)
-    .flat()
-    .forEach((field) => {
-      if (isFieldHidden(field, hiddenFieldSet)) {
-        fallback[customFieldStorageKey(field)] = false;
-      }
-    });
-
-  return fallback;
-}
-
-function normalizeFieldVisibility(
-  fieldVisibility: FieldVisibility | null | undefined
-): FieldVisibility {
-  if (!fieldVisibility || typeof fieldVisibility !== "object") return {};
-
-  return Object.fromEntries(
-    Object.entries(fieldVisibility).filter(
-      (entry): entry is [string, boolean] => typeof entry[1] === "boolean"
-    )
-  );
-}
-
-function fieldKeyVariants(field: string) {
-  const storageKey = customFieldStorageKey(field);
-
-  return Array.from(
-    new Set([
-      field,
-      storageKey,
-      field.toLowerCase(),
-      storageKey.toLowerCase(),
-      `custom:personal:${storageKey}`,
-      `custom:company:${storageKey}`,
-      `custom:contact:${storageKey}`,
-      `custom:social:${storageKey}`,
-    ])
-  );
-}
-
-function fieldKeyMatches(field: string, storageKey: string) {
-  return fieldKeyVariants(field).includes(storageKey);
-}
-
 function sectionConfig(
   template: CardRendererTemplate,
   fieldOrder: FieldOrder
@@ -3686,45 +2899,6 @@ function sectionConfig(
     enabled: sectionEnabled(template, section),
     fields: fieldsForSection(template, section, fieldOrder),
   }));
-}
-
-function isEditableCardField(field: string): field is keyof ClientCard {
-  return editableCardFields.has(field);
-}
-
-function customFieldValue(
-  card: { custom_fields?: ClientCard["custom_fields"] | null },
-  field: string
-) {
-  const storageKey = customFieldStorageKey(field);
-  const value = card.custom_fields?.[field] || card.custom_fields?.[storageKey];
-
-  if (typeof value === "string") return value;
-  if (value && typeof value === "object") {
-    const firstValue = Object.values(value).find(
-      (nestedValue) => typeof nestedValue === "string" && nestedValue
-    );
-
-    if (firstValue) return firstValue;
-  }
-
-  if (!card.custom_fields) return "";
-
-  for (const nestedValue of Object.values(card.custom_fields)) {
-    if (!nestedValue || typeof nestedValue !== "object") continue;
-
-    const sectionValues = nestedValue as Record<string, string | null | undefined>;
-    const sectionValue =
-      sectionValues[field] ||
-      sectionValues[field.toLowerCase()] ||
-      sectionValues[storageKey] ||
-      sectionValues[storageKey.toLowerCase()] ||
-      "";
-
-    if (sectionValue) return sectionValue;
-  }
-
-  return "";
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
@@ -3983,12 +3157,4 @@ function friendlyFieldLabel(field: string) {
   return label
     .replace(/_/g, " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
-}
-
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
 }

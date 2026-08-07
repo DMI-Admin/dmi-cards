@@ -1,4 +1,6 @@
 import type { User } from "@supabase/supabase-js";
+import type { DmiPlan } from "@/lib/entitlements";
+import { resolvePlanFromProfile } from "@/lib/entitlements/plan-resolver";
 import { getOrCreateClientProfile, type ClientProfile } from "@/lib/profiles";
 import { supabase } from "@/lib/supabase";
 
@@ -19,6 +21,8 @@ export class ClientSuspendedError extends Error {
 export type CurrentClient = {
   user: User;
   profile: ClientProfile;
+  plan: DmiPlan;
+  planSource: "profile" | "fallback";
 };
 
 export type ClientAccountStatus = {
@@ -104,6 +108,7 @@ export async function requireClientUser(): Promise<CurrentClient> {
   }
 
   const status = await getCurrentClientAccountStatus(user.id);
+  const { plan, source: planSource } = resolvePlanFromProfile(profile);
 
   console.log("[DMI auth] client portal status decision", {
     source: "requireClientUser",
@@ -113,6 +118,8 @@ export async function requireClientUser(): Promise<CurrentClient> {
     clientStatus: status.clientStatus,
     clientUserId: status.clientUserId,
     clientUserStatus: status.clientUserStatus,
+    plan,
+    planSource,
     redirectDecision: status.isSuspended ? "sign-out-and-redirect-login" : "allow",
   });
 
@@ -127,7 +134,7 @@ export async function requireClientUser(): Promise<CurrentClient> {
     mockFallbackUsed: false,
   });
 
-  return { user, profile };
+  return { user, profile, plan, planSource };
 }
 
 export async function getCurrentClientAccountStatus(userIdForLog?: string | null) {

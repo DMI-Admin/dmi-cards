@@ -1,4 +1,5 @@
 import type { User } from "@supabase/supabase-js";
+import { normalizeDmiPlan, type DmiPlan } from "@/lib/entitlements";
 import { supabase } from "@/lib/supabase";
 
 export type ClientProfile = {
@@ -8,8 +9,8 @@ export type ClientProfile = {
   last_name: string | null;
   full_name: string | null;
   email: string | null;
-  subscription_plan: "free" | "paid";
-  plan?: "free" | "paid";
+  subscription_plan: DmiPlan;
+  plan?: DmiPlan;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -100,10 +101,13 @@ export async function ensureClientAccount(): Promise<ClientAccount> {
 }
 
 function normalizeProfile(profile: Record<string, unknown>): ClientProfile {
-  const selectedPlan =
-    profile.subscription_plan === "paid" || profile.plan === "paid"
-      ? "paid"
-      : "free";
+  const selectedPlan = normalizeDmiPlan(
+    typeof profile.subscription_plan === "string"
+      ? profile.subscription_plan
+      : typeof profile.plan === "string"
+        ? profile.plan
+        : null
+  );
 
   return {
     id: String(profile.id),

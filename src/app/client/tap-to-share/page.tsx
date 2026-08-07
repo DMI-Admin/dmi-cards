@@ -21,13 +21,10 @@ import {
   Wifi,
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
+import { clientFeaturePreviewPlans, isPaidPlan } from "@/lib/entitlements";
 
-const currentPlan = "free" as
-  | "free"
-  | "individual_pro"
-  | "business"
-  | "enterprise";
-const isPaid = currentPlan !== "free";
+const currentPlan = clientFeaturePreviewPlans.tapToShare;
+const isPaid = isPaidPlan(currentPlan);
 
 const mockLinkedCard = {
   name: "Primary Digital Card",

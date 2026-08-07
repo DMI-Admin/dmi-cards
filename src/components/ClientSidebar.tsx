@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { isClientFeatureLocked, type ClientFeature } from "@/lib/client-feature-access";
+import { clientFeaturePreviewPlans } from "@/lib/entitlements";
 
 export const clientNavItems: {
   label: string;
@@ -254,7 +255,9 @@ function ClientNavLinks({
       {clientNavItems.map((item) => {
         const Icon = item.icon;
         const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-        const locked = item.feature ? isClientFeatureLocked(item.feature, "free") : false;
+        const locked = item.feature
+          ? isClientFeatureLocked(item.feature, clientFeaturePreviewPlans.sidebar)
+          : false;
 
         return (
           <Link

@@ -24,8 +24,9 @@ import {
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
 import ThemeSelector from "@/components/ThemeSelector";
+import { clientFeaturePreviewPlans } from "@/lib/entitlements";
 
-const currentPlan = "free";
+const currentPlan = clientFeaturePreviewPlans.settings;
 
 const notificationDefaults = [
   { label: "New contact captured", enabled: true },

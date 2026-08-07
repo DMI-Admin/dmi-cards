@@ -1,4 +1,11 @@
-export type ClientPlan = "free" | "paid" | "individual_pro" | "business" | "enterprise";
+import {
+  canAccessFeature,
+  getFeatureAccess,
+  type DmiFeature,
+  type DmiPlan,
+} from "@/lib/entitlements";
+
+export type ClientPlan = DmiPlan;
 
 export type ClientFeature =
   | "contacts"
@@ -8,13 +15,19 @@ export type ClientFeature =
   | "analytics"
   | "integrations";
 
-const proOnlyFeatures = new Set<ClientFeature>([
-  "contacts",
-  "tap-to-share",
-  "analytics",
-  "integrations",
-]);
+const clientFeatureToEntitlement: Record<ClientFeature, DmiFeature> = {
+  contacts: "contacts",
+  "qr-code": "qr_code",
+  wallet: "wallet",
+  "tap-to-share": "tap_to_share",
+  analytics: "analytics",
+  integrations: "integrations",
+};
 
 export function isClientFeatureLocked(feature: ClientFeature, plan: ClientPlan) {
-  return plan === "free" && proOnlyFeatures.has(feature);
+  return !canAccessFeature(plan, clientFeatureToEntitlement[feature]);
+}
+
+export function getClientFeatureAccess(feature: ClientFeature, plan: ClientPlan) {
+  return getFeatureAccess(plan, clientFeatureToEntitlement[feature]);
 }
