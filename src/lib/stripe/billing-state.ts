@@ -10,9 +10,10 @@ import {
 
 export type TrustedBillingPlan =
   | "free"
-  | "individual_pro"
-  | "business"
+  | "pro"
   | "enterprise";
+
+export type StripeBillingInterval = "monthly" | "annual";
 
 export type StripeSubscriptionStatus =
   | "active"
@@ -31,21 +32,43 @@ export type TrustedBillingState = {
   source: "stripe_billing" | "temporary_free_cap";
 };
 
+export type CheckoutBillingPlan = "pro";
+
 const paidStatuses = new Set<StripeSubscriptionStatus>(["active", "trialing"]);
+
+export function isCheckoutBillingPlan(plan: string): plan is CheckoutBillingPlan {
+  return plan === "pro";
+}
+
+export function isStripeBillingInterval(
+  interval: string
+): interval is StripeBillingInterval {
+  return interval === "monthly" || interval === "annual";
+}
+
+export function stripePriceForCheckoutPlan(
+  plan: CheckoutBillingPlan,
+  billingInterval: StripeBillingInterval
+) {
+  if (plan !== "pro") return "";
+
+  const priceIdByInterval: Record<StripeBillingInterval, string | undefined> = {
+    monthly: process.env.STRIPE_PRICE_PRO_MONTHLY,
+    annual: process.env.STRIPE_PRICE_PRO_ANNUAL,
+  };
+
+  return priceIdByInterval[billingInterval]?.trim() || "";
+}
 
 export function dmiPlanForStripePrice(priceId: string | null | undefined): TrustedBillingPlan {
   const value = priceId?.trim() || "";
 
-  if (value && value === process.env.STRIPE_PRICE_INDIVIDUAL_PRO?.trim()) {
-    return "individual_pro";
-  }
-
-  if (value && value === process.env.STRIPE_PRICE_BUSINESS?.trim()) {
-    return "business";
-  }
-
-  if (value && value === process.env.STRIPE_PRICE_ENTERPRISE?.trim()) {
-    return "enterprise";
+  if (
+    value &&
+    (value === process.env.STRIPE_PRICE_PRO_MONTHLY?.trim() ||
+      value === process.env.STRIPE_PRICE_PRO_ANNUAL?.trim())
+  ) {
+    return "pro";
   }
 
   return "free";

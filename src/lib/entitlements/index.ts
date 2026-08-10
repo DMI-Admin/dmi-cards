@@ -1,10 +1,4 @@
-export type DmiPlan =
-  | "free"
-  | "pro"
-  | "paid"
-  | "individual_pro"
-  | "business"
-  | "enterprise";
+export type DmiPlan = "free" | "pro" | "enterprise";
 
 export type DmiFeature =
   | "digital_card"
@@ -79,9 +73,6 @@ const proFeatures = new Set<DmiFeature>([
 export const featureAccessByPlan: Record<DmiPlan, ReadonlySet<DmiFeature>> = {
   free: freeFeatures,
   pro: proFeatures,
-  paid: proFeatures,
-  individual_pro: proFeatures,
-  business: proFeatures,
   enterprise: proFeatures,
 };
 
@@ -105,14 +96,12 @@ export function isDmiFeature(value: string): value is DmiFeature {
 }
 
 export function normalizeDmiPlan(plan: string | null | undefined): DmiPlan {
-  if (
-    plan === "pro" ||
-    plan === "paid" ||
-    plan === "individual_pro" ||
-    plan === "business" ||
-    plan === "enterprise"
-  ) {
+  if (plan === "pro" || plan === "enterprise") {
     return plan;
+  }
+
+  if (plan === "paid" || plan === "individual_pro" || plan === "business") {
+    return "pro";
   }
 
   return "free";
@@ -175,13 +164,8 @@ export function getEntitlementsForPlan(
 export function planLabel(plan: DmiPlan | string | null | undefined) {
   const normalizedPlan = normalizeDmiPlan(plan);
 
-  if (normalizedPlan === "pro" || normalizedPlan === "paid") {
-    return "Individual Pro";
-  }
-
-  if (normalizedPlan === "individual_pro") return "Individual Pro";
-  if (normalizedPlan === "business") return "Business";
   if (normalizedPlan === "enterprise") return "Enterprise";
+  if (normalizedPlan === "pro") return "Pro";
 
   return "Free";
 }

@@ -1,10 +1,20 @@
 import "server-only";
 
+import {
+  DMI_STRIPE_APP_METADATA_KEY,
+  DMI_STRIPE_APP_NAMESPACE,
+} from "@/lib/stripe/app-namespace";
 import { getStripeServerClient } from "@/lib/stripe/config";
+import type {
+  CheckoutBillingPlan,
+  StripeBillingInterval,
+} from "@/lib/stripe/billing-state";
 
 type CheckoutSessionInput = {
   userId: string;
   email: string | null;
+  plan: CheckoutBillingPlan;
+  billingInterval: StripeBillingInterval;
   priceId: string;
   successUrl: string;
   cancelUrl: string;
@@ -19,6 +29,8 @@ type BillingPortalSessionInput = {
 export async function createStripeCheckoutSession({
   userId,
   email,
+  plan,
+  billingInterval,
   priceId,
   successUrl,
   cancelUrl,
@@ -38,11 +50,17 @@ export async function createStripeCheckoutSession({
       },
     ],
     metadata: {
+      [DMI_STRIPE_APP_METADATA_KEY]: DMI_STRIPE_APP_NAMESPACE,
       dmi_user_id: userId,
+      dmi_plan: plan,
+      billing_interval: billingInterval,
     },
     subscription_data: {
       metadata: {
+        [DMI_STRIPE_APP_METADATA_KEY]: DMI_STRIPE_APP_NAMESPACE,
         dmi_user_id: userId,
+        dmi_plan: plan,
+        billing_interval: billingInterval,
       },
     },
     success_url: successUrl,

@@ -10,9 +10,8 @@ environment variables. Do not expose them with a `NEXT_PUBLIC_` prefix.
 
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_PRICE_INDIVIDUAL_PRO`
-- `STRIPE_PRICE_BUSINESS`
-- `STRIPE_PRICE_ENTERPRISE`
+- `STRIPE_PRICE_PRO_MONTHLY`
+- `STRIPE_PRICE_PRO_ANNUAL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
 Existing public Supabase variables are still required for normal app and API
@@ -23,8 +22,10 @@ authentication:
 
 ## Manual Stripe Configuration Later
 
-- Create subscription prices for the DMI paid plans.
+- Create subscription prices for the DMI Pro plan.
+- Use one recurring monthly Pro price and one recurring annual Pro price.
 - Store the resulting Stripe price IDs in the matching environment variables.
+- Enterprise is quote-based and must not use public self-service Checkout.
 - Create a Stripe webhook endpoint for `/api/stripe/webhook`.
 - Configure the webhook endpoint secret as `STRIPE_WEBHOOK_SECRET`.
 - Send at least:

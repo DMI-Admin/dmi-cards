@@ -22,8 +22,10 @@ const checks = [
     includes: [
       "dmiPlanForStripePrice",
       'return "free"',
-      "STRIPE_PRICE_INDIVIDUAL_PRO",
+      "STRIPE_PRICE_PRO_MONTHLY",
+      "STRIPE_PRICE_PRO_ANNUAL",
     ],
+    excludes: ["STRIPE_PRICE_BUSINESS", "STRIPE_PRICE_ENTERPRISE"],
   },
   {
     name: "API paid access remains capped",
@@ -34,7 +36,41 @@ const checks = [
   {
     name: "Stripe webhook writes use server-only admin client",
     file: "src/lib/stripe/webhook.ts",
-    includes: ['import "server-only"', "createSupabaseAdminClient"],
+    includes: [
+      'import "server-only"',
+      "createSupabaseAdminClient",
+      "hasDmiStripeAppNamespace",
+      "app_namespace_mismatch",
+    ],
+  },
+  {
+    name: "Checkout creates namespaced Stripe sessions",
+    file: "src/lib/stripe/checkout.ts",
+    includes: [
+      'import "server-only"',
+      "DMI_STRIPE_APP_METADATA_KEY",
+      "DMI_STRIPE_APP_NAMESPACE",
+      "subscription_data",
+      "dmi_user_id",
+    ],
+  },
+  {
+    name: "Checkout API does not accept raw Stripe prices",
+    file: "src/app/api/v1/billing/checkout/route.ts",
+    includes: [
+      "requireApiClient",
+      "isCheckoutBillingPlan",
+      "isStripeBillingInterval",
+      "stripePriceForCheckoutPlan",
+      "createStripeCheckoutSession",
+    ],
+    excludes: ["body.priceId", "stripe_price_id"],
+  },
+  {
+    name: "Checkout rejects public enterprise checkout",
+    file: "src/lib/stripe/billing-state.ts",
+    includes: ["return plan === \"pro\""],
+    excludes: ["enterprise: process.env", "business: process.env"],
   },
 ];
 

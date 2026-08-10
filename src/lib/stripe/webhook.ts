@@ -2,6 +2,7 @@ import "server-only";
 
 import type Stripe from "stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
+import { hasDmiStripeAppNamespace } from "@/lib/stripe/app-namespace";
 import {
   dmiPlanForStripePrice,
   normalizeStripeSubscriptionStatus,
@@ -44,25 +45,25 @@ export async function handleStripeWebhookEvent(
 
   switch (event.type) {
     case "checkout.session.completed":
-      await handleCheckoutSessionCompleted(
+      return await handleCheckoutSessionCompleted(
         supabaseAdmin,
+        event.id,
         event.data.object as Stripe.Checkout.Session
       );
-      break;
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted":
-      await upsertStripeSubscriptionState(
+      return await upsertStripeSubscriptionState(
         supabaseAdmin,
+        event.id,
         event.data.object as Stripe.Subscription
       );
-      break;
     case "invoice.payment_failed":
-      await handleInvoicePaymentFailed(
+      return await handleInvoicePaymentFailed(
         supabaseAdmin,
+        event.id,
         event.data.object as Stripe.Invoice
       );
-      break;
   }
 
   await markStripeWebhookEventProcessed(supabaseAdmin, event.id);
@@ -72,13 +73,24 @@ export async function handleStripeWebhookEvent(
 
 async function handleCheckoutSessionCompleted(
   supabaseAdmin: SupabaseAdmin,
+  eventId: string,
   session: Stripe.Checkout.Session
-) {
+): Promise<WebhookHandleResult> {
+  if (!hasDmiStripeAppNamespace(session.metadata)) {
+    await markStripeWebhookEventProcessed(supabaseAdmin, eventId);
+    return {
+      handled: true,
+      skipped: true,
+      reason: "app_namespace_mismatch",
+    };
+  }
+
   const subscriptionId =
     typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
 
   if (!subscriptionId) {
-    return;
+    await markStripeWebhookEventProcessed(supabaseAdmin, eventId);
+    return { handled: true, skipped: true, reason: "missing_subscription_id" };
   }
 
   const subscription = await getStripeServerClient().subscriptions.retrieve(
@@ -88,8 +100,9 @@ async function handleCheckoutSessionCompleted(
     }
   );
 
-  await upsertStripeSubscriptionState(
+  return await upsertStripeSubscriptionState(
     supabaseAdmin,
+    eventId,
     subscription,
     session.client_reference_id || undefined,
     session.id
@@ -98,8 +111,9 @@ async function handleCheckoutSessionCompleted(
 
 async function handleInvoicePaymentFailed(
   supabaseAdmin: SupabaseAdmin,
+  eventId: string,
   invoice: Stripe.Invoice
-) {
+): Promise<WebhookHandleResult> {
   const invoiceRecord = invoice as Stripe.Invoice & {
     subscription?: string | Stripe.Subscription | null;
   };
@@ -109,7 +123,8 @@ async function handleInvoicePaymentFailed(
       : invoiceRecord.subscription?.id;
 
   if (!subscriptionId) {
-    return;
+    await markStripeWebhookEventProcessed(supabaseAdmin, eventId);
+    return { handled: true, skipped: true, reason: "missing_subscription_id" };
   }
 
   const subscription = await getStripeServerClient().subscriptions.retrieve(
@@ -119,15 +134,25 @@ async function handleInvoicePaymentFailed(
     }
   );
 
-  await upsertStripeSubscriptionState(supabaseAdmin, subscription);
+  return await upsertStripeSubscriptionState(supabaseAdmin, eventId, subscription);
 }
 
 async function upsertStripeSubscriptionState(
   supabaseAdmin: SupabaseAdmin,
+  eventId: string,
   subscription: Stripe.Subscription,
   fallbackUserId?: string,
   checkoutSessionId?: string
-) {
+): Promise<WebhookHandleResult> {
+  if (!hasDmiStripeAppNamespace(subscription.metadata)) {
+    await markStripeWebhookEventProcessed(supabaseAdmin, eventId);
+    return {
+      handled: true,
+      skipped: true,
+      reason: "app_namespace_mismatch",
+    };
+  }
+
   const subscriptionId = subscription.id;
   const customerId = stripeCustomerId(subscription.customer);
   const priceId = stripeSubscriptionPriceId(subscription);
@@ -142,7 +167,8 @@ async function upsertStripeSubscriptionState(
       reason: "MISSING_DMI_USER_ID",
       eventSubject: subscriptionId,
     });
-    return;
+    await markStripeWebhookEventProcessed(supabaseAdmin, eventId);
+    return { handled: true, skipped: true, reason: "missing_dmi_user_id" };
   }
 
   const latestInvoiceId = latestInvoiceIdentifier(subscription.latest_invoice);
@@ -177,6 +203,9 @@ async function upsertStripeSubscriptionState(
   if (error) {
     throw new Error(`Stripe subscription sync failed: ${error.code || "UNKNOWN"}`);
   }
+
+  await markStripeWebhookEventProcessed(supabaseAdmin, eventId);
+  return { handled: true };
 }
 
 async function userIdForExistingBillingRecord(
