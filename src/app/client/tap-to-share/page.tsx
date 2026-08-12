@@ -21,10 +21,9 @@ import {
   Wifi,
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
-import { clientFeaturePreviewPlans, isPaidPlan } from "@/lib/entitlements";
-
-const currentPlan = clientFeaturePreviewPlans.tapToShare;
-const isPaid = isPaidPlan(currentPlan);
+import UpgradeToProButton from "@/components/UpgradeToProButton";
+import type { DmiPlan } from "@/lib/entitlements";
+import { useClientPlan } from "@/lib/use-client-plan";
 
 const mockLinkedCard = {
   name: "Primary Digital Card",
@@ -35,6 +34,8 @@ const mockLinkedCard = {
 type DevicePreview = "iphone" | "android";
 
 export default function ClientTapToSharePage() {
+  const { plan, isPaid } = useClientPlan();
+  const currentPlan = plan as DmiPlan;
   const [devicePreview, setDevicePreview] = useState<DevicePreview>("iphone");
 
   return (
@@ -66,6 +67,7 @@ export default function ClientTapToSharePage() {
           <SummaryCard label="NFC Ready" value="Coming soon" icon={Nfc} />
         </div>
 
+        {!isPaid && (
         <div className="mb-6 rounded-3xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 p-5 shadow-lg shadow-purple-950/15">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
@@ -78,15 +80,15 @@ export default function ClientTapToSharePage() {
                 experiences.
               </p>
             </div>
-            <button
-              type="button"
+            <UpgradeToProButton
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35"
             >
               <Sparkles className="h-4 w-4" />
               View Upgrade
-            </button>
+            </UpgradeToProButton>
           </div>
         </div>
+        )}
 
         <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_450px]">
           <div className="space-y-6">
@@ -115,7 +117,7 @@ export default function ClientTapToSharePage() {
                   description="Best for messaging and email"
                   actions={["Copy link", "Share sheet"]}
                 />
-                <TapShareCard />
+                <TapShareCard isPaid={isPaid} />
               </div>
             </section>
 
@@ -285,7 +287,7 @@ function ShareMethodCard({
   );
 }
 
-function TapShareCard() {
+function TapShareCard({ isPaid }: { isPaid: boolean }) {
   if (!isPaid) {
     return (
       <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 text-white/45">

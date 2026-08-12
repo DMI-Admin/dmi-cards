@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
   ClientAuthRequiredError,
   ClientSuspendedError,
+  type CurrentClient,
   requireClientUser,
 } from "@/lib/client-auth";
 import { ClientMobileHeader } from "@/components/ClientSidebar";
+import UpgradeToProProvider from "@/components/UpgradeToProProvider";
+import { ClientPlanProvider, type InitialClientPlan } from "@/lib/use-client-plan";
 
 export default function ClientPortalLayout({
   children,
@@ -16,21 +19,28 @@ export default function ClientPortalLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
   const [checkingSession, setCheckingSession] = useState(true);
+  const [initialClientPlan, setInitialClientPlan] =
+    useState<InitialClientPlan | null>(null);
 
   useEffect(() => {
     let ignore = false;
 
     async function requireSession() {
       try {
-        await requireClientUser();
+        const client: CurrentClient = await requireClientUser();
+
+        if (!ignore) {
+          setInitialClientPlan({
+            plan: client.plan,
+            source: client.planSource,
+          });
+        }
       } catch (error) {
         if (ignore) return;
 
         if (error instanceof ClientAuthRequiredError) {
           console.log("[DMI auth] client layout redirect decision", {
-            pathname,
             redirectDecision: "redirect-login-no-session",
           });
           router.replace("/");
@@ -39,7 +49,6 @@ export default function ClientPortalLayout({
 
         if (error instanceof ClientSuspendedError) {
           console.log("[DMI auth] client layout redirect decision", {
-            pathname,
             redirectDecision: "redirect-login-suspended",
           });
           router.replace("/?suspended=1");
@@ -51,7 +60,6 @@ export default function ClientPortalLayout({
 
       if (ignore) return;
       console.log("[DMI auth] client layout redirect decision", {
-        pathname,
         redirectDecision: "allow-client-portal",
       });
       setCheckingSession(false);
@@ -79,9 +87,9 @@ export default function ClientPortalLayout({
       ignore = true;
       subscription.unsubscribe();
     };
-  }, [pathname, router]);
+  }, [router]);
 
-  if (checkingSession) {
+  if (checkingSession || !initialClientPlan) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#070B1A] px-6 text-white">
         <div className="rounded-3xl border border-white/10 bg-white/5 px-6 py-5 text-sm text-white/55">
@@ -93,8 +101,12 @@ export default function ClientPortalLayout({
 
   return (
     <div className="client-portal-root min-h-screen bg-[#070B1A]">
-      <ClientMobileHeader />
-      {children}
+      <UpgradeToProProvider>
+        <ClientPlanProvider initialPlan={initialClientPlan}>
+          <ClientMobileHeader />
+          {children}
+        </ClientPlanProvider>
+      </UpgradeToProProvider>
     </div>
   );
 }

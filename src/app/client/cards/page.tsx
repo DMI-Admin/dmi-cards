@@ -33,17 +33,18 @@ import CardRenderer, {
   type CardRendererTemplate,
 } from "@/components/CardRenderer";
 import ClientSidebar from "@/components/ClientSidebar";
+import UpgradeToProButton from "@/components/UpgradeToProButton";
 import { supabase } from "@/lib/supabase";
 import {
   getClientVisibleTemplates,
   type SharedTemplate,
 } from "@/lib/templates";
-import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
+import { ClientAuthRequiredError, getCurrentUser } from "@/lib/client-auth";
 import {
-  clientFeaturePreviewPlans,
   isPaidPlan,
   planLabel as entitlementPlanLabel,
 } from "@/lib/entitlements";
+import { useClientPlan } from "@/lib/use-client-plan";
 import {
   deleteCardForUser,
   listCardsForUser,
@@ -89,9 +90,6 @@ import {
   type SupabaseCardRow,
 } from "@/lib/services/card-payload";
 import { useRouter } from "next/navigation";
-
-const currentPlan = clientFeaturePreviewPlans.cards as ClientCardPlan;
-const isPaid = isPaidPlan(currentPlan);
 
 type PanelMode = "create" | "edit";
 type BuilderStep = 0 | 1 | 2;
@@ -166,6 +164,7 @@ type DevicePreviewKey =
   | "full_width";
 
 type AdminTemplate = SharedTemplate;
+type ResolvedCardTemplate = NonNullable<ReturnType<typeof defaultTemplateForPlanForPlan>>;
 
 type ClientCard = SharedClientCard;
 type CardStatus = ClientCardStatus;
@@ -418,6 +417,9 @@ const initialCards: ClientCard[] = [];
 
 export default function ClientCardsPage() {
   const router = useRouter();
+  const { plan } = useClientPlan();
+  const currentPlan = plan as ClientCardPlan;
+  const isPaid = isPaidPlan(currentPlan);
   const [adminTemplates, setAdminTemplates] = useState<AdminTemplate[]>([]);
   const [cards, setCards] = useState<ClientCard[]>(initialCards);
   const [selectedCardId, setSelectedCardId] = useState(initialCards[0]?.id || "");
@@ -447,20 +449,20 @@ export default function ClientCardsPage() {
   }, [cards, selectedCardId]);
 
   const defaultTemplate = useMemo(
-    () => defaultTemplateForPlan(adminTemplates),
-    [adminTemplates]
+    () => defaultTemplateForPlan(adminTemplates, currentPlan),
+    [adminTemplates, currentPlan]
   );
   const visibleTemplates = useMemo(
-    () => visibleTemplatesForPlan(adminTemplates),
-    [adminTemplates]
+    () => visibleTemplatesForPlan(adminTemplates, currentPlan),
+    [adminTemplates, currentPlan]
   );
   const currentDefaultTemplate = defaultTemplate;
   const selectedCardTemplateRecord = useMemo(() => {
-    return templateForCard(selectedCard, adminTemplates) || currentDefaultTemplate;
-  }, [adminTemplates, selectedCard, currentDefaultTemplate]);
+    return templateForCard(selectedCard, adminTemplates, currentPlan) || currentDefaultTemplate;
+  }, [adminTemplates, selectedCard, currentDefaultTemplate, currentPlan]);
   const draftTemplateRecord = useMemo(() => {
-    return templateForCard(draftCard, adminTemplates) || currentDefaultTemplate;
-  }, [adminTemplates, draftCard, currentDefaultTemplate]);
+    return templateForCard(draftCard, adminTemplates, currentPlan) || currentDefaultTemplate;
+  }, [adminTemplates, draftCard, currentDefaultTemplate, currentPlan]);
   const selectedCardFallbackColour = firstTemplateColour(selectedCardTemplateRecord);
   const draftFallbackColour = firstTemplateColour(draftTemplateRecord);
 
@@ -520,7 +522,7 @@ export default function ClientCardsPage() {
       let nextTemplates: AdminTemplate[] = [];
 
       try {
-        nextTemplates = await loadPublishedTemplates();
+        nextTemplates = await loadPublishedTemplates(currentPlan);
       } catch (error) {
         if (ignore) return;
 
@@ -539,13 +541,17 @@ export default function ClientCardsPage() {
 
       if (ignore) return;
 
-      const nextDefaultTemplate = defaultTemplateForPlan(nextTemplates);
+      const nextDefaultTemplate = defaultTemplateForPlan(nextTemplates, currentPlan);
       setAdminTemplates(nextTemplates);
 
       let userId = "";
 
       try {
-        const { user } = await requireClientUser();
+        const user = await getCurrentUser();
+
+        if (!user) {
+          throw new ClientAuthRequiredError();
+        }
         userId = user.id;
       } catch (error) {
         if (ignore) return;
@@ -582,7 +588,7 @@ export default function ClientCardsPage() {
       setDatabaseReady(true);
       setDatabaseNotice("");
       const savedCards = (data || []).map((row) =>
-        mapSupabaseCard(row, nextTemplates, nextDefaultTemplate)
+        mapSupabaseCard(row, nextTemplates, nextDefaultTemplate, currentPlan)
       );
       console.log("[DMI auth] loaded cards", savedCards);
       setCards(savedCards);
@@ -595,7 +601,7 @@ export default function ClientCardsPage() {
     return () => {
       ignore = true;
     };
-  }, [router]);
+  }, [currentPlan, router]);
 
   function openCreatePanel() {
     if (!currentDefaultTemplate) return;
@@ -629,7 +635,7 @@ export default function ClientCardsPage() {
     setLimitMessage("");
     setPanelMode("edit");
     setActiveStep(0);
-    const cardTemplate = templateForCard(card, adminTemplates) || currentDefaultTemplate;
+    const cardTemplate = templateForCard(card, adminTemplates, currentPlan) || currentDefaultTemplate;
     const savedFieldOrder = mergeFieldOrderWithTemplate(card.field_order, cardTemplate);
     setFieldOrder(savedFieldOrder);
     setDraftCard({
@@ -681,7 +687,7 @@ export default function ClientCardsPage() {
   }
 
   function selectDraftTemplate(template: AdminTemplate) {
-    if (!canSelectTemplate(template)) {
+    if (!canSelectTemplate(template, currentPlan)) {
       setLimitMessage("Upgrade to Individual Pro to use paid templates.");
       return;
     }
@@ -793,7 +799,7 @@ export default function ClientCardsPage() {
 
     try {
       const selectedTemplate =
-        templateForCard(draftCard, adminTemplates) || currentDefaultTemplate;
+        templateForCard(draftCard, adminTemplates, currentPlan) || currentDefaultTemplate;
 
       console.log("[DMI cards] selectedTemplate.id", selectedTemplate?.id || null);
 
@@ -936,7 +942,7 @@ export default function ClientCardsPage() {
       return null;
     }
 
-    return mapSupabaseCard(data, adminTemplates, currentDefaultTemplate);
+    return mapSupabaseCard(data, adminTemplates, currentDefaultTemplate, currentPlan);
   }
 
   async function togglePublish(card: ClientCard) {
@@ -952,7 +958,7 @@ export default function ClientCardsPage() {
     }
 
     const selectedTemplate =
-      templateForCard(card, adminTemplates) || currentDefaultTemplate;
+      templateForCard(card, adminTemplates, currentPlan) || currentDefaultTemplate;
 
     console.log("[DMI cards] selectedTemplate.id", selectedTemplate?.id || null);
 
@@ -1051,7 +1057,7 @@ export default function ClientCardsPage() {
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <h1 className="text-4xl font-bold">My Cards</h1>
-              <PlanBadge />
+              <PlanBadge plan={currentPlan} />
             </div>
             <p className="mt-3 max-w-3xl text-white/50">
               Manage your live digital card, public URL, template fields, and
@@ -1109,6 +1115,7 @@ export default function ClientCardsPage() {
                   <CardList
                     cards={cards}
                     selectedCardId={selectedCardId}
+                    isPaid={isPaid}
                     onSelect={setSelectedCardId}
                     onEdit={openEditPanel}
                     onTogglePublish={togglePublish}
@@ -1126,6 +1133,8 @@ export default function ClientCardsPage() {
                     mode={panelMode}
                     template={draftTemplateRecord || currentDefaultTemplate}
                     templates={visibleTemplates}
+                    currentPlan={currentPlan}
+                    isPaid={isPaid}
                     onClose={() => setShowBuilder(false)}
                     onStepChange={setActiveStep}
                     onUpdate={updateDraft}
@@ -1299,6 +1308,7 @@ function PreviewPanelContent({
 function CardList({
   cards,
   selectedCardId,
+  isPaid,
   onSelect,
   onEdit,
   onTogglePublish,
@@ -1308,6 +1318,7 @@ function CardList({
 }: {
   cards: ClientCard[];
   selectedCardId: string;
+  isPaid: boolean;
   onSelect: (id: string) => void;
   onEdit: (card: ClientCard) => void;
   onTogglePublish: (card: ClientCard) => void;
@@ -1622,6 +1633,8 @@ function EditorPanel({
   mode,
   template,
   templates,
+  currentPlan,
+  isPaid,
   onClose,
   onStepChange,
   onUpdate,
@@ -1641,6 +1654,8 @@ function EditorPanel({
   mode: PanelMode;
   template: AdminTemplate;
   templates: AdminTemplate[];
+  currentPlan: ClientCardPlan;
+  isPaid: boolean;
   onClose: () => void;
   onStepChange: (step: BuilderStep) => void;
   onUpdate: (field: keyof ClientCard, value: string) => void;
@@ -1714,6 +1729,8 @@ function EditorPanel({
             templates={templates}
             draftCard={draftCard}
             fieldOrder={fieldOrder}
+            currentPlan={currentPlan}
+            isPaid={isPaid}
             onUpdate={onUpdate}
             onSelectTemplate={onSelectTemplate}
           />
@@ -1732,6 +1749,7 @@ function EditorPanel({
         {activeStep === 2 && (
           <SetUpStep
             settings={draftCard.lead_capture_settings || defaultLeadCaptureSettings}
+            isPaid={isPaid}
             onSettingsChange={onUpdateLeadSettings}
             saveStatus={saveStatus}
             saveMessage={saveMessage}
@@ -1786,6 +1804,8 @@ function CustomiseStep({
   templates,
   draftCard,
   fieldOrder,
+  currentPlan,
+  isPaid,
   onUpdate,
   onSelectTemplate,
 }: {
@@ -1793,6 +1813,8 @@ function CustomiseStep({
   templates: AdminTemplate[];
   draftCard: ClientCard;
   fieldOrder: FieldOrder;
+  currentPlan: ClientCardPlan;
+  isPaid: boolean;
   onUpdate: (field: keyof ClientCard, value: string) => void;
   onSelectTemplate: (template: AdminTemplate) => void;
 }) {
@@ -1840,7 +1862,7 @@ function CustomiseStep({
         <div className="flex gap-4 overflow-x-auto pb-2">
           {templates.map((templateOption) => {
             const selected = templateOption.id === template.id;
-            const locked = !canSelectTemplate(templateOption);
+            const locked = !canSelectTemplate(templateOption, currentPlan);
             const previewFieldOrder = selected
               ? fieldOrder
               : getInitialFieldOrder(templateOption);
@@ -1891,7 +1913,7 @@ function CustomiseStep({
                 </div>
                 <p className="mt-4 text-sm font-semibold">{templateOption.name}</p>
                 <div className="mt-2 flex items-center justify-between gap-2">
-                  <AccessPill template={templateOption} />
+                  <AccessPill template={templateOption} plan={currentPlan} />
                   {selected && (
                     <span className="rounded-full bg-[#AC00FF]/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-purple-100">
                       Selected
@@ -1909,7 +1931,7 @@ function CustomiseStep({
           )}
         </div>
 
-        {!canSelectTemplate(template) && (
+        {!canSelectTemplate(template, currentPlan) && (
           <div className="mt-5 rounded-2xl border border-[#AC00FF]/30 bg-[#AC00FF]/10 p-5">
             <div className="flex gap-4">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#AC00FF]/20 text-purple-100">
@@ -2444,12 +2466,14 @@ function FieldRow({
 
 function SetUpStep({
   settings,
+  isPaid,
   onSettingsChange,
   saveStatus,
   saveMessage,
   saveError,
 }: {
   settings: LeadCaptureSettings;
+  isPaid: boolean;
   onSettingsChange: (settings: LeadCaptureSettings) => void;
   saveStatus: SaveStatus;
   saveMessage: string;
@@ -2646,27 +2670,31 @@ function buildTemplatePreview(
   };
 }
 
-async function loadPublishedTemplates(): Promise<AdminTemplate[]> {
-  return (await getClientVisibleTemplates(currentPlan)) as AdminTemplate[];
+async function loadPublishedTemplates(plan: ClientCardPlan): Promise<AdminTemplate[]> {
+  return (await getClientVisibleTemplates(plan)) as AdminTemplate[];
 }
 
-function visibleTemplatesForPlan(templates: AdminTemplate[]) {
-  return visibleTemplatesForPlanForPlan(templates, currentPlan);
+function visibleTemplatesForPlan(templates: AdminTemplate[], plan: ClientCardPlan) {
+  return visibleTemplatesForPlanForPlan(templates, plan);
 }
 
-function defaultTemplateForPlan(templates: AdminTemplate[]) {
-  return defaultTemplateForPlanForPlan(templates, currentPlan);
+function defaultTemplateForPlan(templates: AdminTemplate[], plan: ClientCardPlan) {
+  return defaultTemplateForPlanForPlan(templates, plan);
 }
 
 function templateForCard(
   card: Pick<ClientCard, "template_id"> | null,
-  templates: AdminTemplate[]
+  templates: AdminTemplate[],
+  plan: ClientCardPlan
 ) {
-  return templateForCardForPlan(card, templates, currentPlan);
+  return templateForCardForPlan(card, templates, plan);
 }
 
-function canSelectTemplate(template: AdminTemplate | CardRendererTemplate) {
-  return canSelectTemplateForPlan(template, currentPlan);
+function canSelectTemplate(
+  template: AdminTemplate | CardRendererTemplate,
+  plan: ClientCardPlan
+) {
+  return canSelectTemplateForPlan(template, plan);
 }
 
 function planLabel(plan: ClientCardPlan) {
@@ -2676,9 +2704,10 @@ function planLabel(plan: ClientCardPlan) {
 function mapSupabaseCard(
   row: SupabaseCardRow,
   templates: AdminTemplate[] = [],
-  defaultTemplate = defaultTemplateForPlan(templates)
+  defaultTemplate: ResolvedCardTemplate | null,
+  plan: ClientCardPlan
 ): ClientCard {
-  return mapSupabaseCardForPlan(row, templates, currentPlan, defaultTemplate);
+  return mapSupabaseCardForPlan(row, templates, plan, defaultTemplate);
 }
 
 async function getActiveUserForCardSave(isPublishing: boolean): Promise<User | null> {
@@ -3061,18 +3090,23 @@ function UpgradeNotice({ message }: { message: string }) {
         color: "var(--text-primary)",
       }}
     >
-      <div className="flex gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex gap-3">
         <Lock
           className="mt-0.5 h-4 w-4 shrink-0"
           style={{ color: "var(--text-accent)" }}
         />
         <p>{message}</p>
+        </div>
+        <UpgradeToProButton className="inline-flex w-full shrink-0 items-center justify-center rounded-2xl bg-[#AC00FF] px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-purple-500/20 transition hover:bg-[#BE35FF] sm:w-auto">
+          Upgrade
+        </UpgradeToProButton>
       </div>
     </div>
   );
 }
 
-function PlanBadge() {
+function PlanBadge({ plan }: { plan: ClientCardPlan }) {
   return (
     <span
       className="rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]"
@@ -3082,13 +3116,19 @@ function PlanBadge() {
         color: "var(--text-accent)",
       }}
     >
-      {planLabel(currentPlan)} Plan
+      {planLabel(plan)} Plan
     </span>
   );
 }
 
-function AccessPill({ template }: { template: AdminTemplate }) {
-  const locked = !canSelectTemplate(template);
+function AccessPill({
+  template,
+  plan,
+}: {
+  template: AdminTemplate;
+  plan: ClientCardPlan;
+}) {
+  const locked = !canSelectTemplate(template, plan);
   const label = isPaidTemplate(template) ? "Paid" : "Free";
 
   return (

@@ -161,6 +161,7 @@ async function upsertStripeSubscriptionState(
     fallbackUserId ||
     subscription.metadata?.dmi_user_id ||
     (await userIdForExistingBillingRecord(supabaseAdmin, subscriptionId, customerId));
+  const profileId = subscription.metadata?.dmi_profile_id || userId;
 
   if (!userId) {
     console.warn("[DMI stripe] subscription sync skipped", {
@@ -183,7 +184,7 @@ async function upsertStripeSubscriptionState(
   const { error } = await supabaseAdmin.from("billing_subscriptions").upsert(
     {
       user_id: userId,
-      profile_id: userId,
+      profile_id: profileId,
       stripe_customer_id: customerId,
       stripe_subscription_id: subscriptionId,
       stripe_subscription_status: status,

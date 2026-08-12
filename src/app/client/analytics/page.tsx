@@ -20,12 +20,9 @@ import {
   WalletCards,
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
-import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
-import { clientFeaturePreviewPlans, isPaidPlan } from "@/lib/entitlements";
+import { ClientAuthRequiredError, getCurrentUser } from "@/lib/client-auth";
 import { supabase } from "@/lib/supabase";
-
-const currentPlan = clientFeaturePreviewPlans.analytics;
-const isPaid = isPaidPlan(currentPlan);
+import { useClientPlan } from "@/lib/use-client-plan";
 
 const mockCard = {
   name: "Primary Digital Card",
@@ -71,6 +68,7 @@ const activityFeed = [
 ];
 
 export default function ClientAnalyticsPage() {
+  const { isPaid } = useClientPlan();
   const [mounted, setMounted] = useState(false);
   const [cardName, setCardName] = useState(mockCard.name);
 
@@ -79,7 +77,11 @@ export default function ClientAnalyticsPage() {
 
     async function loadCardName() {
       try {
-        const { user } = await requireClientUser();
+        const user = await getCurrentUser();
+
+        if (!user) {
+          throw new ClientAuthRequiredError();
+        }
         const { data, error } = await supabase
           .from("cards")
           .select("card_name")

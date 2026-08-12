@@ -24,9 +24,9 @@ import {
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
 import ThemeSelector from "@/components/ThemeSelector";
-import { clientFeaturePreviewPlans } from "@/lib/entitlements";
-
-const currentPlan = clientFeaturePreviewPlans.settings;
+import UpgradeToProButton from "@/components/UpgradeToProButton";
+import type { DmiPlan } from "@/lib/entitlements";
+import { useClientPlan } from "@/lib/use-client-plan";
 
 const notificationDefaults = [
   { label: "New contact captured", enabled: true },
@@ -59,6 +59,9 @@ const connectedServices = [
 ];
 
 export default function ClientSettingsPage() {
+  const { plan, isPaid } = useClientPlan();
+  const currentPlan = plan as DmiPlan;
+  const planName = isPaid ? "Individual Pro" : "Free";
   const [notifications, setNotifications] = useState(notificationDefaults);
   const [publicCardVisible, setPublicCardVisible] = useState(true);
   const [contactConsent, setContactConsent] = useState(true);
@@ -84,7 +87,7 @@ export default function ClientSettingsPage() {
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <h1 className="text-4xl font-bold">Settings</h1>
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-white/60">
-                {currentPlan} plan
+                {planName} plan
               </span>
             </div>
             <p className="mt-3 max-w-4xl text-white/50">
@@ -110,8 +113,8 @@ export default function ClientSettingsPage() {
           />
           <SummaryCard
             label="Plan"
-            value="Free"
-            caption="Upgrade available"
+            value={planName}
+            caption={isPaid ? "Pro active" : "Upgrade available"}
             icon={BadgeCheck}
           />
           <SummaryCard
@@ -168,13 +171,14 @@ export default function ClientSettingsPage() {
                   title="Plan & Access"
                   description="Your current client portal access level."
                 />
-                <button
-                  type="button"
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#AC00FF]/45 bg-[#AC00FF]/15 px-4 py-3 text-sm font-semibold text-purple-100 transition hover:bg-[#AC00FF]/25 sm:w-auto"
-                >
-                  Upgrade
-                  <ArrowUpRight className="h-4 w-4" />
-                </button>
+                {!isPaid && (
+                  <UpgradeToProButton
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#AC00FF]/45 bg-[#AC00FF]/15 px-4 py-3 text-sm font-semibold text-purple-100 transition hover:bg-[#AC00FF]/25 sm:w-auto"
+                  >
+                    Upgrade
+                    <ArrowUpRight className="h-4 w-4" />
+                  </UpgradeToProButton>
+                )}
               </div>
 
               <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -183,7 +187,11 @@ export default function ClientSettingsPage() {
                     <PlanOption
                       key={plan}
                       label={plan}
-                      active={plan.toLowerCase() === currentPlan}
+                      active={
+                        (currentPlan === "free" && plan === "Free") ||
+                        (currentPlan === "pro" && plan === "Individual Pro") ||
+                        (currentPlan === "enterprise" && plan === "Enterprise")
+                      }
                     />
                   )
                 )}

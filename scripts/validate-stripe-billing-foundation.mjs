@@ -28,9 +28,13 @@ const checks = [
     excludes: ["STRIPE_PRICE_BUSINESS", "STRIPE_PRICE_ENTERPRISE"],
   },
   {
-    name: "API paid access remains capped",
+    name: "API paid access comes only from trusted billing state",
     file: "src/lib/api/client-context.ts",
-    includes: ['planSource: "temporary_free_cap"', "return defaultClientPlan"],
+    includes: [
+      "billing_subscriptions",
+      "entitlementsForTrustedBillingState",
+      "PROFILE_PLAN_USER_WRITABLE",
+    ],
     excludes: ["clientFeaturePreviewPlans"],
   },
   {

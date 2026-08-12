@@ -3,13 +3,13 @@ import "server-only";
 import { createClient, type User } from "@supabase/supabase-js";
 import {
   defaultClientPlan,
-  getEntitlementsForPlan,
   normalizeDmiPlan,
   type DmiEntitlementSet,
   type DmiFeature,
   type DmiPlan,
 } from "@/lib/entitlements";
 import { ApiRouteError } from "@/lib/api/responses";
+import { entitlementsForTrustedBillingState } from "@/lib/stripe/billing-state";
 
 export type ApiClientProfile = {
   id: string;
@@ -25,7 +25,7 @@ export type ApiClientContext = {
   email: string | null;
   profile: ApiClientProfile | null;
   plan: DmiPlan;
-  planSource: "temporary_free_cap";
+  planSource: "stripe_billing" | "temporary_free_cap";
   entitlements: DmiEntitlementSet;
 };
 
@@ -38,6 +38,12 @@ type ApiProfileRow = {
   email?: string | null;
   subscription_plan?: string | null;
   plan?: string | null;
+};
+
+type ApiBillingSubscriptionRow = {
+  stripe_subscription_status?: string | null;
+  stripe_price_id?: string | null;
+  updated_at?: string | null;
 };
 
 export async function requireApiClient(request: Request): Promise<ApiClientContext> {
@@ -87,15 +93,17 @@ export async function requireApiClient(request: Request): Promise<ApiClientConte
   }
 
   const profileRow = profile as ApiProfileRow | null;
-  const plan = resolveTrustedApiPlan(profileRow);
+  const billingState = await resolveTrustedApiBillingState(supabase, user.id);
+
+  warnIfProfilePlanWouldGrantPaidAccess(profileRow, billingState.plan);
 
   return {
     userId: user.id,
     email: user.email || null,
     profile: profileRow ? toApiClientProfile(profileRow, user) : null,
-    plan,
-    planSource: "temporary_free_cap",
-    entitlements: getEntitlementsForPlan(plan),
+    plan: billingState.plan,
+    planSource: billingState.source,
+    entitlements: billingState.entitlements,
   };
 }
 
@@ -145,16 +153,60 @@ function bearerTokenFromRequest(request: Request) {
   return match?.[1]?.trim() || "";
 }
 
-function resolveTrustedApiPlan(profile: ApiProfileRow | null): DmiPlan {
+async function resolveTrustedApiBillingState(
+  supabase: ReturnType<typeof createApiSupabaseClient>,
+  userId: string
+) {
+  const { data, error } = await supabase
+    .from("billing_subscriptions")
+    .select("stripe_subscription_status, stripe_price_id, updated_at")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(10);
+
+  if (error) {
+    console.error("[DMI api] billing subscription lookup failed", {
+      userId,
+      code: error.code,
+    });
+
+    throw new ApiRouteError(
+      500,
+      "INTERNAL_ERROR",
+      "Could not load the authenticated client billing state."
+    );
+  }
+
+  const rows = (data || []) as ApiBillingSubscriptionRow[];
+  const paidBillingState = rows
+    .map((row) =>
+      entitlementsForTrustedBillingState({
+        status: row.stripe_subscription_status,
+        priceId: row.stripe_price_id,
+      })
+    )
+    .find((state) => state.plan !== defaultClientPlan);
+
+  return (
+    paidBillingState ||
+    entitlementsForTrustedBillingState({
+      status: rows[0]?.stripe_subscription_status,
+      priceId: rows[0]?.stripe_price_id,
+    })
+  );
+}
+
+function warnIfProfilePlanWouldGrantPaidAccess(
+  profile: ApiProfileRow | null,
+  trustedBillingPlan: DmiPlan
+) {
   const profilePlan = normalizeDmiPlan(profile?.subscription_plan || profile?.plan);
 
-  if (profilePlan !== "free") {
+  if (profilePlan !== "free" && trustedBillingPlan === defaultClientPlan) {
     console.warn("[DMI api] profile plan ignored for entitlement grant", {
       reason: "PROFILE_PLAN_USER_WRITABLE",
     });
   }
-
-  return defaultClientPlan;
 }
 
 function toApiClientProfile(

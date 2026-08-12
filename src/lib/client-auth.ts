@@ -1,6 +1,6 @@
 import type { User } from "@supabase/supabase-js";
 import type { DmiPlan } from "@/lib/entitlements";
-import { resolvePlanFromProfile } from "@/lib/entitlements/plan-resolver";
+import { resolveEffectiveClientPlan } from "@/lib/entitlements/plan-resolver";
 import { getOrCreateClientProfile, type ClientProfile } from "@/lib/profiles";
 import { supabase } from "@/lib/supabase";
 
@@ -22,7 +22,7 @@ export type CurrentClient = {
   user: User;
   profile: ClientProfile;
   plan: DmiPlan;
-  planSource: "profile" | "fallback";
+  planSource: "stripe_billing" | "profile" | "fallback";
 };
 
 export type ClientAccountStatus = {
@@ -108,7 +108,7 @@ export async function requireClientUser(): Promise<CurrentClient> {
   }
 
   const status = await getCurrentClientAccountStatus(user.id);
-  const { plan, source: planSource } = resolvePlanFromProfile(profile);
+  const { plan, source: planSource } = await resolveEffectiveClientPlan(user);
 
   console.log("[DMI auth] client portal status decision", {
     source: "requireClientUser",

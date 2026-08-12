@@ -15,12 +15,11 @@ import {
   Sparkles,
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
-import { clientFeaturePreviewPlans, isPaidPlan } from "@/lib/entitlements";
+import UpgradeToProButton from "@/components/UpgradeToProButton";
+import type { DmiPlan } from "@/lib/entitlements";
 import { supabase } from "@/lib/supabase";
-import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
-
-const currentPlan = clientFeaturePreviewPlans.qrCode;
-const isPaid = isPaidPlan(currentPlan);
+import { ClientAuthRequiredError, getCurrentUser } from "@/lib/client-auth";
+import { useClientPlan } from "@/lib/use-client-plan";
 
 const publicSiteOrigin = "https://dmi-cards.vercel.app";
 
@@ -42,11 +41,9 @@ const freeQrColours = [
 const defaultQrColour = "#0F172A";
 const qrColourStorageKey = "dmi-cards-qr-colour";
 
-const qrStyles = isPaid
-  ? ["Classic", "Rounded", "Dots", "Modern", "Minimal"]
-  : ["Classic"];
-
 export default function ClientQrCodePage() {
+  const { plan, isPaid } = useClientPlan();
+  const currentPlan = plan as DmiPlan;
   const [selectedCard, setSelectedCard] = useState<SavedQrCard | null>(null);
   const [loadingCard, setLoadingCard] = useState(true);
   const [actionMessage, setActionMessage] = useState("");
@@ -57,6 +54,9 @@ export default function ClientQrCodePage() {
     () => (selectedCard ? createQrMatrix(selectedCard.public_url) : []),
     [selectedCard]
   );
+  const qrStyles = isPaid
+    ? ["Classic", "Rounded", "Dots", "Modern", "Minimal"]
+    : ["Classic"];
 
   useEffect(() => {
     let ignore = false;
@@ -65,7 +65,11 @@ export default function ClientQrCodePage() {
       setLoadingCard(true);
 
       try {
-        const { user } = await requireClientUser();
+        const user = await getCurrentUser();
+
+        if (!user) {
+          throw new ClientAuthRequiredError();
+        }
 
         const { data, error } = await supabase
           .from("cards")
@@ -231,6 +235,7 @@ export default function ClientQrCodePage() {
               <SummaryCard label="Total Scans" value="Coming soon" icon={BarChart3} />
             </div>
 
+            {!isPaid && (
             <div className="mb-6 rounded-3xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 p-5 shadow-lg shadow-purple-950/15">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
@@ -242,15 +247,15 @@ export default function ClientQrCodePage() {
                 SVG downloads, and scan analytics.
               </p>
             </div>
-            <button
-              type="button"
+            <UpgradeToProButton
               className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35 md:w-auto"
             >
               <Sparkles className="h-4 w-4" />
               View Upgrade
-            </button>
+            </UpgradeToProButton>
           </div>
             </div>
+            )}
 
             <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_430px]">
           <div className="space-y-6">

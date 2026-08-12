@@ -1,3 +1,5 @@
+"use client";
+
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowUpRight,
@@ -13,9 +15,9 @@ import {
   Sparkles,
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
-import { clientFeaturePreviewPlans } from "@/lib/entitlements";
-
-const currentPlan = clientFeaturePreviewPlans.billing;
+import UpgradeToProButton from "@/components/UpgradeToProButton";
+import type { DmiPlan } from "@/lib/entitlements";
+import { useClientPlan } from "@/lib/use-client-plan";
 
 const invoices = [
   {
@@ -45,6 +47,15 @@ const freeFeatures = [
   "Wallet",
   "Public page",
   "Limited colours",
+];
+
+const proFeatures = [
+  "Premium templates",
+  "Contacts and lead capture",
+  "Tap to Share",
+  "Advanced analytics",
+  "CRM integrations",
+  "Advanced QR features",
 ];
 
 const plans = [
@@ -86,6 +97,10 @@ const plans = [
 ];
 
 export default function ClientBillingPage() {
+  const { plan, isPaid } = useClientPlan();
+  const currentPlan = plan as DmiPlan;
+  const planName = isPaid ? "Individual Pro" : "Free";
+
   return (
     <main className="flex min-h-screen bg-[#070B1A] text-white">
       <ClientSidebar />
@@ -99,7 +114,7 @@ export default function ClientBillingPage() {
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <h1 className="text-4xl font-bold">Billing</h1>
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-white/60">
-                {currentPlan} plan
+                {planName} plan
               </span>
             </div>
             <p className="mt-3 max-w-3xl text-white/50">
@@ -107,38 +122,39 @@ export default function ClientBillingPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35 sm:w-auto"
-          >
-            <Sparkles className="h-4 w-4" />
-            Upgrade to Individual Pro
-          </button>
+          {!isPaid && (
+            <UpgradeToProButton
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35 sm:w-auto"
+            >
+              <Sparkles className="h-4 w-4" />
+              Upgrade to Individual Pro
+            </UpgradeToProButton>
+          )}
         </div>
 
         <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard
             label="Current Plan"
-            value="Free"
-            caption="1 card included"
+            value={planName}
+            caption={isPaid ? "Pro tools unlocked" : "1 card included"}
             icon={BadgeCheck}
           />
           <SummaryCard
             label="Billing Status"
             value="Active"
-            caption="No payment required"
+            caption={isPaid ? "Stripe subscription active" : "No payment required"}
             icon={ShieldCheck}
           />
           <SummaryCard
             label="Next Payment"
-            value="None"
-            caption="Upgrade to start billing"
+            value={isPaid ? "Stripe" : "None"}
+            caption={isPaid ? "Managed by Stripe" : "Upgrade to start billing"}
             icon={CalendarDays}
           />
           <SummaryCard
             label="Payment Method"
             value="Not added"
-            caption="Stripe coming soon"
+            caption="Added after checkout"
             icon={CreditCard}
           />
         </div>
@@ -155,18 +171,19 @@ export default function ClientBillingPage() {
                   <div className="mt-5 flex flex-wrap gap-2">
                     <BillingBadge status="Active" />
                     <span className="rounded-full border border-[#AC00FF]/25 bg-[#AC00FF]/10 px-3 py-1 text-xs font-semibold text-purple-100">
-                      Free Plan
+                      {planName} Plan
                     </span>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#AC00FF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/20 transition hover:bg-[#BE35FF] sm:w-auto"
-                >
-                  Upgrade to Individual Pro
-                  <ArrowUpRight className="h-4 w-4" />
-                </button>
+                {!isPaid && (
+                  <UpgradeToProButton
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#AC00FF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/20 transition hover:bg-[#BE35FF] sm:w-auto"
+                  >
+                    Upgrade to Individual Pro
+                    <ArrowUpRight className="h-4 w-4" />
+                  </UpgradeToProButton>
+                )}
               </div>
 
               <div className="mt-6 rounded-3xl border border-[#AC00FF]/25 bg-gradient-to-br from-[#AC00FF]/15 via-white/[0.04] to-[#101935] p-6">
@@ -175,16 +192,17 @@ export default function ClientBillingPage() {
                     <CircleDollarSign className="h-6 w-6" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-semibold">Free Plan</h2>
+                    <h2 className="text-2xl font-semibold">{planName} Plan</h2>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">
-                      A simple starting plan for publishing your first DMI Cards
-                      digital business card.
+                      {isPaid
+                        ? "Your Stripe subscription has unlocked Individual Pro features across DMI Cards."
+                        : "A simple starting plan for publishing your first DMI Cards digital business card."}
                     </p>
                   </div>
                 </div>
 
                 <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {freeFeatures.map((feature) => (
+                  {(isPaid ? proFeatures : freeFeatures).map((feature) => (
                     <FeaturePill key={feature}>{feature}</FeaturePill>
                   ))}
                 </div>
@@ -199,7 +217,15 @@ export default function ClientBillingPage() {
 
               <div className="mt-6 grid gap-4 lg:grid-cols-3">
                 {plans.map((plan) => (
-                  <PlanCard key={plan.name} {...plan} />
+                  <PlanCard
+                    key={plan.name}
+                    {...plan}
+                    active={
+                      (currentPlan === "free" && plan.name === "Free") ||
+                      (currentPlan === "pro" && plan.name === "Individual Pro") ||
+                      (currentPlan === "enterprise" && plan.name === "Business / Enterprise")
+                    }
+                  />
                 ))}
               </div>
             </section>
@@ -299,12 +325,10 @@ export default function ClientBillingPage() {
                   <Lock className="h-6 w-6 text-purple-100" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-semibold">
-                    Stripe billing coming soon
-                  </h2>
+                  <h2 className="text-xl font-semibold">Secure Stripe checkout</h2>
                   <p className="mt-3 text-sm leading-6 text-white/60">
-                    Billing will be securely managed through Stripe. Payment
-                    actions on this page are placeholders for now.
+                    Start a Pro subscription through Stripe Checkout. Your plan
+                    updates only after Stripe confirms the subscription.
                   </p>
                 </div>
               </div>
@@ -399,16 +423,18 @@ function PlanCard({
         ))}
       </div>
 
-      <button
-        type="button"
-        className={`mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
-          highlighted
-            ? "bg-[#AC00FF] text-white shadow-lg shadow-purple-500/20 hover:bg-[#BE35FF]"
-            : "border border-white/10 bg-white/5 text-white/70 hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:text-white"
-        }`}
-      >
-        {active ? "Current Plan" : "Select Plan"}
-      </button>
+      {highlighted && !active ? (
+        <UpgradeToProButton className="mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#AC00FF] px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/20 transition hover:bg-[#BE35FF]">
+          Select Plan
+        </UpgradeToProButton>
+      ) : (
+        <button
+          type="button"
+          className="mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/70 transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:text-white"
+        >
+          {active ? "Current Plan" : "Select Plan"}
+        </button>
+      )}
     </article>
   );
 }

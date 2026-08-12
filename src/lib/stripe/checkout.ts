@@ -12,6 +12,7 @@ import type {
 
 type CheckoutSessionInput = {
   userId: string;
+  profileId?: string | null;
   email: string | null;
   plan: CheckoutBillingPlan;
   billingInterval: StripeBillingInterval;
@@ -28,6 +29,7 @@ type BillingPortalSessionInput = {
 
 export async function createStripeCheckoutSession({
   userId,
+  profileId,
   email,
   plan,
   billingInterval,
@@ -52,6 +54,7 @@ export async function createStripeCheckoutSession({
     metadata: {
       [DMI_STRIPE_APP_METADATA_KEY]: DMI_STRIPE_APP_NAMESPACE,
       dmi_user_id: userId,
+      ...(profileId ? { dmi_profile_id: profileId } : {}),
       dmi_plan: plan,
       billing_interval: billingInterval,
     },
@@ -59,10 +62,12 @@ export async function createStripeCheckoutSession({
       metadata: {
         [DMI_STRIPE_APP_METADATA_KEY]: DMI_STRIPE_APP_NAMESPACE,
         dmi_user_id: userId,
+        ...(profileId ? { dmi_profile_id: profileId } : {}),
         dmi_plan: plan,
         billing_interval: billingInterval,
       },
     },
+    allow_promotion_codes: true,
     success_url: successUrl,
     cancel_url: cancelUrl,
   });

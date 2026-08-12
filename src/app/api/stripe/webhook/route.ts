@@ -13,10 +13,19 @@ export async function POST(request: Request) {
     const event = constructStripeWebhookEvent({ payload, signature });
     const result = await handleStripeWebhookEvent(event);
 
+    console.info("[DMI stripe] webhook event processed", {
+      eventId: event.id,
+      eventType: event.type,
+      handled: result.handled,
+      skipped: Boolean(result.skipped),
+      reason: result.reason || null,
+    });
+
     return NextResponse.json({
       received: true,
       handled: result.handled,
       skipped: Boolean(result.skipped),
+      reason: result.reason || null,
     });
   } catch (error) {
     if (error instanceof Error && /signature|Stripe-Signature/i.test(error.message)) {

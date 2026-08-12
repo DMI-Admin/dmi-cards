@@ -23,10 +23,8 @@ import {
   X,
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
-import { clientFeaturePreviewPlans, isPaidPlan } from "@/lib/entitlements";
-
-const currentPlan = clientFeaturePreviewPlans.contacts;
-const isPaid = isPaidPlan(currentPlan);
+import UpgradeToProButton from "@/components/UpgradeToProButton";
+import { useClientPlan } from "@/lib/use-client-plan";
 
 type ContactSource = "QR" | "Wallet" | "Tap to Share" | "Public Page" | "Manual";
 type ContactStatus = "New" | "Contacted" | "Qualified" | "Archived";
@@ -158,6 +156,7 @@ const emptyForm: ContactFormState = {
 const crmConnected = true;
 
 export default function ClientContactsPage() {
+  const { isPaid } = useClientPlan();
   const [contacts, setContacts] = useState<CapturedContact[]>(initialContacts);
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
@@ -488,13 +487,12 @@ function LockedOverlay() {
           Contacts is a paid lead management inbox. Upgrade to capture,
           filter, export, sync, and follow up with leads from your digital card.
         </p>
-        <button
-          type="button"
+        <UpgradeToProButton
           className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 sm:w-auto"
         >
           <Sparkles className="h-4 w-4" />
           Upgrade to Individual Pro
-        </button>
+        </UpgradeToProButton>
       </div>
     </div>
   );

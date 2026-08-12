@@ -19,10 +19,8 @@ import {
   Zap,
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
-import { clientFeaturePreviewPlans, isPaidPlan } from "@/lib/entitlements";
-
-const currentPlan = clientFeaturePreviewPlans.integrations;
-const isPaid = isPaidPlan(currentPlan);
+import UpgradeToProButton from "@/components/UpgradeToProButton";
+import { useClientPlan } from "@/lib/use-client-plan";
 
 type IntegrationStatus = "connected" | "not_connected" | "failed" | "coming_soon";
 type SyncStatus = "synced" | "pending" | "failed";
@@ -129,6 +127,7 @@ const syncActivity = [
 ];
 
 export default function ClientIntegrationsPage() {
+  const { isPaid } = useClientPlan();
   const [autoSync, setAutoSync] = useState(true);
   const [syncNotes, setSyncNotes] = useState(true);
   const [syncTags, setSyncTags] = useState(true);
@@ -474,13 +473,12 @@ function LockedOverlay() {
         <p className="mt-3 text-sm leading-6 text-white/60">
           Upgrade to Individual Pro to connect CRM and automation tools.
         </p>
-        <button
-          type="button"
+        <UpgradeToProButton
           className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 sm:w-auto"
         >
           <Sparkles className="h-4 w-4" />
           Upgrade to Individual Pro
-        </button>
+        </UpgradeToProButton>
       </div>
     </div>
   );

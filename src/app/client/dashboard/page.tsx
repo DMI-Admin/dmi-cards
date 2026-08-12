@@ -1,27 +1,22 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
   ContactRound,
+  Copy,
   CreditCard,
   ExternalLink,
-  Eye,
-  Heart,
-  Link2,
-  Lock,
   LogOut,
   Monitor,
+  Palette,
   Plug,
   QrCode,
   Settings,
-  Share2,
   Sun,
-  SmartphoneNfc,
-  Sparkles,
   UserRound,
-  WalletCards,
   Moon,
 } from "lucide-react";
 import CardRenderer, {
@@ -29,6 +24,7 @@ import CardRenderer, {
   type CardRendererTemplate,
 } from "@/components/CardRenderer";
 import ClientSidebar from "@/components/ClientSidebar";
+import UpgradeToProButton from "@/components/UpgradeToProButton";
 import { supabase } from "@/lib/supabase";
 import {
   getClientVisibleTemplates,
@@ -36,19 +32,13 @@ import {
   type SharedTemplate,
 } from "@/lib/templates";
 import type { ClientProfile } from "@/lib/profiles";
-import { requireClientUser } from "@/lib/client-auth";
-import {
-  isClientFeatureLocked,
-  type ClientFeature,
-} from "@/lib/client-feature-access";
-import { clientFeaturePreviewPlans, isPaidPlan } from "@/lib/entitlements";
+import { getCurrentProfile, getCurrentUser } from "@/lib/client-auth";
+import type { DmiPlan } from "@/lib/entitlements";
+import { useClientPlan } from "@/lib/use-client-plan";
 
 type ThemeChoice = "system" | "light" | "dark";
 
 const themeStorageKey = "dmi-theme";
-const currentPlan = clientFeaturePreviewPlans.dashboard;
-const isPaid = isPaidPlan(currentPlan);
-
 const fallbackTemplate: CardRendererTemplate = {
   access_level: "free",
   layout_type: "classic_free",
@@ -74,54 +64,14 @@ const fallbackTemplate: CardRendererTemplate = {
   free_colour_palette: ["#AC00FF", "#101935"],
 };
 
-const recentContacts = [
-  {
-    name: "Aisha Patel",
-    company: "Northline Studio",
-    date: "12 May 2026",
-    source: "QR scan",
-  },
-  {
-    name: "Daniel Brooks",
-    company: "Vertex Group",
-    date: "11 May 2026",
-    source: "Public page",
-  },
-  {
-    name: "Mia Chen",
-    company: "Aster Labs",
-    date: "10 May 2026",
-    source: "Tap share",
-  },
-  {
-    name: "Owen Clarke",
-    company: "Bright Ledger",
-    date: "9 May 2026",
-    source: "Wallet",
-  },
-  {
-    name: "Nora Wilson",
-    company: "Nova Retail",
-    date: "8 May 2026",
-    source: "QR scan",
-  },
+const analyticsMetrics = [
+  { label: "Views", value: "0" },
+  { label: "Saves", value: "0" },
+  { label: "Shares", value: "0" },
+  { label: "QR scans", value: "0" },
 ];
 
-const integrationStatuses = [
-  { name: "Zapier", status: "connected" },
-  { name: "HubSpot", status: "connected" },
-  { name: "Salesforce", status: "disconnected" },
-  { name: "Zoho CRM", status: "not_connected" },
-  { name: "Pipedrive", status: "not_connected" },
-  { name: "GoHighLevel", status: "disconnected" },
-];
-
-const analyticsStats = [
-  { label: "Views", value: isPaid ? "1,284" : "Limited", icon: Eye },
-  { label: "Saves", value: isPaid ? "146" : "Locked", icon: Heart },
-  { label: "Shares", value: isPaid ? "78" : "Locked", icon: Share2 },
-  { label: "QR scans", value: isPaid ? "392" : "Limited", icon: QrCode },
-];
+const integrationNames = ["Zapier", "HubSpot", "Salesforce", "Zoho CRM"];
 
 function applyDashboardTheme(theme: ThemeChoice) {
   document.documentElement.dataset.theme = theme;
@@ -139,6 +89,9 @@ function storedDashboardTheme(): ThemeChoice {
 
 export default function ClientDashboardPage() {
   const router = useRouter();
+  const { plan, isPaid, loading: planLoading } = useClientPlan();
+  const planResolved = Boolean(plan) && !planLoading;
+  const showPaidDashboard = planResolved && isPaid;
   const [templates, setTemplates] = useState<SharedTemplate[]>([]);
   const [profile, setProfile] = useState<ClientProfile | null>(null);
   const [latestCard, setLatestCard] = useState<(CardRendererData & {
@@ -152,6 +105,7 @@ export default function ClientDashboardPage() {
     is_published?: boolean | null;
   }) | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(true);
+  const [actionMessage, setActionMessage] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -160,13 +114,19 @@ export default function ClientDashboardPage() {
       setLoadingPreview(true);
 
       try {
-        const loadedTemplates = await getClientVisibleTemplates(currentPlan);
+        if (!plan) return;
+
+        const loadedTemplates = await getClientVisibleTemplates(plan as DmiPlan);
 
         if (ignore) return;
 
         setTemplates(loadedTemplates);
 
-        const { user, profile: loadedProfile } = await requireClientUser();
+        const user = await getCurrentUser();
+
+        if (!user) return;
+
+        const loadedProfile = await getCurrentProfile(user);
 
         if (ignore) return;
 
@@ -202,7 +162,7 @@ export default function ClientDashboardPage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [plan]);
 
   const previewTemplate = useMemo(() => {
     const selectedTemplate =
@@ -232,7 +192,18 @@ export default function ClientDashboardPage() {
     templates,
   ]);
   const publicUrl = latestCard?.slug ? `/u/${latestCard.slug}` : "/u/your-card-url";
+  const publicCardUrl =
+    typeof window !== "undefined" && latestCard?.slug
+      ? `${window.location.origin}${publicUrl}`
+      : publicUrl;
   const hasSavedCard = Boolean(latestCard);
+
+  async function copyPublicCardLink() {
+    if (!latestCard?.slug) return;
+
+    await navigator.clipboard?.writeText(publicCardUrl);
+    setActionMessage("Card link copied.");
+  }
 
   return (
     <main className="flex min-h-screen flex-col bg-[var(--background)] text-[var(--text-primary)] lg:flex-row">
@@ -241,89 +212,58 @@ export default function ClientDashboardPage() {
       </div>
 
       <section className="min-w-0 flex-1 px-5 py-6 sm:px-7 lg:px-10 lg:py-9">
-        <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.28em] text-[var(--text-accent)]">
-              Client Portal
-            </p>
-            <h1 className="mt-3 text-4xl font-bold tracking-normal text-[var(--text-primary)] sm:text-5xl">
+            <h1 className="text-4xl font-bold tracking-normal text-[var(--text-primary)] sm:text-5xl">
               Dashboard
             </h1>
             <p className="mt-3 max-w-3xl text-base leading-7 text-[var(--text-secondary)]">
               Manage your digital card, public link, QR code, and sharing tools
-              from one client portal.
+              from one place.
             </p>
           </div>
           <div className="hidden lg:block">
-            <AccountMenu profile={profile} onNavigate={(href) => router.push(href)} />
+            <AccountMenu
+              profile={profile}
+              isPaid={showPaidDashboard}
+              planResolved={planResolved}
+              onNavigate={(href) => router.push(href)}
+            />
           </div>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
-          <div className="space-y-6">
-            <WelcomePlanCard profile={profile} />
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-5">
+            <WelcomePanel profile={profile} />
 
-            <div className="grid gap-5 lg:grid-cols-2">
-              <FreePlanSummary />
-              <UpgradeTeaser />
-            </div>
+            <QuickActionsCard
+              hasSavedCard={hasSavedCard}
+              publicUrl={publicUrl}
+              onCopyLink={copyPublicCardLink}
+              onCreate={() => router.push("/client/cards")}
+              message={actionMessage}
+            />
 
-            {hasSavedCard ? (
-              <div className="grid gap-5 lg:grid-cols-2">
-                <PublicUrlCard publicUrl={publicUrl} published={Boolean(latestCard?.is_published || latestCard?.status === "published")} />
-                <QuickActionsCard publicUrl={publicUrl} />
-              </div>
-            ) : (
-              <FirstCardActions onCreate={() => router.push("/client/cards")} />
-            )}
-
-            <div className="grid gap-5 lg:grid-cols-3">
-              <ShortcutCard
-                title="QR Code"
-                description="Open your shareable QR code tools."
-                icon={QrCode}
-                href="/client/qr-code"
-                feature="qr-code"
-              />
-              <ShortcutCard
-                title="Wallet"
-                description="Add your card to mobile wallets."
-                icon={WalletCards}
-                href="/client/wallet"
-                feature="wallet"
-              />
-              <ShortcutCard
-                title="Tap to Share"
-                description="Manage NFC and tap sharing."
-                icon={SmartphoneNfc}
-                href="/client/tap-to-share"
-                feature="tap-to-share"
-              />
-            </div>
-
-            <AnalyticsSummary />
-            <RecentContacts />
-            <IntegrationStatus />
+            <AnalyticsSummary isPaid={showPaidDashboard} planResolved={planResolved} />
+            <RecentContacts isPaid={showPaidDashboard} planResolved={planResolved} />
+            <IntegrationStatus isPaid={showPaidDashboard} planResolved={planResolved} />
           </div>
 
           <aside className="xl:sticky xl:top-8 xl:self-start">
-            <div className="rounded-[var(--radius-xl)] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-5 shadow-[var(--shadow-md)]">
-              <div className="mb-5 flex items-center justify-between gap-3">
+            <div className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)]/95 p-3.5 shadow-[var(--shadow-sm)]">
+              <div className="mb-4 flex items-center justify-between gap-3 px-1">
                 <div>
-                  <h2 className="text-xl font-semibold text-[var(--text-primary)]">
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">
                     Live Card Preview
                   </h2>
                   <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                    {loadingPreview ? "Loading latest saved card." : "Latest saved card preview."}
+                    {loadingPreview ? "Loading latest card." : "Latest saved card."}
                   </p>
                 </div>
-                <span className="rounded-full border border-[var(--border-brand)] bg-[var(--brand-gradient-subtle)] px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-[var(--badge-brand-text)]">
-                  Free
-                </span>
               </div>
 
               {latestCard ? (
-                <div className="flex justify-center overflow-hidden rounded-[1.5rem] bg-black">
+                <div className="flex justify-center overflow-hidden rounded-xl border border-[var(--dmi-border)] bg-black/70">
                   <CardRenderer
                     template={previewTemplate}
                     cardData={latestCard}
@@ -331,7 +271,7 @@ export default function ClientDashboardPage() {
                   />
                 </div>
               ) : (
-                <div className="rounded-[1.5rem] border border-dashed border-[var(--border-brand)] bg-[var(--brand-gradient-subtle)] p-8 text-center">
+                <div className="rounded-2xl border border-dashed border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-7 text-center">
                   <h3 className="text-lg font-semibold text-[var(--text-primary)]">No card created yet</h3>
                   <p className="mx-auto mt-3 max-w-xs text-sm leading-6 text-[var(--text-secondary)]">
                     Create your first digital business card to unlock your
@@ -340,7 +280,7 @@ export default function ClientDashboardPage() {
                   <button
                     type="button"
                     onClick={() => router.push("/client/cards")}
-                    className="mt-6 inline-flex items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[image:var(--brand-gradient)] px-5 py-3 text-sm font-semibold text-[#FFFFFF] shadow-[var(--brand-glow)] transition hover:-translate-y-0.5"
+                    className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-[image:var(--brand-gradient)] px-5 py-3 text-sm font-semibold text-[#FFFFFF] shadow-[var(--shadow-sm)] transition hover:-translate-y-0.5"
                   >
                     <CreditCard className="h-4 w-4" />
                     Create My First Card
@@ -355,59 +295,31 @@ export default function ClientDashboardPage() {
   );
 }
 
-function WelcomePlanCard({ profile }: { profile: ClientProfile | null }) {
+function WelcomePanel({ profile }: { profile: ClientProfile | null }) {
   const firstName = firstNameFromProfile(profile);
-  const displayEmail = profile?.email || "Signed in with Supabase";
 
   return (
-    <div className="dmi-hero-panel rounded-[var(--radius-xl)] border p-6 shadow-[var(--brand-glow)] sm:p-8">
-      <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-        <div className="max-w-3xl">
-          <div
-            className="inline-flex items-center gap-2 rounded-full border border-white/35 bg-white/20 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em]"
-            style={{ color: "rgba(255,255,255,0.85)" }}
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            Free plan
-          </div>
-          <h2
-            className="mt-5 text-3xl font-bold tracking-normal sm:text-4xl"
-            style={{ color: "#FFFFFF" }}
-          >
-            {firstName ? `Welcome ${firstName}` : "Welcome"}
-          </h2>
-          <p
-            className="mt-2 text-sm font-medium"
-            style={{ color: "rgba(255,255,255,0.85)" }}
-          >
-            {displayEmail}
-          </p>
-          <p
-            className="mt-4 max-w-2xl text-base font-medium leading-7"
-            style={{ color: "rgba(255,255,255,0.85)" }}
-          >
-            Manage your digital business card, public profile, QR code, and
-            sharing tools from one place.
-          </p>
-        </div>
-        <div
-          className="grid min-w-[170px] gap-2 rounded-[var(--radius-lg)] border border-white/25 bg-white/15 p-4 backdrop-blur"
+    <div
+      className="overflow-hidden rounded-2xl border px-5 py-5 sm:px-7 sm:py-6"
+      style={{
+        background: "var(--dashboard-welcome-bg)",
+        borderColor: "var(--dashboard-welcome-border)",
+        boxShadow: "var(--dashboard-welcome-shadow)",
+      }}
+    >
+      <div className="max-w-3xl">
+        <h2
+          className="text-3xl font-semibold tracking-normal sm:text-4xl"
           style={{ color: "#FFFFFF" }}
         >
-          <span
-            className="text-xs font-bold uppercase tracking-[0.18em]"
-            style={{ color: "rgba(255,255,255,0.7)" }}
-          >
-            Plan status
-          </span>
-          <span className="text-2xl font-bold" style={{ color: "#FFFFFF" }}>Free</span>
-          <span
-            className="text-sm font-medium"
-            style={{ color: "rgba(255,255,255,0.85)" }}
-          >
-            1 card included
-          </span>
-        </div>
+          {firstName ? `Welcome ${firstName}` : "Welcome"}
+        </h2>
+        <p
+          className="mt-3 max-w-2xl text-base font-medium leading-7"
+          style={{ color: "rgba(255,255,255,0.78)" }}
+        >
+          Your digital business card is live and ready to share.
+        </p>
       </div>
     </div>
   );
@@ -436,16 +348,29 @@ function firstNameFromProfile(profile: ClientProfile | null) {
 
 function AccountMenu({
   profile,
+  isPaid,
+  planResolved,
   onNavigate,
 }: {
   profile: ClientProfile | null;
+  isPaid: boolean;
+  planResolved: boolean;
   onNavigate: (href: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [portalError, setPortalError] = useState("");
   const [theme, setTheme] = useState<ThemeChoice>(() => storedDashboardTheme());
   const email = profile?.email || "Signed in with Supabase";
   const firstName = firstNameFromProfile(profile);
+  const displayName =
+    profile?.full_name?.trim() ||
+    [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() ||
+    firstName ||
+    "Your account";
   const initial = (firstName || email || "A").trim().charAt(0).toUpperCase();
+  const planLabel = !planResolved ? "Checking plan" : isPaid ? "Individual Pro" : "Free";
 
   useEffect(() => {
     applyDashboardTheme(theme);
@@ -455,6 +380,54 @@ function AccountMenu({
     setTheme(nextTheme);
     window.localStorage.setItem(themeStorageKey, nextTheme);
     applyDashboardTheme(nextTheme);
+  }
+
+  async function openBillingPortal() {
+    if (portalLoading) return;
+
+    setPortalLoading(true);
+    setPortalError("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Please sign in again before managing your subscription.");
+      }
+
+      const response = await fetch("/api/stripe/portal", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      const portalUrl =
+        typeof payload?.url === "string"
+          ? payload.url
+          : typeof payload?.data?.url === "string"
+            ? payload.data.url
+            : "";
+
+      if (!response.ok || !portalUrl) {
+        const message =
+          typeof payload?.error?.message === "string"
+            ? payload.error.message
+            : "Could not open subscription management.";
+        throw new Error(message);
+      }
+
+      window.location.assign(portalUrl);
+    } catch (error) {
+      setPortalError(
+        error instanceof Error
+          ? error.message
+          : "Could not open subscription management."
+      );
+      setPortalLoading(false);
+    }
   }
 
   async function handleLogout() {
@@ -481,32 +454,60 @@ function AccountMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 z-30 mt-3 w-[min(20rem,calc(100vw-2rem))] rounded-[var(--radius-xl)] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-3 shadow-[var(--shadow-xl)]">
+        <div className="absolute right-0 z-30 mt-3 w-[min(18rem,calc(100vw-2rem))] rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-2 shadow-[var(--shadow-xl)]">
+          <div className="px-3 py-2.5">
+            <p className="truncate text-sm font-semibold text-[var(--text-primary)]">
+              {displayName}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-[var(--text-secondary)]">{email}</p>
+            <p className="mt-1 text-[11px] font-semibold text-[var(--text-accent)]">
+              {planLabel}
+            </p>
+          </div>
+
+          <div className="my-1 h-px bg-[var(--dmi-border)]" />
+
           <button
             type="button"
             onClick={() => onNavigate("/client/settings")}
-            className="w-full rounded-xl px-3 py-3 text-left text-sm text-[var(--text-secondary)] transition hover:bg-[var(--dmi-surface-soft)] hover:text-[var(--text-primary)]"
-          >
-            <span className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Signed in as</span>
-            <span className="mt-1 block truncate font-medium">{email}</span>
-          </button>
-
-          <div className="my-2 h-px bg-[var(--dmi-border)]" />
-
-          <button
-            type="button"
-            onClick={() => onNavigate("/client/settings")}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--dmi-surface-soft)] hover:text-[var(--text-primary)]"
+            className="flex min-h-10 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--dmi-surface-soft)] hover:text-[var(--text-primary)]"
           >
             <Settings className="h-4 w-4 text-[var(--text-accent)]" />
-            Account settings
+            Manage account
           </button>
 
-          <div className="mt-3 rounded-xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-3">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-              Theme
-            </p>
-            <div className="mt-3 grid grid-cols-3 gap-2">
+          {isPaid ? (
+            <button
+              type="button"
+              onClick={openBillingPortal}
+              disabled={portalLoading || !planResolved}
+              className="flex min-h-10 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--dmi-surface-soft)] hover:text-[var(--text-primary)] disabled:cursor-wait disabled:opacity-60"
+            >
+              <CreditCard className="h-4 w-4 text-[var(--text-accent)]" />
+              {portalLoading ? "Opening Stripe..." : "Manage subscription"}
+            </button>
+          ) : (
+            <UpgradeToProButton className="flex min-h-10 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--dmi-surface-soft)] hover:text-[var(--text-primary)]">
+              <CreditCard className="h-4 w-4 text-[var(--text-accent)]" />
+              Upgrade to Pro
+            </UpgradeToProButton>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setAppearanceOpen((current) => !current)}
+            className="flex min-h-10 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--dmi-surface-soft)] hover:text-[var(--text-primary)]"
+            aria-expanded={appearanceOpen}
+          >
+            <Palette className="h-4 w-4 text-[var(--text-accent)]" />
+            <span className="flex-1">Appearance</span>
+            <ChevronDown
+              className={`h-4 w-4 transition ${appearanceOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+
+          {appearanceOpen && (
+            <div className="mx-1 mb-1 rounded-xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-1">
               <ThemeOption
                 label="System"
                 value="system"
@@ -529,93 +530,24 @@ function AccountMenu({
                 onSelect={selectTheme}
               />
             </div>
-          </div>
+          )}
+
+          {portalError && (
+            <p className="px-3 py-1 text-xs leading-5 text-[var(--error)]">{portalError}</p>
+          )}
 
           <div className="my-2 h-px bg-[var(--dmi-border)]" />
 
           <button
             type="button"
             onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[var(--error)] transition hover:bg-[var(--error-bg)]"
+            className="flex min-h-10 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold text-[var(--error)] transition hover:bg-[var(--error-bg)]"
           >
             <LogOut className="h-4 w-4" />
             Log out
           </button>
         </div>
       )}
-    </div>
-  );
-}
-
-function FreePlanSummary() {
-  const features = [
-    "1 published digital card",
-    "Free template access",
-    "Public profile URL",
-    "Basic QR code",
-    "Save contact button",
-  ];
-
-  return (
-    <div className="rounded-[var(--radius-xl)] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-6 shadow-[var(--shadow-md)]">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--text-accent)]">
-            Included
-          </p>
-          <h2 className="mt-2 text-xl font-semibold text-[var(--text-primary)]">Your Free Plan</h2>
-        </div>
-        <span className="rounded-full bg-[var(--success-bg)] px-3 py-1 text-xs font-bold text-[var(--success)]">
-          Active
-        </span>
-      </div>
-      <ul className="mt-5 space-y-3">
-        {features.map((feature) => (
-          <li key={feature} className="flex items-center gap-3 text-sm font-medium text-[var(--text-secondary)]">
-            <span className="h-2.5 w-2.5 rounded-full bg-[image:var(--brand-gradient)]" />
-            {feature}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function UpgradeTeaser() {
-  const features = [
-    "Premium templates",
-    "Contacts",
-    "Tap to Share",
-    "Analytics",
-    "Integrations",
-  ];
-
-  return (
-    <div className="rounded-[var(--radius-xl)] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-6 shadow-[var(--shadow-md)]">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--text-accent)]">
-            Upgrade
-          </p>
-          <h2 className="mt-2 text-xl font-semibold text-[var(--text-primary)]">Individual Pro</h2>
-        </div>
-        <LockedBadge />
-      </div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        {features.map((feature) => (
-          <div key={feature} className="flex items-center gap-3 text-sm font-medium text-[var(--text-secondary)]">
-            <Lock className="h-4 w-4 text-[var(--text-accent)]" />
-            {feature}
-          </div>
-        ))}
-      </div>
-      <a
-        href="/client/billing"
-        className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-[image:var(--brand-gradient)] px-4 py-3 text-sm font-semibold text-[#FFFFFF] shadow-[var(--brand-glow)] transition hover:-translate-y-0.5 hover:text-[#FFFFFF] focus:text-[#FFFFFF] focus-visible:text-[#FFFFFF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#AC00FF] sm:w-auto [&>svg]:stroke-[#FFFFFF] [&>svg]:text-[#FFFFFF]"
-        style={{ color: "#FFFFFF", WebkitTextFillColor: "#FFFFFF" }}
-      >
-        Upgrade to Pro
-      </a>
     </div>
   );
 }
@@ -641,10 +573,10 @@ function ThemeOption({
         event.stopPropagation();
         onSelect(value);
       }}
-      className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+      className={`flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
         active
-          ? "border-[var(--border-brand)] bg-[var(--brand-gradient-subtle)] text-[var(--text-accent)]"
-          : "border-[var(--dmi-border)] bg-[var(--dmi-surface)] text-[var(--text-secondary)] hover:border-[var(--border-brand)] hover:text-[var(--text-primary)]"
+          ? "bg-[var(--brand-gradient-subtle)] text-[var(--text-accent)]"
+          : "text-[var(--text-secondary)] hover:bg-[var(--dmi-surface)] hover:text-[var(--text-primary)]"
       }`}
     >
       <Icon className="h-4 w-4" />
@@ -653,186 +585,177 @@ function ThemeOption({
   );
 }
 
-function PublicUrlCard({
+function QuickActionsCard({
+  hasSavedCard,
   publicUrl,
-  published,
+  onCopyLink,
+  onCreate,
+  message,
 }: {
+  hasSavedCard: boolean;
   publicUrl: string;
-  published: boolean;
+  onCopyLink: () => void;
+  onCreate: () => void;
+  message: string;
 }) {
-  return (
-    <div className="rounded-[var(--radius-xl)] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-6 shadow-[var(--shadow-md)]">
-      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--brand-gradient-subtle)] text-[var(--text-accent)]">
-        <Link2 className="h-5 w-5" />
-      </div>
-      <h2 className="mt-5 text-xl font-semibold text-[var(--text-primary)]">Public page URL</h2>
-      <p className="mt-3 rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-4 py-3 text-sm font-medium text-[var(--text-primary)]">
-        {publicUrl}
-      </p>
-      <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-        {published
-          ? "Your public link is active."
-          : "Your public link will become active when your card is published."}
-      </p>
-    </div>
-  );
-}
-
-function QuickActionsCard({ publicUrl }: { publicUrl: string }) {
-  const actions = [
-    { label: "Edit card", icon: CreditCard, href: "/client/cards" },
-    { label: "Open public page", icon: ExternalLink, href: publicUrl },
-    { label: "Download QR", icon: QrCode, href: "/client/qr-code" },
-  ];
+  const actionClass =
+    "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-3.5 py-2 text-sm font-semibold text-[var(--text-primary)] transition hover:-translate-y-0.5 hover:border-[var(--border-brand)] hover:bg-[var(--brand-gradient-subtle)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0";
 
   return (
-    <div className="rounded-[var(--radius-xl)] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-6 shadow-[var(--shadow-md)]">
-      <h2 className="text-xl font-semibold text-[var(--text-primary)]">Quick actions</h2>
-      <div className="mt-5 space-y-3">
-        {actions.map((action) => {
-          const Icon = action.icon;
-
-          return (
-            <a
-              key={action.label}
-              href={action.href}
-              target={action.href?.startsWith("/u/") ? "_blank" : undefined}
-              rel={action.href?.startsWith("/u/") ? "noreferrer" : undefined}
-              className="flex w-full items-center gap-3 rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-4 py-3 text-left text-sm font-semibold text-[var(--text-primary)] transition hover:-translate-y-0.5 hover:border-[var(--border-brand)] hover:bg-[var(--brand-gradient-subtle)]"
-            >
-              <Icon className="h-4 w-4 text-[var(--text-accent)]" />
-              {action.label}
-            </a>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function FirstCardActions({ onCreate }: { onCreate: () => void }) {
-  return (
-    <div className="rounded-[var(--radius-xl)] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-6 shadow-[var(--shadow-md)]">
-      <h2 className="text-xl font-semibold text-[var(--text-primary)]">Quick actions</h2>
-      <div className="mt-5">
-        <button
-          type="button"
-          onClick={onCreate}
-          className="flex w-full items-center gap-3 rounded-2xl bg-[image:var(--brand-gradient)] px-4 py-3 text-left text-sm font-semibold text-[#FFFFFF] shadow-[var(--brand-glow)] transition hover:-translate-y-0.5"
-        >
-          <CreditCard className="h-4 w-4" />
-          Create My First Card
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ShortcutCard({
-  title,
-  description,
-  icon: Icon,
-  href,
-  feature,
-}: {
-  title: string;
-  description: string;
-  icon: typeof QrCode;
-  href: string;
-  feature: ClientFeature;
-}) {
-  const locked = isClientFeatureLocked(feature, currentPlan);
-  const content = (
-    <>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--brand-gradient-subtle)] text-[var(--text-accent)]">
-          <Icon className="h-5 w-5" />
-        </div>
-        {locked && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-[var(--border-brand)] bg-[var(--badge-pro-bg)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--badge-pro-text)]">
-            <Lock className="h-3 w-3" />
-            Pro
-          </span>
-        )}
-      </div>
-      <h3 className="mt-5 text-lg font-semibold text-[var(--text-primary)]">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{description}</p>
-      {locked && (
-        <p className="mt-4 text-xs font-semibold text-[var(--text-accent)]">
-          Upgrade to Individual Pro to unlock this feature.
-        </p>
-      )}
-    </>
-  );
-
-  if (!locked) {
-    return (
-      <a
-        href={href}
-        className="block rounded-[var(--radius-xl)] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-5 shadow-[var(--shadow-md)] transition hover:-translate-y-0.5 hover:border-[var(--border-brand)]"
-      >
-        {content}
-      </a>
-    );
-  }
-
-  return (
-    <div
-      className="rounded-[var(--radius-xl)] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-5 text-[var(--text-secondary)] shadow-[var(--shadow-md)] transition"
-    >
-      {content}
-    </div>
-  );
-}
-
-function AnalyticsSummary() {
-  return (
-    <div className="rounded-[var(--radius-xl)] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-6 shadow-[var(--shadow-md)]">
+    <div className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-4 shadow-[var(--shadow-sm)]">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-[var(--text-primary)]">Analytics summary</h2>
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Quick actions</h2>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            {isPaid
-              ? "Mock performance data for your digital card."
-              : "Free users get limited analytics visibility."}
+            Share, edit, and add your card to a wallet.
           </p>
         </div>
-        {!isPaid && <LockedBadge />}
+        {!hasSavedCard && (
+          <button
+            type="button"
+            onClick={onCreate}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[image:var(--brand-gradient)] px-4 py-2.5 text-sm font-semibold text-white shadow-[var(--shadow-sm)] transition hover:-translate-y-0.5"
+          >
+            <CreditCard className="h-4 w-4" />
+            Create card
+          </button>
+        )}
       </div>
 
-      <div className="mt-5 grid gap-4 md:grid-cols-4">
-        {analyticsStats.map((stat) => {
-          const Icon = stat.icon;
-
-          return (
-            <div
-              key={stat.label}
-              className={`rounded-2xl border border-[var(--dmi-border)] p-4 ${
-                isPaid ? "bg-[var(--dmi-surface-soft)]" : "bg-[var(--dmi-surface-soft)]"
-              }`}
-            >
-              <Icon className="h-4 w-4 text-[var(--text-accent)]" />
-              <p className="mt-4 text-xs font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                {stat.label}
-              </p>
-              <p className="mt-2 text-xl font-semibold text-[var(--text-primary)]">{stat.value}</p>
-            </div>
-          );
-        })}
+      <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+        <a href="/client/cards" className={actionClass}>
+          <CreditCard className="h-4 w-4 text-[var(--text-accent)]" />
+          Edit card
+        </a>
+        <a
+          href={hasSavedCard ? publicUrl : "#"}
+          target={hasSavedCard ? "_blank" : undefined}
+          rel={hasSavedCard ? "noreferrer" : undefined}
+          aria-disabled={!hasSavedCard}
+          className={`${actionClass} ${!hasSavedCard ? "pointer-events-none opacity-50" : ""}`}
+        >
+          <ExternalLink className="h-4 w-4 text-[var(--text-accent)]" />
+          Open public page
+        </a>
+        <button
+          type="button"
+          onClick={onCopyLink}
+          disabled={!hasSavedCard}
+          className={actionClass}
+        >
+          <Copy className="h-4 w-4 text-[var(--text-accent)]" />
+          Copy card link
+        </button>
+        <a href="/client/qr-code" className={actionClass}>
+          <QrCode className="h-4 w-4 text-[var(--text-accent)]" />
+          QR Code
+        </a>
       </div>
 
-      {!isPaid && (
-        <p className="mt-5 text-sm font-semibold text-[var(--text-accent)]">
-          Upgrade to Individual Pro to unlock full analytics.
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-5 pb-1">
+        <PlatformWalletBadge platform="apple" />
+        <PlatformWalletBadge platform="google" />
+      </div>
+      {message && (
+        <p className="mt-3 text-sm font-medium text-[var(--text-accent)]" role="status">
+          {message}
         </p>
       )}
     </div>
   );
 }
 
-function RecentContacts() {
+function PlatformWalletBadge({ platform }: { platform: "apple" | "google" }) {
+  const isApple = platform === "apple";
+
   return (
-    <div className="rounded-[var(--radius-xl)] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-6 shadow-[var(--shadow-md)]">
+    <a
+      href="/client/wallet"
+      className="inline-flex shrink-0 rounded-lg transition hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#AC00FF]"
+      aria-label={isApple ? "Add to Apple Wallet" : "Add to Google Wallet"}
+    >
+      <Image
+        src={isApple ? "/wallet/add-to-apple-wallet.svg" : "/wallet/add-to-google-wallet.svg"}
+        alt={isApple ? "Add to Apple Wallet" : "Add to Google Wallet"}
+        width={isApple ? 111 : 199}
+        height={isApple ? 35 : 55}
+        className="h-[35px] w-auto"
+        priority={false}
+      />
+    </a>
+  );
+}
+
+function AnalyticsSummary({
+  isPaid,
+  planResolved,
+}: {
+  isPaid: boolean;
+  planResolved: boolean;
+}) {
+  const locked = planResolved && !isPaid;
+
+  return (
+    <section className="relative overflow-hidden rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-4 shadow-[var(--shadow-sm)] sm:p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-[var(--text-primary)]">Live analytics</h2>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+            {!planResolved
+              ? "Loading analytics access."
+              : isPaid
+              ? "Real-time card activity will appear here as people engage with your card."
+              : "Views, saves, shares, and QR scans are available with Pro."}
+          </p>
+        </div>
+      </div>
+
+      <div
+        className={`mt-4 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4 ${
+          locked ? "opacity-35 blur-[1px]" : ""
+        } ${!planResolved ? "animate-pulse" : ""}`}
+      >
+        {analyticsMetrics.map((stat) => (
+          <div
+            key={stat.label}
+            className="rounded-xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-3.5"
+          >
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+              {stat.label}
+            </p>
+            <p className="mt-3 text-2xl font-semibold text-[var(--text-primary)]">
+              {isPaid ? stat.value : "-"}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {isPaid ? (
+        <EmptyDashboardState message="No activity yet — share your card to start seeing insights." />
+      ) : locked ? (
+        <LockedPreviewOverlay
+          icon={QrCode}
+          title="Unlock with Pro"
+          description="See views, saves, shares and QR scans."
+        />
+      ) : (
+        <EmptyDashboardState message="Loading your analytics access." />
+      )}
+    </section>
+  );
+}
+
+function RecentContacts({
+  isPaid,
+  planResolved,
+}: {
+  isPaid: boolean;
+  planResolved: boolean;
+}) {
+  const locked = planResolved && !isPaid;
+
+  return (
+    <section className="relative overflow-hidden rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-4 shadow-[var(--shadow-sm)] sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-[var(--text-primary)]">Recent Contacts</h2>
@@ -840,12 +763,11 @@ function RecentContacts() {
             Last 5 contacts captured from your public card.
           </p>
         </div>
-        {!isPaid && <LockedBadge />}
       </div>
 
       {isPaid ? (
-        <div className="mt-5 max-w-full overflow-x-auto rounded-2xl border border-[var(--dmi-border)]">
-          <table className="w-full text-sm">
+        <div className="mt-4 max-w-full overflow-x-auto rounded-xl border border-[var(--dmi-border)]">
+          <table className="w-full min-w-[520px] text-sm">
             <thead className="bg-[var(--dmi-surface-soft)] text-left text-[var(--text-secondary)]">
               <tr>
                 <th className="p-4">Name</th>
@@ -855,30 +777,48 @@ function RecentContacts() {
               </tr>
             </thead>
             <tbody>
-              {recentContacts.map((contact) => (
-                <tr key={contact.name} className="border-t border-[var(--dmi-border)]">
-                  <td className="p-4 font-medium text-[var(--text-primary)]">{contact.name}</td>
-                  <td className="p-4 text-[var(--text-secondary)]">{contact.company}</td>
-                  <td className="p-4 text-[var(--text-secondary)]">{contact.date}</td>
-                  <td className="p-4 text-[var(--text-secondary)]">{contact.source}</td>
-                </tr>
-              ))}
+              <tr className="border-t border-[var(--dmi-border)]">
+                <td colSpan={4} className="p-5 text-center text-sm text-[var(--text-secondary)]">
+                  No contacts captured yet. Share your card to start building your lead list.
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
       ) : (
-        <LockedPanel
-          icon={ContactRound}
-          message="Upgrade to Individual Pro to unlock contact capture and contact history."
-        />
+        <>
+          <div
+            className={`mt-4 rounded-xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-5 ${
+              locked ? "opacity-35 blur-[1px]" : "animate-pulse"
+            }`}
+          >
+            <div className="h-3 w-36 rounded-full bg-[var(--dmi-border)]" />
+            <div className="mt-4 h-3 w-52 rounded-full bg-[var(--dmi-border)]" />
+          </div>
+          {locked && (
+            <LockedPreviewOverlay
+              icon={ContactRound}
+              title="Unlock with Pro"
+              description="View contacts captured from your digital card."
+            />
+          )}
+        </>
       )}
-    </div>
+    </section>
   );
 }
 
-function IntegrationStatus() {
+function IntegrationStatus({
+  isPaid,
+  planResolved,
+}: {
+  isPaid: boolean;
+  planResolved: boolean;
+}) {
+  const locked = planResolved && !isPaid;
+
   return (
-    <div className="rounded-[var(--radius-xl)] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-6 shadow-[var(--shadow-md)]">
+    <section className="relative overflow-hidden rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-4 shadow-[var(--shadow-sm)] sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-[var(--text-primary)]">Integration Status</h2>
@@ -886,87 +826,78 @@ function IntegrationStatus() {
             Sync card activity into your business tools.
           </p>
         </div>
-        {!isPaid && <LockedBadge />}
       </div>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-2">
-        {integrationStatuses.map((integration) => (
+      <div
+        className={`mt-4 grid gap-2.5 md:grid-cols-2 ${
+          locked ? "opacity-35 blur-[1px]" : ""
+        } ${!planResolved ? "animate-pulse" : ""}`}
+      >
+        {integrationNames.map((integration) => (
           <div
-            key={integration.name}
-            className={`flex items-center justify-between rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-4 py-3 ${
-              isPaid ? "" : "text-[var(--text-secondary)]"
-            }`}
+            key={integration}
+            className="flex items-center justify-between gap-3 rounded-xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-3.5 py-2.5"
           >
             <div className="flex items-center gap-3">
               <Plug className="h-4 w-4 text-[var(--text-accent)]" />
-              <span className="text-sm font-medium text-[var(--text-primary)]">{integration.name}</span>
+              <span className="text-sm font-medium text-[var(--text-primary)]">{integration}</span>
             </div>
             <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]">
-              <span
-                className={`h-2.5 w-2.5 rounded-full ${
-                  !isPaid
-                    ? "bg-[var(--text-muted)]"
-                    : integration.status === "connected"
-                    ? "bg-green-400"
-                    : integration.status === "disconnected"
-                    ? "bg-red-400"
-                    : "bg-[var(--text-muted)]"
-                }`}
-              />
-              {!isPaid
-                ? "Locked"
-                : integration.status === "connected"
-                ? "Connected"
-                : integration.status === "disconnected"
-                ? "Disconnected"
-                : "Not connected"}
+              <span className="h-2.5 w-2.5 rounded-full bg-[var(--text-muted)]" />
+              Not connected
             </div>
           </div>
         ))}
       </div>
 
-      {!isPaid && (
-        <p className="mt-5 text-sm font-semibold text-[var(--text-accent)]">
-          Upgrade to Individual Pro to unlock CRM and workflow integrations.
-        </p>
+      {isPaid ? (
+        <EmptyDashboardState message="No integrations connected yet." />
+      ) : locked ? (
+        <LockedPreviewOverlay
+          icon={Plug}
+          title="Unlock with Pro"
+          description="Connect your DMI Card to CRM and business tools."
+        />
+      ) : (
+        <EmptyDashboardState message="Loading your integration access." />
       )}
+    </section>
+  );
+}
+
+function LockedPreviewOverlay({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: typeof ContactRound;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-[var(--dmi-surface)]/80 p-5 backdrop-blur-[2px]">
+      <div className="max-w-sm rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-5 text-center shadow-[var(--shadow-md)]">
+        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--brand-gradient-subtle)] text-[var(--text-accent)]">
+          <Icon className="h-5 w-5" />
+        </div>
+        <h3 className="mt-4 text-base font-semibold text-[var(--text-primary)]">{title}</h3>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{description}</p>
+        <UpgradeToProButton className="mt-4 inline-flex min-h-10 items-center justify-center rounded-xl bg-[image:var(--brand-gradient)] px-4 py-2 text-sm font-semibold text-white shadow-[var(--shadow-sm)] transition hover:-translate-y-0.5">
+          Upgrade to Pro
+        </UpgradeToProButton>
+      </div>
     </div>
   );
 }
 
-function LockedBadge({ variant = "default" }: { variant?: "default" | "onGradient" }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] shadow-[var(--shadow-sm)] ${
-        variant === "onGradient"
-          ? "border border-white/35 bg-white/20 text-[#FFFFFF]"
-          : "border border-[var(--border-brand)] bg-[var(--badge-pro-bg)] text-[var(--badge-pro-text)]"
-      }`}
-    >
-      <Lock className="h-3 w-3" />
-      Pro locked
-    </span>
-  );
-}
-
-function LockedPanel({
-  icon: Icon,
+function EmptyDashboardState({
   message,
 }: {
-  icon: typeof ContactRound;
   message: string;
 }) {
   return (
-    <div className="mt-5 rounded-2xl border border-dashed border-[var(--border-brand)] bg-[var(--brand-gradient-subtle)] p-5">
-      <div className="flex items-start gap-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[var(--dmi-surface)] text-[var(--text-accent)] shadow-[var(--shadow-sm)]">
-          <Icon className="h-5 w-5" />
-        </div>
-        <div>
-          <p className="font-semibold text-[var(--text-primary)]">Paid feature</p>
-          <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{message}</p>
-        </div>
-      </div>
+    <div className="mt-5 rounded-xl border border-dashed border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-4 text-sm text-[var(--text-secondary)]">
+      {message}
     </div>
   );
 }

@@ -23,7 +23,9 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { isClientFeatureLocked, type ClientFeature } from "@/lib/client-feature-access";
-import { clientFeaturePreviewPlans } from "@/lib/entitlements";
+import type { DmiPlan } from "@/lib/entitlements";
+import UpgradeToProButton from "@/components/UpgradeToProButton";
+import { useClientPlan } from "@/lib/use-client-plan";
 
 export const clientNavItems: {
   label: string;
@@ -51,26 +53,30 @@ export const clientNavItems: {
 
 export default function ClientSidebar() {
   const pathname = usePathname();
+  const { plan, isPaid, loading } = useClientPlan();
+  const showPlanPrompt = loading || !plan || !isPaid;
 
   return (
     <aside className="dmi-sidebar sticky top-0 flex h-screen w-72 shrink-0 flex-col border-r">
-      <div className="border-b px-6 py-8">
-        <div className="rounded-[var(--radius-lg)] border border-[var(--border-brand)] bg-[image:var(--brand-gradient-subtle)] p-4">
+      <div className="border-b px-4 py-4">
+        <div className="rounded-[var(--radius-md)] border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-3 py-2.5 shadow-[var(--shadow-sm)]">
           <div className="flex items-center gap-3">
-            <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-[var(--radius-md)] bg-white shadow-[var(--shadow-sm)]">
+            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-md)] bg-white shadow-[var(--shadow-sm)]">
               <Image
                 src="/dmi-cards-logo.svg"
                 alt="DMI Cards Logo"
                 fill
-                sizes="48px"
+                sizes="40px"
                 className="object-contain p-1.5"
                 priority
               />
             </div>
-            <div>
-              <p className="text-sm font-semibold">DMI Cards</p>
-              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--dmi-muted)]">
-                Powered by DevMaster
+            <div className="min-w-0">
+              <p className="text-base font-bold tracking-normal text-[var(--text-primary)]">
+                DMI Cards
+              </p>
+              <p className="mt-0.5 text-[11px] font-medium leading-4 text-[var(--dmi-muted)]">
+                Powered by DevMaster Inc
               </p>
             </div>
           </div>
@@ -83,23 +89,32 @@ export default function ClientSidebar() {
         </p>
 
         <div className="space-y-1.5">
-          <ClientNavLinks pathname={pathname} />
+          <ClientNavLinks pathname={pathname} plan={plan} />
         </div>
       </nav>
 
-      <div className="border-t p-4">
-        <div className="rounded-[var(--radius-lg)] border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-4">
-          <div className="flex items-center gap-2">
-            <Landmark className="h-4 w-4 text-[var(--text-accent)]" />
-            <p className="text-sm font-semibold">Free plan</p>
+      {showPlanPrompt && (
+        <div className="border-t p-4">
+          <div className="rounded-[var(--radius-lg)] border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-4">
+            <div className="flex items-center gap-2">
+              <Landmark className="h-4 w-4 text-[var(--text-accent)]" />
+              <p className="text-sm font-semibold">
+                {loading || !plan ? "Checking plan" : "Upgrade to Pro"}
+              </p>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-[var(--dmi-muted)]">
+              {loading || !plan
+                ? "Loading your current access."
+                : "Unlock contacts, tap sharing, analytics, and integrations."}
+            </p>
+            {!loading && plan && !isPaid && (
+              <UpgradeToProButton className="mt-3 inline-flex min-h-10 w-full items-center justify-center rounded-[var(--radius-md)] bg-[image:var(--brand-gradient)] px-3 py-2 text-xs font-bold text-white shadow-[var(--shadow-sm)] transition hover:-translate-y-0.5">
+                Upgrade to Pro
+              </UpgradeToProButton>
+            )}
           </div>
-          <p className="mt-1 text-xs leading-5 text-[var(--dmi-muted)]">
-            Upgrade to Individual Pro for contacts, tap sharing, analytics,
-            and integrations.
-          </p>
         </div>
-
-      </div>
+      )}
     </aside>
   );
 }
@@ -107,6 +122,8 @@ export default function ClientSidebar() {
 export function ClientMobileHeader() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const { plan, isPaid, loading } = useClientPlan();
+  const showPlanPrompt = loading || !plan || !isPaid;
   const pageTitle = useMemo(() => {
     const activeItem = clientNavItems
       .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
@@ -204,8 +221,8 @@ export function ClientMobileHeader() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold">DMI Cards</p>
-                    <p className="truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--dmi-muted)]">
-                      Client Portal
+                    <p className="text-[11px] font-medium leading-4 text-[var(--dmi-muted)]">
+                      Powered by DevMaster Inc
                     </p>
                   </div>
                 </div>
@@ -221,21 +238,31 @@ export function ClientMobileHeader() {
             </div>
 
             <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-              <ClientNavLinks pathname={pathname} onNavigate={() => setOpen(false)} />
+              <ClientNavLinks pathname={pathname} plan={plan} onNavigate={() => setOpen(false)} />
             </nav>
 
-            <div className="border-t border-[var(--dmi-border)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-              <div className="rounded-[var(--radius-lg)] border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-4">
-                <div className="flex items-center gap-2">
-                  <Landmark className="h-4 w-4 text-[var(--text-accent)]" />
-                  <p className="text-sm font-semibold">Free plan</p>
+            {showPlanPrompt && (
+              <div className="border-t border-[var(--dmi-border)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <div className="rounded-[var(--radius-lg)] border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-4">
+                  <div className="flex items-center gap-2">
+                    <Landmark className="h-4 w-4 text-[var(--text-accent)]" />
+                    <p className="text-sm font-semibold">
+                      {loading || !plan ? "Checking plan" : "Upgrade to Pro"}
+                    </p>
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-[var(--dmi-muted)]">
+                    {loading || !plan
+                      ? "Loading your current access."
+                      : "Unlock contacts, tap sharing, analytics, and integrations."}
+                  </p>
+                  {!loading && plan && !isPaid && (
+                    <UpgradeToProButton className="mt-3 inline-flex min-h-10 w-full items-center justify-center rounded-[var(--radius-md)] bg-[image:var(--brand-gradient)] px-3 py-2 text-xs font-bold text-white shadow-[var(--shadow-sm)]">
+                      Upgrade to Pro
+                    </UpgradeToProButton>
+                  )}
                 </div>
-                <p className="mt-1 text-xs leading-5 text-[var(--dmi-muted)]">
-                  Upgrade to Individual Pro for contacts, tap sharing, analytics,
-                  and integrations.
-                </p>
               </div>
-            </div>
+            )}
           </aside>
         </div>
       )}
@@ -245,9 +272,11 @@ export function ClientMobileHeader() {
 
 function ClientNavLinks({
   pathname,
+  plan,
   onNavigate,
 }: {
   pathname: string;
+  plan: DmiPlan | null;
   onNavigate?: () => void;
 }) {
   return (
@@ -255,8 +284,8 @@ function ClientNavLinks({
       {clientNavItems.map((item) => {
         const Icon = item.icon;
         const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-        const locked = item.feature
-          ? isClientFeatureLocked(item.feature, clientFeaturePreviewPlans.sidebar)
+        const locked = plan && item.feature
+          ? isClientFeatureLocked(item.feature, plan)
           : false;
 
         return (
