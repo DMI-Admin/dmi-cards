@@ -131,7 +131,40 @@ export function stripeCustomerId(value: Stripe.Customer | Stripe.DeletedCustomer
 }
 
 export function stripeSubscriptionPriceId(subscription: Stripe.Subscription) {
-  return subscription.items.data[0]?.price?.id || "";
+  return stripeSubscriptionItemForBilling(subscription)?.price?.id || "";
+}
+
+export function stripeSubscriptionItemForBilling(
+  subscription: Stripe.Subscription,
+  storedPriceId?: string | null
+) {
+  const configuredPriceIds = [
+    process.env.STRIPE_PRICE_PRO_MONTHLY?.trim(),
+    process.env.STRIPE_PRICE_PRO_ANNUAL?.trim(),
+  ].filter((value): value is string => Boolean(value));
+
+  return (
+    subscription.items.data.find(
+      (item) => item.price?.id && storedPriceId && item.price.id === storedPriceId
+    ) ||
+    subscription.items.data.find(
+      (item) =>
+        item.price?.id &&
+        configuredPriceIds.includes(item.price.id) &&
+        dmiPlanForStripePrice(item.price.id) !== "free"
+    ) ||
+    subscription.items.data[0] ||
+    null
+  );
+}
+
+export function stripeSubscriptionCurrentPeriodEnd(
+  subscription: Stripe.Subscription,
+  storedPriceId?: string | null
+) {
+  return stripeTimestampToIso(
+    stripeSubscriptionItemForBilling(subscription, storedPriceId)?.current_period_end
+  );
 }
 
 export function stripeTimestampToIso(timestamp: number | null | undefined) {

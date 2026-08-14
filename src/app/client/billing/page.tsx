@@ -1,462 +1,700 @@
 "use client";
 
-import type { LucideIcon } from "lucide-react";
 import {
   ArrowUpRight,
-  BadgeCheck,
-  CalendarDays,
-  Check,
-  CircleDollarSign,
   CreditCard,
   Download,
-  Lock,
+  ExternalLink,
   ReceiptText,
-  ShieldCheck,
+  RefreshCw,
   Sparkles,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import ClientSidebar from "@/components/ClientSidebar";
 import UpgradeToProButton from "@/components/UpgradeToProButton";
 import type { DmiPlan } from "@/lib/entitlements";
+import { supabase } from "@/lib/supabase";
 import { useClientPlan } from "@/lib/use-client-plan";
 
-const invoices = [
-  {
-    invoice: "INV-2026-001",
-    date: "May 1, 2026",
-    amount: "GBP 0.00",
-    status: "Active",
-  },
-  {
-    invoice: "INV-2026-000",
-    date: "Apr 1, 2026",
-    amount: "GBP 0.00",
-    status: "Active",
-  },
-  {
-    invoice: "INV-2025-012",
-    date: "Dec 1, 2025",
-    amount: "GBP 0.00",
-    status: "Trial",
-  },
-];
+type BillingSubscriptionSummary = {
+  hasSubscription: boolean;
+  plan: DmiPlan;
+  status:
+    | "active"
+    | "trialing"
+    | "past_due"
+    | "unpaid"
+    | "canceled"
+    | "incomplete"
+    | "incomplete_expired"
+    | "paused"
+    | "unknown"
+    | "none";
+  billingInterval: "monthly" | "annual" | null;
+  recurringAmount: number | null;
+  currency: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  cancellationEffectiveAt: string | null;
+  paymentMethod: {
+    brand: string;
+    last4: string;
+    expMonth: number;
+    expYear: number;
+  } | null;
+  invoices: Array<{
+    number: string;
+    createdAt: string | null;
+    amountPaid: number | null;
+    amountDue: number | null;
+    currency: string | null;
+    status: string | null;
+    hostedInvoiceUrl: string | null;
+    invoicePdfUrl: string | null;
+  }>;
+};
 
-const freeFeatures = [
-  "1 digital card",
-  "Free Classic template",
-  "QR code",
-  "Wallet",
-  "Public page",
-  "Limited colours",
-];
+type BillingApiState =
+  | { status: "loading"; data: null; error: "" }
+  | { status: "ready"; data: BillingSubscriptionSummary; error: "" }
+  | { status: "error"; data: null; error: string };
 
-const proFeatures = [
-  "Premium templates",
-  "Contacts and lead capture",
-  "Tap to Share",
-  "Advanced analytics",
-  "CRM integrations",
-  "Advanced QR features",
-];
-
-const plans = [
-  {
-    name: "Free",
-    price: "GBP 0",
-    description: "Start with one public digital card.",
-    features: ["1 card", "QR code", "Wallet", "Public page", "Free colours"],
-    active: true,
-  },
-  {
-    name: "Individual Pro",
-    price: "Upgrade",
-    description: "Unlock premium personal branding and lead tools.",
-    features: [
-      "premium templates",
-      "tap to share",
-      "contacts",
-      "analytics",
-      "integrations",
-      "advanced QR",
-      "custom colours/fonts",
-    ],
-    highlighted: true,
-  },
-  {
-    name: "Business / Enterprise",
-    price: "Talk to DMI",
-    description: "Manage teams, staff cards, reporting, and admin controls.",
-    features: [
-      "staff cards",
-      "company branding",
-      "bulk upload",
-      "team analytics",
-      "CRM reports",
-      "admin controls",
-    ],
-  },
-];
+const billingSectionClass =
+  "rounded-3xl border border-white/10 bg-[#101935]/70 p-6 shadow-[0_18px_48px_rgba(0,0,0,0.18)] transition-[border-color,box-shadow,transform] duration-200 ease-out md:hover:border-[#AC00FF]/25 md:hover:shadow-[0_18px_46px_rgba(172,0,255,0.12)] motion-safe:md:hover:-translate-y-0.5";
 
 export default function ClientBillingPage() {
   const { plan, isPaid } = useClientPlan();
-  const currentPlan = plan as DmiPlan;
-  const planName = isPaid ? "Individual Pro" : "Free";
+  const [billingState, setBillingState] = useState<BillingApiState>({
+    status: "loading",
+    data: null,
+    error: "",
+  });
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [portalError, setPortalError] = useState("");
+  const [subscriptionPanelOpen, setSubscriptionPanelOpen] = useState(false);
+  const [subscriptionPanelStep, setSubscriptionPanelStep] = useState<
+    "details" | "confirmCancel"
+  >("details");
+  const [subscriptionActionLoading, setSubscriptionActionLoading] = useState(false);
+  const [subscriptionActionError, setSubscriptionActionError] = useState("");
+  const billing = billingState.data;
+  const currentPlan = (billing?.plan || plan || "free") as DmiPlan;
+  const planName = currentPlan === "pro" ? "Individual Pro" : currentPlan === "enterprise" ? "Enterprise" : "Free";
+  const statusDisplay = billing
+    ? customerStatusLabel(billing)
+    : { title: "Loading", caption: "Checking Stripe billing" };
+  const nextPayment = nextPaymentDisplay(billing);
+
+  useEffect(() => {
+    void loadBillingSummary();
+  }, []);
+
+  async function loadBillingSummary() {
+    setBillingState({ status: "loading", data: null, error: "" });
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Please sign in again to view billing details.");
+      }
+
+      const response = await fetch("/api/v1/billing/subscription", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.data) {
+        const message =
+          typeof payload?.error?.message === "string"
+            ? payload.error.message
+            : "Could not load billing details.";
+        throw new Error(message);
+      }
+
+      setBillingState({ status: "ready", data: payload.data, error: "" });
+    } catch (error) {
+      setBillingState({
+        status: "error",
+        data: null,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Could not load billing details.",
+      });
+    }
+  }
+
+  async function updateSubscriptionCancellation(cancelAtPeriodEnd: boolean) {
+    if (subscriptionActionLoading) return;
+
+    setSubscriptionActionLoading(true);
+    setSubscriptionActionError("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Please sign in again before managing your subscription.");
+      }
+
+      const response = await fetch(
+        cancelAtPeriodEnd
+          ? "/api/v1/billing/subscription/cancel"
+          : "/api/v1/billing/subscription/resume",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.data) {
+        const message =
+          typeof payload?.error?.message === "string"
+            ? payload.error.message
+            : "Could not update your subscription.";
+        throw new Error(message);
+      }
+
+      setBillingState({ status: "ready", data: payload.data, error: "" });
+      setSubscriptionPanelOpen(false);
+      setSubscriptionPanelStep("details");
+    } catch (error) {
+      setSubscriptionActionError(
+        error instanceof Error
+          ? error.message
+          : "Could not update your subscription."
+      );
+    } finally {
+      setSubscriptionActionLoading(false);
+    }
+  }
+
+  async function openBillingPortal() {
+    if (portalLoading) return;
+
+    setPortalLoading(true);
+    setPortalError("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Please sign in again before managing your subscription.");
+      }
+
+      const response = await fetch("/api/stripe/portal", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      const portalUrl =
+        typeof payload?.url === "string"
+          ? payload.url
+          : typeof payload?.data?.url === "string"
+            ? payload.data.url
+            : "";
+
+      if (!response.ok || !portalUrl) {
+        const message =
+          typeof payload?.error?.message === "string"
+            ? payload.error.message
+            : "Could not open subscription management.";
+        throw new Error(message);
+      }
+
+      window.location.assign(portalUrl);
+    } catch (error) {
+      setPortalError(
+        error instanceof Error
+          ? error.message
+          : "Could not open subscription management."
+      );
+      setPortalLoading(false);
+    }
+  }
 
   return (
     <main className="flex min-h-screen bg-[#070B1A] text-white">
       <ClientSidebar />
 
-      <section className="flex-1 p-10">
+      <section className="flex-1 p-6 sm:p-8 lg:p-10">
         <div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#AC00FF]">
-              Client Portal
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-4xl font-bold">Billing</h1>
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-white/60">
-                {planName} plan
-              </span>
             </div>
             <p className="mt-3 max-w-3xl text-white/50">
-              Manage your subscription, invoices, and payment details.
+              Manage your subscription, payment method and invoices.
             </p>
           </div>
 
           {!isPaid && (
-            <UpgradeToProButton
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35 sm:w-auto"
-            >
+            <UpgradeToProButton className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35 sm:w-auto">
               <Sparkles className="h-4 w-4" />
               Upgrade to Individual Pro
             </UpgradeToProButton>
           )}
         </div>
 
-        <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard
-            label="Current Plan"
-            value={planName}
-            caption={isPaid ? "Pro tools unlocked" : "1 card included"}
-            icon={BadgeCheck}
-          />
-          <SummaryCard
-            label="Billing Status"
-            value="Active"
-            caption={isPaid ? "Stripe subscription active" : "No payment required"}
-            icon={ShieldCheck}
-          />
-          <SummaryCard
-            label="Next Payment"
-            value={isPaid ? "Stripe" : "None"}
-            caption={isPaid ? "Managed by Stripe" : "Upgrade to start billing"}
-            icon={CalendarDays}
-          />
-          <SummaryCard
-            label="Payment Method"
-            value="Not added"
-            caption="Added after checkout"
-            icon={CreditCard}
-          />
-        </div>
+        {billingState.status === "error" && (
+          <BillingErrorState message={billingState.error} onRetry={loadBillingSummary} />
+        )}
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-          <div className="space-y-6">
-            <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-6 shadow-2xl shadow-black/20">
+        <div className="space-y-6">
+            <section className={billingSectionClass}>
               <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <SectionTitle
                     title="Current Plan"
-                    description="Your active subscription and included features."
+                    description="View your current subscription and billing details."
                   />
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    <BillingBadge status="Active" />
-                    <span className="rounded-full border border-[#AC00FF]/25 bg-[#AC00FF]/10 px-3 py-1 text-xs font-semibold text-purple-100">
-                      {planName} Plan
-                    </span>
-                  </div>
                 </div>
 
                 {!isPaid && (
-                  <UpgradeToProButton
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#AC00FF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/20 transition hover:bg-[#BE35FF] sm:w-auto"
-                  >
+                  <UpgradeToProButton className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#AC00FF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/20 transition hover:bg-[#BE35FF] sm:w-auto">
                     Upgrade to Individual Pro
                     <ArrowUpRight className="h-4 w-4" />
                   </UpgradeToProButton>
                 )}
               </div>
 
-              <div className="mt-6 rounded-3xl border border-[#AC00FF]/25 bg-gradient-to-br from-[#AC00FF]/15 via-white/[0.04] to-[#101935] p-6">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#AC00FF]/20 text-purple-100">
-                    <CircleDollarSign className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-semibold">{planName} Plan</h2>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">
-                      {isPaid
-                        ? "Your Stripe subscription has unlocked Individual Pro features across DMI Cards."
-                        : "A simple starting plan for publishing your first DMI Cards digital business card."}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {(isPaid ? proFeatures : freeFeatures).map((feature) => (
-                    <FeaturePill key={feature}>{feature}</FeaturePill>
-                  ))}
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-6 shadow-2xl shadow-black/20">
-              <SectionTitle
-                title="Plan Comparison"
-                description="Choose the right level of access for your card workflow."
-              />
-
-              <div className="mt-6 grid gap-4 lg:grid-cols-3">
-                {plans.map((plan) => (
-                  <PlanCard
-                    key={plan.name}
-                    {...plan}
-                    active={
-                      (currentPlan === "free" && plan.name === "Free") ||
-                      (currentPlan === "pro" && plan.name === "Individual Pro") ||
-                      (currentPlan === "enterprise" && plan.name === "Business / Enterprise")
-                    }
-                  />
-                ))}
-              </div>
-            </section>
-
-            <section className="rounded-3xl border border-white/10 bg-[#101935]/70 shadow-2xl shadow-black/20">
-              <div className="flex flex-col gap-4 border-b border-white/10 p-6 lg:flex-row lg:items-center lg:justify-between">
-                <SectionTitle
-                  title="Invoices"
-                  description="Mock invoice history. Stripe invoice sync will be added later."
-                />
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/70 transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:text-white"
-                >
-                  <Download className="h-4 w-4" />
-                  Download All
-                </button>
-              </div>
-
-              <div className="max-w-full overflow-x-auto">
-                <table className="w-full min-w-[720px]">
-                  <thead className="bg-[#0B1024] text-left text-xs uppercase tracking-[0.14em] text-white/40">
-                    <tr>
-                      <th className="px-6 py-4">Invoice</th>
-                      <th className="px-6 py-4">Date</th>
-                      <th className="px-6 py-4">Amount</th>
-                      <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4">Download</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {invoices.map((invoice) => (
-                      <tr
-                        key={invoice.invoice}
-                        className="border-t border-white/5 hover:bg-white/[0.03]"
-                      >
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/5 text-purple-100">
-                              <ReceiptText className="h-5 w-5" />
-                            </div>
-                            <span className="font-semibold">{invoice.invoice}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-5 text-white/65">{invoice.date}</td>
-                        <td className="px-6 py-5 text-white/65">{invoice.amount}</td>
-                        <td className="px-6 py-5">
-                          <BillingBadge status={invoice.status} />
-                        </td>
-                        <td className="px-6 py-5">
-                          <button
-                            type="button"
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white/65 transition hover:border-[#AC00FF]/50 hover:text-white"
-                            aria-label={`Download ${invoice.invoice}`}
-                          >
-                            <Download className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          </div>
-
-          <aside className="space-y-6 xl:sticky xl:top-8 xl:self-start">
-            <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-6 shadow-2xl shadow-black/20">
-              <SectionTitle
-                title="Payment Method"
-                description="Payment cards and direct debit details will appear here."
-              />
-
-              <div className="mt-6 rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-3xl bg-white/5 text-white/55">
-                  <CreditCard className="h-7 w-7" />
-                </div>
-                <h3 className="mt-5 text-lg font-semibold">
-                  No payment method added
-                </h3>
-                <p className="mt-2 text-sm leading-6 text-white/45">
-                  Add a payment method when you upgrade to a paid DMI Cards
-                  plan.
-                </p>
-                <button
-                  type="button"
-                  className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/70 transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:text-white sm:w-auto"
-                >
-                  Add Payment Method
-                </button>
-              </div>
-            </section>
-
-            <section className="rounded-3xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 p-6 shadow-lg shadow-purple-950/15">
-              <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#AC00FF]/20">
-                  <Lock className="h-6 w-6 text-purple-100" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-semibold">Secure Stripe checkout</h2>
-                  <p className="mt-3 text-sm leading-6 text-white/60">
-                    Start a Pro subscription through Stripe Checkout. Your plan
-                    updates only after Stripe confirms the subscription.
+              {billing?.cancelAtPeriodEnd && (
+                <div className="mt-6 rounded-3xl border border-yellow-300/20 bg-yellow-400/10 p-5">
+                  <h3 className="font-semibold text-yellow-100">Cancelling</h3>
+                  <p className="mt-2 text-sm leading-6 text-yellow-50/70">
+                    Cancels on {formatDate(billing.cancellationEffectiveAt)}. Your
+                    Individual Pro features remain available until this date.
                   </p>
                 </div>
+              )}
+
+              <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                <div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <h2 className="text-2xl font-semibold">{planName} Plan</h2>
+                    <div className="flex flex-wrap gap-2 sm:justify-end">
+                      <BillingBadge status={statusDisplay.title} />
+                      {billing?.billingInterval && (
+                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/65">
+                          {billingIntervalLabel(billing.billingInterval)}
+                        </span>
+                      )}
+                      {billing && canManageNativeSubscription(billing) && (
+                        billing.cancelAtPeriodEnd ? (
+                          <button
+                            type="button"
+                            onClick={() => updateSubscriptionCancellation(false)}
+                            disabled={subscriptionActionLoading}
+                            className="inline-flex min-h-8 items-center justify-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/75 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {subscriptionActionLoading ? "Updating..." : "Keep my subscription"}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSubscriptionPanelOpen((open) => !open);
+                              setSubscriptionPanelStep("details");
+                              setSubscriptionActionError("");
+                            }}
+                            className="inline-flex min-h-8 items-center justify-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/75 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white"
+                          >
+                            Manage subscription
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-white/55">
+                    {subscriptionDescription(billing)}
+                  </p>
+
+                  <div className="mt-6 grid gap-4 rounded-2xl border border-white/10 bg-white/[0.035] p-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <PlanDetail label="Status" value={statusDisplay.title} caption={statusDisplay.caption} />
+                    <PlanDetail
+                      label="Billing interval"
+                      value={billingIntervalLabel(billing?.billingInterval || null)}
+                      caption={currentPlan === "pro" ? "Recurring Stripe subscription" : "No paid billing interval"}
+                    />
+                    <PlanDetail
+                      label="Subscription price"
+                      value={subscriptionPriceDisplay(billing)}
+                      caption={billing?.billingInterval ? `Per ${billing.billingInterval === "annual" ? "year" : "month"}` : "No recurring charge"}
+                    />
+                    <PlanDetail
+                      label={billing?.cancelAtPeriodEnd ? "Subscription ends" : "Next payment"}
+                      value={renewalDateDisplay(billing)}
+                      caption={nextPayment.caption}
+                    />
+                  </div>
+
+                  {subscriptionPanelOpen && billing && (
+                    <SubscriptionManagementPanel
+                      billing={billing}
+                      step={subscriptionPanelStep}
+                      loading={subscriptionActionLoading}
+                      error={subscriptionActionError}
+                      onConfirmCancel={() => setSubscriptionPanelStep("confirmCancel")}
+                      onKeep={() => {
+                        setSubscriptionPanelStep("details");
+                        setSubscriptionPanelOpen(false);
+                        setSubscriptionActionError("");
+                      }}
+                      onCancelAtPeriodEnd={() => updateSubscriptionCancellation(true)}
+                    />
+                  )}
+                </div>
               </div>
             </section>
 
-            <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
-              <SectionTitle
-                title="Billing Status Logic"
-                description="Future statuses that Finance/Stripe will control."
-              />
-              <div className="mt-5 flex flex-wrap gap-2">
-                {["Active", "Trial", "Past Due", "Suspended"].map((status) => (
-                  <BillingBadge key={status} status={status} />
-                ))}
-              </div>
-            </section>
-          </aside>
+            <PaymentMethodPanel
+              billing={billing}
+              loading={billingState.status === "loading"}
+              onOpenPortal={openBillingPortal}
+              portalLoading={portalLoading}
+              portalError={portalError}
+            />
+
+            <InvoicesSection invoices={billing?.invoices || []} loading={billingState.status === "loading"} />
         </div>
       </section>
     </main>
   );
 }
 
-function SummaryCard({
-  label,
-  value,
-  caption,
-  icon: Icon,
+function BillingErrorState({
+  message,
+  onRetry,
 }: {
-  label: string;
-  value: string;
-  caption: string;
-  icon: LucideIcon;
+  message: string;
+  onRetry: () => void;
 }) {
   return (
-    <div className="min-h-36 rounded-3xl border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/10">
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
-          {label}
-        </p>
-        <Icon className="h-5 w-5 text-purple-200" />
+    <div className="mb-6 rounded-3xl border border-red-400/20 bg-red-500/10 p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="font-semibold text-red-100">Billing details could not be loaded</h2>
+          <p className="mt-2 text-sm leading-6 text-red-50/65">{message}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-red-100/15 bg-white/5 px-4 py-2 text-sm font-semibold text-red-50 transition hover:bg-white/10"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Retry
+        </button>
       </div>
-      <p className="mt-5 text-3xl font-semibold tracking-tight">{value}</p>
-      <p className="mt-3 text-sm text-white/45">{caption}</p>
     </div>
   );
 }
 
-function PlanCard({
-  name,
-  price,
-  description,
-  features,
-  active = false,
-  highlighted = false,
+function SubscriptionManagementPanel({
+  billing,
+  step,
+  loading,
+  error,
+  onConfirmCancel,
+  onKeep,
+  onCancelAtPeriodEnd,
 }: {
-  name: string;
-  price: string;
-  description: string;
-  features: string[];
-  active?: boolean;
-  highlighted?: boolean;
+  billing: BillingSubscriptionSummary;
+  step: "details" | "confirmCancel";
+  loading: boolean;
+  error: string;
+  onConfirmCancel: () => void;
+  onKeep: () => void;
+  onCancelAtPeriodEnd: () => void;
 }) {
-  return (
-    <article
-      className={`flex min-h-[420px] flex-col rounded-3xl border p-5 transition ${
-        highlighted
-          ? "border-[#AC00FF]/55 bg-[#AC00FF]/12 shadow-lg shadow-purple-500/15"
-          : "border-white/10 bg-white/5"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-xl font-semibold">{name}</h3>
-          <p className="mt-2 text-sm leading-6 text-white/45">{description}</p>
+  const price = subscriptionPriceDisplay(billing);
+  const interval =
+    billing.billingInterval === "annual"
+      ? "year"
+      : billing.billingInterval === "monthly"
+        ? "month"
+        : "";
+  const priceLine = interval ? `${price}/${interval}` : price;
+  const renewalDate = renewalDateDisplay(billing);
+
+  if (step === "confirmCancel") {
+    return (
+      <div className="mt-5 rounded-2xl border border-white/10 bg-[#0B1024]/70 p-4">
+        <h3 className="text-lg font-semibold">Cancel Individual Pro?</h3>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">
+          Your Pro features will remain available until {renewalDate}. After
+          this date your account will return to the Free plan.
+        </p>
+
+        {error && <p className="mt-3 text-sm leading-6 text-red-200">{error}</p>}
+
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            onClick={onKeep}
+            disabled={loading}
+            className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/75 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Keep subscription
+          </button>
+          <button
+            type="button"
+            onClick={onCancelAtPeriodEnd}
+            disabled={loading}
+            className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-100 transition hover:border-red-200/35 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? "Updating..." : "Cancel at end of billing period"}
+          </button>
         </div>
-        {active && (
-          <span className="rounded-full bg-green-500/15 px-3 py-1 text-xs font-semibold text-green-200">
-            Current
-          </span>
-        )}
       </div>
+    );
+  }
 
-      <p className="mt-5 text-2xl font-semibold">{price}</p>
-
-      <div className="mt-5 flex-1 space-y-3">
-        {features.map((feature) => (
-          <div key={feature} className="flex items-start gap-3 text-sm text-white/65">
-            <Check className="mt-0.5 h-4 w-4 shrink-0 text-purple-200" />
-            <span>{feature}</span>
-          </div>
-        ))}
-      </div>
-
-      {highlighted && !active ? (
-        <UpgradeToProButton className="mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#AC00FF] px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/20 transition hover:bg-[#BE35FF]">
-          Select Plan
-        </UpgradeToProButton>
-      ) : (
+  return (
+    <div className="mt-5 rounded-2xl border border-white/10 bg-[#0B1024]/70 p-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Individual Pro Plan</h3>
+          <p className="mt-1 text-sm leading-6 text-white/55">
+            {priceLine} · Next payment {renewalDate}
+          </p>
+        </div>
         <button
           type="button"
-          className="mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/70 transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:text-white"
+          onClick={onConfirmCancel}
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/70 transition hover:border-red-300/30 hover:bg-red-500/10 hover:text-red-100 md:w-auto"
         >
-          {active ? "Current Plan" : "Select Plan"}
+          Cancel subscription
         </button>
-      )}
-    </article>
+      </div>
+
+      {error && <p className="mt-3 text-sm leading-6 text-red-200">{error}</p>}
+    </div>
   );
 }
 
-function FeaturePill({ children }: { children: React.ReactNode }) {
+function PaymentMethodPanel({
+  billing,
+  loading,
+  onOpenPortal,
+  portalLoading,
+  portalError,
+}: {
+  billing: BillingSubscriptionSummary | null;
+  loading: boolean;
+  onOpenPortal: () => void;
+  portalLoading: boolean;
+  portalError: string;
+}) {
+  const paymentMethod = billing?.paymentMethod;
+  const canManagePayment = Boolean(billing?.hasSubscription);
+
   return (
-    <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-      <Check className="h-4 w-4 text-purple-200" />
-      {children}
+    <section className={billingSectionClass}>
+      <SectionTitle
+        title="Payment Method"
+        description="Manage the payment method Stripe uses for your subscription."
+      />
+
+      <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div className="flex items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/5 text-white/55">
+            <CreditCard className="h-7 w-7" />
+          </div>
+
+        {loading ? (
+          <div>
+            <h3 className="text-lg font-semibold">Loading payment method</h3>
+            <p className="mt-1 text-sm leading-6 text-white/45">
+              Checking Stripe for your current billing details.
+            </p>
+          </div>
+        ) : paymentMethod ? (
+          <div>
+            <h3 className="text-lg font-semibold">
+              {formatCardBrand(paymentMethod.brand)} •••• {paymentMethod.last4}
+            </h3>
+            <p className="mt-1 text-sm leading-6 text-white/45">
+              Expires {formatExpiry(paymentMethod.expMonth, paymentMethod.expYear)}
+            </p>
+          </div>
+        ) : billing?.hasSubscription ? (
+          <div>
+            <h3 className="text-lg font-semibold">No saved payment method found</h3>
+            <p className="mt-1 text-sm leading-6 text-white/45">
+              Stripe did not return a usable default card for this subscription.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <h3 className="text-lg font-semibold">No payment method required</h3>
+            <p className="mt-1 text-sm leading-6 text-white/45">
+              Free plans do not require a Stripe subscription or payment method.
+            </p>
+          </div>
+        )}
+        </div>
+
+        {canManagePayment && (
+          <button
+            type="button"
+            onClick={onOpenPortal}
+            disabled={portalLoading}
+            className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/70 transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+          >
+            <ExternalLink className="h-4 w-4" />
+            {portalLoading ? "Opening Stripe..." : "Update payment method"}
+          </button>
+        )}
+
+      </div>
+
+      {portalError && (
+        <p className="mt-3 text-sm leading-6 text-red-200">{portalError}</p>
+      )}
+    </section>
+  );
+}
+
+function InvoicesSection({
+  invoices,
+  loading,
+}: {
+  invoices: BillingSubscriptionSummary["invoices"];
+  loading: boolean;
+}) {
+  return (
+    <section className={billingSectionClass}>
+      <div className="mb-6">
+        <SectionTitle
+          title="Invoices"
+          description="Recent invoices generated by Stripe for this account."
+        />
+      </div>
+
+      {loading ? (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/45">
+          Loading invoice history...
+        </div>
+      ) : invoices.length === 0 ? (
+        <div>
+          <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-center">
+            <ReceiptText className="mx-auto h-8 w-8 text-white/35" />
+            <h3 className="mt-4 text-lg font-semibold">No invoices yet</h3>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-white/45">
+              Stripe invoice history will appear here after a paid subscription
+              creates invoices for this account.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="max-w-full overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.03]">
+          <table className="w-full min-w-[720px]">
+            <thead className="bg-[#0B1024] text-left text-xs uppercase tracking-[0.14em] text-white/40">
+              <tr>
+                <th className="px-6 py-4">Invoice</th>
+                <th className="px-6 py-4">Date</th>
+                <th className="px-6 py-4">Amount</th>
+                <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">Download</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoices.map((invoice) => {
+                const actionUrl = invoice.invoicePdfUrl || invoice.hostedInvoiceUrl;
+
+                return (
+                  <tr
+                    key={`${invoice.number}-${invoice.createdAt || "invoice"}`}
+                    className="border-t border-white/5 hover:bg-white/[0.03]"
+                  >
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/5 text-purple-100">
+                          <ReceiptText className="h-5 w-5" />
+                        </div>
+                        <span className="font-semibold">{invoice.number}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5 text-white/65">
+                      {formatDate(invoice.createdAt)}
+                    </td>
+                    <td className="px-6 py-5 text-white/65">
+                      {formatMoney(invoice.amountPaid ?? invoice.amountDue, invoice.currency)}
+                    </td>
+                    <td className="px-6 py-5">
+                      <BillingBadge status={invoiceStatusLabel(invoice.status)} />
+                    </td>
+                    <td className="px-6 py-5">
+                      {actionUrl ? (
+                        <a
+                          href={actionUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white/65 transition hover:border-[#AC00FF]/50 hover:text-white"
+                          aria-label={`Download ${invoice.number}`}
+                        >
+                          <Download className="h-4 w-4" />
+                        </a>
+                      ) : (
+                        <span className="text-sm text-white/35">Unavailable</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PlanDetail({
+  label,
+  value,
+  caption,
+}: {
+  label: string;
+  value: string;
+  caption: string;
+}) {
+  return (
+    <div>
+      <p className="text-sm font-medium text-white/55">
+        {label}
+      </p>
+      <p className="mt-1 text-lg font-semibold text-white">{value}</p>
+      <p className="mt-1 text-sm leading-5 text-white/45">{caption}</p>
     </div>
   );
 }
 
 function BillingBadge({ status }: { status: string }) {
   const styles =
-    status === "Active"
+    status === "Active" || status === "Paid" || status === "Succeeded"
       ? "bg-green-500/15 text-green-200 border-green-400/20"
-      : status === "Trial"
-      ? "bg-blue-500/15 text-blue-200 border-blue-400/20"
-      : status === "Past Due"
-      ? "bg-yellow-500/15 text-yellow-100 border-yellow-300/20"
-      : "bg-red-500/15 text-red-200 border-red-400/20";
+      : status === "Trialing"
+        ? "bg-blue-500/15 text-blue-200 border-blue-400/20"
+        : status === "Past due" || status === "Cancelling"
+          ? "bg-yellow-500/15 text-yellow-100 border-yellow-300/20"
+          : status === "No subscription"
+            ? "bg-white/5 text-white/55 border-white/10"
+            : "bg-red-500/15 text-red-200 border-red-400/20";
 
   return (
     <span
@@ -480,4 +718,139 @@ function SectionTitle({
       <p className="mt-2 text-sm leading-6 text-white/45">{description}</p>
     </div>
   );
+}
+
+function customerStatusLabel(billing: BillingSubscriptionSummary) {
+  if (!billing.hasSubscription) {
+    return {
+      title: "No subscription",
+      caption: "No payment required",
+    };
+  }
+
+  if (billing.cancelAtPeriodEnd) {
+    return {
+      title: "Cancelling",
+      caption: `Cancels on ${formatDate(billing.cancellationEffectiveAt)}`,
+    };
+  }
+
+  const statusMap: Record<string, { title: string; caption: string }> = {
+    active: { title: "Active", caption: "Stripe subscription active" },
+    trialing: { title: "Trialing", caption: "Stripe trial subscription" },
+    past_due: { title: "Past due", caption: "Payment requires attention" },
+    unpaid: { title: "Unpaid", caption: "Payment has not been completed" },
+    canceled: { title: "Canceled", caption: "Subscription is no longer active" },
+    incomplete: { title: "Incomplete", caption: "Checkout or payment is incomplete" },
+    incomplete_expired: {
+      title: "Expired",
+      caption: "Incomplete subscription expired",
+    },
+    paused: { title: "Paused", caption: "Subscription is paused in Stripe" },
+    unknown: { title: "Unknown", caption: "Stripe status unavailable" },
+  };
+
+  return statusMap[billing.status] || statusMap.unknown;
+}
+
+function canManageNativeSubscription(billing: BillingSubscriptionSummary | null) {
+  return Boolean(
+    billing?.hasSubscription &&
+      billing.plan === "pro" &&
+      (billing.status === "active" || billing.status === "trialing")
+  );
+}
+
+function nextPaymentDisplay(billing: BillingSubscriptionSummary | null) {
+  if (!billing) {
+    return { value: "Loading", caption: "Checking Stripe billing" };
+  }
+
+  if (!billing.hasSubscription) {
+    return { value: "None", caption: "Free plan has no renewal date" };
+  }
+
+  if (billing.cancelAtPeriodEnd) {
+    return {
+      value: formatDate(billing.cancellationEffectiveAt),
+      caption: "Features remain available until this date",
+    };
+  }
+
+  const amount = formatMoney(billing.recurringAmount, billing.currency);
+  const date = billing.currentPeriodEnd ? `Due ${formatDate(billing.currentPeriodEnd)}` : "";
+
+  return {
+    value: amount === "Unavailable" ? "Not available" : amount,
+    caption: date || "Stripe did not return a renewal date",
+  };
+}
+
+function subscriptionDescription(billing: BillingSubscriptionSummary | null) {
+  if (!billing) return "Loading subscription details.";
+  if (!billing.hasSubscription) return "No Stripe subscription required.";
+  if (billing.billingInterval === "annual") return "Annual subscription.";
+  if (billing.billingInterval === "monthly") return "Monthly subscription.";
+
+  return "Stripe subscription.";
+}
+
+function subscriptionPriceDisplay(billing: BillingSubscriptionSummary | null) {
+  if (!billing?.hasSubscription) return "None";
+
+  return formatMoney(billing.recurringAmount, billing.currency);
+}
+
+function renewalDateDisplay(billing: BillingSubscriptionSummary | null) {
+  if (!billing) return "Loading";
+  if (!billing.hasSubscription) return "None";
+  if (billing.cancelAtPeriodEnd) return formatDate(billing.cancellationEffectiveAt);
+
+  return billing.currentPeriodEnd ? formatDate(billing.currentPeriodEnd) : "Not available";
+}
+
+function billingIntervalLabel(interval: BillingSubscriptionSummary["billingInterval"]) {
+  if (interval === "monthly") return "Monthly";
+  if (interval === "annual") return "Annual";
+
+  return "No billing interval";
+}
+
+function invoiceStatusLabel(status: string | null) {
+  if (!status) return "Unknown";
+
+  return status
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatMoney(amount: number | null | undefined, currency: string | null | undefined) {
+  if (typeof amount !== "number" || !currency) return "Unavailable";
+
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: currency.toUpperCase(),
+  }).format(amount / 100);
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "Unavailable";
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function formatExpiry(month: number, year: number) {
+  return `${String(month).padStart(2, "0")}/${String(year).slice(-2)}`;
+}
+
+function formatCardBrand(brand: string) {
+  return brand
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }

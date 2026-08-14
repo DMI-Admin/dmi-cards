@@ -6,9 +6,9 @@ import { hasDmiStripeAppNamespace } from "@/lib/stripe/app-namespace";
 import {
   dmiPlanForStripePrice,
   normalizeStripeSubscriptionStatus,
+  stripeSubscriptionCurrentPeriodEnd,
   stripeCustomerId,
   stripeSubscriptionPriceId,
-  stripeTimestampToIso,
   trustedPlanForStripeSubscription,
 } from "@/lib/stripe/billing-state";
 import { getStripeServerClient } from "@/lib/stripe/config";
@@ -173,13 +173,7 @@ async function upsertStripeSubscriptionState(
   }
 
   const latestInvoiceId = latestInvoiceIdentifier(subscription.latest_invoice);
-  const currentPeriodEnd =
-    "current_period_end" in subscription
-      ? stripeTimestampToIso(
-          (subscription as Stripe.Subscription & { current_period_end?: number | null })
-            .current_period_end
-        )
-      : null;
+  const currentPeriodEnd = stripeSubscriptionCurrentPeriodEnd(subscription, priceId);
 
   const { error } = await supabaseAdmin.from("billing_subscriptions").upsert(
     {
