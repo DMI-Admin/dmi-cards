@@ -61,6 +61,8 @@ type BillingApiState =
 
 const billingSectionClass =
   "rounded-3xl border border-white/10 bg-[#101935]/70 p-6 shadow-[0_18px_48px_rgba(0,0,0,0.18)] transition-[border-color,box-shadow,transform] duration-200 ease-out md:hover:border-[#AC00FF]/25 md:hover:shadow-[0_18px_46px_rgba(172,0,255,0.12)] motion-safe:md:hover:-translate-y-0.5";
+const billingPillClass =
+  "inline-flex min-h-8 items-center justify-center whitespace-nowrap rounded-full border px-3 py-0 text-xs font-semibold leading-none align-middle";
 
 export default function ClientBillingPage() {
   const { plan, isPaid } = useClientPlan();
@@ -72,9 +74,6 @@ export default function ClientBillingPage() {
   const [portalLoading, setPortalLoading] = useState(false);
   const [portalError, setPortalError] = useState("");
   const [subscriptionPanelOpen, setSubscriptionPanelOpen] = useState(false);
-  const [subscriptionPanelStep, setSubscriptionPanelStep] = useState<
-    "details" | "confirmCancel"
-  >("details");
   const [subscriptionActionLoading, setSubscriptionActionLoading] = useState(false);
   const [subscriptionActionError, setSubscriptionActionError] = useState("");
   const billing = billingState.data;
@@ -167,7 +166,6 @@ export default function ClientBillingPage() {
 
       setBillingState({ status: "ready", data: payload.data, error: "" });
       setSubscriptionPanelOpen(false);
-      setSubscriptionPanelStep("details");
     } catch (error) {
       setSubscriptionActionError(
         error instanceof Error
@@ -279,47 +277,45 @@ export default function ClientBillingPage() {
                     <div className="flex flex-wrap gap-2 sm:justify-end">
                       <BillingBadge status={statusDisplay.title} />
                       {billing?.billingInterval && (
-                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/65">
+                        <span className={`${billingPillClass} border-white/10 bg-white/5 text-white/65`}>
                           {billingIntervalLabel(billing.billingInterval)}
                         </span>
                       )}
                       {billing && canManageNativeSubscription(billing) && (
-                        billing.cancelAtPeriodEnd ? (
+                        subscriptionActionLoading ? (
+                          <button
+                            type="button"
+                            disabled
+                            className={`${billingPillClass} cursor-not-allowed border-white/10 bg-white/5 text-white/45 opacity-70`}
+                          >
+                            Updating...
+                          </button>
+                        ) : billing.cancelAtPeriodEnd ? (
                           <button
                             type="button"
                             onClick={() => updateSubscriptionCancellation(false)}
-                            disabled={subscriptionActionLoading}
-                            className="inline-flex min-h-8 items-center justify-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/75 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            className={`${billingPillClass} border-white/10 bg-white/5 text-white/75 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white`}
                           >
-                            {subscriptionActionLoading ? "Updating..." : "Keep my subscription"}
+                            Keep my subscription
                           </button>
-                        ) : (
+                        ) : !subscriptionPanelOpen ? (
                           <button
                             type="button"
                             onClick={() => {
-                              setSubscriptionPanelOpen((open) => !open);
-                              setSubscriptionPanelStep("details");
+                              setSubscriptionPanelOpen(true);
                               setSubscriptionActionError("");
                             }}
-                            className="inline-flex min-h-8 items-center justify-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/75 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white"
+                            className={`${billingPillClass} border-white/10 bg-white/5 text-white/75 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white`}
                           >
                             Manage subscription
                           </button>
-                        )
+                        ) : null
                       )}
                     </div>
                   </div>
                   <p className="mt-2 text-sm leading-6 text-white/55">
                     {subscriptionDescription(billing)}
                   </p>
-
-                  {billing?.cancelAtPeriodEnd && (
-                    <p className="mt-4 rounded-2xl border border-yellow-300/20 bg-yellow-400/10 px-4 py-3 text-sm leading-6 text-yellow-50/75">
-                      Your Pro features remain active until{" "}
-                      {formatDate(billing.cancellationEffectiveAt)}. You won&apos;t be
-                      charged again.
-                    </p>
-                  )}
 
                   <div className="mt-6 grid gap-4 rounded-2xl border border-white/10 bg-white/[0.035] p-4 sm:grid-cols-2 xl:grid-cols-4">
                     <PlanDetail label="Status" value={statusDisplay.title} caption={statusDisplay.caption} />
@@ -340,15 +336,12 @@ export default function ClientBillingPage() {
                     />
                   </div>
 
-                  {subscriptionPanelOpen && billing && (
+                  {subscriptionPanelOpen && billing && !billing.cancelAtPeriodEnd && (
                     <SubscriptionManagementPanel
                       billing={billing}
-                      step={subscriptionPanelStep}
                       loading={subscriptionActionLoading}
                       error={subscriptionActionError}
-                      onConfirmCancel={() => setSubscriptionPanelStep("confirmCancel")}
                       onKeep={() => {
-                        setSubscriptionPanelStep("details");
                         setSubscriptionPanelOpen(false);
                         setSubscriptionActionError("");
                       }}
@@ -403,80 +396,57 @@ function BillingErrorState({
 
 function SubscriptionManagementPanel({
   billing,
-  step,
   loading,
   error,
-  onConfirmCancel,
   onKeep,
   onCancelAtPeriodEnd,
 }: {
   billing: BillingSubscriptionSummary;
-  step: "details" | "confirmCancel";
   loading: boolean;
   error: string;
-  onConfirmCancel: () => void;
   onKeep: () => void;
   onCancelAtPeriodEnd: () => void;
 }) {
-  const price = subscriptionPriceDisplay(billing);
-  const interval =
-    billing.billingInterval === "annual"
-      ? "year"
-      : billing.billingInterval === "monthly"
-        ? "month"
-        : "";
-  const priceLine = interval ? `${price}/${interval}` : price;
   const renewalDate = renewalDateDisplay(billing);
 
-  if (step === "confirmCancel") {
-    return (
-      <div className="mt-5 rounded-2xl border border-white/10 bg-[#0B1024]/70 p-4">
-        <h3 className="text-lg font-semibold">Cancel Individual Pro?</h3>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">
-          Your Pro features will remain available until {renewalDate}. After
-          this date your account will return to the Free plan.
-        </p>
-
-        {error && <p className="mt-3 text-sm leading-6 text-red-200">{error}</p>}
-
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <button
-            type="button"
-            onClick={onKeep}
-            disabled={loading}
-            className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/75 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Keep subscription
-          </button>
-          <button
-            type="button"
-            onClick={onCancelAtPeriodEnd}
-            disabled={loading}
-            className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-100 transition hover:border-red-200/35 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? "Updating..." : "Cancel at end of billing period"}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="mt-5 rounded-2xl border border-white/10 bg-[#0B1024]/70 p-4">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h3 className="text-lg font-semibold">Individual Pro Plan</h3>
-          <p className="mt-1 text-sm leading-6 text-white/55">
-            {priceLine} · Next payment {renewalDate}
+          <h3 className="text-base font-semibold">Cancel Individual Pro?</h3>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">
+            Your Pro features will remain active until {renewalDate}. You will
+            not be charged again after that date.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onConfirmCancel}
-          className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/70 transition hover:border-red-300/30 hover:bg-red-500/10 hover:text-red-100 md:w-auto"
-        >
-          Cancel subscription
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center md:justify-end">
+          {loading ? (
+            <button
+              type="button"
+              disabled
+              className="inline-flex min-h-10 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/45 opacity-70 sm:w-auto"
+            >
+              Updating...
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onKeep}
+                className="inline-flex min-h-10 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/70 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white sm:w-auto"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={onCancelAtPeriodEnd}
+                className="inline-flex min-h-10 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/70 transition hover:border-red-300/30 hover:text-red-100 sm:w-auto"
+              >
+                Cancel subscription
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {error && <p className="mt-3 text-sm leading-6 text-red-200">{error}</p>}
@@ -696,7 +666,7 @@ function BillingBadge({ status }: { status: string }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${styles}`}
+      className={`${billingPillClass} ${styles}`}
     >
       {status}
     </span>
