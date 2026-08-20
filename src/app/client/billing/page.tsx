@@ -272,16 +272,6 @@ export default function ClientBillingPage() {
                 )}
               </div>
 
-              {billing?.cancelAtPeriodEnd && (
-                <div className="mt-6 rounded-3xl border border-yellow-300/20 bg-yellow-400/10 p-5">
-                  <h3 className="font-semibold text-yellow-100">Cancelling</h3>
-                  <p className="mt-2 text-sm leading-6 text-yellow-50/70">
-                    Cancels on {formatDate(billing.cancellationEffectiveAt)}. Your
-                    Individual Pro features remain available until this date.
-                  </p>
-                </div>
-              )}
-
               <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
                 <div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -322,6 +312,14 @@ export default function ClientBillingPage() {
                   <p className="mt-2 text-sm leading-6 text-white/55">
                     {subscriptionDescription(billing)}
                   </p>
+
+                  {billing?.cancelAtPeriodEnd && (
+                    <p className="mt-4 rounded-2xl border border-yellow-300/20 bg-yellow-400/10 px-4 py-3 text-sm leading-6 text-yellow-50/75">
+                      Your Pro features remain active until{" "}
+                      {formatDate(billing.cancellationEffectiveAt)}. You won&apos;t be
+                      charged again.
+                    </p>
+                  )}
 
                   <div className="mt-6 grid gap-4 rounded-2xl border border-white/10 bg-white/[0.035] p-4 sm:grid-cols-2 xl:grid-cols-4">
                     <PlanDetail label="Status" value={statusDisplay.title} caption={statusDisplay.caption} />
