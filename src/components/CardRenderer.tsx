@@ -121,8 +121,8 @@ const defaultFields = [
 const defaultPrimary = "#AC00FF";
 const defaultSecondary = "#101935";
 const defaultText = "#FFFFFF";
-const defaultButton = "#FFFFFF";
-const defaultButtonText = "#0F0E38";
+const defaultButton = "#0F0E38";
+const defaultButtonText = "#FFFFFF";
 
 type SectionSettings = {
   personal: boolean;
@@ -211,8 +211,10 @@ export default function CardRenderer({
     selectedTextColour ||
     template.text_color ||
     (freeColour ? readableTextForBackground(freeColour) : defaultText);
-  const buttonColor = template.button_color || defaultButton;
-  const buttonTextColor = template.button_text_color || defaultButtonText;
+  const { buttonColor, buttonTextColor } = resolveButtonColours(
+    template.button_color,
+    template.button_text_color
+  );
   const fontFamily = isPaid
     ? getTemplateFont(layout, template.default_font)
     : getFontFamily(template.default_font);
@@ -1976,12 +1978,17 @@ function isTemplateShelllessPaidLayout(layout: string) {
 }
 
 function getRendererTheme(theme?: RendererTheme): RendererTheme {
+  const { buttonColor, buttonTextColor } = resolveButtonColours(
+    theme?.buttonColor,
+    theme?.buttonTextColor
+  );
+
   return {
     primary: theme?.primary || defaultPrimary,
     secondary: theme?.secondary || defaultSecondary,
     text: theme?.text || defaultText,
-    buttonColor: theme?.buttonColor || defaultButton,
-    buttonTextColor: theme?.buttonTextColor || defaultButtonText,
+    buttonColor,
+    buttonTextColor,
     fontFamily: theme?.fontFamily || fontStack("Inter"),
   };
 }
@@ -2003,6 +2010,53 @@ function readableTextForBackground(colour: string) {
   const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
 
   return luminance > 0.62 ? "#0F172A" : "#FFFFFF";
+}
+
+function resolveButtonColours(
+  backgroundColour: string | null | undefined,
+  textColour: string | null | undefined
+) {
+  const buttonColor = sanitizeHexColour(backgroundColour) || defaultButton;
+  const buttonTextColor = sanitizeHexColour(textColour) || defaultButtonText;
+
+  if (contrastRatio(buttonColor, buttonTextColor) >= 4.5) {
+    return { buttonColor, buttonTextColor };
+  }
+
+  return {
+    buttonColor: defaultButton,
+    buttonTextColor: defaultButtonText,
+  };
+}
+
+function sanitizeHexColour(colour: string | null | undefined) {
+  const value = colour?.trim() || "";
+
+  return /^#[0-9a-fA-F]{6}$/.test(value) ? value : null;
+}
+
+function contrastRatio(firstColour: string, secondColour: string) {
+  const firstLuminance = relativeLuminance(firstColour);
+  const secondLuminance = relativeLuminance(secondColour);
+  const lighter = Math.max(firstLuminance, secondLuminance);
+  const darker = Math.min(firstLuminance, secondLuminance);
+
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function relativeLuminance(colour: string) {
+  const hex = colour.replace("#", "");
+  const channels = [hex.slice(0, 2), hex.slice(2, 4), hex.slice(4, 6)].map(
+    (channel) => {
+      const value = parseInt(channel, 16) / 255;
+
+      return value <= 0.03928
+        ? value / 12.92
+        : Math.pow((value + 0.055) / 1.055, 2.4);
+    }
+  );
+
+  return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
 }
 
 function colorAlpha(colour: string, alpha: number) {

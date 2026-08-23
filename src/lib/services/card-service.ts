@@ -3,6 +3,7 @@ import {
   buildCardSlugBase,
   buildSupabaseCardPayload,
   cardSlugCandidate,
+  isCardSlotLimitError,
   isDuplicateCardSlugError,
   missingCardColumnFromError,
   slugify,
@@ -21,7 +22,9 @@ export async function listCardsForUser(userId: string) {
     .from("cards")
     .select("*")
     .eq("user_id", userId)
-    .order("updated_at", { ascending: false });
+    .order("card_slot", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 }
 
 export async function getCardForUser(cardId: string, userId: string) {
@@ -171,8 +174,10 @@ export async function writeCardPayload({
   currentCardId: string | null;
 }): Promise<CardWriteResult> {
   const timestamp = new Date().toISOString();
+  const { card_slot: _cardSlot, ...updatePayload } = payload;
+  void _cardSlot;
   let nextPayload: Record<string, unknown> = shouldUpdate
-    ? { ...payload, updated_at: timestamp }
+    ? { ...updatePayload, updated_at: timestamp }
     : { ...payload, created_at: timestamp, updated_at: timestamp };
   const attemptedSlugs = new Set<string>();
   const writePayload = async () =>
@@ -187,8 +192,15 @@ export async function writeCardPayload({
       : await supabase.from("cards").insert([nextPayload]).select("*").single();
 
   let result = await writePayload();
+  let cardSlotCollisionRetried = false;
 
   while (result.error) {
+    if (!shouldUpdate && isCardSlotCollisionError(result.error) && !cardSlotCollisionRetried) {
+      cardSlotCollisionRetried = true;
+      result = await writePayload();
+      continue;
+    }
+
     if (isDuplicateCardSlugError(result.error)) {
       const attemptedSlug =
         typeof nextPayload.slug === "string" ? nextPayload.slug : "";
@@ -233,6 +245,10 @@ export async function writeCardPayload({
   }
 
   return { data: result.data as SupabaseCardRow, error: null };
+}
+
+function isCardSlotCollisionError(error: { code?: string; message?: string } | null) {
+  return error?.code === "23505" && isCardSlotLimitError(error);
 }
 
 export async function ensureUniqueCardSlug(

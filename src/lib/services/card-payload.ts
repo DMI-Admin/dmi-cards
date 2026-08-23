@@ -34,6 +34,9 @@ export type SharedClientCard = CardRendererData & {
   status: ClientCardStatus;
   public_url: string;
   last_updated: string;
+  card_slot?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
   selected_colour?: string;
   hidden_fields?: string[];
   field_visibility?: CardFieldVisibility;
@@ -58,6 +61,7 @@ export type SupabaseCardRow = CardRendererData & {
   field_visibility?: CardFieldVisibility | null;
   field_order?: CardFieldOrder | null;
   lead_capture_settings?: LeadCaptureSettings | null;
+  card_slot?: number | null;
   updated_at?: string | null;
   created_at?: string | null;
 };
@@ -320,6 +324,9 @@ export function mapSupabaseCard(
     status: row.is_published || row.status === "published" ? "published" : "unpublished",
     public_url: `/u/${slug}`,
     last_updated: row.updated_at || row.created_at || "Saved",
+    card_slot: normalizedCardSlot(row.card_slot),
+    created_at: row.created_at || null,
+    updated_at: row.updated_at || null,
     slug,
     title: row.title || "",
     first_name: row.first_name || "",
@@ -365,6 +372,7 @@ export function buildSupabaseCardPayload(
   const combinedName = displayName(card, "");
   const fieldOrder = card.field_order || getInitialFieldOrder(null);
   const fieldVisibility = buildPersistedFieldVisibility(card, fieldOrder);
+  const cardSlot = normalizedCardSlot(card.card_slot);
 
   return {
     user_id: userId,
@@ -405,7 +413,12 @@ export function buildSupabaseCardPayload(
     custom_fields: buildPersistedCustomFields(card),
     status: isPublished ? "published" : "draft",
     is_published: isPublished,
+    ...(cardSlot ? { card_slot: cardSlot } : {}),
   };
+}
+
+function normalizedCardSlot(value: number | null | undefined) {
+  return value === 1 || value === 2 || value === 3 ? value : null;
 }
 
 export function buildPersistedFieldVisibility(
@@ -512,6 +525,24 @@ export function isDuplicateCardSlugError(
   );
 }
 
+export function isCardSlotLimitError(
+  error: { code?: string; message?: string } | null
+) {
+  const message = error?.message || "";
+
+  return /CARD_SLOT_LIMIT_REACHED|cards_user_id_card_slot_unique_idx|card_slot/i.test(
+    message
+  );
+}
+
+export function isCardSlotOccupiedError(
+  error: { message?: string } | null
+) {
+  const message = error?.message || "";
+
+  return /CARD_SLOT_ALREADY_OCCUPIED/i.test(message);
+}
+
 export function missingCardColumnFromError(error: { message?: string } | null) {
   const message = error?.message || "";
   const quotedColumnMatch = message.match(/'([^']+)' column of 'cards'/);
@@ -534,6 +565,14 @@ export function describeCardsDatabaseError(
 
   if (isDuplicateCardSlugError(error)) {
     return "That public card link is already in use. Please publish again and we will create a unique link automatically.";
+  }
+
+  if (isCardSlotOccupiedError(error)) {
+    return "That card slot was just taken. Refresh My Cards and choose an available slot.";
+  }
+
+  if (isCardSlotLimitError(error)) {
+    return "You can have up to three digital cards. Delete an existing card before creating another.";
   }
 
   if (missingColumn) {

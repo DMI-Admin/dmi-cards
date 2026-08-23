@@ -40,11 +40,7 @@ import {
   type SharedTemplate,
 } from "@/lib/templates";
 import { ClientAuthRequiredError, getCurrentUser } from "@/lib/client-auth";
-import {
-  isPaidPlan,
-  planLabel as entitlementPlanLabel,
-} from "@/lib/entitlements";
-import { useClientPlan } from "@/lib/use-client-plan";
+import { isPaidPlan } from "@/lib/entitlements";
 import {
   deleteCardForUser,
   listCardsForUser,
@@ -417,8 +413,8 @@ const initialCards: ClientCard[] = [];
 
 export default function ClientCardsPage() {
   const router = useRouter();
-  const { plan } = useClientPlan();
-  const currentPlan = plan as ClientCardPlan;
+  const [currentPlan, setCurrentPlan] = useState<ClientCardPlan>("free");
+  const [loadingTrustedPlan, setLoadingTrustedPlan] = useState(true);
   const isPaid = isPaidPlan(currentPlan);
   const [adminTemplates, setAdminTemplates] = useState<AdminTemplate[]>([]);
   const [cards, setCards] = useState<ClientCard[]>(initialCards);
@@ -434,7 +430,6 @@ export default function ClientCardsPage() {
     useState<DevicePreviewKey>("iphone_15");
   const [deviceSearch, setDeviceSearch] = useState("");
   const [devicePickerOpen, setDevicePickerOpen] = useState(false);
-  const [previewDrawerOpen, setPreviewDrawerOpen] = useState(false);
   const [limitMessage, setLimitMessage] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const [saveError, setSaveError] = useState("");
@@ -514,7 +509,92 @@ export default function ClientCardsPage() {
   useEffect(() => {
     let ignore = false;
 
+    async function loadTrustedPlan() {
+      setLoadingTrustedPlan(true);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const accessToken = session?.access_token;
+
+      if (!accessToken) {
+        if (!ignore) {
+          setCurrentPlan("free");
+          setLoadingTrustedPlan(false);
+        }
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/v1/me", {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Plan lookup failed with ${response.status}`);
+        }
+
+        const payload = (await response.json()) as {
+          data?: { plan?: ClientCardPlan | string | null };
+        };
+        const trustedPlan =
+          payload.data?.plan === "pro" || payload.data?.plan === "enterprise"
+            ? payload.data.plan
+            : "free";
+
+        if (!ignore) {
+          setCurrentPlan(trustedPlan);
+        }
+      } catch (error) {
+        console.error("[DMI cards] trusted plan lookup failed", error);
+
+        if (!ignore) {
+          setCurrentPlan("free");
+        }
+      } finally {
+        if (!ignore) {
+          setLoadingTrustedPlan(false);
+        }
+      }
+    }
+
+    void loadTrustedPlan();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showBuilder) return;
+
+    const previousOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setShowBuilder(false);
+      }
+    }
+
+    window.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [showBuilder]);
+
+  useEffect(() => {
+    let ignore = false;
+
     async function loadSavedCards() {
+      if (loadingTrustedPlan) return;
+
       setLoadingCards(true);
       setSaveError("");
       setTemplateError("");
@@ -591,8 +671,9 @@ export default function ClientCardsPage() {
         mapSupabaseCard(row, nextTemplates, nextDefaultTemplate, currentPlan)
       );
       console.log("[DMI auth] loaded cards", savedCards);
-      setCards(savedCards);
-      setSelectedCardId(savedCards[0]?.id || "");
+      const orderedCards = sortCardsBySlotOrder(savedCards);
+      setCards(orderedCards);
+      setSelectedCardId(orderedCards[0]?.id || "");
       setLoadingCards(false);
     }
 
@@ -601,9 +682,9 @@ export default function ClientCardsPage() {
     return () => {
       ignore = true;
     };
-  }, [currentPlan, router]);
+  }, [currentPlan, loadingTrustedPlan, router]);
 
-  function openCreatePanel() {
+  function openCreatePanel(cardSlot?: 1 | 2 | 3) {
     if (!currentDefaultTemplate) return;
 
     if (!isPaid && cards.length >= 1) {
@@ -614,25 +695,34 @@ export default function ClientCardsPage() {
     }
 
     setLimitMessage("");
+    setSaveMessage("");
+    setSaveError("");
+    setSaveStatus("idle");
     setPanelMode("create");
     setActiveStep(0);
     const initialFieldOrder = getInitialFieldOrder(currentDefaultTemplate);
     setFieldOrder(initialFieldOrder);
-    setDraftCard({
+    const nextDraftCard = {
       ...blankCard,
       id: `card-${Date.now()}`,
       template_id: currentDefaultTemplate.id,
       template_name: currentDefaultTemplate.name,
       selected_colour: firstTemplateColour(currentDefaultTemplate),
       selected_text_colour: firstTemplateTextColour(currentDefaultTemplate),
+      card_slot: cardSlot || null,
       field_order: initialFieldOrder,
       lead_capture_settings: defaultLeadCaptureSettings,
-    });
+    };
+
+    setDraftCard(nextDraftCard);
     setShowBuilder(true);
   }
 
   function openEditPanel(card: ClientCard) {
     setLimitMessage("");
+    setSaveMessage("");
+    setSaveError("");
+    setSaveStatus("idle");
     setPanelMode("edit");
     setActiveStep(0);
     const cardTemplate = templateForCard(card, adminTemplates, currentPlan) || currentDefaultTemplate;
@@ -855,9 +945,9 @@ export default function ClientCardsPage() {
         const existing = currentCards.some((card) => card.id === draftCard.id);
         const nextCards = existing
           ? currentCards.map((card) => (card.id === draftCard.id ? savedCard : card))
-          : [savedCard, ...currentCards];
+          : [...currentCards, savedCard];
 
-        return nextCards;
+        return sortCardsBySlotOrder(nextCards);
       });
 
       setSelectedCardId(savedCard.id);
@@ -987,7 +1077,7 @@ export default function ClientCardsPage() {
       const nextCards = currentCards.map((currentCard) =>
         currentCard.id === card.id ? savedCard : currentCard
       );
-      return nextCards;
+      return sortCardsBySlotOrder(nextCards);
     });
   }
 
@@ -998,6 +1088,7 @@ export default function ClientCardsPage() {
 
     setSaveError("");
     setSaveMessage("");
+    setSaveStatus("idle");
 
     if (!card.id.startsWith("card-")) {
       const authUser = await getActiveUserForCardSave(false);
@@ -1034,7 +1125,10 @@ export default function ClientCardsPage() {
       setSelectedCardId(nextCards[0]?.id || "");
       return nextCards;
     });
-    setSaveMessage("Card deleted successfully.");
+
+    if (draftCard.id === card.id) {
+      setShowBuilder(false);
+    }
   }
 
   async function copyLink(card: ClientCard) {
@@ -1052,13 +1146,7 @@ export default function ClientCardsPage() {
       <section className="flex-1 p-10">
         <div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#AC00FF]">
-              Client Portal
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <h1 className="text-4xl font-bold">My Cards</h1>
-              <PlanBadge plan={currentPlan} />
-            </div>
+            <h1 className="text-4xl font-bold">My Cards</h1>
             <p className="mt-3 max-w-3xl text-white/50">
               Manage your live digital card, public URL, template fields, and
               lead capture setup.
@@ -1109,46 +1197,22 @@ export default function ClientCardsPage() {
 
             <div className="grid gap-8 2xl:grid-cols-[minmax(0,1fr)_minmax(560px,600px)]">
               <div className="space-y-6">
-                {cards.length === 0 && !showBuilder ? (
-                  <EmptyState onCreate={openCreatePanel} />
-                ) : cards.length > 0 ? (
-                  <CardList
-                    cards={cards}
-                    selectedCardId={selectedCardId}
-                    isPaid={isPaid}
-                    onSelect={setSelectedCardId}
-                    onEdit={openEditPanel}
-                    onTogglePublish={togglePublish}
-                    onCopyLink={copyLink}
-                    onViewPublicPage={viewPublicPage}
-                    onDelete={deleteCard}
-                  />
-                ) : null}
+                <CardList
+                  cards={cards}
+                  selectedCardId={selectedCardId}
+                  isPaid={isPaid}
+                  templates={adminTemplates}
+                  defaultTemplate={currentDefaultTemplate}
+                  currentPlan={currentPlan}
+                  onCreate={openCreatePanel}
+                  onSelect={setSelectedCardId}
+                  onEdit={openEditPanel}
+                  onTogglePublish={togglePublish}
+                  onCopyLink={copyLink}
+                  onViewPublicPage={viewPublicPage}
+                  onDelete={deleteCard}
+                />
 
-                {showBuilder && (
-                  <EditorPanel
-                    activeStep={activeStep}
-                    draftCard={draftCard}
-                    fieldOrder={fieldOrder}
-                    mode={panelMode}
-                    template={draftTemplateRecord || currentDefaultTemplate}
-                    templates={visibleTemplates}
-                    currentPlan={currentPlan}
-                    isPaid={isPaid}
-                    onClose={() => setShowBuilder(false)}
-                    onStepChange={setActiveStep}
-                    onUpdate={updateDraft}
-                    onSelectTemplate={selectDraftTemplate}
-                    onUpdateCustomField={updateCustomField}
-                    onUpdateLeadSettings={updateLeadCaptureSettings}
-                    onToggleFieldVisibility={toggleFieldVisibility}
-                    onMoveField={moveField}
-                    onPublish={handlePublishCard}
-                    saveStatus={saveStatus}
-                    saveMessage={saveMessage}
-                    saveError={saveError}
-                  />
-                )}
               </div>
 
               <aside className="hidden 2xl:sticky 2xl:top-8 2xl:block 2xl:self-start">
@@ -1174,58 +1238,54 @@ export default function ClientCardsPage() {
               </aside>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setPreviewDrawerOpen(true)}
-              className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-11 items-center gap-2 rounded-2xl border border-[#AC00FF]/40 bg-[#AC00FF] px-4 py-3 text-sm font-semibold text-white shadow-2xl shadow-purple-500/35 transition hover:shadow-purple-500/50 md:bottom-auto md:right-0 md:top-1/2 md:-translate-y-1/2 md:flex-col md:rounded-l-2xl md:rounded-r-none md:px-3 md:py-5 2xl:hidden"
-            >
-              <CreditCard className="h-4 w-4" />
-              <span className="md:[writing-mode:vertical-rl] md:rotate-180">
-                Preview
-              </span>
-            </button>
+            {showBuilder && (
+              <EditorModal onClose={() => setShowBuilder(false)}>
+                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(460px,540px)]">
+                  <EditorPanel
+                    activeStep={activeStep}
+                    draftCard={draftCard}
+                    fieldOrder={fieldOrder}
+                    mode={panelMode}
+                    template={draftTemplateRecord || currentDefaultTemplate}
+                    templates={visibleTemplates}
+                    currentPlan={currentPlan}
+                    isPaid={isPaid}
+                    onStepChange={setActiveStep}
+                    onUpdate={updateDraft}
+                    onSelectTemplate={selectDraftTemplate}
+                    onUpdateCustomField={updateCustomField}
+                    onUpdateLeadSettings={updateLeadCaptureSettings}
+                    onToggleFieldVisibility={toggleFieldVisibility}
+                    onMoveField={moveField}
+                    onPublish={handlePublishCard}
+                    saveStatus={saveStatus}
+                    saveMessage={saveMessage}
+                    saveError={saveError}
+                  />
 
-            {previewDrawerOpen && (
-              <div className="fixed inset-0 z-50 2xl:hidden">
-                <button
-                  type="button"
-                  aria-label="Close preview drawer"
-                  onClick={() => setPreviewDrawerOpen(false)}
-                  className="absolute inset-0 bg-black/55 backdrop-blur-sm"
-                />
-
-                <div className="absolute inset-0 overflow-y-auto border-white/10 bg-[#070B1A]/95 p-4 shadow-2xl shadow-black/40 transition-transform duration-300 md:inset-y-0 md:left-auto md:right-0 md:w-[620px] md:border-l md:p-5 lg:w-[680px] xl:w-[720px]">
-                  <div className="min-h-full rounded-3xl border border-white/10 bg-[#101935]/80 p-4 shadow-2xl shadow-purple-950/25 md:min-h-0 md:p-6">
-                    <PreviewPanelContent
-                      title={previewTitle}
-                      previewCard={previewCard}
-                      previewTemplate={previewTemplate}
-                      selectedDevice={selectedDevice}
-                      selectedKey={devicePreview}
-                      search={deviceSearch}
-                      open={devicePickerOpen}
-                      filteredGroups={filteredDeviceGroups}
-                      dimensions={previewDimensions}
-                      actions={
-                        <button
-                          type="button"
-                          onClick={() => setPreviewDrawerOpen(false)}
-                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/60 transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:text-white"
-                          aria-label="Close preview"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      }
-                      onSearchChange={setDeviceSearch}
-                      onOpenChange={setDevicePickerOpen}
-                      onSelect={(key) => {
-                        setDevicePreview(key);
-                        setDevicePickerOpen(false);
-                      }}
-                    />
-                  </div>
+                  <aside className="hidden xl:block">
+                    <div className="rounded-3xl border border-white/10 bg-[#101935]/65 p-5 shadow-2xl shadow-black/20">
+                      <PreviewPanelContent
+                        title={previewTitle}
+                        previewCard={previewCard}
+                        previewTemplate={previewTemplate}
+                        selectedDevice={selectedDevice}
+                        selectedKey={devicePreview}
+                        search={deviceSearch}
+                        open={devicePickerOpen}
+                        filteredGroups={filteredDeviceGroups}
+                        dimensions={previewDimensions}
+                        onSearchChange={setDeviceSearch}
+                        onOpenChange={setDevicePickerOpen}
+                        onSelect={(key) => {
+                          setDevicePreview(key);
+                          setDevicePickerOpen(false);
+                        }}
+                      />
+                    </div>
+                  </aside>
                 </div>
-              </div>
+              </EditorModal>
             )}
           </>
         )}
@@ -1305,10 +1365,43 @@ function PreviewPanelContent({
   );
 }
 
+function EditorModal({
+  children,
+  onClose,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm sm:p-8"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Card editor"
+    >
+      <div className="relative max-h-[calc(100vh-32px)] w-[min(1450px,calc(100vw-32px))] overflow-y-auto overflow-x-hidden rounded-3xl border border-white/10 bg-[#070B1A] p-4 pt-14 shadow-2xl shadow-black/50 sm:p-5 sm:pt-14">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close editor"
+          className="absolute right-4 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/10 text-white/70 shadow-lg shadow-black/20 backdrop-blur transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/15 hover:text-white"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function CardList({
   cards,
   selectedCardId,
   isPaid,
+  templates,
+  defaultTemplate,
+  currentPlan,
+  onCreate,
   onSelect,
   onEdit,
   onTogglePublish,
@@ -1319,6 +1412,10 @@ function CardList({
   cards: ClientCard[];
   selectedCardId: string;
   isPaid: boolean;
+  templates: AdminTemplate[];
+  defaultTemplate: ResolvedCardTemplate | null;
+  currentPlan: ClientCardPlan;
+  onCreate: (cardSlot: 1 | 2 | 3) => void;
   onSelect: (id: string) => void;
   onEdit: (card: ClientCard) => void;
   onTogglePublish: (card: ClientCard) => void;
@@ -1326,13 +1423,30 @@ function CardList({
   onViewPublicPage: (card: ClientCard) => void;
   onDelete: (card: ClientCard) => void;
 }) {
+  const cardsBySlot = new Map<number, ClientCard>();
+  const unassignedCards = cards.filter((card) => {
+    if (card.card_slot === 1 || card.card_slot === 2 || card.card_slot === 3) {
+      cardsBySlot.set(card.card_slot, card);
+      return false;
+    }
+
+    return true;
+  });
+  const slots = Array.from({ length: 3 }, (_, index) => {
+    const slotNumber = (index + 1) as 1 | 2 | 3;
+    const card = cardsBySlot.get(slotNumber) || unassignedCards[index] || null;
+    const locked = !isPaid && index > 0;
+
+    return { index, slotNumber, card, locked };
+  });
+
   return (
-    <section className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/10">
-      <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <section className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/10 sm:p-6">
+      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold">Card List</h2>
+          <h2 className="text-2xl font-semibold">Your Card Gallery</h2>
           <p className="mt-1 text-sm text-white/45">
-            Manage your published and draft public card pages.
+            Create, preview, and manage up to three digital business cards.
           </p>
         </div>
         {!isPaid && (
@@ -1349,80 +1463,263 @@ function CardList({
         )}
       </div>
 
-      <div className="space-y-3">
-        {cards.map((card) => {
-          const selected = selectedCardId === card.id;
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {slots.map(({ slotNumber, card, locked }) => {
+          if (locked) {
+            return <LockedCardSlot key={slotNumber} />;
+          }
+
+          if (!card) {
+            return <EmptyCardSlot key={slotNumber} slotNumber={slotNumber} onCreate={onCreate} />;
+          }
 
           return (
-            <article
+            <GalleryCardSlot
               key={card.id}
-              className={`rounded-2xl border p-4 transition ${
-                selected
-                  ? "border-[#AC00FF]/70 bg-[#AC00FF]/10 shadow-lg shadow-purple-500/15"
-                  : "border-white/10 bg-[#101935]/55 hover:border-white/20"
-              }`}
-            >
-              <div className="flex flex-col gap-4">
-                <button
-                  type="button"
-                  onClick={() => onSelect(card.id)}
-                  className="w-full min-w-0 text-left"
-                >
-                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_auto_minmax(170px,1fr)_minmax(130px,0.8fr)] lg:items-center">
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold">{card.card_name}</p>
-                      <p className="mt-1 text-sm text-white/45">
-                        Template: {card.template_name}
-                      </p>
-                    </div>
-                    <StatusBadge status={card.status} />
-                    <div className="min-w-0 text-sm">
-                      <p className="text-white/35">Public URL</p>
-                      <p className="mt-1 truncate text-white/70">{card.public_url}</p>
-                    </div>
-                    <div className="min-w-0 text-sm">
-                      <p className="text-white/35">Last updated</p>
-                      <p className="mt-1 text-white/70">{card.last_updated}</p>
-                    </div>
-                  </div>
-                </button>
-
-                <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-4">
-                  <ActionButton
-                    label="Edit Card"
-                    icon={CreditCard}
-                    onClick={() => onEdit(card)}
-                  />
-                  <ActionButton
-                    label={card.status === "published" ? "Unpublish" : "Publish"}
-                    icon={Save}
-                    onClick={() => onTogglePublish(card)}
-                  />
-                  <ActionButton
-                    label="View Public Page"
-                    icon={ExternalLink}
-                    onClick={() => onViewPublicPage(card)}
-                  />
-                  <ActionButton
-                    label="Copy Link"
-                    icon={Copy}
-                    onClick={() => onCopyLink(card)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => onDelete(card)}
-                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-red-500/40 bg-red-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-red-500/20 transition hover:border-red-400 hover:bg-red-600 focus:text-white"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </article>
+              card={card}
+              selected={selectedCardId === card.id}
+              templates={templates}
+              defaultTemplate={defaultTemplate}
+              currentPlan={currentPlan}
+              onSelect={onSelect}
+              onEdit={onEdit}
+              onTogglePublish={onTogglePublish}
+              onCopyLink={onCopyLink}
+              onViewPublicPage={onViewPublicPage}
+              onDelete={onDelete}
+            />
           );
         })}
       </div>
     </section>
+  );
+}
+
+function GalleryCardSlot({
+  card,
+  selected,
+  templates,
+  defaultTemplate,
+  currentPlan,
+  onSelect,
+  onEdit,
+  onTogglePublish,
+  onCopyLink,
+  onViewPublicPage,
+  onDelete,
+}: {
+  card: ClientCard;
+  selected: boolean;
+  templates: AdminTemplate[];
+  defaultTemplate: ResolvedCardTemplate | null;
+  currentPlan: ClientCardPlan;
+  onSelect: (id: string) => void;
+  onEdit: (card: ClientCard) => void;
+  onTogglePublish: (card: ClientCard) => void;
+  onCopyLink: (card: ClientCard) => void;
+  onViewPublicPage: (card: ClientCard) => void;
+  onDelete: (card: ClientCard) => void;
+}) {
+  const [flipped, setFlipped] = useState(false);
+  const cardTemplate = templateForCard(card, templates, currentPlan) || defaultTemplate;
+  const previewTemplate = cardTemplate
+    ? buildTemplatePreview(
+        cardTemplate,
+        selectedColourForTemplate(
+          cardTemplate,
+          card.selected_colour || firstTemplateColour(cardTemplate)
+        ),
+        selectedTextColourForTemplate(cardTemplate, card.selected_text_colour),
+        card.field_order || getInitialFieldOrder(cardTemplate),
+        hiddenFieldsForCard(card)
+      )
+    : null;
+
+  return (
+    <article
+      className={`group h-[360px] ${
+        selected ? "rounded-2xl ring-2 ring-[#AC00FF]/55 ring-offset-2 ring-offset-[#070B1A]" : ""
+      }`}
+      style={{ perspective: "1200px" }}
+    >
+      <div
+        className="relative h-full w-full transform-gpu transition-transform duration-[400ms] motion-reduce:transition-none"
+        style={{
+          transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
+          transformStyle: "preserve-3d",
+        }}
+      >
+        <div
+          className="absolute inset-0"
+          style={{
+            backfaceVisibility: "hidden",
+            WebkitBackfaceVisibility: "hidden",
+          }}
+        >
+          <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#101935]/75 p-3 shadow-2xl shadow-black/20 transition group-hover:border-[#AC00FF]/35">
+            <button
+              type="button"
+              onClick={() => onSelect(card.id)}
+              className="flex min-h-0 flex-1 items-start justify-center overflow-hidden rounded-xl border border-white/10 bg-black/70"
+              aria-label={`Select ${card.card_name}`}
+            >
+              {previewTemplate ? (
+                <div className="flex w-full justify-center overflow-hidden">
+                  <div className="origin-top scale-[0.78]">
+                    <CardRenderer
+                      template={previewTemplate}
+                      cardData={card}
+                      mode="compact"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center text-sm text-white/45">
+                  Preview unavailable
+                </div>
+              )}
+            </button>
+
+            <div className="pointer-events-none absolute left-5 top-5">
+              <StatusBadge status={card.status} />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setFlipped(true)}
+              className="absolute bottom-5 left-1/2 inline-flex min-h-11 min-w-44 -translate-x-1/2 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-purple-950/40 transition hover:-translate-x-1/2 hover:-translate-y-0.5 hover:shadow-purple-500/35"
+            >
+              <CreditCard className="h-4 w-4" />
+              Edit card
+            </button>
+          </div>
+        </div>
+
+        <div
+          className="absolute inset-0"
+          style={{
+            backfaceVisibility: "hidden",
+            WebkitBackfaceVisibility: "hidden",
+            transform: "rotateY(180deg)",
+          }}
+        >
+          <div className="flex h-full flex-col rounded-2xl border border-[#AC00FF]/30 bg-[#101935] p-4 shadow-2xl shadow-purple-950/20">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="truncate text-base font-semibold">{card.card_name}</p>
+                <p className="mt-1 text-sm text-white/45">
+                  {card.status === "published" ? "Published card actions" : "Draft card actions"}
+                </p>
+              </div>
+              <StatusBadge status={card.status} />
+            </div>
+
+            <div className="mt-4 grid gap-2">
+              <GalleryActionButton
+                label="Edit"
+                icon={CreditCard}
+                onClick={() => onEdit(card)}
+              />
+              <GalleryActionButton
+                label="View public page"
+                icon={ExternalLink}
+                onClick={() => onViewPublicPage(card)}
+              />
+              <GalleryActionButton
+                label="Copy link"
+                icon={Copy}
+                onClick={() => onCopyLink(card)}
+              />
+              <GalleryActionButton
+                label={card.status === "published" ? "Unpublish" : "Publish"}
+                icon={Save}
+                onClick={() => onTogglePublish(card)}
+              />
+              <button
+                type="button"
+                onClick={() => onDelete(card)}
+                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-500 px-3 py-1.5 text-sm font-semibold text-white shadow-lg shadow-red-500/20 transition hover:border-red-400 hover:bg-red-600 focus:text-white"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setFlipped(false)}
+              className="mt-auto inline-flex min-h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/70 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white"
+            >
+              Back
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function GalleryActionButton({
+  label,
+  icon: Icon,
+  onClick,
+}: {
+  label: string;
+  icon: LucideIcon;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-white/70 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white"
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+    </button>
+  );
+}
+
+function EmptyCardSlot({
+  slotNumber,
+  onCreate,
+}: {
+  slotNumber: 1 | 2 | 3;
+  onCreate: (cardSlot: 1 | 2 | 3) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onCreate(slotNumber)}
+      className="flex h-[360px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/[0.035] p-6 text-center transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10 hover:shadow-2xl hover:shadow-purple-950/20"
+    >
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#AC00FF]/15 text-purple-100">
+        <BadgePlus className="h-7 w-7" />
+      </span>
+      <span className="mt-5 text-lg font-semibold">Create a card</span>
+      <span className="mt-2 max-w-56 text-sm leading-6 text-white/45">
+        Design and publish your digital business card
+      </span>
+    </button>
+  );
+}
+
+function LockedCardSlot() {
+  return (
+    <UpgradeToProButton className="group h-[360px] rounded-2xl border border-white/10 bg-white/[0.025] p-5 opacity-70 transition hover:border-[#AC00FF]/35 hover:bg-[#AC00FF]/10">
+      <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-white/10 bg-black/15 p-5 text-center">
+        <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/45">
+          <Lock className="h-7 w-7" />
+        </span>
+        <p className="mt-5 text-lg font-semibold text-white/70">Upgrade to Pro</p>
+        <p className="mt-2 max-w-56 text-sm leading-6 text-white/40">
+          Create additional digital cards
+        </p>
+        <span className="mt-6 inline-flex min-h-11 items-center justify-center rounded-2xl bg-[#AC00FF] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/20 transition group-hover:bg-[#BE35FF]">
+          Upgrade to Pro
+        </span>
+      </div>
+    </UpgradeToProButton>
   );
 }
 
@@ -1561,10 +1858,43 @@ function DevicePreviewFrame({
   const isTablet = device.frameType === "tablet";
   const isFoldable = device.frameType === "foldable";
   const deviceWidth = device.width === "100%" ? 390 : device.width;
-  const needsWideScroll = isTablet || (isFoldable && deviceWidth > 560);
   const shellPadding = isTablet || isFoldable ? 14 : 10;
   const shellRadius = isTablet ? "2rem" : isFoldable ? "2.2rem" : "2.6rem";
   const screenRadius = isTablet ? "1.35rem" : isFoldable ? "1.6rem" : "2rem";
+  const previewViewportRef = useRef<HTMLDivElement | null>(null);
+  const [previewViewport, setPreviewViewport] = useState({ width: 0, height: 0 });
+  const shellWidth = deviceWidth + shellPadding * 2;
+  const shellHeight = dimensions.height + shellPadding * 2;
+  const previewScale =
+    previewViewport.width > 0 && previewViewport.height > 0
+      ? Math.min(
+          previewViewport.width / shellWidth,
+          previewViewport.height / shellHeight,
+          1
+        )
+      : 1;
+
+  useEffect(() => {
+    const viewportElement = previewViewportRef.current;
+
+    if (!viewportElement) return;
+
+    function updatePreviewViewport(element: HTMLDivElement) {
+      setPreviewViewport({
+        width: element.clientWidth,
+        height: element.clientHeight,
+      });
+    }
+
+    updatePreviewViewport(viewportElement);
+
+    const resizeObserver = new ResizeObserver(() => {
+      updatePreviewViewport(viewportElement);
+    });
+    resizeObserver.observe(viewportElement);
+
+    return () => resizeObserver.disconnect();
+  }, [device.key]);
 
   return (
     <div>
@@ -1575,15 +1905,18 @@ function DevicePreviewFrame({
         </p>
       </div>
 
-      <div className="rounded-[2rem] bg-white/[0.07] p-4 shadow-inner shadow-white/5 md:p-8">
+      <div className="rounded-[2rem] bg-white/[0.07] p-4 shadow-inner shadow-white/5 md:p-6">
         <div
-          className={`pb-3 ${
-            needsWideScroll ? "overflow-x-auto" : "overflow-x-hidden"
-          }`}
+          ref={previewViewportRef}
+          className="relative flex h-[min(620px,calc(100vh-300px))] min-h-[360px] w-full items-start justify-center overflow-hidden"
         >
           <div
-            className="mx-auto origin-top transform-gpu transition-[width,min-width,transform] duration-300 ease-out max-md:scale-[0.72] md:scale-100"
-            style={{ width: dimensions.width, minWidth: dimensions.minWidth }}
+            className="origin-top transform-gpu transition-transform duration-300 ease-out"
+            style={{
+              width: shellWidth,
+              minWidth: shellWidth,
+              transform: `scale(${previewScale})`,
+            }}
           >
             <div
               className="relative mx-auto bg-gradient-to-br from-black via-[#101016] to-[#1B1230] shadow-2xl shadow-[#AC00FF]/20"
@@ -1613,6 +1946,7 @@ function DevicePreviewFrame({
                 className="relative overflow-y-auto overflow-x-hidden bg-[#070B1A] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 style={{
                   height: dimensions.height,
+                  width: deviceWidth,
                   borderRadius: screenRadius,
                 }}
               >
@@ -1635,7 +1969,6 @@ function EditorPanel({
   templates,
   currentPlan,
   isPaid,
-  onClose,
   onStepChange,
   onUpdate,
   onSelectTemplate,
@@ -1656,7 +1989,6 @@ function EditorPanel({
   templates: AdminTemplate[];
   currentPlan: ClientCardPlan;
   isPaid: boolean;
-  onClose: () => void;
   onStepChange: (step: BuilderStep) => void;
   onUpdate: (field: keyof ClientCard, value: string) => void;
   onSelectTemplate: (template: AdminTemplate) => void;
@@ -1677,6 +2009,27 @@ function EditorPanel({
     onStepChange(Math.min(2, activeStep + 1) as BuilderStep);
   }
 
+  const topNavigation = (
+    <EditorStepNavigation
+      activeStep={activeStep}
+      saveStatus={saveStatus}
+      onBack={goBack}
+      onNext={goNext}
+      onPublish={onPublish}
+      compact
+    />
+  );
+
+  const bottomNavigation = (
+    <EditorStepNavigation
+      activeStep={activeStep}
+      saveStatus={saveStatus}
+      onBack={goBack}
+      onNext={goNext}
+      onPublish={onPublish}
+    />
+  );
+
   return (
     <section className="overflow-hidden rounded-3xl border border-[#AC00FF]/25 bg-[#101935]/75 shadow-2xl shadow-purple-950/20">
       <div className="flex flex-col gap-4 border-b border-white/10 p-5 lg:flex-row lg:items-center lg:justify-between">
@@ -1688,16 +2041,11 @@ function EditorPanel({
             {builderSteps[activeStep].title}
           </h2>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 transition hover:bg-white/10 hover:text-white"
-        >
-          Close
-        </button>
       </div>
 
       <div className="p-5">
+        <div className="mb-4 flex justify-end">{topNavigation}</div>
+
         <div className="mb-6 grid gap-3 md:grid-cols-3">
           {builderSteps.map((step, index) => (
               <button
@@ -1762,40 +2110,67 @@ function EditorPanel({
         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/35">
           Step {activeStep + 1} of 3
         </div>
-        <div className="flex flex-wrap gap-3">
-          {activeStep > 0 && (
-            <button
-              type="button"
-              onClick={goBack}
-              disabled={saveStatus === "saving"}
-              className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white/70 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Back
-            </button>
-          )}
-
-          {activeStep < 2 ? (
-            <button
-              type="button"
-              onClick={goNext}
-              className="rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35"
-            >
-              Next
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onPublish}
-              disabled={saveStatus === "saving"}
-              className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <ExternalLink className="h-4 w-4" />
-              {saveStatus === "saving" ? "Publishing..." : "Publish"}
-            </button>
-          )}
-        </div>
+        {bottomNavigation}
       </div>
     </section>
+  );
+}
+
+function EditorStepNavigation({
+  activeStep,
+  saveStatus,
+  onBack,
+  onNext,
+  onPublish,
+  compact = false,
+}: {
+  activeStep: BuilderStep;
+  saveStatus: SaveStatus;
+  onBack: () => void;
+  onNext: () => void;
+  onPublish: () => void;
+  compact?: boolean;
+}) {
+  const secondaryClass = compact
+    ? "min-h-10 rounded-2xl px-4 py-2 text-sm"
+    : "rounded-2xl px-5 py-3 text-sm";
+  const primaryClass = compact
+    ? "min-h-10 rounded-2xl px-5 py-2 text-sm"
+    : "rounded-2xl px-6 py-3 text-sm";
+
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-3">
+      {activeStep > 0 && (
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={saveStatus === "saving"}
+          className={`${secondaryClass} border border-white/70 bg-white font-semibold text-[#101935] shadow-sm shadow-black/20 transition hover:border-white hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-[#AC00FF]/60 disabled:cursor-not-allowed disabled:border-white/30 disabled:bg-white/50 disabled:text-[#101935]/55 disabled:opacity-100`}
+        >
+          Back
+        </button>
+      )}
+
+      {activeStep < 2 ? (
+        <button
+          type="button"
+          onClick={onNext}
+          className={`${primaryClass} bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35`}
+        >
+          Next
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onPublish}
+          disabled={saveStatus === "saving"}
+          className={`inline-flex items-center gap-2 ${primaryClass} bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35 disabled:cursor-not-allowed disabled:opacity-50`}
+        >
+          <ExternalLink className="h-4 w-4" />
+          {saveStatus === "saving" ? "Publishing..." : "Publish"}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -2697,10 +3072,6 @@ function canSelectTemplate(
   return canSelectTemplateForPlan(template, plan);
 }
 
-function planLabel(plan: ClientCardPlan) {
-  return entitlementPlanLabel(plan);
-}
-
 function mapSupabaseCard(
   row: SupabaseCardRow,
   templates: AdminTemplate[] = [],
@@ -2708,6 +3079,28 @@ function mapSupabaseCard(
   plan: ClientCardPlan
 ): ClientCard {
   return mapSupabaseCardForPlan(row, templates, plan, defaultTemplate);
+}
+
+function sortCardsBySlotOrder(cards: ClientCard[]) {
+  return [...cards].sort((first, second) => {
+    const firstSlot = first.card_slot || Number.POSITIVE_INFINITY;
+    const secondSlot = second.card_slot || Number.POSITIVE_INFINITY;
+
+    if (firstSlot !== secondSlot) {
+      return firstSlot - secondSlot;
+    }
+
+    const firstCreated = Date.parse(first.created_at || "");
+    const secondCreated = Date.parse(second.created_at || "");
+    const firstTime = Number.isNaN(firstCreated) ? Number.POSITIVE_INFINITY : firstCreated;
+    const secondTime = Number.isNaN(secondCreated) ? Number.POSITIVE_INFINITY : secondCreated;
+
+    if (firstTime !== secondTime) {
+      return firstTime - secondTime;
+    }
+
+    return first.id.localeCompare(second.id);
+  });
 }
 
 async function getActiveUserForCardSave(isPublishing: boolean): Promise<User | null> {
@@ -2930,31 +3323,6 @@ function sectionConfig(
   }));
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
-  return (
-    <div className="rounded-3xl border border-dashed border-[#AC00FF]/35 bg-[#AC00FF]/10 p-10 text-center">
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-3xl bg-[#AC00FF]/20 text-purple-100">
-        <CreditCard className="h-7 w-7" />
-      </div>
-      <h2 className="mt-6 text-3xl font-semibold">
-        Create your first digital business card
-      </h2>
-      <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-white/55">
-        Start with the DMI Classic template, customise allowed fields, and
-        publish your public card page.
-      </p>
-      <button
-        type="button"
-        onClick={onCreate}
-        className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20"
-      >
-        <BadgePlus className="h-4 w-4" />
-        Create your first digital business card
-      </button>
-    </div>
-  );
-}
-
 function NoTemplateState({ templates }: { templates: AdminTemplate[] }) {
   const paidTemplates = templates.filter((template) => isPaidTemplate(template));
 
@@ -3106,21 +3474,6 @@ function UpgradeNotice({ message }: { message: string }) {
   );
 }
 
-function PlanBadge({ plan }: { plan: ClientCardPlan }) {
-  return (
-    <span
-      className="rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]"
-      style={{
-        borderColor: "var(--border-accent)",
-        background: "var(--brand-gradient-subtle)",
-        color: "var(--text-accent)",
-      }}
-    >
-      {planLabel(plan)} Plan
-    </span>
-  );
-}
-
 function AccessPill({
   template,
   plan,
@@ -3165,27 +3518,6 @@ function StatusBadge({ status }: { status: CardStatus }) {
     >
       {status}
     </span>
-  );
-}
-
-function ActionButton({
-  label,
-  icon: Icon,
-  onClick,
-}: {
-  label: string;
-  icon: LucideIcon;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/70 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white"
-    >
-      <Icon className="h-4 w-4" />
-      {label}
-    </button>
   );
 }
 
