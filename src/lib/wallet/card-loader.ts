@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
+import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
 type WalletCardRow = {
   id: string;
@@ -99,6 +100,37 @@ export async function loadWalletCardForRequest(request: Request, cardId: string)
 
   if (!card.slug) {
     throw new WalletRouteError(409, "CARD_NOT_PUBLISHED", "Published card is missing a public URL.");
+  }
+
+  return normalizeWalletCardForPass(card);
+}
+
+export async function loadPublishedWalletCardById(cardId: string) {
+  if (!cardIdPattern.test(cardId)) {
+    throw new WalletRouteError(404, "CARD_NOT_FOUND", "Wallet card not found.");
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("cards")
+    .select(
+      "id, slug, card_name, title, first_name, last_name, full_name, company_name, job_title, profile_image_url, selected_colour, updated_at, status, is_published"
+    )
+    .eq("id", cardId)
+    .maybeSingle();
+
+  if (error || !data) {
+    throw new WalletRouteError(404, "CARD_NOT_FOUND", "Wallet card not found.");
+  }
+
+  const card = data as WalletCardRow;
+
+  if (!(card.status === "published" || card.is_published) || !card.slug) {
+    throw new WalletRouteError(
+      409,
+      "CARD_NOT_PUBLISHED",
+      "Publish this card before adding it to Apple Wallet."
+    );
   }
 
   return normalizeWalletCardForPass(card);

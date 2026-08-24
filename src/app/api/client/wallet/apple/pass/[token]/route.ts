@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   WalletRouteError,
-  loadWalletCardForRequest,
+  loadPublishedWalletCardById,
 } from "@/lib/wallet/card-loader";
 import {
   ApplePassGenerationError,
@@ -10,11 +10,14 @@ import {
   generateAppleWalletPass,
   getAppleWalletConfig,
 } from "@/lib/wallet/apple";
-import { walletPassColoursAreReadable } from "@/lib/wallet/pass-link";
+import {
+  verifyWalletPassToken,
+  walletPassColoursAreReadable,
+} from "@/lib/wallet/pass-link";
 
-type AppleWalletRouteContext = {
+type PublicAppleWalletPassRouteContext = {
   params: Promise<{
-    cardId: string;
+    token: string;
   }>;
 };
 
@@ -22,17 +25,31 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
-export async function GET(request: Request, context: AppleWalletRouteContext) {
-  const { cardId } = await context.params;
+export async function GET(_request: Request, context: PublicAppleWalletPassRouteContext) {
+  const { token } = await context.params;
+  let payload;
+
+  try {
+    payload = verifyWalletPassToken(token);
+  } catch {
+    return NextResponse.json(
+      {
+        code: "WALLET_PASS_LINK_INVALID",
+        message: "This Wallet pass link is invalid or expired.",
+      },
+      { status: 401 }
+    );
+  }
+
   let card;
 
   try {
-    card = await loadWalletCardForRequest(request, cardId);
+    card = await loadPublishedWalletCardById(payload.cardId);
   } catch (error) {
     if (error instanceof WalletRouteError) {
       return NextResponse.json(
         {
-          cardId,
+          cardId: payload.cardId,
           code: error.code,
           message: error.message,
         },
@@ -58,11 +75,18 @@ export async function GET(request: Request, context: AppleWalletRouteContext) {
     );
   }
 
-  const backgroundColor = requestedBackgroundColor(request);
-  const foregroundColor = requestedForegroundColor(request);
-  const labelColor = requestedLabelColor(request);
+  const passData = buildApplePassData(card, appleConfig.config, {
+    backgroundColor: payload.backgroundColor,
+    foregroundColor: payload.foregroundColor,
+    labelColor: payload.labelColor,
+  });
 
-  if (!walletPassColoursAreReadable({ backgroundColor, foregroundColor })) {
+  if (
+    !walletPassColoursAreReadable({
+      backgroundColor: payload.backgroundColor,
+      foregroundColor: payload.foregroundColor,
+    })
+  ) {
     return NextResponse.json(
       {
         code: "WALLET_PASS_COLOUR_CONTRAST_INVALID",
@@ -71,12 +95,6 @@ export async function GET(request: Request, context: AppleWalletRouteContext) {
       { status: 400 }
     );
   }
-
-  const passData = buildApplePassData(card, appleConfig.config, {
-    backgroundColor,
-    foregroundColor,
-    labelColor,
-  });
 
   try {
     const passBuffer = await generateAppleWalletPass(passData, appleConfig.config);
@@ -129,22 +147,4 @@ export async function GET(request: Request, context: AppleWalletRouteContext) {
       { status: 500 }
     );
   }
-}
-
-function requestedBackgroundColor(request: Request) {
-  const value = new URL(request.url).searchParams.get("backgroundColor")?.trim() || "";
-
-  return /^#[0-9a-fA-F]{6}$/.test(value) ? value.toUpperCase() : undefined;
-}
-
-function requestedForegroundColor(request: Request) {
-  const value = new URL(request.url).searchParams.get("foregroundColor")?.trim() || "";
-
-  return /^#[0-9a-fA-F]{6}$/.test(value) ? value.toUpperCase() : undefined;
-}
-
-function requestedLabelColor(request: Request) {
-  const value = new URL(request.url).searchParams.get("labelColor")?.trim() || "";
-
-  return /^#[0-9a-fA-F]{6}$/.test(value) ? value.toUpperCase() : undefined;
 }

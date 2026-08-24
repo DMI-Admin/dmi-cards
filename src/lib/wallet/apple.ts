@@ -7,9 +7,9 @@ import path from "node:path";
 import forge from "node-forge";
 import { PKPass, type Barcode, type OverridablePassProps } from "passkit-generator";
 import sharp from "sharp";
+import { buildPublicCardUrl } from "@/lib/public-url";
 import type { WalletCardForPass } from "@/lib/wallet/card-loader";
 
-const productionAppUrl = "https://app.dmicards.com";
 const dmiBrandColor = "#AC00FF";
 const walletAssetDirectory = path.join(process.cwd(), "public", "apple-wallet");
 const walletLogoSize = 50;
@@ -69,6 +69,8 @@ export type ApplePassData = {
   profileImageUrl: string;
   cardSlug: string;
   backgroundColor: string;
+  foregroundColor: string;
+  labelColor: string;
   updatedAt: string;
 };
 
@@ -132,9 +134,13 @@ export function getAppleWalletConfig(): AppleWalletConfigResult {
 
 export function buildApplePassData(
   card: WalletCardForPass,
-  config: AppleWalletConfig
+  config: AppleWalletConfig,
+  options: { backgroundColor?: string; foregroundColor?: string; labelColor?: string } = {}
 ): ApplePassData {
   const serialNumber = buildApplePassSerialNumber(card.id);
+  const backgroundColor = options.backgroundColor || card.backgroundColor || dmiBrandColor;
+  const foregroundColor =
+    options.foregroundColor || readableTextForColor(safeHexColor(backgroundColor) || dmiBrandColor);
 
   return {
     cardId: card.id,
@@ -148,7 +154,9 @@ export function buildApplePassData(
     publicCardUrl: buildPublicCardUrl(card.slug),
     profileImageUrl: card.profileImageUrl,
     cardSlug: card.slug,
-    backgroundColor: card.backgroundColor || dmiBrandColor,
+    backgroundColor,
+    foregroundColor,
+    labelColor: options.labelColor || labelColorForPass(backgroundColor, foregroundColor),
     updatedAt: card.updatedAt,
   };
 }
@@ -204,14 +212,10 @@ export function buildApplePassSerialNumber(cardId: string) {
   return `dmi-card-${safeCardId}`;
 }
 
-function buildPublicCardUrl(slug: string) {
-  return `${productionAppUrl}/u/${encodeURIComponent(slug)}`;
-}
-
 function buildPassProps(data: ApplePassData): OverridablePassProps {
   const backgroundColor = safeHexColor(data.backgroundColor) || dmiBrandColor;
-  const foregroundColor = readableTextForColor(backgroundColor);
-  const labelColor = foregroundColor === "#FFFFFF" ? "#F5EAFE" : "#2B1640";
+  const foregroundColor = safeHexColor(data.foregroundColor) || readableTextForColor(backgroundColor);
+  const labelColor = safeHexColor(data.labelColor) || labelColorForPass(backgroundColor, foregroundColor);
 
   return {
     formatVersion: 1,
@@ -600,6 +604,16 @@ function readableTextForColor(color: string) {
   const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
 
   return luminance > 0.55 ? "#111827" : "#FFFFFF";
+}
+
+function labelColorForPass(backgroundColor: string, foregroundColor: string) {
+  const safeForegroundColor = safeHexColor(foregroundColor) || readableTextForColor(backgroundColor);
+
+  if (safeForegroundColor === "#FFFFFF") {
+    return "#D1D5DB";
+  }
+
+  return "#4B5563";
 }
 
 function compactWalletText(value: string, maxLength: number) {

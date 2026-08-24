@@ -603,47 +603,58 @@ function QrColourPicker({
   onReset: () => void;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-[#AC00FF]/15">
-            <Palette className="h-5 w-5 text-purple-100" />
-          </span>
-          <div>
-            <p className="font-semibold">Foreground colour</p>
-            <p className="mt-1 font-mono text-sm text-white/60">
-              {selectedColour}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <span
-            className="h-11 w-11 rounded-xl border border-white/15"
-            style={{ backgroundColor: selectedColour }}
-            aria-hidden="true"
-          />
-          <select
-            value={selectedColour}
-            onChange={(event) => onSelectColour(event.target.value)}
-            className="min-h-11 rounded-xl border border-white/10 bg-[#101935] px-4 text-sm font-semibold text-white outline-none transition hover:border-[#AC00FF]/45 focus:border-[#AC00FF] focus:ring-2 focus:ring-[#AC00FF]/30"
-            aria-label="Choose QR-safe foreground colour"
-          >
-            {qrSafeColours.map((colour) => (
-              <option key={colour.value} value={colour.value}>
-                {colour.name} · {colour.value}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={onReset}
-            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-white transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10"
-          >
-            Reset to default
-          </button>
-        </div>
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="flex items-center gap-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-[#AC00FF]/15">
+          <Palette className="h-5 w-5 text-purple-100" />
+        </span>
+        <p className="font-semibold">Foreground colour</p>
       </div>
-      <p className="mt-4 text-sm text-white/45">
+
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div
+          className="flex flex-wrap items-center gap-3"
+          role="radiogroup"
+          aria-label="Choose QR-safe foreground colour"
+        >
+          {qrSafeColours.map((colour) => {
+            const selected = selectedColour.toUpperCase() === colour.value;
+
+            return (
+              <button
+                key={colour.value}
+                type="button"
+                onClick={() => onSelectColour(colour.value)}
+                className={`relative inline-flex h-10 w-10 items-center justify-center rounded-full border transition focus:outline-none focus:ring-2 focus:ring-[#AC00FF]/45 focus:ring-offset-2 focus:ring-offset-[#101935] ${
+                  selected
+                    ? "border-white shadow-lg shadow-purple-500/20 ring-2 ring-[#AC00FF]"
+                    : "border-white/20 hover:border-white/60"
+                }`}
+                style={{ backgroundColor: colour.value }}
+                aria-label={colour.name}
+                aria-checked={selected}
+                role="radio"
+              >
+                {selected && (
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/95 shadow-sm">
+                    <Check className="h-3.5 w-3.5 text-[#AC00FF]" />
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          onClick={onReset}
+          className="inline-flex min-h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-white transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10"
+        >
+          Reset to default
+        </button>
+      </div>
+
+      <p className="mt-3 text-sm text-white/45">
         Choose from QR-safe foreground colours. White background is fixed for
         scan reliability.
       </p>
