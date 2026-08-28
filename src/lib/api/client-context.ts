@@ -124,7 +124,7 @@ export function requireApiClientFeature(
   return access;
 }
 
-function createApiSupabaseClient(accessToken: string) {
+export function createApiSupabaseClient(accessToken: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -146,7 +146,7 @@ function createApiSupabaseClient(accessToken: string) {
   });
 }
 
-function bearerTokenFromRequest(request: Request) {
+export function bearerTokenFromRequest(request: Request) {
   const authorization = request.headers.get("authorization") || "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
 

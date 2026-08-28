@@ -1,312 +1,335 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
-  CheckCircle2,
+  AlertCircle,
+  Archive,
+  BriefcaseBusiness,
+  CalendarDays,
   ContactRound,
   Download,
   Eye,
   FileDown,
+  IdCard,
   Lock,
-  MessageSquarePlus,
   Pencil,
-  Phone,
-  Plug,
   Plus,
   Search,
   Sparkles,
-  StickyNote,
   Trash2,
-  UploadCloud,
+  UserCheck,
   UsersRound,
   X,
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
 import UpgradeToProButton from "@/components/UpgradeToProButton";
+import { supabase } from "@/lib/supabase";
 import { useClientPlan } from "@/lib/use-client-plan";
 
-type ContactSource = "QR" | "Wallet" | "Tap to Share" | "Public Page" | "Manual";
-type ContactStatus = "New" | "Contacted" | "Qualified" | "Archived";
-type CrmSyncStatus = "synced_hubspot" | "synced_salesforce" | "pending" | "failed" | "not_connected";
-type PhoneContactStatus = "saved" | "not_saved" | "pending" | "failed";
+type ContactSource =
+  | "digital_card"
+  | "business_card_scan"
+  | "manual"
+  | "import"
+  | "integration";
+type ContactStatus = "new" | "contacted" | "qualified" | "archived";
+type ContactFilter = "all" | "card_1" | "card_2" | "card_3" | "business_card_scan" | "manual";
 
-type CapturedContact = {
+type PersistedContact = {
   id: string;
-  name: string;
-  company: string;
-  jobTitle: string;
-  email: string;
-  phone: string;
-  website: string;
+  card_id: string | null;
+  card_slot: number | null;
   source: ContactSource;
-  capturedDate: string;
-  crmSync: CrmSyncStatus;
-  phoneContact: PhoneContactStatus;
+  name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+  company: string | null;
+  job_title: string | null;
+  website: string | null;
+  address: string | null;
+  message: string | null;
+  notes: string | null;
   tags: string[];
   status: ContactStatus;
-  notes: string;
+  consent_given: boolean | null;
+  consent_notice: string | null;
+  terms_url: string | null;
+  submitted_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type ContactFormState = {
   name: string;
+  first_name: string;
+  last_name: string;
   company: string;
-  jobTitle: string;
+  job_title: string;
   email: string;
   phone: string;
+  mobile: string;
   website: string;
+  address: string;
+  status: ContactStatus;
   notes: string;
   tags: string;
 };
 
-const initialContacts: CapturedContact[] = [
-  {
-    id: "contact-1",
-    name: "Aisha Patel",
-    company: "Northline Studio",
-    jobTitle: "Creative Lead",
-    email: "aisha@northline.example",
-    phone: "+44 7700 900201",
-    website: "northline.example",
-    source: "QR",
-    capturedDate: "13 May 2026",
-    crmSync: "synced_hubspot",
-    phoneContact: "saved",
-    tags: ["Design", "Warm lead"],
-    status: "New",
-    notes: "Scanned the QR code after a design showcase.",
-  },
-  {
-    id: "contact-2",
-    name: "Daniel Brooks",
-    company: "Vertex Group",
-    jobTitle: "Sales Director",
-    email: "daniel@vertex.example",
-    phone: "+44 7700 900342",
-    website: "vertex.example",
-    source: "Tap to Share",
-    capturedDate: "12 May 2026",
-    crmSync: "pending",
-    phoneContact: "pending",
-    tags: ["Enterprise", "NFC"],
-    status: "Qualified",
-    notes: "Interested in enterprise onboarding for a sales team.",
-  },
-  {
-    id: "contact-3",
-    name: "Mia Chen",
-    company: "Aster Labs",
-    jobTitle: "Operations Manager",
-    email: "mia@aster.example",
-    phone: "+44 7700 900544",
-    website: "aster.example",
-    source: "Wallet",
-    capturedDate: "10 May 2026",
-    crmSync: "failed",
-    phoneContact: "failed",
-    tags: ["Wallet", "Follow-up"],
-    status: "Contacted",
-    notes: "Saved the wallet pass and requested pricing.",
-  },
-  {
-    id: "contact-4",
-    name: "Owen Clarke",
-    company: "Bright Ledger",
-    jobTitle: "Finance Partner",
-    email: "owen@brightledger.example",
-    phone: "+44 7700 900771",
-    website: "brightledger.example",
-    source: "Public Page",
-    capturedDate: "9 May 2026",
-    crmSync: "synced_salesforce",
-    phoneContact: "not_saved",
-    tags: ["Finance"],
-    status: "New",
-    notes: "Submitted details from the public card page.",
-  },
-  {
-    id: "contact-5",
-    name: "Nora Wilson",
-    company: "Nova Retail",
-    jobTitle: "Founder",
-    email: "nora@novaretail.example",
-    phone: "+44 7700 900882",
-    website: "novaretail.example",
-    source: "Manual",
-    capturedDate: "8 May 2026",
-    crmSync: "not_connected",
-    phoneContact: "not_saved",
-    tags: ["Retail", "Manual"],
-    status: "Archived",
-    notes: "Added after an in-person conversation.",
-  },
-];
-
 const emptyForm: ContactFormState = {
   name: "",
+  first_name: "",
+  last_name: "",
   company: "",
-  jobTitle: "",
+  job_title: "",
   email: "",
   phone: "",
+  mobile: "",
   website: "",
+  address: "",
+  status: "new",
   notes: "",
   tags: "",
 };
 
-const crmConnected = true;
+const contactFilters: { value: ContactFilter; label: string }[] = [
+  { value: "all", label: "All Contacts" },
+  { value: "card_1", label: "Card 1" },
+  { value: "card_2", label: "Card 2" },
+  { value: "card_3", label: "Card 3" },
+  { value: "business_card_scan", label: "Business Card Scan" },
+  { value: "manual", label: "Manual" },
+];
+
+const statusOptions: { value: ContactStatus | "all"; label: string }[] = [
+  { value: "all", label: "All Statuses" },
+  { value: "new", label: "New" },
+  { value: "contacted", label: "Contacted" },
+  { value: "qualified", label: "Qualified" },
+  { value: "archived", label: "Archived" },
+];
 
 export default function ClientContactsPage() {
-  const { isPaid } = useClientPlan();
-  const [contacts, setContacts] = useState<CapturedContact[]>(initialContacts);
+  const { isPaid, loading: planLoading } = useClientPlan();
+  const [contacts, setContacts] = useState<PersistedContact[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
-  const [sourceFilter, setSourceFilter] = useState("all");
-  const [crmFilter, setCrmFilter] = useState("all");
-  const [selectedContact, setSelectedContact] = useState<CapturedContact | null>(null);
-  const [editingContact, setEditingContact] = useState<CapturedContact | null>(null);
+  const [contactFilter, setContactFilter] = useState<ContactFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<ContactStatus | "all">("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [selectedContact, setSelectedContact] = useState<PersistedContact | null>(null);
+  const [editingContact, setEditingContact] = useState<PersistedContact | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [formState, setFormState] = useState<ContactFormState>(emptyForm);
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [actionError, setActionError] = useState("");
 
-  const filteredContacts = useMemo(() => {
-    const searchValue = search.trim().toLowerCase();
+  const queryString = useMemo(
+    () =>
+      buildContactsQuery({
+        search,
+        contactFilter,
+        statusFilter,
+        dateFrom,
+        dateTo,
+      }),
+    [search, contactFilter, statusFilter, dateFrom, dateTo]
+  );
 
-    return contacts.filter((contact) => {
-      const matchesSearch =
-        contact.name.toLowerCase().includes(searchValue) ||
-        contact.company.toLowerCase().includes(searchValue) ||
-        contact.email.toLowerCase().includes(searchValue) ||
-        contact.phone.toLowerCase().includes(searchValue);
-      const matchesSource =
-        sourceFilter === "all" || contact.source === sourceFilter;
-      const matchesCrm = crmFilter === "all" || crmStatusGroup(contact.crmSync) === crmFilter;
-      return matchesSearch && matchesSource && matchesCrm;
-    });
-  }, [contacts, search, sourceFilter, crmFilter]);
+  const loadContacts = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+
+    try {
+      const accessToken = await requireAccessToken();
+      const response = await fetch(`/api/client/contacts${queryString}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error(await apiErrorMessage(response, "Could not load contacts."));
+      }
+
+      const payload = (await response.json()) as {
+        data?: { contacts?: PersistedContact[] };
+      };
+
+      setContacts(payload.data?.contacts || []);
+    } catch (error) {
+      console.error("[DMI contacts] load failed", error);
+      setLoadError(error instanceof Error ? error.message : "Could not load contacts.");
+      setContacts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [queryString]);
+
+  useEffect(() => {
+    async function syncContacts() {
+      if (planLoading) return;
+
+      if (!isPaid) {
+        setContacts([]);
+        setLoading(false);
+        return;
+      }
+
+      await loadContacts();
+    }
+
+    void syncContacts();
+  }, [isPaid, loadContacts, planLoading]);
 
   const stats = {
     total: contacts.length,
-    newThisMonth: contacts.filter((contact) => contact.status === "New").length,
-    synced: contacts.filter((contact) => contact.crmSync.startsWith("synced")).length,
-    unsynced: contacts.filter((contact) => !contact.crmSync.startsWith("synced")).length,
-    phoneSaved: contacts.filter((contact) => contact.phoneContact === "saved").length,
-    conversionRate: "18.4%",
+    new: contacts.filter((contact) => contact.status === "new").length,
+    contacted: contacts.filter((contact) => contact.status === "contacted").length,
+    qualified: contacts.filter((contact) => contact.status === "qualified").length,
+    archived: contacts.filter((contact) => contact.status === "archived").length,
+    manual: contacts.filter((contact) => contact.source === "manual").length,
   };
 
   function openAddModal() {
     setFormState(emptyForm);
     setEditingContact(null);
+    setActionError("");
     setAddModalOpen(true);
   }
 
-  function openEditModal(contact: CapturedContact) {
+  function openEditModal(contact: PersistedContact) {
     setFormState({
-      name: contact.name,
-      company: contact.company,
-      jobTitle: contact.jobTitle,
-      email: contact.email,
-      phone: contact.phone,
-      website: contact.website,
-      notes: contact.notes,
+      name: contact.name || "",
+      first_name: contact.first_name || "",
+      last_name: contact.last_name || "",
+      company: contact.company || "",
+      job_title: contact.job_title || "",
+      email: contact.email || "",
+      phone: contact.phone || "",
+      mobile: contact.mobile || "",
+      website: contact.website || "",
+      address: contact.address || "",
+      status: contact.status,
+      notes: contact.notes || "",
       tags: contact.tags.join(", "),
     });
     setEditingContact(contact);
+    setActionError("");
     setAddModalOpen(true);
   }
 
-  function saveManualContact() {
-    if (!formState.name.trim()) {
-      setMessage("Full name is required.");
+  async function saveManualContact() {
+    if (saving) return;
+
+    if (!hasAnyIdentityField(formState)) {
+      setActionError("Add a name, email, phone, mobile, or company before saving.");
       return;
     }
 
-    const nextContact: CapturedContact = {
-      id: editingContact?.id || `contact-${Date.now()}`,
-      name: formState.name.trim(),
-      company: formState.company.trim(),
-      jobTitle: formState.jobTitle.trim(),
-      email: formState.email.trim(),
-      phone: formState.phone.trim(),
-      website: formState.website.trim(),
-      source: "Manual",
-      capturedDate: editingContact?.capturedDate || "13 May 2026",
-      crmSync: editingContact?.crmSync || (crmConnected ? "pending" : "not_connected"),
-      phoneContact: editingContact?.phoneContact || "not_saved",
-      tags: formState.tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean),
-      status: editingContact?.status || "New",
-      notes: formState.notes.trim(),
-    };
+    setSaving(true);
+    setActionError("");
+    setMessage("");
 
-    setContacts((current) => {
-      if (editingContact) {
-        return current.map((contact) =>
-          contact.id === editingContact.id ? nextContact : contact
-        );
+    try {
+      const accessToken = await requireAccessToken();
+      const body = contactPayloadFromForm(formState);
+      const url = editingContact
+        ? `/api/client/contacts/${encodeURIComponent(editingContact.id)}`
+        : "/api/client/contacts";
+      const response = await fetch(url, {
+        method: editingContact ? "PATCH" : "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error(await apiErrorMessage(response, "Could not save contact."));
       }
 
-      return [nextContact, ...current];
-    });
-    setAddModalOpen(false);
-    setMessage("Contact added. CRM sync will run automatically when connected.");
+      setAddModalOpen(false);
+      setMessage(editingContact ? "Contact updated." : "Contact added.");
+      await loadContacts();
+    } catch (error) {
+      console.error("[DMI contacts] save failed", error);
+      setActionError(error instanceof Error ? error.message : "Could not save contact.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function downloadCsv() {
-    const rows = filteredContacts.map((contact) => ({
-      name: contact.name,
-      company: contact.company,
-      job_title: contact.jobTitle,
-      email: contact.email,
-      phone: contact.phone,
-      source: contact.source,
-      captured_date: contact.capturedDate,
-      crm_sync_status: crmStatusLabel(contact.crmSync),
-      phone_contact_status: phoneStatusLabel(contact.phoneContact),
-      status: contact.status,
-      notes: contact.notes,
-      tags: contact.tags.join("; "),
-    }));
-    const headers = Object.keys(rows[0] || {
-      name: "",
-      company: "",
-      job_title: "",
-      email: "",
-      phone: "",
-      source: "",
-      captured_date: "",
-      crm_sync_status: "",
-      phone_contact_status: "",
-      status: "",
-      notes: "",
-      tags: "",
-    });
-    const csv = [
-      headers.join(","),
-      ...rows.map((row) =>
-        headers
-          .map((header) => csvEscape(String(row[header as keyof typeof row] || "")))
-          .join(",")
-      ),
-    ].join("\n");
+  async function downloadCsv() {
+    setActionError("");
+    setMessage("");
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "dmi-card-contacts.csv";
-    link.click();
-    URL.revokeObjectURL(url);
-    setMessage("CSV downloaded.");
+    try {
+      const accessToken = await requireAccessToken();
+      const response = await fetch(`/api/client/contacts/export.csv${queryString}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error(await apiErrorMessage(response, "Could not export contacts."));
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "dmi-card-contacts.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+      setMessage("CSV downloaded.");
+    } catch (error) {
+      console.error("[DMI contacts] export failed", error);
+      setActionError(error instanceof Error ? error.message : "Could not export contacts.");
+    }
   }
 
-  function syncToCrm() {
-    setMessage("CRM sync will be available after integrations are connected.");
-  }
+  async function deleteContact(contact: PersistedContact) {
+    if (!window.confirm(`Delete ${displayContactName(contact)}?`)) return;
 
-  function deleteContact(contact: CapturedContact) {
-    setContacts((current) => current.filter((item) => item.id !== contact.id));
-    setMessage("Contact deleted from mock list.");
+    setActionError("");
+    setMessage("");
+
+    try {
+      const accessToken = await requireAccessToken();
+      const response = await fetch(
+        `/api/client/contacts/${encodeURIComponent(contact.id)}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          cache: "no-store",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(await apiErrorMessage(response, "Could not delete contact."));
+      }
+
+      setSelectedContact((current) => (current?.id === contact.id ? null : current));
+      setContacts((current) => current.filter((item) => item.id !== contact.id));
+      setMessage("Contact deleted.");
+    } catch (error) {
+      console.error("[DMI contacts] delete failed", error);
+      setActionError(error instanceof Error ? error.message : "Could not delete contact.");
+    }
   }
 
   return (
@@ -319,14 +342,9 @@ export default function ClientContactsPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#AC00FF]">
               Client Portal
             </p>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <h1 className="text-4xl font-bold">Contacts</h1>
-              <span className="rounded-full border border-yellow-300/25 bg-yellow-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-yellow-100">
-                Dev mode: Pro preview
-              </span>
-            </div>
+            <h1 className="mt-3 text-4xl font-bold">Contacts</h1>
             <p className="mt-3 max-w-3xl text-white/50">
-              Manage leads captured from your digital business card.
+              Manage every contact saved to your DMI Cards address book.
             </p>
           </div>
 
@@ -342,9 +360,6 @@ export default function ClientContactsPage() {
             <ActionButton icon={Download} onClick={downloadCsv}>
               Download CSV
             </ActionButton>
-            <ActionButton icon={Plug} onClick={syncToCrm}>
-              Sync CRM
-            </ActionButton>
           </div>
         </div>
 
@@ -354,33 +369,39 @@ export default function ClientContactsPage() {
           </div>
         )}
 
+        {actionError && (
+          <div className="mb-6 rounded-2xl border border-red-300/25 bg-red-500/10 px-5 py-4 text-sm text-red-100">
+            {actionError}
+          </div>
+        )}
+
         <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <SummaryCard label="Total Contacts" value={String(stats.total)} icon={UsersRound} />
-          <SummaryCard label="New This Month" value={String(stats.newThisMonth)} icon={ContactRound} />
-          <SummaryCard label="Synced to CRM" value={String(stats.synced)} icon={CheckCircle2} />
-          <SummaryCard label="Unsynced" value={String(stats.unsynced)} icon={UploadCloud} />
-          <SummaryCard label="Phone Contacts Saved" value={String(stats.phoneSaved)} icon={Phone} />
-          <SummaryCard label="Conversion Rate" value={stats.conversionRate} icon={FileDown} />
+          <SummaryCard label="New" value={String(stats.new)} icon={ContactRound} />
+          <SummaryCard label="Contacted" value={String(stats.contacted)} icon={UserCheck} />
+          <SummaryCard label="Qualified" value={String(stats.qualified)} icon={BriefcaseBusiness} />
+          <SummaryCard label="Archived" value={String(stats.archived)} icon={Archive} />
+          <SummaryCard label="Manual Entries" value={String(stats.manual)} icon={FileDown} />
         </div>
 
         <section className="relative rounded-3xl border border-white/10 bg-[#101935]/70 shadow-2xl shadow-black/20">
-          {!isPaid && <LockedOverlay />}
+          {!isPaid && !planLoading && <LockedOverlay />}
 
-          <div className={!isPaid ? "pointer-events-none blur-[2px]" : ""}>
+          <div className={!isPaid && !planLoading ? "pointer-events-none blur-[2px]" : ""}>
             <div className="border-b border-white/10 p-6">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                 <div>
                   <h2 className="text-2xl font-semibold">Lead Inbox</h2>
                   <p className="mt-2 text-sm text-white/45">
-                    Search, filter, and action every contact captured from your card.
+                    Search, filter, and action contacts from every source.
                   </p>
                 </div>
                 <div className="rounded-full border border-[#AC00FF]/25 bg-[#AC00FF]/10 px-3 py-1 text-xs font-semibold text-purple-100">
-                  {filteredContacts.length} visible
+                  {contacts.length} visible
                 </div>
               </div>
 
-              <div className="mt-6 grid gap-3 xl:grid-cols-[minmax(320px,1fr)_190px_190px_170px]">
+              <div className="mt-6 grid gap-3 xl:grid-cols-[minmax(280px,1fr)_190px_170px_150px_150px]">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
                   <input
@@ -391,73 +412,82 @@ export default function ClientContactsPage() {
                   />
                 </div>
                 <FilterSelect
-                  value={sourceFilter}
-                  onChange={setSourceFilter}
-                  label="All Sources"
-                  options={["QR", "Wallet", "Tap to Share", "Public Page", "Manual"]}
+                  value={contactFilter}
+                  onChange={(value) => setContactFilter(value as ContactFilter)}
+                  options={contactFilters}
                 />
                 <FilterSelect
-                  value={crmFilter}
-                  onChange={setCrmFilter}
-                  label="All CRM"
-                  options={["Synced", "Not Synced", "Failed"]}
+                  value={statusFilter}
+                  onChange={(value) => setStatusFilter(value as ContactStatus | "all")}
+                  options={statusOptions}
                 />
-                <button
-                  type="button"
-                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/55"
-                >
-                  Date range
-                </button>
+                <DateInput label="From" value={dateFrom} onChange={setDateFrom} />
+                <DateInput label="To" value={dateTo} onChange={setDateTo} />
               </div>
             </div>
 
             <div className="max-h-[620px] max-w-full overflow-auto">
-              <table className="w-full min-w-[960px] text-sm">
+              <table className="w-full min-w-[1080px] text-sm">
                 <thead className="sticky top-0 z-10 bg-[#070B1A] text-left text-white/45">
                   <tr className="border-b border-white/10">
                     <th className="p-4">Name</th>
                     <th className="p-4">Company</th>
                     <th className="p-4">Email</th>
                     <th className="p-4">Phone</th>
-                    <th className="p-4">CRM Sync</th>
+                    <th className="p-4">Source</th>
+                    <th className="p-4">Status</th>
+                    <th className="p-4">Date</th>
                     <th className="p-4">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredContacts.map((contact) => (
-                    <tr key={contact.id} className="border-b border-white/5">
-                      <td className="p-4">
-                        <p className="font-semibold">{contact.name}</p>
-                        <p className="mt-1 text-xs text-white/40">{contact.jobTitle}</p>
-                      </td>
-                      <td className="p-4 text-white/65">{contact.company}</td>
-                      <td className="p-4 text-white/65">{contact.email}</td>
-                      <td className="p-4 text-white/65">{contact.phone}</td>
-                      <td className="p-4">
-                        <CrmBadge status={contact.crmSync} />
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <IconAction label="View" icon={Eye} onClick={() => setSelectedContact(contact)} />
-                          <IconAction label="Edit" icon={Pencil} onClick={() => openEditModal(contact)} />
-                          <IconAction label="Add Note" icon={StickyNote} onClick={() => setMessage("Note editor placeholder.")} />
-                          <IconAction label="Delete" icon={Trash2} onClick={() => deleteContact(contact)} danger />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {loading || planLoading ? (
+                    <TableMessage colSpan={8} message="Loading contacts..." />
+                  ) : loadError ? (
+                    <TableMessage colSpan={8} message={loadError} tone="error" />
+                  ) : contacts.length ? (
+                    contacts.map((contact) => (
+                      <tr key={contact.id} className="border-b border-white/5">
+                        <td className="p-4">
+                          <p className="font-semibold">{displayContactName(contact)}</p>
+                          <p className="mt-1 text-xs text-white/40">{contact.job_title || "No job title"}</p>
+                        </td>
+                        <td className="p-4 text-white/65">{contact.company || "-"}</td>
+                        <td className="p-4 text-white/65">{contact.email || "-"}</td>
+                        <td className="p-4 text-white/65">{contact.phone || contact.mobile || "-"}</td>
+                        <td className="p-4">
+                          <SourceBadge contact={contact} />
+                        </td>
+                        <td className="p-4">
+                          <StatusBadge status={contact.status} />
+                        </td>
+                        <td className="p-4 text-white/55">{formatDate(contact.created_at)}</td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2">
+                            <IconAction label="View" icon={Eye} onClick={() => setSelectedContact(contact)} />
+                            <IconAction label="Edit" icon={Pencil} onClick={() => openEditModal(contact)} />
+                            <IconAction label="Delete" icon={Trash2} onClick={() => deleteContact(contact)} danger />
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <TableMessage colSpan={8} message="No contacts found." />
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         </section>
 
-        <LeadCapturePanel />
+        <ContactFoundationPanel />
 
         {addModalOpen && (
           <ContactFormModal
             formState={formState}
             editing={Boolean(editingContact)}
+            error={actionError}
+            saving={saving}
             onChange={setFormState}
             onClose={() => setAddModalOpen(false)}
             onSave={saveManualContact}
@@ -468,6 +498,8 @@ export default function ClientContactsPage() {
           <ContactDrawer
             contact={selectedContact}
             onClose={() => setSelectedContact(null)}
+            onEdit={() => openEditModal(selectedContact)}
+            onDelete={() => deleteContact(selectedContact)}
           />
         )}
       </section>
@@ -484,8 +516,8 @@ function LockedOverlay() {
         </div>
         <h2 className="mt-5 text-2xl font-semibold sm:text-3xl">Unlock Contacts</h2>
         <p className="mt-3 text-sm leading-6 text-white/60">
-          Contacts is a paid lead management inbox. Upgrade to capture,
-          filter, export, sync, and follow up with leads from your digital card.
+          Contacts is a paid address book for captured leads, manual contacts,
+          exports, and future business-card scans.
         </p>
         <UpgradeToProButton
           className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 sm:w-auto"
@@ -523,13 +555,11 @@ function SummaryCard({
 function FilterSelect({
   value,
   onChange,
-  label,
   options,
 }: {
   value: string;
   onChange: (value: string) => void;
-  label: string;
-  options: string[];
+  options: { value: string; label: string }[];
 }) {
   return (
     <select
@@ -537,29 +567,61 @@ function FilterSelect({
       onChange={(event) => onChange(event.target.value)}
       className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-[#AC00FF]/60"
     >
-      <option value="all">{label}</option>
       {options.map((option) => (
-        <option key={option} value={option}>
-          {option}
+        <option key={option.value} value={option.value}>
+          {option.label}
         </option>
       ))}
     </select>
   );
 }
 
-function CrmBadge({ status }: { status: CrmSyncStatus }) {
-  const dot: Record<CrmSyncStatus, string> = {
-    synced_hubspot: "bg-green-300",
-    synced_salesforce: "bg-green-300",
-    pending: "bg-yellow-300",
-    failed: "bg-red-300",
-    not_connected: "bg-white/35",
+function DateInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="relative block">
+      <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+      <input
+        type="date"
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-full w-full rounded-2xl border border-white/10 bg-white/5 py-3 pl-10 pr-3 text-sm text-white outline-none transition focus:border-[#AC00FF]/60"
+      />
+    </label>
+  );
+}
+
+function SourceBadge({ contact }: { contact: PersistedContact }) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/65">
+      <span className="h-2 w-2 rounded-full bg-purple-200" />
+      {contact.source === "digital_card" && contact.card_slot
+        ? `Card ${contact.card_slot}`
+        : sourceLabel(contact.source)}
+    </span>
+  );
+}
+
+function StatusBadge({ status }: { status: ContactStatus }) {
+  const dot: Record<ContactStatus, string> = {
+    new: "bg-blue-300",
+    contacted: "bg-yellow-300",
+    qualified: "bg-green-300",
+    archived: "bg-white/35",
   };
 
   return (
     <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/65">
       <span className={`h-2 w-2 rounded-full ${dot[status]}`} />
-      {crmStatusShortLabel(status)}
+      {statusLabel(status)}
     </span>
   );
 }
@@ -617,18 +679,19 @@ function IconAction({
   );
 }
 
-function LeadCapturePanel() {
+function ContactFoundationPanel() {
   return (
     <section className="mt-6 rounded-3xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 p-6 shadow-lg shadow-purple-950/15">
       <div className="flex items-start gap-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#AC00FF]/20">
-          <MessageSquarePlus className="h-6 w-6 text-purple-100" />
+          <IdCard className="h-6 w-6 text-purple-100" />
         </div>
         <div>
-          <h2 className="text-xl font-semibold">Lead capture flow</h2>
+          <h2 className="text-xl font-semibold">Unified contacts database</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-white/60">
-            When someone views your card, you can ask them to share their
-            details before or after viewing your card.
+            Contacts are owned by your account. Digital cards, manual entry,
+            imports, and future business-card scans are sources, not separate
+            contact books.
           </p>
         </div>
       </div>
@@ -639,12 +702,16 @@ function LeadCapturePanel() {
 function ContactFormModal({
   formState,
   editing,
+  error,
+  saving,
   onChange,
   onClose,
   onSave,
 }: {
   formState: ContactFormState;
   editing: boolean;
+  error: string;
+  saving: boolean;
   onChange: (form: ContactFormState) => void;
   onClose: () => void;
   onSave: () => void;
@@ -680,13 +747,39 @@ function ContactFormModal({
           </button>
         </div>
 
+        {error && (
+          <div className="mt-5 rounded-2xl border border-red-300/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+            {error}
+          </div>
+        )}
+
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           <TextField label="Full name" value={formState.name} onChange={(value) => update("name", value)} />
           <TextField label="Company" value={formState.company} onChange={(value) => update("company", value)} />
-          <TextField label="Job title" value={formState.jobTitle} onChange={(value) => update("jobTitle", value)} />
+          <TextField label="First name" value={formState.first_name} onChange={(value) => update("first_name", value)} />
+          <TextField label="Last name" value={formState.last_name} onChange={(value) => update("last_name", value)} />
+          <TextField label="Job title" value={formState.job_title} onChange={(value) => update("job_title", value)} />
           <TextField label="Email" value={formState.email} onChange={(value) => update("email", value)} />
           <TextField label="Phone" value={formState.phone} onChange={(value) => update("phone", value)} />
+          <TextField label="Mobile" value={formState.mobile} onChange={(value) => update("mobile", value)} />
           <TextField label="Website" value={formState.website} onChange={(value) => update("website", value)} />
+          <TextField label="Address" value={formState.address} onChange={(value) => update("address", value)} />
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-white/55">Status</span>
+            <select
+              value={formState.status}
+              onChange={(event) => update("status", event.target.value)}
+              className="w-full rounded-2xl border border-white/10 bg-[#070B1A]/70 px-4 py-3 text-sm text-white outline-none transition focus:border-[#AC00FF]/60"
+            >
+              {statusOptions
+                .filter((option) => option.value !== "all")
+                .map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+            </select>
+          </label>
           <TextField label="Source" value="Manual" onChange={() => undefined} disabled />
           <TextField label="Tags" value={formState.tags} onChange={(value) => update("tags", value)} />
         </div>
@@ -700,10 +793,11 @@ function ContactFormModal({
           <button
             type="button"
             onClick={onSave}
-            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20"
+            disabled={saving}
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Plus className="h-4 w-4" />
-            Save Contact
+            {saving ? "Saving..." : "Save Contact"}
           </button>
         </div>
       </div>
@@ -714,9 +808,13 @@ function ContactFormModal({
 function ContactDrawer({
   contact,
   onClose,
+  onEdit,
+  onDelete,
 }: {
-  contact: CapturedContact;
+  contact: PersistedContact;
   onClose: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
   return (
     <div className="fixed inset-0 z-50">
@@ -733,8 +831,8 @@ function ContactDrawer({
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#AC00FF]">
                 Contact Details
               </p>
-              <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">{contact.name}</h2>
-              <p className="mt-1 text-white/50">{contact.company}</p>
+              <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">{displayContactName(contact)}</h2>
+              <p className="mt-1 text-white/50">{contact.company || sourceLabel(contact.source)}</p>
             </div>
             <button
               type="button"
@@ -745,41 +843,50 @@ function ContactDrawer({
             </button>
           </div>
 
+          <div className="mt-6 flex flex-wrap gap-2">
+            <ActionButton icon={Pencil} onClick={onEdit}>Edit</ActionButton>
+            <button
+              type="button"
+              onClick={onDelete}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100 transition hover:bg-red-500/15"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </button>
+          </div>
+
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <DetailItem label="Name" value={contact.name} />
-            <DetailItem label="Company" value={contact.company} />
-            <DetailItem label="Job title" value={contact.jobTitle} />
-            <DetailItem label="Email" value={contact.email} />
-            <DetailItem label="Phone" value={contact.phone} />
-            <DetailItem label="Website" value={contact.website} />
-            <DetailItem label="Source" value={contact.source} />
-            <DetailItem label="Captured date" value={contact.capturedDate} />
-            <DetailItem label="CRM sync" value={crmStatusLabel(contact.crmSync)} />
-            <DetailItem label="Phone contact" value={phoneStatusLabel(contact.phoneContact)} />
+            <DetailItem label="Name" value={displayContactName(contact)} />
+            <DetailItem label="Company" value={contact.company || "-"} />
+            <DetailItem label="Job title" value={contact.job_title || "-"} />
+            <DetailItem label="Email" value={contact.email || "-"} />
+            <DetailItem label="Phone" value={contact.phone || "-"} />
+            <DetailItem label="Mobile" value={contact.mobile || "-"} />
+            <DetailItem label="Website" value={contact.website || "-"} />
+            <DetailItem label="Address" value={contact.address || "-"} />
+            <DetailItem label="Source" value={sourceDetail(contact)} />
+            <DetailItem label="Status" value={statusLabel(contact.status)} />
+            <DetailItem label="Created" value={formatDate(contact.created_at)} />
+            <DetailItem label="Updated" value={formatDate(contact.updated_at)} />
           </div>
 
           <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
             <p className="text-sm font-semibold text-white/55">Notes</p>
-            <p className="mt-2 text-sm leading-6 text-white/75">{contact.notes}</p>
+            <p className="mt-2 text-sm leading-6 text-white/75">{contact.notes || "No notes yet."}</p>
           </div>
 
           <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
             <p className="text-sm font-semibold text-white/55">Tags</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {contact.tags.map((tag) => (
-                <span key={tag} className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/60">
-                  {tag}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
-            <p className="text-sm font-semibold text-white/55">Timeline</p>
-            <div className="mt-4 space-y-3 text-sm text-white/55">
-              <p>Contact captured from {contact.source}.</p>
-              <p>CRM sync placeholder.</p>
-              <p>Follow-up workflow placeholder.</p>
+              {contact.tags.length ? (
+                contact.tags.map((tag) => (
+                  <span key={tag} className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/60">
+                    {tag}
+                  </span>
+                ))
+              ) : (
+                <p className="text-sm text-white/45">No tags.</p>
+              )}
             </div>
           </div>
         </div>
@@ -845,47 +952,174 @@ function DetailItem({ label, value }: { label: string; value: string }) {
   );
 }
 
-function crmStatusGroup(status: CrmSyncStatus) {
-  if (status.startsWith("synced")) return "Synced";
-  if (status === "failed") return "Failed";
-  return "Not Synced";
+function TableMessage({
+  colSpan,
+  message,
+  tone = "default",
+}: {
+  colSpan: number;
+  message: string;
+  tone?: "default" | "error";
+}) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="p-8 text-center">
+        <span
+          className={`inline-flex items-center gap-2 text-sm ${
+            tone === "error" ? "text-red-100" : "text-white/50"
+          }`}
+        >
+          {tone === "error" && <AlertCircle className="h-4 w-4" />}
+          {message}
+        </span>
+      </td>
+    </tr>
+  );
 }
 
-function crmStatusLabel(status: CrmSyncStatus) {
-  const labels: Record<CrmSyncStatus, string> = {
-    synced_hubspot: "Synced to HubSpot",
-    synced_salesforce: "Synced to Salesforce",
-    pending: "Pending sync",
-    failed: "Sync failed",
-    not_connected: "No CRM connected",
+async function requireAccessToken() {
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession();
+
+  if (error || !session?.access_token) {
+    throw new Error("Please sign in again before managing contacts.");
+  }
+
+  return session.access_token;
+}
+
+async function apiErrorMessage(response: Response, fallback: string) {
+  try {
+    const payload = (await response.json()) as {
+      error?: { message?: string };
+    };
+
+    return payload.error?.message || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function buildContactsQuery({
+  search,
+  contactFilter,
+  statusFilter,
+  dateFrom,
+  dateTo,
+}: {
+  search: string;
+  contactFilter: ContactFilter;
+  statusFilter: ContactStatus | "all";
+  dateFrom: string;
+  dateTo: string;
+}) {
+  const params = new URLSearchParams();
+  const trimmedSearch = search.trim();
+
+  if (trimmedSearch) params.set("search", trimmedSearch);
+  if (statusFilter !== "all") params.set("status", statusFilter);
+  if (dateFrom) params.set("dateFrom", dateFrom);
+  if (dateTo) params.set("dateTo", dateTo);
+
+  if (contactFilter.startsWith("card_")) {
+    params.set("source", "digital_card");
+    params.set("cardSlot", contactFilter.replace("card_", ""));
+  } else if (contactFilter !== "all") {
+    params.set("source", contactFilter);
+  }
+
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+function contactPayloadFromForm(form: ContactFormState) {
+  return {
+    source: "manual",
+    name: form.name,
+    first_name: form.first_name,
+    last_name: form.last_name,
+    company: form.company,
+    job_title: form.job_title,
+    email: form.email,
+    phone: form.phone,
+    mobile: form.mobile,
+    website: form.website,
+    address: form.address,
+    status: form.status,
+    notes: form.notes,
+    tags: form.tags
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean),
+    metadata: {},
+  };
+}
+
+function hasAnyIdentityField(form: ContactFormState) {
+  return Boolean(
+    form.name.trim() ||
+      form.first_name.trim() ||
+      form.last_name.trim() ||
+      form.email.trim() ||
+      form.phone.trim() ||
+      form.mobile.trim() ||
+      form.company.trim()
+  );
+}
+
+function displayContactName(contact: PersistedContact) {
+  return (
+    contact.name ||
+    [contact.first_name, contact.last_name].filter(Boolean).join(" ") ||
+    contact.email ||
+    contact.phone ||
+    contact.mobile ||
+    contact.company ||
+    "Unnamed contact"
+  );
+}
+
+function sourceLabel(source: ContactSource) {
+  const labels: Record<ContactSource, string> = {
+    digital_card: "Digital Card",
+    business_card_scan: "Business Card Scan",
+    manual: "Manual",
+    import: "Import",
+    integration: "Integration",
+  };
+
+  return labels[source];
+}
+
+function sourceDetail(contact: PersistedContact) {
+  if (contact.source === "digital_card" && contact.card_slot) {
+    return `Digital Card Slot ${contact.card_slot}`;
+  }
+
+  return sourceLabel(contact.source);
+}
+
+function statusLabel(status: ContactStatus) {
+  const labels: Record<ContactStatus, string> = {
+    new: "New",
+    contacted: "Contacted",
+    qualified: "Qualified",
+    archived: "Archived",
   };
 
   return labels[status];
 }
 
-function crmStatusShortLabel(status: CrmSyncStatus) {
-  const labels: Record<CrmSyncStatus, string> = {
-    synced_hubspot: "Synced to HubSpot",
-    synced_salesforce: "Synced to Salesforce",
-    pending: "Pending",
-    failed: "Failed",
-    not_connected: "No CRM",
-  };
+function formatDate(value: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
 
-  return labels[status];
-}
-
-function phoneStatusLabel(status: PhoneContactStatus) {
-  const labels: Record<PhoneContactStatus, string> = {
-    saved: "Saved to iPhone/Android Contacts",
-    not_saved: "Not saved",
-    pending: "Pending",
-    failed: "Failed",
-  };
-
-  return labels[status];
-}
-
-function csvEscape(value: string) {
-  return `"${value.replaceAll('"', '""')}"`;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
 }

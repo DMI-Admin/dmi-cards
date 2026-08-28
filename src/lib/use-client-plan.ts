@@ -17,6 +17,8 @@ export type ClientPlanState = {
   plan: DmiPlan | null;
   isPaid: boolean;
   loading: boolean;
+  error: string;
+  status: "auth_loading" | "billing_loading" | "ready" | "error";
   source: ClientPlanSource | null;
 };
 
@@ -34,12 +36,15 @@ const ClientPlanContext = createContext<ClientPlanContextValue | null>(null);
 function stateFromPlan(
   plan: DmiPlan | null,
   source: ClientPlanSource | null,
-  loading = false
+  loading = false,
+  error = ""
 ): ClientPlanState {
   return {
     plan,
     isPaid: plan ? isPaidPlan(plan) : false,
     loading,
+    error,
+    status: loading ? "billing_loading" : error ? "error" : "ready",
     source,
   };
 }
@@ -59,7 +64,12 @@ export function ClientPlanProvider({
 
   const value = useMemo<ClientPlanContextValue>(() => {
     async function refreshPlan() {
-      setState((current) => ({ ...current, loading: true }));
+      setState((current) => ({
+        ...current,
+        loading: true,
+        error: "",
+        status: "billing_loading",
+      }));
 
       try {
         const client = await requireClientUser();
@@ -70,7 +80,14 @@ export function ClientPlanProvider({
         console.error("[DMI client] plan lookup failed", {
           name: error instanceof Error ? error.name : "UnknownError",
         });
-        const nextState = stateFromPlan(null, null, false);
+        const errorMessage =
+          error instanceof Error ? error.message : "Could not refresh your plan.";
+        const nextState: ClientPlanState = {
+          ...state,
+          loading: false,
+          error: errorMessage,
+          status: "error",
+        };
         setState(nextState);
         return nextState;
       }

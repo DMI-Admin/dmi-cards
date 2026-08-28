@@ -22,7 +22,12 @@ import {
 import CardRenderer, {
   type CardRendererTemplate,
 } from "@/components/CardRenderer";
-import ClientSidebar from "@/components/ClientSidebar";
+import {
+  ClientPortalHeader,
+  ClientPortalPage,
+  ClientPortalWorkspace,
+  clientButtonClass,
+} from "@/components/ClientPortalShell";
 import UpgradeToProButton from "@/components/UpgradeToProButton";
 import { supabase } from "@/lib/supabase";
 import { ClientAuthRequiredError, getCurrentUser } from "@/lib/client-auth";
@@ -45,8 +50,7 @@ import {
   type SharedClientCard,
   type SupabaseCardRow,
 } from "@/lib/services/card-payload";
-
-const publicSiteOrigin = "https://dmi-cards.vercel.app";
+import { buildPublicCardUrl } from "@/lib/public-url";
 
 const qrSafeColours = [
   { name: "Purple", value: "#AC00FF" },
@@ -339,19 +343,11 @@ export default function ClientQrCodePage() {
   }
 
   return (
-    <main className="flex min-h-screen bg-[#070B1A] text-white">
-      <ClientSidebar />
-
-      <section className="flex-1 p-10">
-        <div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <h1 className="text-4xl font-bold">QR Code</h1>
-            <p className="mt-3 max-w-3xl text-white/50">
-              Create and download a QR code for your public digital business
-              card.
-            </p>
-          </div>
-        </div>
+    <ClientPortalPage>
+        <ClientPortalHeader
+          title="QR Code"
+          description="Create and download a QR code for your public digital business card."
+        />
 
         {loadingCard ? (
           <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-sm text-white/50">
@@ -360,7 +356,7 @@ export default function ClientQrCodePage() {
         ) : (
           <>
             {!isPaid && (
-            <div className="mb-6 rounded-3xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 p-5 shadow-lg shadow-purple-950/15">
+            <div className="mb-6 rounded-2xl border border-[#AC00FF]/20 bg-white/[0.04] p-5 shadow-sm">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="font-semibold text-purple-100">
@@ -372,7 +368,7 @@ export default function ClientQrCodePage() {
               </p>
             </div>
             <UpgradeToProButton
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35 md:w-auto"
+              className={`w-full md:w-auto ${clientButtonClass.primary}`}
             >
               <Sparkles className="h-4 w-4" />
               View Upgrade
@@ -381,8 +377,40 @@ export default function ClientQrCodePage() {
             </div>
             )}
 
-            <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_430px]">
-              <div className="space-y-6">
+            <ClientPortalWorkspace
+              preview={
+                <section className="client-portal-panel p-5 sm:p-6">
+                  <SectionTitle
+                    title="Live QR Preview"
+                    description="Preview the QR code clients will scan."
+                  />
+
+                  {selectedCard ? (
+                    <QrPreviewFlipPanel
+                      actionMessage={actionMessage}
+                      card={selectedCard}
+                      colour={selectedColour}
+                      flipped={previewFlipped}
+                      isPaid={isPaid}
+                      logo={qrLogo}
+                      matrix={qrMatrix}
+                      onBack={() => setPreviewFlipped(false)}
+                      onCopy={copyPublicLink}
+                      onDownloadPng={downloadPng}
+                      onDownloadSvg={downloadSvg}
+                      onFlip={() => setPreviewFlipped(true)}
+                      onPrint={printQr}
+                      onView={viewPublicPage}
+                      style={effectiveQrStyle}
+                    />
+                  ) : (
+                    <div className="mt-6">
+                      <EmptyQrState />
+                    </div>
+                  )}
+                </section>
+              }
+            >
                 <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-5 shadow-2xl shadow-black/20 sm:p-6">
                   <SectionTitle
                     title="QR Settings"
@@ -407,8 +435,8 @@ export default function ClientQrCodePage() {
                             onClick={() => selectQrStyle(style)}
                             className={`inline-flex min-h-12 items-center justify-center rounded-2xl border px-4 py-3 text-center text-sm font-semibold transition ${
                               effectiveQrStyle === style
-                                ? "border-[#AC00FF] bg-[#AC00FF]/20 text-white shadow-lg shadow-purple-500/20 ring-2 ring-[#AC00FF]/45"
-                                : "border-white/10 bg-white/5 text-white/60 hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10 hover:text-white"
+                                ? clientButtonClass.selected
+                                : clientButtonClass.setting
                             }`}
                             aria-pressed={effectiveQrStyle === style}
                           >
@@ -449,45 +477,10 @@ export default function ClientQrCodePage() {
                     </SettingsBlock>
                   </div>
                 </section>
-              </div>
-
-              <aside className="xl:sticky xl:top-8 xl:self-start">
-                <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-5 shadow-2xl shadow-black/20 sm:p-6">
-                  <SectionTitle
-                    title="Live QR Preview"
-                    description="Preview the QR code clients will scan."
-                  />
-
-                  {selectedCard ? (
-                    <QrPreviewFlipPanel
-                      actionMessage={actionMessage}
-                      card={selectedCard}
-                      colour={selectedColour}
-                      flipped={previewFlipped}
-                      isPaid={isPaid}
-                      logo={qrLogo}
-                      matrix={qrMatrix}
-                      onBack={() => setPreviewFlipped(false)}
-                      onCopy={copyPublicLink}
-                      onDownloadPng={downloadPng}
-                      onDownloadSvg={downloadSvg}
-                      onFlip={() => setPreviewFlipped(true)}
-                      onPrint={printQr}
-                      onView={viewPublicPage}
-                      style={effectiveQrStyle}
-                    />
-                  ) : (
-                    <div className="mt-6">
-                      <EmptyQrState />
-                    </div>
-                  )}
-                </section>
-              </aside>
-            </div>
+            </ClientPortalWorkspace>
           </>
         )}
-      </section>
-    </main>
+    </ClientPortalPage>
   );
 }
 
@@ -533,15 +526,22 @@ function CardSelector({
         const selected = card.id === selectedCardId;
 
         return (
-          <button
+          <div
             key={card.id}
-            type="button"
+            role="button"
+            tabIndex={0}
             onClick={() => onSelect(card.id)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+
+              event.preventDefault();
+              onSelect(card.id);
+            }}
             className={`min-h-[190px] rounded-2xl border p-3 text-left transition ${
               selected
                 ? "border-[#AC00FF]/70 shadow-lg shadow-purple-500/15 ring-2 ring-[#AC00FF]/45"
                 : "border-white/10 bg-white/5 hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10"
-            }`}
+            } cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#AC00FF]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101935]`}
             style={selected ? { backgroundColor: "rgba(172, 0, 255, 0.12)" } : undefined}
             aria-pressed={selected}
           >
@@ -571,7 +571,7 @@ function CardSelector({
             <span className="mt-3 block truncate text-sm font-semibold text-white">
               {card.name}
             </span>
-          </button>
+          </div>
         );
       })}
     </div>
@@ -648,7 +648,7 @@ function QrColourPicker({
         <button
           type="button"
           onClick={onReset}
-          className="inline-flex min-h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-white transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10"
+          className={clientButtonClass.utility}
         >
           Reset to default
         </button>
@@ -784,7 +784,7 @@ function QrPreviewFlipPanel({
   style: QrStyle;
 }) {
   return (
-    <div className="mt-6 h-[560px]" style={{ perspective: "1200px" }}>
+    <div className="mt-6 h-[clamp(500px,70vh,560px)]" style={{ perspective: "1200px" }}>
       <div
         className="relative h-full w-full transform-gpu transition-transform duration-[420ms] motion-reduce:transition-none"
         style={{
@@ -831,7 +831,7 @@ function QrPreviewFlipPanel({
             <button
               type="button"
               onClick={onFlip}
-              className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35"
+              className={`mt-5 w-full ${clientButtonClass.primary}`}
             >
               <Download className="h-4 w-4" />
               Download & Share
@@ -968,7 +968,7 @@ function ActionButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:shadow-lg hover:shadow-purple-500/10 sm:w-auto"
+      className={`w-full sm:w-auto ${clientButtonClass.secondary}`}
     >
       <Icon className="h-4 w-4" />
       {children}
@@ -990,7 +990,7 @@ function EmptyQrState() {
       </p>
       <a
         href="/client/cards"
-        className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35 sm:w-auto"
+        className={`mt-6 w-full sm:w-auto ${clientButtonClass.primary}`}
       >
         <ExternalLink className="h-4 w-4" />
         Create or Publish Card
@@ -1133,7 +1133,7 @@ function toSavedQrCard(
     slug,
     name: cardData.card_name || "Primary Digital Card",
     public_path: `/u/${slug}`,
-    public_url: `${publicSiteOrigin}/u/${slug}`,
+    public_url: buildPublicCardUrl(slug),
     status: row.is_published ? "published" : row.status || "draft",
     cardData,
     template: previewTemplate,

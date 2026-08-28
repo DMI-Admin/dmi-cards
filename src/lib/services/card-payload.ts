@@ -3,6 +3,11 @@ import {
   type CardRendererData,
   type CardRendererTemplate,
 } from "@/components/CardRenderer";
+import {
+  effectiveCardActionConfig,
+  normalizeCardActionConfig,
+  type CardActionConfig,
+} from "@/lib/card-actions";
 import type { DmiPlan } from "@/lib/entitlements";
 import { normalizeColourPalette, type SharedTemplate } from "@/lib/templates";
 
@@ -25,6 +30,11 @@ export type LeadCaptureSettings = {
   consent_notice: string;
   terms_url: string;
   follow_up_enabled: boolean;
+  privacy_policy_url?: string;
+  privacy_policy_mode?: "external" | "hosted";
+  marketing_opt_in_enabled?: boolean;
+  marketing_opt_in_label?: string;
+  marketing_opt_in_version?: string;
 };
 export type SharedClientCard = CardRendererData & {
   id: string;
@@ -43,6 +53,7 @@ export type SharedClientCard = CardRendererData & {
   slug?: string;
   field_order?: CardFieldOrder;
   lead_capture_settings?: LeadCaptureSettings;
+  action_config?: CardActionConfig | null;
 };
 export type SupabaseCardRow = CardRendererData & {
   id: string;
@@ -61,6 +72,7 @@ export type SupabaseCardRow = CardRendererData & {
   field_visibility?: CardFieldVisibility | null;
   field_order?: CardFieldOrder | null;
   lead_capture_settings?: LeadCaptureSettings | null;
+  action_config?: CardActionConfig | null;
   card_slot?: number | null;
   updated_at?: string | null;
   created_at?: string | null;
@@ -72,10 +84,26 @@ export const defaultLeadCaptureSettings: LeadCaptureSettings = {
   flow: "share_first",
   fields: ["name", "email"],
   consent_notice:
-    "I consent to sharing my details so this card owner can follow up.",
-  terms_url: "https://www.devmasterinc.com/terms",
+    "Your details will be shared with this card owner so they can respond to your enquiry.",
+  terms_url: "",
   follow_up_enabled: false,
+  privacy_policy_url: "",
+  privacy_policy_mode: "external",
+  marketing_opt_in_enabled: false,
+  marketing_opt_in_label:
+    "I would like to receive occasional updates and marketing from this card owner.",
+  marketing_opt_in_version: "2026-08-28",
 };
+
+const supportedLeadFields = new Set<LeadField>([
+  "name",
+  "email",
+  "phone",
+  "company",
+  "job_title",
+  "website",
+  "message",
+]);
 
 export const fallbackColour = "#AC00FF";
 
@@ -194,6 +222,63 @@ export function selectedTextColourForTemplate(
   }
 
   return palette[0] || readableTextForColour(backgroundColour || fallbackColour);
+}
+
+export function normalizeLeadCaptureSettings(
+  value: unknown
+): LeadCaptureSettings {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ...defaultLeadCaptureSettings };
+  }
+
+  const record = value as Partial<Record<keyof LeadCaptureSettings, unknown>>;
+  const flow =
+    record.flow === "collect_first" || record.flow === "share_first"
+      ? record.flow
+      : defaultLeadCaptureSettings.flow;
+  const fields = Array.isArray(record.fields)
+    ? Array.from(
+        new Set(
+          record.fields.filter((field): field is LeadField =>
+            supportedLeadFields.has(field as LeadField)
+          )
+        )
+      )
+    : defaultLeadCaptureSettings.fields;
+  const consentNotice =
+    typeof record.consent_notice === "string" && record.consent_notice.trim()
+      ? record.consent_notice.trim().slice(0, 1000)
+      : defaultLeadCaptureSettings.consent_notice;
+  const legacyTermsUrl =
+    typeof record.terms_url === "string" ? record.terms_url.trim().slice(0, 2048) : "";
+  const privacyPolicyUrl =
+    typeof record.privacy_policy_url === "string"
+      ? record.privacy_policy_url.trim().slice(0, 2048)
+      : legacyTermsUrl;
+  const marketingLabel =
+    typeof record.marketing_opt_in_label === "string" &&
+    record.marketing_opt_in_label.trim()
+      ? record.marketing_opt_in_label.trim().slice(0, 300)
+      : defaultLeadCaptureSettings.marketing_opt_in_label;
+  const marketingVersion =
+    typeof record.marketing_opt_in_version === "string" &&
+    record.marketing_opt_in_version.trim()
+      ? record.marketing_opt_in_version.trim().slice(0, 80)
+      : defaultLeadCaptureSettings.marketing_opt_in_version;
+
+  return {
+    flow,
+    fields,
+    consent_notice: consentNotice,
+    terms_url: legacyTermsUrl || privacyPolicyUrl,
+    follow_up_enabled: record.follow_up_enabled === true,
+    privacy_policy_url: privacyPolicyUrl,
+    privacy_policy_mode:
+      record.privacy_policy_mode === "hosted" ? "hosted" : "external",
+    marketing_opt_in_enabled: record.marketing_opt_in_enabled === true,
+    marketing_opt_in_label: marketingLabel,
+    marketing_opt_in_version: marketingVersion,
+  };
 }
 
 export function readableTextForColour(colour: string) {
@@ -360,7 +445,8 @@ export function mapSupabaseCard(
     hidden_fields: row.hidden_fields || [],
     field_visibility: fieldVisibility,
     field_order: fieldOrder,
-    lead_capture_settings: row.lead_capture_settings || defaultLeadCaptureSettings,
+    lead_capture_settings: normalizeLeadCaptureSettings(row.lead_capture_settings),
+    action_config: normalizeCardActionConfig(row.action_config),
   };
 }
 
@@ -373,6 +459,8 @@ export function buildSupabaseCardPayload(
   const fieldOrder = card.field_order || getInitialFieldOrder(null);
   const fieldVisibility = buildPersistedFieldVisibility(card, fieldOrder);
   const cardSlot = normalizedCardSlot(card.card_slot);
+
+  const normalizedActionConfig = normalizeCardActionConfig(card.action_config);
 
   return {
     user_id: userId,
@@ -409,13 +497,18 @@ export function buildSupabaseCardPayload(
     hidden_fields: hiddenFieldsFromVisibility(fieldVisibility, fieldOrder),
     field_visibility: fieldVisibility,
     field_order: fieldOrder,
-    lead_capture_settings: card.lead_capture_settings || defaultLeadCaptureSettings,
+    lead_capture_settings: normalizeLeadCaptureSettings(card.lead_capture_settings),
+    ...(card.action_config === undefined
+      ? {}
+      : { action_config: normalizedActionConfig }),
     custom_fields: buildPersistedCustomFields(card),
     status: isPublished ? "published" : "draft",
     is_published: isPublished,
     ...(cardSlot ? { card_slot: cardSlot } : {}),
   };
 }
+
+export { effectiveCardActionConfig, normalizeCardActionConfig };
 
 function normalizedCardSlot(value: number | null | undefined) {
   return value === 1 || value === 2 || value === 3 ? value : null;

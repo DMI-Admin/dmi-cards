@@ -1,38 +1,55 @@
 "use client";
 
+import NextImage from "next/image";
 import {
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ChangeEvent,
   type PointerEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import type { User } from "@supabase/supabase-js";
 import type { LucideIcon } from "lucide-react";
 import {
+  ArrowRight,
   BadgePlus,
+  Calendar,
   Check,
+  ChevronDown,
   Copy,
   CreditCard,
   ExternalLink,
+  FileText,
   GripVertical,
+  Globe,
   ImagePlus,
+  Link as LinkIcon,
   Lock,
+  Mail,
+  Plus,
   Save,
   Search,
   Smartphone,
   Tablet,
   Trash2,
-  Upload,
+  UserRound,
   X,
+  Phone,
 } from "lucide-react";
 import CardRenderer, {
   combineNameParts,
   displayName,
   type CardRendererTemplate,
 } from "@/components/CardRenderer";
-import ClientSidebar from "@/components/ClientSidebar";
+import {
+  ClientPortalHeader,
+  ClientPortalPage,
+  clientButtonClass,
+} from "@/components/ClientPortalShell";
 import UpgradeToProButton from "@/components/UpgradeToProButton";
 import { supabase } from "@/lib/supabase";
 import {
@@ -40,7 +57,21 @@ import {
   type SharedTemplate,
 } from "@/lib/templates";
 import { ClientAuthRequiredError, getCurrentUser } from "@/lib/client-auth";
-import { isPaidPlan } from "@/lib/entitlements";
+import { useClientPlan } from "@/lib/use-client-plan";
+import {
+  actionIsComplete,
+  cardActionTypes,
+  cardActionValue,
+  defaultCardActionConfigForTemplate,
+  defaultLabelForActionType,
+  effectiveAllowedActions,
+  effectiveCardActionConfig,
+  fieldKeyForActionType,
+  actionLabelIsConfigurable,
+  type CardActionConfig,
+  type CardActionConfigItem,
+  type CardActionType,
+} from "@/lib/card-actions";
 import {
   deleteCardForUser,
   listCardsForUser,
@@ -69,6 +100,7 @@ import {
   mergeAllowedFieldsWithFieldOrder,
   mergeFieldOrderWithTemplate,
   normalizeFieldVisibility,
+  normalizeLeadCaptureSettings,
   readableTextForColour,
   selectedColourForTemplate,
   selectedTextColourForTemplate,
@@ -88,7 +120,7 @@ import {
 import { useRouter } from "next/navigation";
 
 type PanelMode = "create" | "edit";
-type BuilderStep = 0 | 1 | 2;
+type BuilderStep = 0 | 1 | 2 | 3;
 type DevicePreviewKey =
   | "iphone_se"
   | "iphone_se_2_3"
@@ -115,6 +147,9 @@ type DevicePreviewKey =
   | "iphone_16_plus"
   | "iphone_16_pro"
   | "iphone_16_pro_max"
+  | "iphone_17"
+  | "iphone_17_pro"
+  | "iphone_17_pro_max"
   | "galaxy_s10"
   | "galaxy_s20"
   | "galaxy_s21"
@@ -166,11 +201,28 @@ type ClientCard = SharedClientCard;
 type CardStatus = ClientCardStatus;
 type SectionKey = CardSectionKey;
 type FieldOrder = CardFieldOrder;
+type ExpandedBuilderSections = Record<SectionKey, boolean>;
 type SectionConfig = {
   key: SectionKey;
   label: string;
   enabled: boolean;
   fields: string[];
+};
+type ValidationIssueKind = "fields" | "actions" | "lead_capture";
+type ValidationIssue = {
+  key: string;
+  label: string;
+  detail: string;
+};
+type PendingValidation = {
+  kind: ValidationIssueKind;
+  issues: ValidationIssue[];
+  nextStep?: BuilderStep;
+  publishStatus?: CardStatus;
+};
+type DragTargetPosition<T extends string> = {
+  item: T;
+  position: "before" | "after";
 };
 
 type SaveStatus = "idle" | "saving" | "saved" | "published" | "failed";
@@ -222,6 +274,9 @@ const devicePreviewGroups: DevicePreviewGroup[] = [
       device("iphone_16_plus", "iPhone 16 Plus", "Apple", 430, 932, "iphone", { dynamicIsland: true }),
       device("iphone_16_pro", "iPhone 16 Pro", "Apple", 402, 874, "iphone", { dynamicIsland: true }),
       device("iphone_16_pro_max", "iPhone 16 Pro Max", "Apple", 440, 956, "iphone", { dynamicIsland: true }),
+      device("iphone_17", "iPhone 17", "Apple", 393, 852, "iphone", { dynamicIsland: true }),
+      device("iphone_17_pro", "iPhone 17 Pro", "Apple", 402, 874, "iphone", { dynamicIsland: true }),
+      device("iphone_17_pro_max", "iPhone 17 Pro Max", "Apple", 440, 956, "iphone", { dynamicIsland: true }),
     ],
   },
   {
@@ -315,19 +370,24 @@ const builderSteps: {
   subtitle: string;
 }[] = [
   {
-    title: "Customise Your Card",
+    title: "Choose your look",
     shortTitle: "Customise",
-    subtitle: "Choose your template and colour style.",
+    subtitle: "Template & colours",
   },
   {
     title: "Build Your Card",
     shortTitle: "Build",
-    subtitle: "Edit the fields enabled by your DMI template.",
+    subtitle: "Your information",
+  },
+  {
+    title: "Your Actions",
+    shortTitle: "Actions",
+    subtitle: "Visitor actions",
   },
   {
     title: "Setup & Publish",
-    shortTitle: "Setup & Publish",
-    subtitle: "Configure sharing and publish your card.",
+    shortTitle: "Publish",
+    subtitle: "Sharing & lead capture",
   },
 ];
 
@@ -356,9 +416,40 @@ const fieldLabels: Record<string, string> = {
   instagram: "Instagram",
   facebook: "Facebook",
   youtube: "YouTube",
-  booking_link: "Booking Link",
+  booking_link: "Booking / Calendar Link",
   custom_url: "Custom URL",
   employee_id: "Employee ID",
+};
+
+const fieldHelperText: Record<string, string> = {
+  booking_link:
+    "Add a Calendly, Microsoft Bookings, Google Calendar booking page or another scheduling link.",
+  custom_url:
+    "Use for a portfolio, brochure, menu, payment page or another business link.",
+};
+
+const stepThreeDestinationFields = new Set<string>([
+  "whatsapp",
+  "linkedin",
+  "instagram",
+  "facebook",
+  "youtube",
+  "booking_link",
+  "custom_url",
+]);
+
+const editorActionIcons: Record<CardActionType, LucideIcon> = {
+  save_contact: UserRound,
+  call: Phone,
+  email: Mail,
+  whatsapp: Smartphone,
+  book_meeting: Calendar,
+  custom_link: LinkIcon,
+  download_pdf: FileText,
+  linkedin: Globe,
+  instagram: Globe,
+  facebook: Globe,
+  youtube: Globe,
 };
 
 const leadFields: { key: LeadField; label: string }[] = [
@@ -407,41 +498,46 @@ const blankCard: ClientCard = {
   field_visibility: {},
   field_order: getInitialFieldOrder(null),
   lead_capture_settings: defaultLeadCaptureSettings,
+  action_config: null,
 };
 
 const initialCards: ClientCard[] = [];
+const slotShellClass =
+  "group mx-auto flex h-[30rem] w-full max-w-[22rem] min-w-0 flex-col rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-4 text-[var(--text-primary)] shadow-[0_18px_48px_rgba(0,0,0,0.18)] transition-[background-color,border-color,box-shadow,transform] duration-200 ease-out min-[1180px]:max-w-none md:hover:border-[#AC00FF]/25 md:hover:bg-[var(--dmi-surface-hover)] md:hover:shadow-[0_18px_46px_rgba(172,0,255,0.12)] motion-safe:md:hover:-translate-y-0.5";
 
 export default function ClientCardsPage() {
   const router = useRouter();
-  const [currentPlan, setCurrentPlan] = useState<ClientCardPlan>("free");
-  const [loadingTrustedPlan, setLoadingTrustedPlan] = useState(true);
-  const isPaid = isPaidPlan(currentPlan);
+  const { plan, isPaid, loading: planLoading } = useClientPlan();
+  const currentPlan = (plan || "free") as ClientCardPlan;
   const [adminTemplates, setAdminTemplates] = useState<AdminTemplate[]>([]);
   const [cards, setCards] = useState<ClientCard[]>(initialCards);
-  const [selectedCardId, setSelectedCardId] = useState(initialCards[0]?.id || "");
+  const [, setSelectedCardId] = useState(initialCards[0]?.id || "");
   const [showBuilder, setShowBuilder] = useState(false);
   const [panelMode, setPanelMode] = useState<PanelMode>("create");
   const [activeStep, setActiveStep] = useState<BuilderStep>(0);
+  const [hasVisitedActionsStep, setHasVisitedActionsStep] = useState(false);
   const [draftCard, setDraftCard] = useState<ClientCard>(blankCard);
   const [fieldOrder, setFieldOrder] = useState<FieldOrder>(
     getInitialFieldOrder(null)
   );
   const [devicePreview, setDevicePreview] =
     useState<DevicePreviewKey>("iphone_15");
+  const [stepFourPreviewMode, setStepFourPreviewMode] =
+    useState<"card" | "lead_form">("card");
+  const [publishedSuccessCard, setPublishedSuccessCard] =
+    useState<ClientCard | null>(null);
   const [deviceSearch, setDeviceSearch] = useState("");
   const [devicePickerOpen, setDevicePickerOpen] = useState(false);
   const [limitMessage, setLimitMessage] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [pendingValidation, setPendingValidation] =
+    useState<PendingValidation | null>(null);
   const [databaseNotice, setDatabaseNotice] = useState("");
   const [templateError, setTemplateError] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [loadingCards, setLoadingCards] = useState(true);
   const [databaseReady, setDatabaseReady] = useState(false);
-
-  const selectedCard = useMemo(() => {
-    return cards.find((card) => card.id === selectedCardId) || cards[0] || null;
-  }, [cards, selectedCardId]);
 
   const defaultTemplate = useMemo(
     () => defaultTemplateForPlan(adminTemplates, currentPlan),
@@ -452,34 +548,10 @@ export default function ClientCardsPage() {
     [adminTemplates, currentPlan]
   );
   const currentDefaultTemplate = defaultTemplate;
-  const selectedCardTemplateRecord = useMemo(() => {
-    return templateForCard(selectedCard, adminTemplates, currentPlan) || currentDefaultTemplate;
-  }, [adminTemplates, selectedCard, currentDefaultTemplate, currentPlan]);
   const draftTemplateRecord = useMemo(() => {
     return templateForCard(draftCard, adminTemplates, currentPlan) || currentDefaultTemplate;
   }, [adminTemplates, draftCard, currentDefaultTemplate, currentPlan]);
-  const selectedCardFallbackColour = firstTemplateColour(selectedCardTemplateRecord);
   const draftFallbackColour = firstTemplateColour(draftTemplateRecord);
-
-  const selectedCardTemplate = useMemo(() => {
-    return buildTemplatePreview(
-      selectedCardTemplateRecord,
-      selectedColourForTemplate(
-        selectedCardTemplateRecord,
-        selectedCard?.selected_colour || selectedCardFallbackColour
-      ),
-      selectedTextColourForTemplate(
-        selectedCardTemplateRecord,
-        selectedCard?.selected_text_colour
-      ),
-      selectedCard?.field_order || getInitialFieldOrder(selectedCardTemplateRecord),
-      hiddenFieldsForCard(selectedCard)
-    );
-  }, [
-    selectedCardTemplateRecord,
-    selectedCardFallbackColour,
-    selectedCard,
-  ]);
 
   const draftTemplate = useMemo(() => {
     return buildTemplatePreview(
@@ -499,74 +571,19 @@ export default function ClientCardsPage() {
     fieldOrder,
   ]);
 
-  const previewCard = showBuilder ? draftCard : selectedCard;
-  const previewTemplate = showBuilder ? draftTemplate : selectedCardTemplate;
-  const previewTitle = showBuilder ? "Live Edit Preview" : "Selected Card Preview";
+  const previewCard = useMemo(() => {
+    if (activeStep !== 2 || draftCard.action_config) return draftCard;
+
+    return {
+      ...draftCard,
+      action_config: effectiveCardActionConfig(draftCard, draftTemplateRecord),
+    };
+  }, [activeStep, draftCard, draftTemplateRecord]);
+  const previewTemplate = draftTemplate;
+  const previewTitle = "Live Edit Preview";
   const selectedDevice = findDevice(devicePreview);
   const filteredDeviceGroups = filterDeviceGroups(deviceSearch);
   const previewDimensions = previewFrameDimensions(selectedDevice);
-
-  useEffect(() => {
-    let ignore = false;
-
-    async function loadTrustedPlan() {
-      setLoadingTrustedPlan(true);
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      const accessToken = session?.access_token;
-
-      if (!accessToken) {
-        if (!ignore) {
-          setCurrentPlan("free");
-          setLoadingTrustedPlan(false);
-        }
-        return;
-      }
-
-      try {
-        const response = await fetch("/api/v1/me", {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Plan lookup failed with ${response.status}`);
-        }
-
-        const payload = (await response.json()) as {
-          data?: { plan?: ClientCardPlan | string | null };
-        };
-        const trustedPlan =
-          payload.data?.plan === "pro" || payload.data?.plan === "enterprise"
-            ? payload.data.plan
-            : "free";
-
-        if (!ignore) {
-          setCurrentPlan(trustedPlan);
-        }
-      } catch (error) {
-        console.error("[DMI cards] trusted plan lookup failed", error);
-
-        if (!ignore) {
-          setCurrentPlan("free");
-        }
-      } finally {
-        if (!ignore) {
-          setLoadingTrustedPlan(false);
-        }
-      }
-    }
-
-    void loadTrustedPlan();
-
-    return () => {
-      ignore = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (!showBuilder) return;
@@ -593,7 +610,7 @@ export default function ClientCardsPage() {
     let ignore = false;
 
     async function loadSavedCards() {
-      if (loadingTrustedPlan) return;
+      if (planLoading) return;
 
       setLoadingCards(true);
       setSaveError("");
@@ -682,7 +699,7 @@ export default function ClientCardsPage() {
     return () => {
       ignore = true;
     };
-  }, [currentPlan, loadingTrustedPlan, router]);
+  }, [currentPlan, planLoading, router]);
 
   function openCreatePanel(cardSlot?: 1 | 2 | 3) {
     if (!currentDefaultTemplate) return;
@@ -698,8 +715,11 @@ export default function ClientCardsPage() {
     setSaveMessage("");
     setSaveError("");
     setSaveStatus("idle");
+    setPublishedSuccessCard(null);
+    setStepFourPreviewMode("card");
     setPanelMode("create");
     setActiveStep(0);
+    setHasVisitedActionsStep(false);
     const initialFieldOrder = getInitialFieldOrder(currentDefaultTemplate);
     setFieldOrder(initialFieldOrder);
     const nextDraftCard = {
@@ -712,6 +732,7 @@ export default function ClientCardsPage() {
       card_slot: cardSlot || null,
       field_order: initialFieldOrder,
       lead_capture_settings: defaultLeadCaptureSettings,
+      action_config: defaultCardActionConfigForTemplate(currentDefaultTemplate),
     };
 
     setDraftCard(nextDraftCard);
@@ -723,8 +744,11 @@ export default function ClientCardsPage() {
     setSaveMessage("");
     setSaveError("");
     setSaveStatus("idle");
+    setPublishedSuccessCard(null);
+    setStepFourPreviewMode("card");
     setPanelMode("edit");
     setActiveStep(0);
+    setHasVisitedActionsStep(false);
     const cardTemplate = templateForCard(card, adminTemplates, currentPlan) || currentDefaultTemplate;
     const savedFieldOrder = mergeFieldOrderWithTemplate(card.field_order, cardTemplate);
     setFieldOrder(savedFieldOrder);
@@ -818,8 +842,34 @@ export default function ClientCardsPage() {
   function updateLeadCaptureSettings(settings: LeadCaptureSettings) {
     setDraftCard((current) => ({
       ...current,
-      lead_capture_settings: settings,
+      lead_capture_settings: normalizeLeadCaptureSettings(settings),
     }));
+  }
+
+  function updateActionConfig(actionConfig: CardActionConfig) {
+    setDraftCard((current) => ({
+      ...current,
+      action_config: normalizeActionConfigForDraft(actionConfig),
+    }));
+  }
+
+  function changeEditorStep(
+    step: BuilderStep,
+    options: { skipValidation?: boolean } = {}
+  ) {
+    if (
+      !options.skipValidation &&
+      step > activeStep &&
+      !validateEditorStepTransition(step)
+    ) {
+      return;
+    }
+
+    if (step === 2) {
+      setHasVisitedActionsStep(true);
+    }
+
+    setActiveStep(step);
   }
 
   function toggleFieldVisibility(field: string) {
@@ -849,18 +899,206 @@ export default function ClientCardsPage() {
     });
   }
 
-  function moveField(section: SectionKey, draggedField: string, targetField: string) {
+  function incompleteBuildFields(): ValidationIssue[] {
+    if (!draftTemplateRecord) return [];
+
+    const sections = buildStepSections(draftTemplateRecord, fieldOrder);
+
+    return sections.flatMap((section) =>
+      section.fields
+        .filter((field) => isFieldVisible(field, draftCard))
+        .filter((field) => !fieldHasDraftValue(draftCard, field))
+        .map((field) => ({
+          key: field,
+          label: fieldLabels[field] || friendlyFieldLabel(field),
+          detail: section.label,
+        }))
+    );
+  }
+
+  function incompleteActionsForCard(card: ClientCard): ValidationIssue[] {
+    if (!draftTemplateRecord) return [];
+
+    const actionConfig = effectiveCardActionConfig(card, draftTemplateRecord);
+
+    return actionConfig.actions
+      .filter((action) => action.visible)
+      .filter((action) => !actionIsComplete(action, card))
+      .map((action) => ({
+        key: action.type,
+        label: action.label || defaultLabelForActionType(action.type),
+        detail: actionIncompleteDetail(action.type),
+      }));
+  }
+
+  function incompleteActions(): ValidationIssue[] {
+    return incompleteActionsForCard(draftCard);
+  }
+
+  function incompleteLeadCaptureSettings(): ValidationIssue[] {
+    const settings = normalizeLeadCaptureSettings(draftCard.lead_capture_settings);
+
+    if (settings.flow !== "collect_first" || settings.fields.length > 0) {
+      return [];
+    }
+
+    return [
+      {
+        key: "lead_capture_fields",
+        label: "Collect First fields",
+        detail: "Choose at least one field to collect before publishing.",
+      },
+    ];
+  }
+
+  function validateEditorStepTransition(nextStep?: BuilderStep, publishStatus?: CardStatus) {
+    const shouldValidateBuild =
+      activeStep === 1 ||
+      Boolean(publishStatus) ||
+      (nextStep !== undefined && activeStep < 1 && nextStep > 1);
+    const shouldValidateActions =
+      activeStep === 2 ||
+      Boolean(publishStatus) ||
+      (nextStep !== undefined && activeStep < 2 && nextStep > 2);
+
+    if (shouldValidateBuild) {
+      const issues = incompleteBuildFields();
+
+      if (issues.length > 0) {
+        setPendingValidation({
+          kind: "fields",
+          issues,
+          nextStep,
+          publishStatus,
+        });
+        return false;
+      }
+    }
+
+    if (shouldValidateActions) {
+      const issues = incompleteActions();
+
+      if (issues.length > 0) {
+        setPendingValidation({
+          kind: "actions",
+          issues,
+          nextStep,
+          publishStatus,
+        });
+        return false;
+      }
+    }
+
+    if (publishStatus) {
+      const issues = incompleteLeadCaptureSettings();
+
+      if (issues.length > 0) {
+        setPendingValidation({
+          kind: "lead_capture",
+          issues,
+          nextStep,
+          publishStatus,
+        });
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  function continueAfterValidation(validation: PendingValidation) {
+    if (validation.kind === "lead_capture") {
+      setPendingValidation(null);
+      return;
+    }
+
+    let overrideCard = draftCard;
+
+    if (validation.kind === "fields") {
+      const fields = validation.issues.map((issue) => issue.key);
+      overrideCard = forceHideFieldsOnCard(draftCard, fields);
+      setDraftCard(overrideCard);
+
+      if (
+        validation.publishStatus ||
+        (validation.nextStep !== undefined && validation.nextStep > 2)
+      ) {
+        const actionIssues = incompleteActionsForCard(overrideCard);
+
+        if (actionIssues.length > 0) {
+          setPendingValidation({
+            kind: "actions",
+            issues: actionIssues,
+            nextStep: validation.nextStep,
+            publishStatus: validation.publishStatus,
+          });
+          return;
+        }
+      }
+    } else {
+      const types = validation.issues
+        .map((issue) => issue.key)
+        .filter((key): key is CardActionType =>
+          cardActionTypes.includes(key as CardActionType)
+        );
+      const actionConfig = effectiveCardActionConfig(draftCard, draftTemplateRecord);
+      const nextActionConfig = normalizeActionConfigForDraft({
+        version: 1,
+        actions: actionConfig.actions.map((action, index) => ({
+          ...action,
+          visible: types.includes(action.type) ? false : action.visible,
+          order: index,
+        })),
+      });
+
+      overrideCard = {
+        ...draftCard,
+        action_config: nextActionConfig,
+      };
+      setDraftCard(overrideCard);
+    }
+
+    setPendingValidation(null);
+
+    if (validation.publishStatus) {
+      void handleSaveCard(validation.publishStatus, {
+        skipValidation: true,
+        cardOverride: overrideCard,
+      });
+      return;
+    }
+
+    if (validation.nextStep !== undefined) {
+      changeEditorStep(validation.nextStep, { skipValidation: true });
+    }
+  }
+
+  function moveField(
+    section: SectionKey,
+    draggedField: string,
+    targetField: string,
+    position: "before" | "after" = "before"
+  ) {
     setFieldOrder((current) => {
       const nextSectionFields = [...current[section]];
       const fromIndex = nextSectionFields.indexOf(draggedField);
-      const toIndex = nextSectionFields.indexOf(targetField);
 
-      if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
+      if (fromIndex === -1 || draggedField === targetField) {
         return current;
       }
 
       const [movedField] = nextSectionFields.splice(fromIndex, 1);
-      nextSectionFields.splice(toIndex, 0, movedField);
+      const toIndex = nextSectionFields.indexOf(targetField);
+
+      if (toIndex === -1) {
+        return current;
+      }
+
+      nextSectionFields.splice(position === "after" ? toIndex + 1 : toIndex, 0, movedField);
+
+      if (nextSectionFields.every((field, index) => field === current[section][index])) {
+        return current;
+      }
 
       const nextFieldOrder = { ...current, [section]: nextSectionFields };
       setDraftCard((currentCard) => ({
@@ -872,13 +1110,21 @@ export default function ClientCardsPage() {
     });
   }
 
-  async function handleSaveCard(status: CardStatus) {
+  async function handleSaveCard(
+    status: CardStatus,
+    options: { skipValidation?: boolean; cardOverride?: ClientCard } = {}
+  ) {
+    if (!options.skipValidation && !validateEditorStepTransition(undefined, status)) {
+      return;
+    }
+
+    const cardToSave = options.cardOverride || draftCard;
     setSaveError("");
     setSaveMessage("");
     setSaveStatus("saving");
 
     const isPublishing = status === "published";
-    const authUser = await getActiveUserForCardSave(isPublishing);
+    const authUser = await getActiveUserForCardSave();
 
     if (!authUser) {
       setSaveStatus("failed");
@@ -889,9 +1135,7 @@ export default function ClientCardsPage() {
 
     try {
       const selectedTemplate =
-        templateForCard(draftCard, adminTemplates, currentPlan) || currentDefaultTemplate;
-
-      console.log("[DMI cards] selectedTemplate.id", selectedTemplate?.id || null);
+        templateForCard(cardToSave, adminTemplates, currentPlan) || currentDefaultTemplate;
 
       if (!selectedTemplate?.id) {
         setSaveStatus("failed");
@@ -899,11 +1143,16 @@ export default function ClientCardsPage() {
         return;
       }
 
-      const slug = buildCardSlugBase(draftCard);
+      const slug = buildCardSlugBase(cardToSave);
+      const actionConfig =
+        cardToSave.action_config ||
+        (hasVisitedActionsStep
+          ? effectiveCardActionConfig(cardToSave, selectedTemplate)
+          : null);
 
       const nextCard: ClientCard = {
-        ...draftCard,
-        card_name: draftCard.card_name || "Primary Digital Card",
+        ...cardToSave,
+        card_name: cardToSave.card_name || "Primary Digital Card",
         template_id: selectedTemplate.id,
         template_name: selectedTemplate.name,
         slug,
@@ -912,21 +1161,9 @@ export default function ClientCardsPage() {
         last_updated: "Just now",
         field_order: fieldOrder,
         lead_capture_settings:
-          draftCard.lead_capture_settings || defaultLeadCaptureSettings,
+          normalizeLeadCaptureSettings(cardToSave.lead_capture_settings),
+        ...(actionConfig ? { action_config: actionConfig } : {}),
       };
-
-      console.log("[DMI cards] publish/edit target", {
-        mode: panelMode,
-        draftCardId: draftCard.id,
-        nextCardId: nextCard.id,
-        slug: nextCard.slug,
-        status,
-        department: nextCard.department || null,
-        hiddenFields: nextCard.hidden_fields || [],
-        fieldOrder: nextCard.field_order,
-        customFields: nextCard.custom_fields || {},
-        fieldVisibility: nextCard.field_visibility || {},
-      });
 
       const savedCard = await saveCardToSupabase({
         card: nextCard,
@@ -957,7 +1194,11 @@ export default function ClientCardsPage() {
           ? "Card published successfully."
           : "Draft saved successfully."
       );
-      setShowBuilder(false);
+      if (status === "published") {
+        setPublishedSuccessCard(savedCard);
+      } else {
+        setShowBuilder(false);
+      }
     } catch (error) {
       console.error("Client card save failed", error);
       setSaveStatus("failed");
@@ -997,26 +1238,12 @@ export default function ClientCardsPage() {
 
     const shouldUpdate = mode === "edit" && !card.id.startsWith("card-");
 
-    console.log("[DMI cards] save request", {
-      shouldUpdate,
-      cardId: card.id,
-      userId,
-    });
     const { data, error } = await saveClientCard({
       card,
       userId,
       mode: mode as CardWriteMode,
       isPublishing,
     });
-
-    if (isPublishing) {
-      console.log("[DMI publish] Supabase update result/error", {
-        shouldUpdate,
-        cardId: card.id,
-        data,
-        error,
-      });
-    }
 
     if (error || !data) {
       console.error("Client card save failed", error);
@@ -1039,12 +1266,12 @@ export default function ClientCardsPage() {
     const nextStatus: CardStatus =
       card.status === "published" ? "unpublished" : "published";
     const isPublishing = nextStatus === "published";
-    const authUser = await getActiveUserForCardSave(isPublishing);
+    const authUser = await getActiveUserForCardSave();
 
     if (!authUser) {
       router.replace("/");
       setSaveError("Please log in to save your card.");
-      return;
+      return false;
     }
 
     const selectedTemplate =
@@ -1054,7 +1281,7 @@ export default function ClientCardsPage() {
 
     if (!selectedTemplate?.id) {
       setSaveError("Please select a template");
-      return;
+      return false;
     }
 
     const savedCard = await saveCardToSupabase({
@@ -1071,7 +1298,7 @@ export default function ClientCardsPage() {
       isPublishing,
     });
 
-    if (!savedCard) return;
+    if (!savedCard) return false;
 
     setCards((currentCards) => {
       const nextCards = currentCards.map((currentCard) =>
@@ -1079,24 +1306,22 @@ export default function ClientCardsPage() {
       );
       return sortCardsBySlotOrder(nextCards);
     });
+
+    return true;
   }
 
   async function deleteCard(card: ClientCard) {
-    const confirmed = window.confirm("Delete this card permanently?");
-
-    if (!confirmed) return;
-
     setSaveError("");
     setSaveMessage("");
     setSaveStatus("idle");
 
     if (!card.id.startsWith("card-")) {
-      const authUser = await getActiveUserForCardSave(false);
+      const authUser = await getActiveUserForCardSave();
 
       if (!authUser) {
         router.replace("/");
         setSaveError("Please log in to delete your card.");
-        return;
+        return false;
       }
 
       console.log("[DMI cards] delete request", {
@@ -1116,7 +1341,7 @@ export default function ClientCardsPage() {
       if (error) {
         console.error("Client card delete failed", error);
         setSaveError(`Could not delete card: ${error.message}`);
-        return;
+        return false;
       }
     }
 
@@ -1129,6 +1354,8 @@ export default function ClientCardsPage() {
     if (draftCard.id === card.id) {
       setShowBuilder(false);
     }
+
+    return true;
   }
 
   async function copyLink(card: ClientCard) {
@@ -1140,19 +1367,11 @@ export default function ClientCardsPage() {
   }
 
   return (
-    <main className="flex min-h-screen bg-[#070B1A] text-white">
-      <ClientSidebar />
-
-      <section className="flex-1 p-10">
-        <div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <h1 className="text-4xl font-bold">My Cards</h1>
-            <p className="mt-3 max-w-3xl text-white/50">
-              Manage your live digital card, public URL, template fields, and
-              lead capture setup.
-            </p>
-          </div>
-        </div>
+    <ClientPortalPage>
+        <ClientPortalHeader
+          title="My Cards"
+          description="Manage your live digital card, public URL, template fields, and lead capture setup."
+        />
 
         {loadingCards ? (
           <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white/50">
@@ -1195,76 +1414,73 @@ export default function ClientCardsPage() {
               </div>
             )}
 
-            <div className="grid gap-8 2xl:grid-cols-[minmax(0,1fr)_minmax(560px,600px)]">
-              <div className="space-y-6">
-                <CardList
-                  cards={cards}
-                  selectedCardId={selectedCardId}
-                  isPaid={isPaid}
-                  templates={adminTemplates}
-                  defaultTemplate={currentDefaultTemplate}
-                  currentPlan={currentPlan}
-                  onCreate={openCreatePanel}
-                  onSelect={setSelectedCardId}
-                  onEdit={openEditPanel}
-                  onTogglePublish={togglePublish}
-                  onCopyLink={copyLink}
-                  onViewPublicPage={viewPublicPage}
-                  onDelete={deleteCard}
-                />
-
-              </div>
-
-              <aside className="hidden 2xl:sticky 2xl:top-8 2xl:block 2xl:self-start">
-                <div className="rounded-3xl border border-white/10 bg-[#101935]/65 p-5 shadow-2xl shadow-black/20">
-                  <PreviewPanelContent
-                    title={previewTitle}
-                    previewCard={previewCard}
-                    previewTemplate={previewTemplate}
-                    selectedDevice={selectedDevice}
-                    selectedKey={devicePreview}
-                    search={deviceSearch}
-                    open={devicePickerOpen}
-                    filteredGroups={filteredDeviceGroups}
-                    dimensions={previewDimensions}
-                    onSearchChange={setDeviceSearch}
-                    onOpenChange={setDevicePickerOpen}
-                    onSelect={(key) => {
-                      setDevicePreview(key);
-                      setDevicePickerOpen(false);
-                    }}
-                  />
-                </div>
-              </aside>
-            </div>
+            <CardList
+              cards={cards}
+              isPaid={isPaid}
+              templates={adminTemplates}
+              defaultTemplate={currentDefaultTemplate}
+              currentPlan={currentPlan}
+              onCreate={openCreatePanel}
+              onSelect={setSelectedCardId}
+              onEdit={openEditPanel}
+              onTogglePublish={togglePublish}
+              onCopyLink={copyLink}
+              onViewPublicPage={viewPublicPage}
+              onDelete={deleteCard}
+            />
 
             {showBuilder && (
-              <EditorModal onClose={() => setShowBuilder(false)}>
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(460px,540px)]">
+              <EditorModal
+                onClose={() => setShowBuilder(false)}
+                actionBar={
+                  publishedSuccessCard ? null : (
+                    <EditorStepNavigation
+                      activeStep={activeStep}
+                      saveStatus={saveStatus}
+                      onBack={() =>
+                        changeEditorStep(Math.max(0, activeStep - 1) as BuilderStep)
+                      }
+                      onNext={() =>
+                        changeEditorStep(Math.min(3, activeStep + 1) as BuilderStep)
+                      }
+                      onPublish={handlePublishCard}
+                    />
+                  )
+                }
+              >
+                {publishedSuccessCard ? (
+                  <PublishSuccessState
+                    card={publishedSuccessCard}
+                    onViewPublicPage={viewPublicPage}
+                    onCopyLink={copyLink}
+                    onEditAgain={() => setPublishedSuccessCard(null)}
+                  />
+                ) : (
+                <div className="grid gap-5 min-[1180px]:grid-cols-[minmax(0,1fr)_minmax(340px,420px)] min-[1500px]:grid-cols-[minmax(0,1fr)_minmax(380px,460px)]">
                   <EditorPanel
+                    key={activeStep}
                     activeStep={activeStep}
                     draftCard={draftCard}
                     fieldOrder={fieldOrder}
-                    mode={panelMode}
                     template={draftTemplateRecord || currentDefaultTemplate}
                     templates={visibleTemplates}
                     currentPlan={currentPlan}
                     isPaid={isPaid}
-                    onStepChange={setActiveStep}
+                    onStepChange={changeEditorStep}
                     onUpdate={updateDraft}
                     onSelectTemplate={selectDraftTemplate}
                     onUpdateCustomField={updateCustomField}
                     onUpdateLeadSettings={updateLeadCaptureSettings}
+                    onActionConfigChange={updateActionConfig}
                     onToggleFieldVisibility={toggleFieldVisibility}
                     onMoveField={moveField}
-                    onPublish={handlePublishCard}
                     saveStatus={saveStatus}
                     saveMessage={saveMessage}
                     saveError={saveError}
                   />
 
-                  <aside className="hidden xl:block">
-                    <div className="rounded-3xl border border-white/10 bg-[#101935]/65 p-5 shadow-2xl shadow-black/20">
+                  <aside className="min-w-0">
+                    <div className="client-portal-panel p-5">
                       <PreviewPanelContent
                         title={previewTitle}
                         previewCard={previewCard}
@@ -1275,22 +1491,137 @@ export default function ClientCardsPage() {
                         open={devicePickerOpen}
                         filteredGroups={filteredDeviceGroups}
                         dimensions={previewDimensions}
+                        leadSettings={
+                          activeStep === 3
+                            ? normalizeLeadCaptureSettings(draftCard.lead_capture_settings)
+                            : undefined
+                        }
+                        previewMode={
+                          activeStep === 3 ? stepFourPreviewMode : "card"
+                        }
                         onSearchChange={setDeviceSearch}
                         onOpenChange={setDevicePickerOpen}
                         onSelect={(key) => {
                           setDevicePreview(key);
                           setDevicePickerOpen(false);
                         }}
+                        onPreviewModeChange={setStepFourPreviewMode}
                       />
                     </div>
                   </aside>
                 </div>
+                )}
+                {pendingValidation && (
+                  <CompletionValidationModal
+                    validation={pendingValidation}
+                    onGoBack={() => setPendingValidation(null)}
+                    onHideAndContinue={() =>
+                      continueAfterValidation(pendingValidation)
+                    }
+                  />
+                )}
               </EditorModal>
             )}
           </>
         )}
-      </section>
-    </main>
+    </ClientPortalPage>
+  );
+}
+
+function CompletionValidationModal({
+  validation,
+  onGoBack,
+  onHideAndContinue,
+}: {
+  validation: PendingValidation;
+  onGoBack: () => void;
+  onHideAndContinue: () => void;
+}) {
+  const isActionValidation = validation.kind === "actions";
+  const isLeadValidation = validation.kind === "lead_capture";
+  const title = isActionValidation
+    ? "Some visible actions need setup"
+    : isLeadValidation
+    ? "Lead capture needs a field"
+    : "Some visible fields are incomplete";
+  const message = isActionValidation
+    ? "These actions are visible, but do not have the details needed to work yet."
+    : isLeadValidation
+    ? "Collect First needs at least one selected field before this card can be published."
+    : "These fields are visible, but do not have content yet.";
+  const continueLabel = isActionValidation
+    ? "Hide incomplete actions and continue"
+    : "Hide incomplete fields and continue";
+
+  return (
+    <div className="absolute inset-0 z-50 isolate">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 backdrop-blur-sm"
+        style={{ backgroundColor: "rgba(0, 0, 0, 0.55)" }}
+      />
+      <div className="relative flex h-full items-center justify-center px-4 py-6">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="completion-validation-title"
+          className="w-full max-w-lg rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-5 text-[var(--text-primary)] shadow-2xl shadow-black/30"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 id="completion-validation-title" className="text-xl font-semibold">
+                {title}
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                {message}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onGoBack}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] text-[var(--text-secondary)] transition hover:bg-[var(--button-hover-bg)] hover:text-[var(--text-primary)]"
+              aria-label="Go back"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <ul className="mt-4 space-y-2">
+            {validation.issues.map((issue) => (
+              <li
+                key={issue.key}
+                className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-4 py-3"
+              >
+                <span className="block text-sm font-semibold text-[var(--text-primary)]">
+                  {issue.label}
+                </span>
+                <span className="mt-1 block text-xs text-[var(--text-secondary)]">
+                  {issue.detail}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onGoBack}
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-semibold text-[var(--button-secondary-text)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)]"
+            >
+              Go back
+            </button>
+            <button
+              type="button"
+              onClick={onHideAndContinue}
+              disabled={isLeadValidation}
+              className={`${clientButtonClass.primary} min-h-11`}
+            >
+              {isLeadValidation ? "Select fields to continue" : continueLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1305,9 +1636,12 @@ function PreviewPanelContent({
   filteredGroups,
   dimensions,
   actions,
+  leadSettings,
+  previewMode = "card",
   onSearchChange,
   onOpenChange,
   onSelect,
+  onPreviewModeChange,
 }: {
   title: string;
   previewCard: ClientCard | null;
@@ -1319,17 +1653,23 @@ function PreviewPanelContent({
   filteredGroups: DevicePreviewGroup[];
   dimensions: ReturnType<typeof previewFrameDimensions>;
   actions?: React.ReactNode;
+  leadSettings?: LeadCaptureSettings;
+  previewMode?: "card" | "lead_form";
   onSearchChange: (value: string) => void;
   onOpenChange: (open: boolean) => void;
   onSelect: (key: DevicePreviewKey) => void;
+  onPreviewModeChange?: (mode: "card" | "lead_form") => void;
 }) {
+  const previewModeChangeHandler = leadSettings ? onPreviewModeChange : undefined;
+  const showLeadPreviewControls = Boolean(previewModeChangeHandler);
+
   return (
     <>
       <div className="mb-5 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold">{title}</h2>
-            <p className="mt-1 text-sm text-white/45">
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
               Preview how your public card appears on different devices.
             </p>
           </div>
@@ -1346,15 +1686,46 @@ function PreviewPanelContent({
           onOpenChange={onOpenChange}
           onSelect={onSelect}
         />
+
+        {showLeadPreviewControls && (
+          <div className="grid grid-cols-2 gap-2 rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-1">
+            {[
+              { value: "card", label: "Card" },
+              { value: "lead_form", label: "Lead form" },
+            ].map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() =>
+                  previewModeChangeHandler?.(option.value as "card" | "lead_form")
+                }
+                className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                  previewMode === option.value
+                    ? "border border-[#AC00FF]/40 bg-[var(--dmi-surface)] text-[var(--text-primary)] shadow-sm"
+                    : "border border-transparent text-[var(--text-secondary)] hover:bg-[var(--button-hover-bg)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {previewCard ? (
         <DevicePreviewFrame device={selectedDevice} dimensions={dimensions}>
-          <CardRenderer
-            template={previewTemplate}
-            cardData={previewCard}
-            mode="preview"
-          />
+          {previewMode === "lead_form" && leadSettings ? (
+            <LeadCapturePreviewCard
+              card={previewCard}
+              settings={leadSettings}
+            />
+          ) : (
+            <CardRenderer
+              template={previewTemplate}
+              cardData={previewCard}
+              mode="preview"
+            />
+          )}
         </DevicePreviewFrame>
       ) : (
         <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-8 text-center text-white/45">
@@ -1367,28 +1738,54 @@ function PreviewPanelContent({
 
 function EditorModal({
   children,
+  actionBar,
   onClose,
 }: {
   children: React.ReactNode;
+  actionBar?: React.ReactNode;
   onClose: () => void;
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm sm:p-8"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#070B1A]/55 p-3 backdrop-blur-sm sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-label="Card editor"
     >
-      <div className="relative max-h-[calc(100vh-32px)] w-[min(1450px,calc(100vw-32px))] overflow-y-auto overflow-x-hidden rounded-3xl border border-white/10 bg-[#070B1A] p-4 pt-14 shadow-2xl shadow-black/50 sm:p-5 sm:pt-14">
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close editor"
-          className="absolute right-4 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/10 text-white/70 shadow-lg shadow-black/20 backdrop-blur transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/15 hover:text-white"
-        >
-          <X className="h-4 w-4" />
-        </button>
-        {children}
+      <div className="relative flex max-h-[calc(100vh-24px)] w-[min(1480px,calc(100vw-24px))] flex-col overflow-hidden rounded-3xl border border-[var(--dmi-border)] bg-[var(--background)] shadow-2xl shadow-black/40">
+        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-[var(--dmi-border)] bg-[var(--dmi-surface)] px-5 py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-raised)] shadow-sm">
+              <NextImage
+                src="/dmi-cards-logo.svg"
+                alt=""
+                width={24}
+                height={24}
+                className="h-6 w-6 object-contain"
+              />
+            </span>
+            <div className="min-w-0">
+              <h2 className="truncate text-xl font-semibold text-[var(--text-primary)]">
+                Edit Card
+              </h2>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close editor"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] shadow-sm transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)]"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5">
+          {children}
+        </div>
+
+        {actionBar}
       </div>
     </div>
   );
@@ -1396,7 +1793,6 @@ function EditorModal({
 
 function CardList({
   cards,
-  selectedCardId,
   isPaid,
   templates,
   defaultTemplate,
@@ -1410,7 +1806,6 @@ function CardList({
   onDelete,
 }: {
   cards: ClientCard[];
-  selectedCardId: string;
   isPaid: boolean;
   templates: AdminTemplate[];
   defaultTemplate: ResolvedCardTemplate | null;
@@ -1418,10 +1813,10 @@ function CardList({
   onCreate: (cardSlot: 1 | 2 | 3) => void;
   onSelect: (id: string) => void;
   onEdit: (card: ClientCard) => void;
-  onTogglePublish: (card: ClientCard) => void;
+  onTogglePublish: (card: ClientCard) => Promise<boolean>;
   onCopyLink: (card: ClientCard) => void;
   onViewPublicPage: (card: ClientCard) => void;
-  onDelete: (card: ClientCard) => void;
+  onDelete: (card: ClientCard) => Promise<boolean>;
 }) {
   const cardsBySlot = new Map<number, ClientCard>();
   const unassignedCards = cards.filter((card) => {
@@ -1441,29 +1836,22 @@ function CardList({
   });
 
   return (
-    <section className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/10 sm:p-6">
-      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold">Your Card Gallery</h2>
-          <p className="mt-1 text-sm text-white/45">
-            Create, preview, and manage up to three digital business cards.
-          </p>
-        </div>
-        {!isPaid && (
+    <section className="space-y-4">
+      {!isPaid && (
+        <div className="flex justify-start">
           <span
-            className="rounded-full border px-3 py-1 text-xs font-semibold"
+            className="rounded-full border bg-[var(--dmi-surface)] px-3 py-1 text-xs font-semibold"
             style={{
               borderColor: "var(--border-accent)",
-              background: "var(--brand-gradient-subtle)",
               color: "var(--text-accent)",
             }}
           >
             Free plan: 1 card limit
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="mx-auto grid w-full max-w-[64rem] grid-cols-1 gap-4 min-[1180px]:grid-cols-3">
         {slots.map(({ slotNumber, card, locked }) => {
           if (locked) {
             return <LockedCardSlot key={slotNumber} />;
@@ -1477,7 +1865,6 @@ function CardList({
             <GalleryCardSlot
               key={card.id}
               card={card}
-              selected={selectedCardId === card.id}
               templates={templates}
               defaultTemplate={defaultTemplate}
               currentPlan={currentPlan}
@@ -1497,7 +1884,6 @@ function CardList({
 
 function GalleryCardSlot({
   card,
-  selected,
   templates,
   defaultTemplate,
   currentPlan,
@@ -1509,18 +1895,20 @@ function GalleryCardSlot({
   onDelete,
 }: {
   card: ClientCard;
-  selected: boolean;
   templates: AdminTemplate[];
   defaultTemplate: ResolvedCardTemplate | null;
   currentPlan: ClientCardPlan;
   onSelect: (id: string) => void;
   onEdit: (card: ClientCard) => void;
-  onTogglePublish: (card: ClientCard) => void;
+  onTogglePublish: (card: ClientCard) => Promise<boolean>;
   onCopyLink: (card: ClientCard) => void;
   onViewPublicPage: (card: ClientCard) => void;
-  onDelete: (card: ClientCard) => void;
+  onDelete: (card: ClientCard) => Promise<boolean>;
 }) {
   const [flipped, setFlipped] = useState(false);
+  const [deleteConfirming, setDeleteConfirming] = useState(false);
+  const [actionPending, setActionPending] = useState<"publish" | "delete" | null>(null);
+  const [inlineError, setInlineError] = useState("");
   const cardTemplate = templateForCard(card, templates, currentPlan) || defaultTemplate;
   const previewTemplate = cardTemplate
     ? buildTemplatePreview(
@@ -1534,126 +1922,210 @@ function GalleryCardSlot({
         hiddenFieldsForCard(card)
       )
     : null;
+  const stateChanging = actionPending !== null;
+  const publishLabel = card.status === "published" ? "Unpublish" : "Publish";
+  const toggleLabel = flipped ? "View card" : "Manage card";
+
+  async function handleTogglePublish() {
+    if (stateChanging) return;
+
+    setInlineError("");
+    setActionPending("publish");
+    try {
+      const success = await onTogglePublish(card);
+
+      if (!success) {
+        setInlineError("Could not update publishing status. Please try again.");
+      }
+    } catch (error) {
+      console.error("Gallery publish action failed", error);
+      setInlineError("Could not update publishing status. Please try again.");
+    } finally {
+      setActionPending(null);
+    }
+  }
+
+  async function handleDeleteConfirmed() {
+    if (stateChanging) return;
+
+    setInlineError("");
+    setActionPending("delete");
+    try {
+      const success = await onDelete(card);
+
+      if (success) return;
+
+      setInlineError("Could not delete this card. Please try again.");
+      setDeleteConfirming(false);
+    } catch (error) {
+      console.error("Gallery delete action failed", error);
+      setInlineError("Could not delete this card. Please try again.");
+      setDeleteConfirming(false);
+    } finally {
+      setActionPending(null);
+    }
+  }
 
   return (
-    <article
-      className={`group h-[360px] ${
-        selected ? "rounded-2xl ring-2 ring-[#AC00FF]/55 ring-offset-2 ring-offset-[#070B1A]" : ""
-      }`}
-      style={{ perspective: "1200px" }}
-    >
-      <div
-        className="relative h-full w-full transform-gpu transition-transform duration-[400ms] motion-reduce:transition-none"
-        style={{
-          transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
-          transformStyle: "preserve-3d",
-        }}
-      >
+    <article className={slotShellClass}>
+      <div className="mx-auto flex w-full max-w-[19rem] flex-1 flex-col">
         <div
-          className="absolute inset-0"
-          style={{
-            backfaceVisibility: "hidden",
-            WebkitBackfaceVisibility: "hidden",
-          }}
+          className="relative min-h-0 flex-1"
+          style={{ perspective: "1200px" }}
         >
-          <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#101935]/75 p-3 shadow-2xl shadow-black/20 transition group-hover:border-[#AC00FF]/35">
-            <button
-              type="button"
-              onClick={() => onSelect(card.id)}
-              className="flex min-h-0 flex-1 items-start justify-center overflow-hidden rounded-xl border border-white/10 bg-black/70"
-              aria-label={`Select ${card.card_name}`}
+          <div
+            className="absolute inset-0 transform-gpu transition-transform duration-500 ease-out motion-reduce:transition-none"
+            style={{
+              transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
+              transformStyle: "preserve-3d",
+            }}
+          >
+            <div
+              className="absolute inset-0 overflow-hidden rounded-2xl border border-[var(--dmi-border)] bg-[#070B1A]"
+              style={{
+                backfaceVisibility: "hidden",
+                WebkitBackfaceVisibility: "hidden",
+                transform: "rotateY(0deg)",
+              }}
+              aria-hidden={flipped}
             >
-              {previewTemplate ? (
-                <div className="flex w-full justify-center overflow-hidden">
-                  <div className="origin-top scale-[0.78]">
-                    <CardRenderer
-                      template={previewTemplate}
-                      cardData={card}
-                      mode="compact"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center text-sm text-white/45">
-                  Preview unavailable
-                </div>
-              )}
-            </button>
+              <div
+                role="button"
+                onClick={() => onSelect(card.id)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
 
-            <div className="pointer-events-none absolute left-5 top-5">
-              <StatusBadge status={card.status} />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setFlipped(true)}
-              className="absolute bottom-5 left-1/2 inline-flex min-h-11 min-w-44 -translate-x-1/2 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-purple-950/40 transition hover:-translate-x-1/2 hover:-translate-y-0.5 hover:shadow-purple-500/35"
-            >
-              <CreditCard className="h-4 w-4" />
-              Edit card
-            </button>
-          </div>
-        </div>
-
-        <div
-          className="absolute inset-0"
-          style={{
-            backfaceVisibility: "hidden",
-            WebkitBackfaceVisibility: "hidden",
-            transform: "rotateY(180deg)",
-          }}
-        >
-          <div className="flex h-full flex-col rounded-2xl border border-[#AC00FF]/30 bg-[#101935] p-4 shadow-2xl shadow-purple-950/20">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="truncate text-base font-semibold">{card.card_name}</p>
-                <p className="mt-1 text-sm text-white/45">
-                  {card.status === "published" ? "Published card actions" : "Draft card actions"}
-                </p>
-              </div>
-              <StatusBadge status={card.status} />
-            </div>
-
-            <div className="mt-4 grid gap-2">
-              <GalleryActionButton
-                label="Edit"
-                icon={CreditCard}
-                onClick={() => onEdit(card)}
-              />
-              <GalleryActionButton
-                label="View public page"
-                icon={ExternalLink}
-                onClick={() => onViewPublicPage(card)}
-              />
-              <GalleryActionButton
-                label="Copy link"
-                icon={Copy}
-                onClick={() => onCopyLink(card)}
-              />
-              <GalleryActionButton
-                label={card.status === "published" ? "Unpublish" : "Publish"}
-                icon={Save}
-                onClick={() => onTogglePublish(card)}
-              />
-              <button
-                type="button"
-                onClick={() => onDelete(card)}
-                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-500 px-3 py-1.5 text-sm font-semibold text-white shadow-lg shadow-red-500/20 transition hover:border-red-400 hover:bg-red-600 focus:text-white"
+                  event.preventDefault();
+                  onSelect(card.id);
+                }}
+                className="flex h-full w-full items-start justify-center overflow-hidden bg-[#070B1A] p-0"
+                aria-label={`Select ${card.card_name}`}
+                tabIndex={flipped ? -1 : 0}
               >
-                <Trash2 className="h-4 w-4" />
-                Delete
-              </button>
+                {previewTemplate ? (
+                  <div className="flex h-full w-full justify-center overflow-hidden">
+                    <div className="w-full origin-top">
+                      <CardRenderer
+                        template={previewTemplate}
+                        cardData={card}
+                        mode="compact"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex h-full items-center text-center text-sm text-white/55">
+                    Preview unavailable
+                  </div>
+                )}
+              </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setFlipped(false)}
-              className="mt-auto inline-flex min-h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/70 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white"
+            <div
+              className="absolute inset-0 overflow-hidden rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-4 text-[var(--text-primary)]"
+              style={{
+                backfaceVisibility: "hidden",
+                WebkitBackfaceVisibility: "hidden",
+                transform: "rotateY(180deg)",
+              }}
+              aria-hidden={!flipped}
             >
-              Back
-            </button>
+              <div className="flex h-full flex-col">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-semibold">{card.card_name}</p>
+                    <p className="mt-1 text-sm text-[var(--text-secondary)]">Card management</p>
+                  </div>
+                  <StatusBadge status={card.status} />
+                </div>
+
+                {deleteConfirming ? (
+                  <div className="mt-5 rounded-2xl border border-red-200/20 bg-red-500/10 p-4">
+                    <p className="font-semibold text-red-50">Delete this card?</p>
+                    <p className="mt-2 text-sm leading-6 text-red-50/70">
+                      Are you sure you want to permanently delete this card?
+                    </p>
+                    <div className="mt-4 grid gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteConfirmed()}
+                        disabled={stateChanging}
+                        className="inline-flex min-h-10 items-center justify-center rounded-full border border-red-300 bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-semibold text-[var(--button-secondary-text)] transition hover:border-red-500 hover:bg-[var(--error-bg)] hover:text-[var(--error)] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {actionPending === "delete" ? <LoadingDots /> : "Yes, delete"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeleteConfirming(false);
+                          setInlineError("");
+                        }}
+                        disabled={stateChanging}
+                        className="inline-flex min-h-10 items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-semibold text-[var(--button-secondary-text)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        No, keep card
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-5 grid gap-2">
+                    <GalleryActionButton
+                      label="Edit card"
+                      icon={CreditCard}
+                      onClick={() => onEdit(card)}
+                      disabled={stateChanging}
+                    />
+                    <GalleryActionButton
+                      label="View public page"
+                      icon={ExternalLink}
+                      onClick={() => onViewPublicPage(card)}
+                      disabled={stateChanging}
+                    />
+                    <GalleryActionButton
+                      label="Copy link"
+                      icon={Copy}
+                      onClick={() => onCopyLink(card)}
+                      disabled={stateChanging}
+                    />
+                    <GalleryActionButton
+                      label={actionPending === "publish" ? <LoadingDots /> : publishLabel}
+                      icon={actionPending === "publish" ? undefined : Save}
+                      onClick={() => void handleTogglePublish()}
+                      disabled={stateChanging}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setDeleteConfirming(true)}
+                      disabled={stateChanging}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-red-300/40 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-100 transition hover:border-red-400 hover:bg-red-500/15 hover:text-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete
+                    </button>
+                  </div>
+                )}
+
+                {inlineError && (
+                  <p className="mt-3 rounded-xl border border-red-300/20 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                    {inlineError}
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setFlipped((current) => !current);
+            setDeleteConfirming(false);
+            setInlineError("");
+          }}
+          className={`${clientButtonClass.primary} mt-4 w-full hover:translate-y-0`}
+        >
+          <CreditCard className="h-4 w-4" />
+          {toggleLabel}
+        </button>
       </div>
     </article>
   );
@@ -1663,20 +2135,33 @@ function GalleryActionButton({
   label,
   icon: Icon,
   onClick,
+  disabled = false,
 }: {
-  label: string;
-  icon: LucideIcon;
+  label: React.ReactNode;
+  icon?: LucideIcon;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-white/70 transition hover:border-[#AC00FF]/40 hover:bg-[#AC00FF]/10 hover:text-white"
+      disabled={disabled}
+      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:border-[var(--button-secondary-border)] disabled:hover:bg-[var(--button-secondary-bg)] disabled:hover:text-[var(--button-secondary-text)]"
     >
-      <Icon className="h-4 w-4" />
+      {Icon ? <Icon className="h-4 w-4" /> : null}
       {label}
     </button>
+  );
+}
+
+function LoadingDots() {
+  return (
+    <span className="inline-flex items-center gap-1" aria-label="Loading">
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.2s]" />
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.1s]" />
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current" />
+    </span>
   );
 }
 
@@ -1691,13 +2176,13 @@ function EmptyCardSlot({
     <button
       type="button"
       onClick={() => onCreate(slotNumber)}
-      className="flex h-[360px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/[0.035] p-6 text-center transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10 hover:shadow-2xl hover:shadow-purple-950/20"
+      className={`${slotShellClass} items-center justify-center text-center`}
     >
-      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#AC00FF]/15 text-purple-100">
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] text-[var(--text-primary)]">
         <BadgePlus className="h-7 w-7" />
       </span>
-      <span className="mt-5 text-lg font-semibold">Create a card</span>
-      <span className="mt-2 max-w-56 text-sm leading-6 text-white/45">
+      <span className="mt-5 text-lg font-semibold text-[var(--text-primary)]">Create a card</span>
+      <span className="mt-2 max-w-56 text-sm leading-6 text-[var(--text-secondary)]">
         Design and publish your digital business card
       </span>
     </button>
@@ -1706,17 +2191,17 @@ function EmptyCardSlot({
 
 function LockedCardSlot() {
   return (
-    <UpgradeToProButton className="group h-[360px] rounded-2xl border border-white/10 bg-white/[0.025] p-5 opacity-70 transition hover:border-[#AC00FF]/35 hover:bg-[#AC00FF]/10">
-      <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-white/10 bg-black/15 p-5 text-center">
-        <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/45">
+    <UpgradeToProButton className={`${slotShellClass} items-center justify-center text-center`}>
+      <div className="flex flex-1 flex-col items-center justify-center rounded-xl p-5 text-center">
+        <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] text-[var(--text-secondary)]">
           <Lock className="h-7 w-7" />
         </span>
-        <p className="mt-5 text-lg font-semibold text-white/70">Upgrade to Pro</p>
-        <p className="mt-2 max-w-56 text-sm leading-6 text-white/40">
-          Create additional digital cards
+        <p className="mt-5 text-lg font-semibold text-[var(--text-primary)]">Additional card slot</p>
+        <p className="mt-2 max-w-56 text-sm leading-6 text-[var(--text-secondary)]">
+          Available with Individual Pro.
         </p>
-        <span className="mt-6 inline-flex min-h-11 items-center justify-center rounded-2xl bg-[#AC00FF] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/20 transition group-hover:bg-[#BE35FF]">
-          Upgrade to Pro
+        <span className="mt-6 inline-flex min-h-10 items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-semibold text-[var(--button-secondary-text)] transition group-hover:border-[#AC00FF]/35">
+          View upgrade
         </span>
       </div>
     </UpgradeToProButton>
@@ -1745,102 +2230,106 @@ function DevicePreviewPicker({
   const selectedSize = deviceSizeLabel(selectedDevice);
 
   return (
-    <div className="space-y-3">
-      <div>
-        <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
-          Device Preview
-        </span>
+    <div>
+      <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-secondary)]">
+        Device Preview
+      </span>
+      <div
+        className={`overflow-hidden rounded-2xl border bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] transition ${
+          open
+            ? "border-[#AC00FF]/35 shadow-2xl shadow-purple-950/25"
+            : "border-[var(--button-secondary-border)] hover:border-[#AC00FF]/45 hover:bg-[var(--button-hover-bg)] hover:shadow-lg hover:shadow-purple-500/10"
+        }`}
+      >
         <button
           type="button"
           onClick={() => onOpenChange(!open)}
-          className="group flex w-full items-center justify-between rounded-2xl border border-white/10 bg-[#070B1A]/80 px-4 py-3 text-left text-sm text-white transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10 hover:shadow-lg hover:shadow-purple-500/10"
+          className="group flex w-full items-center justify-between gap-4 px-4 py-3 text-left text-sm transition"
+          aria-expanded={open}
         >
           <span>
             <span className="block font-semibold">{selectedDevice.label}</span>
-            <span className="mt-1 block text-xs text-white/40">
+            <span className="mt-1 block text-xs text-[var(--text-secondary)]">
               {selectedSize}
             </span>
           </span>
-          <span className="rounded-full bg-[#AC00FF]/20 px-3 py-1 text-xs font-semibold text-purple-100 transition group-hover:bg-[#AC00FF]/35">
+          <span className="rounded-full border border-[var(--border-accent)] bg-[var(--badge-brand-bg)] px-3 py-1 text-xs font-semibold text-[var(--badge-brand-text)] transition group-hover:border-[#AC00FF]/45">
             Change
           </span>
         </button>
+
+        {open && (
+          <div className="border-t border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-secondary)]" />
+              <input
+                value={search}
+                onChange={(event) => onSearchChange(event.target.value)}
+                placeholder="Search iPhone, Samsung, Pixel..."
+                className="w-full rounded-2xl border border-[var(--input-border)] bg-[var(--input-bg)] py-3 pl-10 pr-4 text-sm text-[var(--input-text)] outline-none transition placeholder:text-[var(--dmi-text-tertiary)] focus:border-[var(--input-focus)] focus:ring-4 focus:ring-[var(--input-focus-ring)]"
+              />
+            </div>
+
+            <div className="mt-3 max-h-80 space-y-4 overflow-y-auto pr-1">
+              {filteredGroups.length === 0 ? (
+                <div className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-4 text-sm text-[var(--text-secondary)]">
+                  No devices found.
+                </div>
+              ) : (
+                filteredGroups.map((group) => {
+                  const Icon = group.icon;
+
+                  return (
+                    <div key={group.manufacturer}>
+                      <div className="mb-2 flex items-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-secondary)]">
+                        <Icon className="h-4 w-4 text-[var(--text-accent)]" />
+                        {group.manufacturer}
+                      </div>
+                      <div className="space-y-1.5">
+                        {group.devices.map((device) => {
+                          const selected = device.key === selectedKey;
+                          const width =
+                            device.width === "100%"
+                              ? "Full width"
+                              : `${device.width} x ${device.height}px`;
+
+                          return (
+                            <button
+                              key={device.key}
+                              type="button"
+                              onClick={() => {
+                                onSelect(device.key);
+                                onOpenChange(false);
+                              }}
+                              className={`flex w-full items-center justify-between rounded-2xl border px-3 py-2.5 text-left text-sm transition ${
+                                selected
+                                  ? "border-[#AC00FF]/70 bg-[image:var(--brand-gradient-subtle)] text-[var(--text-primary)] shadow-lg shadow-purple-500/15"
+                                  : "border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] text-[var(--text-secondary)] hover:border-[#AC00FF]/35 hover:bg-[var(--button-hover-bg)] hover:text-[var(--text-primary)]"
+                              }`}
+                            >
+                              <span>
+                                <span className="block font-medium">
+                                  {device.label}
+                                </span>
+                                <span className="mt-0.5 block text-xs text-[var(--text-secondary)]">
+                                  {width}
+                                </span>
+                              </span>
+                              {selected && (
+                                <Check className="h-4 w-4 text-[var(--text-accent)]" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
       </div>
-
-      {open && (
-        <div className="rounded-3xl border border-[#AC00FF]/25 bg-[#070B1A]/95 p-3 shadow-2xl shadow-purple-950/30">
-          <div className="sticky top-0 z-10 rounded-2xl border border-[#AC00FF]/25 bg-[#101935] p-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-purple-200">
-              Selected
-            </p>
-            <p className="mt-1 text-sm font-semibold">{selectedDevice.label}</p>
-          </div>
-
-          <div className="relative mt-3">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
-            <input
-              value={search}
-              onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="Search iPhone, Samsung, Pixel..."
-              className="w-full rounded-2xl border border-white/10 bg-white/5 py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60"
-            />
-          </div>
-
-          <div className="mt-3 max-h-80 space-y-4 overflow-y-auto pr-1">
-            {filteredGroups.length === 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/45">
-                No devices found.
-              </div>
-            ) : (
-              filteredGroups.map((group) => {
-                const Icon = group.icon;
-
-                return (
-                  <div key={group.manufacturer}>
-                    <div className="mb-2 flex items-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/35">
-                      <Icon className="h-4 w-4 text-purple-200" />
-                      {group.manufacturer}
-                    </div>
-                    <div className="space-y-1.5">
-                      {group.devices.map((device) => {
-                        const selected = device.key === selectedKey;
-                        const width =
-                          device.width === "100%"
-                            ? "Full width"
-                            : `${device.width} x ${device.height}px`;
-
-                        return (
-                          <button
-                            key={device.key}
-                            type="button"
-                            onClick={() => onSelect(device.key)}
-                            className={`flex w-full items-center justify-between rounded-2xl border px-3 py-2.5 text-left text-sm transition ${
-                              selected
-                                ? "border-[#AC00FF]/70 bg-[#AC00FF]/15 text-white shadow-lg shadow-purple-500/15"
-                                : "border-white/5 bg-white/[0.03] text-white/65 hover:border-[#AC00FF]/35 hover:bg-white/10 hover:text-white"
-                            }`}
-                          >
-                            <span>
-                              <span className="block font-medium">
-                                {device.label}
-                              </span>
-                              <span className="mt-0.5 block text-xs text-white/35">
-                                {width}
-                              </span>
-                            </span>
-                            {selected && <Check className="h-4 w-4 text-purple-100" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }
@@ -1899,16 +2388,16 @@ function DevicePreviewFrame({
   return (
     <div>
       <div className="mb-4 text-center">
-        <p className="text-sm font-semibold text-white">{device.label}</p>
-        <p className="mt-1 text-xs text-white/40">
+        <p className="text-sm font-semibold text-[var(--text-primary)]">{device.label}</p>
+        <p className="mt-1 text-xs text-[var(--text-secondary)]">
           {deviceSizeLabel(device)}
         </p>
       </div>
 
-      <div className="rounded-[2rem] bg-white/[0.07] p-4 shadow-inner shadow-white/5 md:p-6">
+      <div className="p-5 md:p-6">
         <div
           ref={previewViewportRef}
-          className="relative flex h-[min(620px,calc(100vh-300px))] min-h-[360px] w-full items-start justify-center overflow-hidden"
+          className="relative flex h-[clamp(420px,calc(100vh-260px),620px)] min-h-[360px] w-full items-start justify-center overflow-hidden"
         >
           <div
             className="origin-top transform-gpu transition-transform duration-300 ease-out"
@@ -1964,7 +2453,6 @@ function EditorPanel({
   activeStep,
   draftCard,
   fieldOrder,
-  mode,
   template,
   templates,
   currentPlan,
@@ -1974,9 +2462,9 @@ function EditorPanel({
   onSelectTemplate,
   onUpdateCustomField,
   onUpdateLeadSettings,
+  onActionConfigChange,
   onToggleFieldVisibility,
   onMoveField,
-  onPublish,
   saveStatus,
   saveMessage,
   saveError,
@@ -1984,7 +2472,6 @@ function EditorPanel({
   activeStep: BuilderStep;
   draftCard: ClientCard;
   fieldOrder: FieldOrder;
-  mode: PanelMode;
   template: AdminTemplate;
   templates: AdminTemplate[];
   currentPlan: ClientCardPlan;
@@ -1994,83 +2481,66 @@ function EditorPanel({
   onSelectTemplate: (template: AdminTemplate) => void;
   onUpdateCustomField: (field: string, value: string) => void;
   onUpdateLeadSettings: (settings: LeadCaptureSettings) => void;
+  onActionConfigChange: (actionConfig: CardActionConfig) => void;
   onToggleFieldVisibility: (field: string) => void;
-  onMoveField: (section: SectionKey, draggedField: string, targetField: string) => void;
-  onPublish: () => void;
+  onMoveField: (
+    section: SectionKey,
+    draggedField: string,
+    targetField: string,
+    position?: "before" | "after"
+  ) => void;
   saveStatus: SaveStatus;
   saveMessage: string;
   saveError: string;
 }) {
-  function goBack() {
-    onStepChange(Math.max(0, activeStep - 1) as BuilderStep);
+  const [mainProfileExpanded, setMainProfileExpanded] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<ExpandedBuilderSections>({
+    personal: false,
+    company: false,
+    contact: false,
+    social: false,
+  });
+
+  function toggleBuildSection(section: SectionKey) {
+    setExpandedSections((current) => ({
+      ...current,
+      [section]: !current[section],
+    }));
   }
-
-  function goNext() {
-    onStepChange(Math.min(2, activeStep + 1) as BuilderStep);
-  }
-
-  const topNavigation = (
-    <EditorStepNavigation
-      activeStep={activeStep}
-      saveStatus={saveStatus}
-      onBack={goBack}
-      onNext={goNext}
-      onPublish={onPublish}
-      compact
-    />
-  );
-
-  const bottomNavigation = (
-    <EditorStepNavigation
-      activeStep={activeStep}
-      saveStatus={saveStatus}
-      onBack={goBack}
-      onNext={goNext}
-      onPublish={onPublish}
-    />
-  );
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-[#AC00FF]/25 bg-[#101935]/75 shadow-2xl shadow-purple-950/20">
-      <div className="flex flex-col gap-4 border-b border-white/10 p-5 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#AC00FF]">
-            {mode === "create" ? "Create Card" : "Edit Card"}
-          </p>
-          <h2 className="mt-1 text-2xl font-semibold">
-            {builderSteps[activeStep].title}
-          </h2>
+    <section className="overflow-hidden rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] shadow-[var(--shadow-sm)]">
+      <div className="shrink-0 border-b border-[var(--dmi-border)] px-5 py-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {builderSteps.map((step, index) => (
+            <button
+              key={step.title}
+              type="button"
+              onClick={() => onStepChange(index as BuilderStep)}
+              className={`rounded-2xl border px-4 py-3 text-left transition ${
+                activeStep === index
+                  ? "border-[#AC00FF]/45 bg-[image:var(--brand-gradient-subtle)] text-[var(--text-primary)] shadow-sm ring-2 ring-[#AC00FF]/15"
+                  : "border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] text-[var(--text-primary)] hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)]"
+              }`}
+            >
+              <span
+                className={`block text-[11px] font-semibold uppercase tracking-[0.16em] ${
+                  activeStep === index
+                    ? "text-[var(--text-accent)]"
+                    : "text-[var(--text-secondary)]"
+                }`}
+              >
+                {index + 1} {step.shortTitle}
+              </span>
+              <span className="mt-1 block text-xs font-medium leading-5 text-[var(--text-secondary)]">
+                {step.subtitle}
+              </span>
+            </button>
+          ))}
         </div>
       </div>
 
       <div className="p-5">
-        <div className="mb-4 flex justify-end">{topNavigation}</div>
-
-        <div className="mb-6 grid gap-3 md:grid-cols-3">
-          {builderSteps.map((step, index) => (
-              <button
-                key={step.title}
-                type="button"
-                onClick={() => onStepChange(index as BuilderStep)}
-                className={`rounded-2xl border px-4 py-3 text-left transition ${
-                  activeStep === index
-                    ? "border-[#AC00FF]/70 bg-[#AC00FF]/15 text-white shadow-lg shadow-purple-500/15"
-                    : "border-white/10 bg-white/5 text-white/55 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-purple-200">
-                  Step {index + 1}
-                </span>
-                <span className="mt-1 block text-sm font-semibold">
-                  {step.shortTitle}
-                </span>
-                <span className="mt-1 block text-xs font-normal leading-5 text-white/45">
-                  {step.subtitle}
-                </span>
-              </button>
-          ))}
-        </div>
-
         {activeStep === 0 && (
           <CustomiseStep
             template={template}
@@ -2088,14 +2558,28 @@ function EditorPanel({
             template={template}
             draftCard={draftCard}
             fieldOrder={fieldOrder}
+            mainProfileExpanded={mainProfileExpanded}
+            expandedSections={expandedSections}
             onUpdate={onUpdate}
             onUpdateCustomField={onUpdateCustomField}
             onToggleFieldVisibility={onToggleFieldVisibility}
             onMoveField={onMoveField}
+            onToggleMainProfile={() => setMainProfileExpanded((current) => !current)}
+            onToggleSection={toggleBuildSection}
           />
         )}
         {activeStep === 2 && (
+          <ActionsStep
+            template={template}
+            draftCard={draftCard}
+            onUpdate={onUpdate}
+            onActionConfigChange={onActionConfigChange}
+          />
+        )}
+        {activeStep === 3 && (
           <SetUpStep
+            card={draftCard}
+            template={template}
             settings={draftCard.lead_capture_settings || defaultLeadCaptureSettings}
             isPaid={isPaid}
             onSettingsChange={onUpdateLeadSettings}
@@ -2104,13 +2588,6 @@ function EditorPanel({
             saveError={saveError}
           />
         )}
-      </div>
-
-      <div className="sticky bottom-0 z-20 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-[#101935]/95 p-5 backdrop-blur-xl">
-        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/35">
-          Step {activeStep + 1} of 3
-        </div>
-        {bottomNavigation}
       </div>
     </section>
   );
@@ -2122,54 +2599,58 @@ function EditorStepNavigation({
   onBack,
   onNext,
   onPublish,
-  compact = false,
 }: {
   activeStep: BuilderStep;
   saveStatus: SaveStatus;
   onBack: () => void;
   onNext: () => void;
   onPublish: () => void;
-  compact?: boolean;
 }) {
-  const secondaryClass = compact
-    ? "min-h-10 rounded-2xl px-4 py-2 text-sm"
-    : "rounded-2xl px-5 py-3 text-sm";
-  const primaryClass = compact
-    ? "min-h-10 rounded-2xl px-5 py-2 text-sm"
-    : "rounded-2xl px-6 py-3 text-sm";
+  const nextLabel =
+    activeStep === 0
+      ? "Continue to Build"
+      : activeStep === 1
+      ? "Continue to Actions"
+      : "Continue to Publish";
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-3">
-      {activeStep > 0 && (
-        <button
-          type="button"
-          onClick={onBack}
-          disabled={saveStatus === "saving"}
-          className={`${secondaryClass} border border-white/70 bg-white font-semibold text-[#101935] shadow-sm shadow-black/20 transition hover:border-white hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-[#AC00FF]/60 disabled:cursor-not-allowed disabled:border-white/30 disabled:bg-white/50 disabled:text-[#101935]/55 disabled:opacity-100`}
-        >
-          Back
-        </button>
-      )}
+    <div className="sticky bottom-0 z-30 flex min-h-[60px] items-center justify-between gap-3 border-t border-[var(--dmi-border)] bg-[var(--dmi-surface)] px-5 py-2.5 shadow-[0_-16px_32px_rgba(0,0,0,0.08)] backdrop-blur-xl">
+      <div className="flex min-h-11 items-center text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-secondary)]">
+        Step {activeStep + 1} of 4
+      </div>
+      <div className="flex items-center justify-end gap-3">
+        {activeStep > 0 && (
+          <button
+            type="button"
+            onClick={onBack}
+            disabled={saveStatus === "saving"}
+            className="inline-flex min-h-11 translate-y-0 items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-5 py-3 text-sm font-semibold text-[var(--button-secondary-text)] shadow-sm transition hover:translate-y-0 hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] focus:outline-none focus:ring-2 focus:ring-[#AC00FF]/60 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Back
+          </button>
+        )}
 
-      {activeStep < 2 ? (
-        <button
+        {activeStep < 3 ? (
+          <button
           type="button"
           onClick={onNext}
-          className={`${primaryClass} bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35`}
+          className={`${clientButtonClass.primary} translate-y-0 hover:translate-y-0`}
         >
-          Next
-        </button>
-      ) : (
-        <button
+          {nextLabel}
+          {activeStep < 3 && <ArrowRight className="h-4 w-4" />}
+          </button>
+        ) : (
+          <button
           type="button"
           onClick={onPublish}
           disabled={saveStatus === "saving"}
-          className={`inline-flex items-center gap-2 ${primaryClass} bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] font-semibold shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35 disabled:cursor-not-allowed disabled:opacity-50`}
+          className={`${clientButtonClass.primary} translate-y-0 hover:translate-y-0`}
         >
-          <ExternalLink className="h-4 w-4" />
-          {saveStatus === "saving" ? "Publishing..." : "Publish"}
-        </button>
-      )}
+            <ExternalLink className="h-4 w-4" />
+            {saveStatus === "saving" ? "Publishing..." : "Publish"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -2204,37 +2685,38 @@ function CustomiseStep({
   );
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6 text-[var(--text-primary)]">
       <div>
-        <h3 className="text-xl font-semibold">Customise Your Card</h3>
-        <p className="mt-2 text-sm text-white/45">
-          Choose your template and colour style.
+        <h3 className="text-2xl font-semibold">Choose your look</h3>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+          Pick a template and colour palette — you can always change this later.
         </p>
       </div>
 
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+      <div className="max-w-xl">
         <label className="block">
-          <span className="mb-2 block text-sm font-semibold text-white/65">
-            Card Name
+          <span className="mb-2 block text-sm font-semibold text-[var(--text-primary)]">
+            Card name
           </span>
           <input
             value={draftCard.card_name}
             onChange={(event) => onUpdate("card_name", event.target.value)}
             placeholder="e.g. Primary Digital Card"
-            className="w-full rounded-2xl border border-white/10 bg-[#070B1A]/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60"
+            className="w-full rounded-2xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm text-[var(--input-text)] outline-none transition placeholder:text-[var(--dmi-text-tertiary)] focus:border-[var(--input-focus)] focus:ring-4 focus:ring-[var(--input-focus-ring)]"
           />
         </label>
-        <p className="mt-2 text-xs leading-5 text-white/40">
-          This is your internal card label. Your full name is managed separately
-          in Build Your Card.
+        <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">
+          Only visible to you — not shown on your public card.
         </p>
       </div>
 
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-        <p className="mb-4 text-sm font-semibold text-white/60">
-          Template selection
-        </p>
-        <div className="flex gap-4 overflow-x-auto pb-2">
+      <div>
+        <div className="mb-4">
+          <p className="text-sm font-semibold text-[var(--text-primary)]">
+            Template
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 min-[1280px]:grid-cols-3">
           {templates.map((templateOption) => {
             const selected = templateOption.id === template.id;
             const locked = !canSelectTemplate(templateOption, currentPlan);
@@ -2256,22 +2738,35 @@ function CustomiseStep({
               : { ...draftCard, selected_text_colour: null };
 
             return (
-              <button
+              <div
                 key={templateOption.id}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelectTemplate(templateOption)}
-                className={`relative w-52 shrink-0 rounded-3xl border p-4 text-left transition ${
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+
+                  event.preventDefault();
+                  onSelectTemplate(templateOption);
+                }}
+                className={`relative min-w-0 rounded-2xl border bg-[var(--dmi-surface-soft)] p-3 text-left transition hover:-translate-y-0.5 hover:border-[var(--border-brand)] hover:bg-[var(--dmi-surface-hover)] hover:shadow-[0_16px_34px_rgba(16,25,53,0.1)] ${
                   selected
-                    ? "border-[#AC00FF]/60 bg-[#AC00FF]/10 shadow-lg shadow-purple-500/10"
-                    : "border-white/10 bg-[#070B1A]/55 hover:border-white/20"
-                } ${locked ? "opacity-75" : ""}`}
+                    ? "border-[#AC00FF]/55 shadow-[0_0_0_3px_rgba(172,0,255,0.12),0_16px_34px_rgba(16,25,53,0.12)]"
+                    : "border-[var(--dmi-border)]"
+                } ${locked ? "opacity-75" : ""} cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#AC00FF]/55 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]`}
+                aria-pressed={selected}
               >
                 {locked && (
-                  <div className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-[#AC00FF]/30 bg-[#070B1A]/90 text-purple-100 shadow-lg shadow-black/25">
+                  <div className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-[#AC00FF]/30 bg-[var(--dmi-surface)] text-[var(--text-accent)] shadow-lg shadow-black/10">
                     <Lock className="h-4 w-4" />
                   </div>
                 )}
-                <div className="flex h-40 items-start justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/30 pt-3">
+                {selected && (
+                  <span className="dmi-gradient-primary absolute left-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-[image:var(--brand-gradient)] text-white shadow-[var(--shadow-brand)]">
+                    <Check className="h-4 w-4" />
+                  </span>
+                )}
+                <div className="flex h-40 items-start justify-center overflow-hidden rounded-xl border border-[var(--dmi-border)] bg-[var(--background)] pt-3">
                   <div className="origin-top scale-[0.45]">
                     <CardRenderer
                       template={buildTemplatePreview(
@@ -2286,35 +2781,35 @@ function CustomiseStep({
                     />
                   </div>
                 </div>
-                <p className="mt-4 text-sm font-semibold">{templateOption.name}</p>
+                <p className="mt-3 truncate text-sm font-semibold text-[var(--text-primary)]">
+                  {templateOption.name}
+                </p>
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <AccessPill template={templateOption} plan={currentPlan} />
-                  {selected && (
-                    <span className="rounded-full bg-[#AC00FF]/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-purple-100">
-                      Selected
-                    </span>
-                  )}
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-secondary)]">
+                    {selected ? "Selected" : ""}
+                  </span>
                 </div>
-              </button>
+              </div>
             );
           })}
 
           {templates.length === 0 && (
-            <div className="w-52 shrink-0 rounded-3xl border border-dashed border-white/10 bg-[#070B1A]/55 p-4 text-sm text-white/45">
+            <div className="rounded-2xl border border-dashed border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-4 text-sm text-[var(--text-secondary)]">
               No published templates are available yet.
             </div>
           )}
         </div>
 
         {!canSelectTemplate(template, currentPlan) && (
-          <div className="mt-5 rounded-2xl border border-[#AC00FF]/30 bg-[#AC00FF]/10 p-5">
+          <div className="mt-5 rounded-2xl border border-[#AC00FF]/30 bg-[image:var(--brand-gradient-subtle)] p-5">
             <div className="flex gap-4">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#AC00FF]/20 text-purple-100">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--dmi-surface)] text-[var(--text-accent)]">
                 <Lock className="h-5 w-5" />
               </div>
               <div>
-                <p className="font-semibold">{template.name}</p>
-                <p className="mt-2 text-sm leading-6 text-white/55">
+                <p className="font-semibold text-[var(--text-primary)]">{template.name}</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
                   Upgrade to Individual Pro to select this paid template.
                 </p>
               </div>
@@ -2323,13 +2818,10 @@ function CustomiseStep({
         )}
       </div>
 
-      {template.access_level === "free" && (
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-          <p className="text-sm font-semibold text-white/65">
-            Template Colour
-          </p>
-          <p className="mt-1 text-sm text-white/40">
-            Free users can only choose admin-approved swatches.
+      <div className="grid gap-5 lg:grid-cols-2">
+        <div>
+          <p className="text-sm font-semibold text-[var(--text-primary)]">
+            Card colour
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             {approvedPalette.map((colour) => (
@@ -2337,10 +2829,10 @@ function CustomiseStep({
                 key={colour}
                 type="button"
                 onClick={() => onUpdate("selected_colour", colour)}
-                className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition ${
+                className={`flex h-11 w-11 items-center justify-center rounded-full border transition ${
                   activeColour === colour
-                    ? "border-white shadow-lg shadow-purple-500/30"
-                    : "border-white/10"
+                    ? "border-white shadow-[0_0_0_3px_rgba(172,0,255,0.28)]"
+                    : "border-[var(--dmi-border)]"
                 }`}
                 style={{ backgroundColor: colour }}
                 aria-label={`Select ${colour}`}
@@ -2354,41 +2846,43 @@ function CustomiseStep({
               </button>
             ))}
           </div>
-
-          <div className="mt-6 border-t border-white/10 pt-5">
-            <p className="text-sm font-semibold text-white/65">Text Colour</p>
-            <p className="mt-1 text-sm text-white/40">
-              Choose from the text colours approved for this template.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-3">
-              {textPalette.map((colour) => (
-                <button
-                  key={colour}
-                  type="button"
-                  onClick={() => onUpdate("selected_text_colour", colour)}
-                  className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition ${
-                    activeTextColour === colour
-                      ? "border-white shadow-lg shadow-purple-500/30"
-                      : "border-white/10"
-                  }`}
-                  style={{ backgroundColor: colour }}
-                  aria-label={`Select text colour ${colour}`}
-                >
-                  {activeTextColour === colour && (
-                    <Check
-                      className="h-5 w-5"
-                      style={{ color: readableTextForColour(colour) }}
-                    />
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {!isPaid && (
-            <UpgradeNotice message="Upgrade to Pro for paid templates, colour pickers, gradients, fonts, logos, banners, socials, and integrations." />
+            <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">
+              Free users can only choose admin-approved swatches.
+            </p>
           )}
         </div>
+
+        <div>
+          <p className="text-sm font-semibold text-[var(--text-primary)]">Text colour</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            {textPalette.map((colour) => (
+              <button
+                key={colour}
+                type="button"
+                onClick={() => onUpdate("selected_text_colour", colour)}
+                className={`flex h-11 w-11 items-center justify-center rounded-full border transition ${
+                  activeTextColour === colour
+                    ? "border-white shadow-[0_0_0_3px_rgba(172,0,255,0.28)]"
+                    : "border-[var(--dmi-border)]"
+                }`}
+                style={{ backgroundColor: colour }}
+                aria-label={`Select text colour ${colour}`}
+              >
+                {activeTextColour === colour && (
+                  <Check
+                    className="h-5 w-5"
+                    style={{ color: readableTextForColour(colour) }}
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {!isPaid && (
+        <UpgradeNotice message="Upgrade to Pro for paid templates, colour pickers, gradients, fonts, logos, banners, socials, and integrations." />
       )}
     </div>
   );
@@ -2398,41 +2892,58 @@ function BuildStep({
   template,
   draftCard,
   fieldOrder,
+  mainProfileExpanded,
+  expandedSections,
   onUpdate,
   onUpdateCustomField,
   onToggleFieldVisibility,
   onMoveField,
+  onToggleMainProfile,
+  onToggleSection,
 }: {
   template: AdminTemplate;
   draftCard: ClientCard;
   fieldOrder: FieldOrder;
+  mainProfileExpanded: boolean;
+  expandedSections: ExpandedBuilderSections;
   onUpdate: (field: keyof ClientCard, value: string) => void;
   onUpdateCustomField: (field: string, value: string) => void;
   onToggleFieldVisibility: (field: string) => void;
-  onMoveField: (section: SectionKey, draggedField: string, targetField: string) => void;
+  onMoveField: (
+    section: SectionKey,
+    draggedField: string,
+    targetField: string,
+    position?: "before" | "after"
+  ) => void;
+  onToggleMainProfile: () => void;
+  onToggleSection: (section: SectionKey) => void;
 }) {
-  const sections = sectionConfig(template, fieldOrder);
+  const sections = buildStepSections(template, fieldOrder);
 
   return (
     <div className="space-y-5">
       <div>
         <h3 className="text-xl font-semibold">Build Your Card</h3>
-        <p className="mt-2 text-sm text-white/45">
-          Only fields enabled by the DMI Admin template are editable here.
-        </p>
       </div>
 
-      <MainProfileSection draftCard={draftCard} onUpdate={onUpdate} />
+      <MainProfileSection
+        draftCard={draftCard}
+        expanded={mainProfileExpanded}
+        onUpdate={onUpdate}
+        onToggleExpanded={onToggleMainProfile}
+      />
 
       {sections.map((section) => (
         <BuilderSection
           key={section.key}
           section={section}
           draftCard={draftCard}
+          expanded={expandedSections[section.key]}
           onUpdate={onUpdate}
           onUpdateCustomField={onUpdateCustomField}
           onToggleFieldVisibility={onToggleFieldVisibility}
           onMoveField={onMoveField}
+          onToggleExpanded={() => onToggleSection(section.key)}
         />
       ))}
     </div>
@@ -2441,42 +2952,100 @@ function BuildStep({
 
 function MainProfileSection({
   draftCard,
+  expanded,
   onUpdate,
+  onToggleExpanded,
 }: {
   draftCard: ClientCard;
+  expanded: boolean;
   onUpdate: (field: keyof ClientCard, value: string) => void;
+  onToggleExpanded: () => void;
 }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-      <h3 className="text-lg font-semibold">Main Profile</h3>
-      <p className="mt-1 text-sm text-white/40">
-        Name and profile picture are fixed at the top of your card.
-      </p>
-
-      <div className="mt-5 grid gap-5 lg:grid-cols-[220px_1fr]">
-        <ProfilePictureUpload
-          value={draftCard.profile_image_url || ""}
-          fullName={displayName(draftCard, "")}
-          onChange={(value) => onUpdate("profile_image_url", value)}
+    <div className="overflow-hidden rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] transition">
+      <button
+        type="button"
+        onClick={onToggleExpanded}
+        aria-expanded={expanded}
+        className="flex w-full items-center justify-between gap-4 bg-[var(--dmi-surface-soft)] px-4 py-3 text-left transition hover:bg-[var(--button-hover-bg)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#AC00FF]/45"
+      >
+        <span className="min-w-0">
+          <span className="block text-base font-semibold text-[var(--text-primary)]">
+            Main Profile
+          </span>
+          <span className="mt-1 block text-xs text-[var(--text-secondary)]">
+            Your main identity and branding
+          </span>
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-[var(--text-secondary)] transition-transform duration-200 ${
+            expanded ? "rotate-180" : ""
+          }`}
         />
-        <div className="grid gap-4 sm:grid-cols-[140px_1fr_1fr]">
-          <SelectField
-            label="Title"
-            value={draftCard.title || ""}
-            options={["", ...titleOptions]}
-            onChange={(value) => onUpdate("title", value)}
-          />
-          <TextField
-            label="First name"
-            value={draftCard.first_name || ""}
-            onChange={(value) => onUpdate("first_name", value)}
-          />
-          <TextField
-            label="Last name"
-            value={draftCard.last_name || ""}
-            onChange={(value) => onUpdate("last_name", value)}
-          />
+      </button>
+
+      <div
+        className={`grid transition-[grid-template-rows] duration-200 ease-out ${
+          expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="space-y-3 border-t border-[var(--dmi-border)] p-4">
+            <div className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-4">
+              <p className="text-sm font-semibold text-[var(--text-primary)]">
+                Identity
+              </p>
+              <div className="mt-3 grid gap-4 sm:grid-cols-[140px_1fr_1fr]">
+                <SelectField
+                  label="Title"
+                  value={draftCard.title || ""}
+                  options={["", ...titleOptions]}
+                  onChange={(value) => onUpdate("title", value)}
+                />
+                <TextField
+                  label="First name"
+                  value={draftCard.first_name || ""}
+                  onChange={(value) => onUpdate("first_name", value)}
+                />
+                <TextField
+                  label="Last name"
+                  value={draftCard.last_name || ""}
+                  onChange={(value) => onUpdate("last_name", value)}
+                />
+              </div>
+            </div>
+
+            <ProfilePictureUpload
+              value={draftCard.profile_image_url || ""}
+              fullName={displayName(draftCard, "")}
+              onChange={(value) => onUpdate("profile_image_url", value)}
+            />
+
+            <BannerImagePlaceholder />
+          </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function BannerImagePlaceholder() {
+  return (
+    <div className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-4">
+      <div>
+        <p className="text-sm font-semibold text-[var(--text-primary)]">Banner Image</p>
+      </div>
+      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex aspect-[16/6] min-h-20 w-full items-center justify-center rounded-xl border border-dashed border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] text-[var(--text-secondary)] sm:max-w-64">
+          <ImagePlus className="h-6 w-6" />
+        </div>
+        <button
+          type="button"
+          disabled
+          className="inline-flex min-h-9 w-fit cursor-default items-center justify-center rounded-xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-3 py-2 text-xs font-semibold text-[var(--button-secondary-text)] opacity-70"
+        >
+          Add banner
+        </button>
       </div>
     </div>
   );
@@ -2570,48 +3139,48 @@ function ProfilePictureUpload({
     previewSize / imageSize.width,
     previewSize / imageSize.height
   );
-  const displayWidth = imageSize.width * baseScale * cropZoom;
-  const displayHeight = imageSize.height * baseScale * cropZoom;
+  const displayWidth = imageSize.width * baseScale;
+  const displayHeight = imageSize.height * baseScale;
 
   return (
-    <div>
-      <p className="mb-3 text-sm font-medium text-white/55">Profile Picture</p>
-      <label className="group flex w-full cursor-pointer flex-col items-center rounded-3xl border border-white/10 bg-[#070B1A]/55 p-5 text-center transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10">
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleFileChange}
-          className="sr-only"
-        />
-        {value ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={value}
-            alt={fullName ? `${fullName} profile` : "Profile"}
-            className="h-24 w-24 rounded-full border-2 border-white/20 object-cover shadow-lg shadow-purple-950/30 transition group-hover:border-white/40"
-          />
-        ) : (
-          <span className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-white/20 bg-gradient-to-br from-[#AC00FF]/70 to-[#101935] text-purple-100 shadow-lg shadow-purple-950/30 transition group-hover:border-white/40">
-            <ImagePlus className="h-8 w-8" />
-          </span>
-        )}
-        <span className="mt-4 text-sm font-semibold text-white">
-          {value ? "Change profile photo" : "Upload profile photo"}
-        </span>
-        <span className="mt-2 inline-flex items-center gap-1 text-xs text-white/40">
-          <Upload className="h-3.5 w-3.5" />
-          Cropped square for preview
-        </span>
-      </label>
-      {value && (
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-white/60 transition hover:bg-white/10 hover:text-white"
-        >
-          Remove photo
-        </button>
-      )}
+    <div className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-4">
+      <p className="text-sm font-semibold text-[var(--text-primary)]">Profile Photo</p>
+      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center">
+          {value ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={value}
+              alt={fullName ? `${fullName} profile` : "Profile"}
+              className="h-16 w-16 rounded-full border-2 border-[var(--dmi-border)] object-cover shadow-lg shadow-purple-950/20"
+            />
+          ) : (
+            <span className="flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] text-[var(--text-secondary)]">
+              <ImagePlus className="h-5 w-5" />
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <label className="inline-flex min-h-9 cursor-pointer items-center justify-center rounded-xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-3 py-2 text-xs font-semibold text-[var(--button-secondary-text)] shadow-sm transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)]">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              className="sr-only"
+            />
+            {value ? "Change photo" : "Add photo"}
+          </label>
+          {value && (
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="inline-flex min-h-9 items-center justify-center rounded-xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-3 py-2 text-xs font-semibold text-[var(--button-secondary-text)] shadow-sm transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)]"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
       {cropSource && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#101935] p-5 text-white shadow-2xl shadow-black/40">
@@ -2655,7 +3224,9 @@ function ProfilePictureUpload({
                   style={{
                     width: `${displayWidth}px`,
                     height: `${displayHeight}px`,
-                    transform: `translate(calc(-50% + ${cropPosition.x}px), calc(-50% + ${cropPosition.y}px))`,
+                    maxWidth: "none",
+                    transform: `translate(-50%, -50%) translate(${cropPosition.x}px, ${cropPosition.y}px) scale(${cropZoom})`,
+                    transformOrigin: "center",
                   }}
                 />
                 <div className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-inset ring-white/40" />
@@ -2681,24 +3252,21 @@ function ProfilePictureUpload({
               <button
                 type="button"
                 onClick={resetCrop}
-                className="rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/15 hover:text-white focus:text-white"
-                style={{ color: "#FFFFFF" }}
+                className="rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)]"
               >
                 Reset
               </button>
               <button
                 type="button"
                 onClick={cancelCrop}
-                className="rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/15 hover:text-white focus:text-white"
-                style={{ color: "#FFFFFF" }}
+                className="rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)]"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => void saveCrop()}
-                className="rounded-2xl bg-[#AC00FF] px-5 py-2 text-sm font-semibold text-white transition hover:opacity-90 focus:text-white"
-                style={{ color: "#FFFFFF" }}
+                className="dmi-solid-primary rounded-2xl px-5 py-2 text-sm font-semibold transition hover:opacity-90"
               >
                 Save crop
               </button>
@@ -2713,18 +3281,189 @@ function ProfilePictureUpload({
 function BuilderSection({
   section,
   draftCard,
+  expanded,
   onUpdate,
   onUpdateCustomField,
   onToggleFieldVisibility,
   onMoveField,
+  onToggleExpanded,
 }: {
   section: SectionConfig;
   draftCard: ClientCard;
+  expanded: boolean;
   onUpdate: (field: keyof ClientCard, value: string) => void;
   onUpdateCustomField: (field: string, value: string) => void;
   onToggleFieldVisibility: (field: string) => void;
-  onMoveField: (section: SectionKey, draggedField: string, targetField: string) => void;
+  onMoveField: (
+    section: SectionKey,
+    draggedField: string,
+    targetField: string,
+    position?: "before" | "after"
+  ) => void;
+  onToggleExpanded: () => void;
 }) {
+  const [dragState, setDragState] = useState<{
+    field: string;
+    pointerId: number;
+    currentY: number;
+    grabOffsetY: number;
+    left: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLDivElement>());
+  const previousRowPositions = useRef<Map<string, DOMRect> | null>(null);
+
+  useLayoutEffect(() => {
+    const previousPositions = previousRowPositions.current;
+
+    if (!previousPositions) return;
+
+    rowRefs.current.forEach((element, field) => {
+      if (field === dragState?.field) return;
+
+      const previousRect = previousPositions.get(field);
+
+      if (!previousRect) return;
+
+      const nextRect = element.getBoundingClientRect();
+      const deltaY = previousRect.top - nextRect.top;
+
+      if (Math.abs(deltaY) < 1) return;
+
+      element.animate(
+        [
+          { transform: `translateY(${deltaY}px)` },
+          { transform: "translateY(0)" },
+        ],
+        {
+          duration: 170,
+          easing: "cubic-bezier(0.2, 0, 0, 1)",
+        }
+      );
+    });
+
+    previousRowPositions.current = null;
+  }, [dragState?.field, section.fields]);
+
+  const captureRowPositions = useCallback(() => {
+    previousRowPositions.current = new Map(
+      Array.from(rowRefs.current.entries(), ([field, element]) => [
+        field,
+        element.getBoundingClientRect(),
+      ])
+    );
+  }, []);
+
+  function registerFieldRow(field: string, element: HTMLDivElement | null) {
+    if (element) {
+      rowRefs.current.set(field, element);
+      return;
+    }
+
+    rowRefs.current.delete(field);
+  }
+
+  function handleDragStart(
+    field: string,
+    pointerState: {
+      pointerId: number;
+      currentY: number;
+      grabOffsetY: number;
+      left: number;
+      width: number;
+      height: number;
+    }
+  ) {
+    setDragState({ field, ...pointerState });
+  }
+
+  function handleDragMove(field: string, event: PointerEvent<HTMLButtonElement>) {
+    if (!dragState || dragState.field !== field || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    setDragState((current) =>
+      current && current.field === field
+        ? { ...current, currentY: event.clientY }
+        : current
+    );
+
+    snapFieldToPointer(field, event.clientY);
+  }
+
+  const snapFieldToPointer = useCallback((field: string, pointerY: number) => {
+    const orderedRows = section.fields
+      .filter((rowField) => rowField !== field)
+      .map((rowField) => ({
+        field: rowField,
+        element: rowRefs.current.get(rowField),
+      }))
+      .filter(
+        (row): row is { field: string; element: HTMLDivElement } =>
+          Boolean(row.element)
+      );
+
+    const target = resolveDragTargetPosition(
+      orderedRows,
+      pointerY,
+      (row) => row.field
+    );
+
+    if (!target) return;
+
+    captureRowPositions();
+    onMoveField(section.key, field, target.item, target.position);
+  }, [captureRowPositions, onMoveField, section.fields, section.key]);
+
+  const handleDragEnd = useCallback((pointerY = dragState?.currentY) => {
+    if (dragState && pointerY !== undefined) {
+      snapFieldToPointer(dragState.field, pointerY);
+    }
+
+    setDragState(null);
+  }, [dragState, snapFieldToPointer]);
+
+  useEffect(() => {
+    if (!dragState) return;
+
+    function handleWindowPointerUp(event: globalThis.PointerEvent) {
+      if (event.pointerId !== dragState?.pointerId) return;
+
+      handleDragEnd(event.clientY);
+    }
+
+    function handleWindowPointerCancel(event: globalThis.PointerEvent) {
+      if (event.pointerId !== dragState?.pointerId) return;
+
+      handleDragEnd();
+    }
+
+    function handleWindowBlur() {
+      handleDragEnd();
+    }
+
+    function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key !== "Escape") return;
+
+      setDragState(null);
+    }
+
+    window.addEventListener("pointerup", handleWindowPointerUp);
+    window.addEventListener("pointercancel", handleWindowPointerCancel);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("keydown", handleWindowKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerup", handleWindowPointerUp);
+      window.removeEventListener("pointercancel", handleWindowPointerCancel);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("keydown", handleWindowKeyDown);
+    };
+  }, [dragState, handleDragEnd]);
+
+  const visibilitySummary = sectionVisibilitySummary(section, draftCard);
+
   if (!section.enabled) {
     return (
       <LockedSection
@@ -2735,111 +3474,1009 @@ function BuilderSection({
   }
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-      <h3 className="text-lg font-semibold">{section.label}</h3>
-      {section.fields.length === 0 ? (
-        <p className="mt-3 text-sm text-white/40">
-          No editable fields are enabled for this section.
-        </p>
-      ) : (
-        <div className="mt-4 space-y-3">
-          {section.fields.map((field) => (
-            <FieldRow
-              key={field}
-              section={section.key}
-              field={field}
-              value={
-                isEditableCardField(field)
-                  ? draftCard[field]
-                  : customFieldValue(draftCard, field)
-              }
-              hidden={!isFieldVisible(field, draftCard)}
-              onChange={(value) => {
-                if (isEditableCardField(field)) {
-                  onUpdate(field, value);
-                  return;
-                }
+    <div className="overflow-hidden rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] transition">
+      <button
+        type="button"
+        onClick={() => {
+          if (dragState) return;
+          onToggleExpanded();
+        }}
+        aria-expanded={expanded}
+        className="flex w-full items-center justify-between gap-4 bg-[var(--dmi-surface-soft)] px-4 py-3 text-left transition hover:bg-[var(--button-hover-bg)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#AC00FF]/45"
+      >
+        <span className="min-w-0">
+          <span className="block text-base font-semibold text-[var(--text-primary)]">
+            {section.label}
+          </span>
+          <span className="mt-1 block text-xs text-[var(--text-secondary)]">
+            {visibilitySummary}
+          </span>
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-[var(--text-secondary)] transition-transform duration-200 ${
+            expanded ? "rotate-180" : ""
+          }`}
+        />
+      </button>
 
-                onUpdateCustomField(field, value);
-              }}
-              onToggleVisibility={() => onToggleFieldVisibility(field)}
-              onMoveField={onMoveField}
-            />
-          ))}
+      <div
+        className={`grid transition-[grid-template-rows] duration-200 ease-out ${
+          expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="min-h-0 overflow-hidden">
+          {section.fields.length === 0 ? (
+            <p className="border-t border-[var(--dmi-border)] px-4 py-4 text-sm text-[var(--text-secondary)]">
+              No editable fields are enabled for this section.
+            </p>
+          ) : (
+            <div className="space-y-3 border-t border-[var(--dmi-border)] p-4">
+              {section.fields.map((field) => (
+                <FieldRow
+                  key={field}
+                  field={field}
+                  value={
+                    isEditableCardField(field)
+                      ? draftCard[field]
+                      : customFieldValue(draftCard, field)
+                  }
+                  helperText={section.key === "social" ? fieldHelperText[field] : undefined}
+                  hidden={!isFieldVisible(field, draftCard)}
+                  onChange={(value) => {
+                    if (isEditableCardField(field)) {
+                      onUpdate(field, value);
+                      return;
+                    }
+
+                    onUpdateCustomField(field, value);
+                  }}
+                  onToggleVisibility={() => onToggleFieldVisibility(field)}
+                  dragState={dragState?.field === field ? dragState : null}
+                  onDragStartField={handleDragStart}
+                  onDragMoveField={handleDragMove}
+                  onDragEndField={handleDragEnd}
+                  registerRow={registerFieldRow}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
+}
+
+function sectionVisibilitySummary(section: SectionConfig, draftCard: ClientCard) {
+  const availableCount = section.fields.length;
+  const shownCount = section.fields.filter((field) =>
+    isFieldVisible(field, draftCard)
+  ).length;
+  const hiddenCount = availableCount - shownCount;
+  const parts = [`${shownCount} visible`];
+
+  if (availableCount > 0 && shownCount === 0) {
+    parts.push(`${availableCount} available`);
+  } else if (hiddenCount > 0) {
+    parts.push(`${hiddenCount} hidden`);
+  }
+
+  return parts.join(" · ");
 }
 
 function FieldRow({
-  section,
   field,
   value,
+  helperText,
   hidden,
   onChange,
   onToggleVisibility,
-  onMoveField,
+  dragState,
+  onDragStartField,
+  onDragMoveField,
+  onDragEndField,
+  registerRow,
 }: {
-  section: SectionKey;
   field: string;
   value: string | null | undefined | ClientCard[keyof ClientCard];
+  helperText?: string;
   hidden: boolean;
   onChange: (value: string) => void;
   onToggleVisibility: () => void;
-  onMoveField: (section: SectionKey, draggedField: string, targetField: string) => void;
+  dragState: {
+    field: string;
+    pointerId: number;
+    currentY: number;
+    grabOffsetY: number;
+    left: number;
+    width: number;
+    height: number;
+  } | null;
+  onDragStartField: (
+    field: string,
+    pointerState: {
+      pointerId: number;
+      currentY: number;
+      grabOffsetY: number;
+      left: number;
+      width: number;
+      height: number;
+    }
+  ) => void;
+  onDragMoveField: (field: string, event: PointerEvent<HTMLButtonElement>) => void;
+  onDragEndField: (pointerY?: number) => void;
+  registerRow: (field: string, element: HTMLDivElement | null) => void;
 }) {
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const setRowElement = useCallback(
+    (element: HTMLDivElement | null) => {
+      rowRef.current = element;
+      registerRow(String(field), element);
+    },
+    [field, registerRow]
+  );
+  const dragging = Boolean(dragState);
+  const visible = !hidden;
+
   return (
     <div
-      draggable
-      onDragStart={(event) => {
-        event.dataTransfer.setData("field-name", String(field));
-      }}
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => {
-        const draggedField = event.dataTransfer.getData("field-name");
-        if (draggedField) onMoveField(section, draggedField, String(field));
-      }}
-      className={`grid gap-3 rounded-2xl border p-3 transition md:grid-cols-[28px_1fr_auto] ${
-        hidden
-          ? "border-white/5 bg-[#070B1A]/35 opacity-60"
-          : "border-white/10 bg-[#070B1A]/55"
-      }`}
+      ref={setRowElement}
+      style={
+        dragState
+          ? {
+              height: dragState.height,
+            }
+          : undefined
+      }
     >
-      <div className="flex items-center justify-center text-white/35">
-        <GripVertical className="h-4 w-4" />
-      </div>
-      {field === "bio" ? (
-        <TextArea
-          label={fieldLabels[field] || friendlyFieldLabel(field)}
-          value={String(value || "")}
-          onChange={onChange}
-        />
-      ) : (
-        <TextField
-          label={fieldLabels[field] || friendlyFieldLabel(field)}
-          value={String(value || "")}
-          onChange={onChange}
-        />
-      )}
-      <div className="flex items-end">
+      <div
+        className={`grid gap-2.5 rounded-2xl border p-2.5 transition-[box-shadow,border-color,background-color] duration-150 ease-out md:grid-cols-[28px_1fr_auto] ${
+          hidden
+            ? "border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)]"
+            : "border-[var(--dmi-border)] bg-[var(--dmi-surface)]"
+        } ${
+          dragging ? "shadow-[0_16px_34px_rgba(0,0,0,0.18)]" : ""
+        }`}
+        style={
+          dragState
+            ? {
+                position: "fixed",
+                zIndex: 60,
+                top: dragState.currentY - dragState.grabOffsetY,
+                left: dragState.left,
+                width: dragState.width,
+              }
+            : undefined
+        }
+      >
         <button
           type="button"
-          onClick={onToggleVisibility}
-          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-            hidden
-              ? "bg-white/10 text-white/50 hover:bg-white/15 hover:text-white"
-              : "bg-[#AC00FF]/20 text-purple-100 shadow-lg shadow-purple-500/10 hover:bg-[#AC00FF]/30"
-          }`}
+          aria-label={`Drag ${fieldLabels[field] || friendlyFieldLabel(field)} to reorder`}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+
+            const row = rowRef.current;
+
+            if (!row) return;
+
+            const rect = row.getBoundingClientRect();
+
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            onDragStartField(String(field), {
+              pointerId: event.pointerId,
+              currentY: event.clientY,
+              grabOffsetY: event.clientY - rect.top,
+              left: rect.left,
+              width: rect.width,
+              height: rect.height,
+            });
+          }}
+          onPointerMove={(event) => onDragMoveField(String(field), event)}
+          onPointerUp={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }
+
+            onDragEndField(event.clientY);
+          }}
+          onPointerCancel={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }
+
+            onDragEndField();
+          }}
+          className="flex cursor-grab touch-none items-center justify-center rounded-xl text-[var(--text-secondary)] transition hover:bg-[var(--button-hover-bg)] hover:text-[var(--text-primary)] active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-[#AC00FF]/60"
         >
-          {hidden ? "Hidden" : "Shown"}
+          <GripVertical className="h-4 w-4" />
         </button>
+        {field === "bio" ? (
+          <TextArea
+            label={fieldLabels[field] || friendlyFieldLabel(field)}
+            helperText={helperText}
+            value={String(value || "")}
+            onChange={onChange}
+            autoGrow
+            minRows={3}
+          />
+        ) : (
+          <TextField
+            label={fieldLabels[field] || friendlyFieldLabel(field)}
+            helperText={helperText}
+            value={String(value || "")}
+            onChange={onChange}
+          />
+        )}
+        <div className="flex min-w-[68px] flex-col items-center justify-end gap-1 self-end">
+          <VisibilitySwitch
+            visible={visible}
+            label={`${fieldLabels[field] || friendlyFieldLabel(field)} visibility`}
+            onToggle={onToggleVisibility}
+          />
+        </div>
       </div>
     </div>
   );
 }
 
+function VisibilitySwitch({
+  visible,
+  label,
+  onToggle,
+}: {
+  visible: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+
+    event.preventDefault();
+    onToggle();
+  }
+
+  return (
+    <>
+      <div
+        role="switch"
+        aria-checked={visible}
+        tabIndex={0}
+        aria-label={label}
+        onClick={onToggle}
+        onKeyDown={handleKeyDown}
+        className={`relative h-6 w-11 cursor-pointer rounded-full border transition focus:outline-none focus:ring-2 focus:ring-[#AC00FF]/55 focus:ring-offset-2 focus:ring-offset-[var(--dmi-surface)] ${
+          visible
+            ? "border-[var(--brand-secondary)] bg-[var(--brand-secondary)] shadow-sm shadow-purple-500/15"
+            : "border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] hover:border-[var(--border-brand)]"
+        }`}
+      >
+        <span
+          aria-hidden="true"
+          className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-white shadow-sm transition-transform ${
+            visible ? "translate-x-[22px]" : "translate-x-1"
+          }`}
+        />
+      </div>
+      <span className="block h-4 min-w-[48px] text-center text-[11px] font-semibold leading-4 text-[var(--text-secondary)]">
+        {visible ? "Visible" : "Hidden"}
+      </span>
+    </>
+  );
+}
+
+function ActionsStep({
+  template,
+  draftCard,
+  onUpdate,
+  onActionConfigChange,
+}: {
+  template: AdminTemplate;
+  draftCard: ClientCard;
+  onUpdate: (field: keyof ClientCard, value: string) => void;
+  onActionConfigChange: (actionConfig: CardActionConfig) => void;
+}) {
+  const [dragState, setDragState] = useState<{
+    type: CardActionType;
+    pointerId: number;
+    currentY: number;
+    grabOffsetY: number;
+    left: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [isAddingAction, setIsAddingAction] = useState(false);
+  const [expandedActionTypes, setExpandedActionTypes] = useState<
+    Set<CardActionType>
+  >(() => new Set());
+  const rowRefs = useRef(new Map<CardActionType, HTMLDivElement>());
+  const previousRowPositions = useRef<Map<CardActionType, DOMRect> | null>(null);
+  const allowedActions = effectiveAllowedActions(template);
+  const allowedTypes = allowedActions.actions.map((action) => action.type);
+  const actionConfig = effectiveCardActionConfig(draftCard, template);
+  const actions = actionConfig.actions;
+  const configuredTypes = new Set(actions.map((action) => action.type));
+  const addableActions = allowedTypes.filter((type) => !configuredTypes.has(type));
+
+  useLayoutEffect(() => {
+    const previousPositions = previousRowPositions.current;
+
+    if (!previousPositions) return;
+
+    rowRefs.current.forEach((element, type) => {
+      if (type === dragState?.type) return;
+
+      const previousRect = previousPositions.get(type);
+      if (!previousRect) return;
+
+      const nextRect = element.getBoundingClientRect();
+      const deltaY = previousRect.top - nextRect.top;
+
+      if (Math.abs(deltaY) < 1) return;
+
+      element.animate(
+        [
+          { transform: `translateY(${deltaY}px)` },
+          { transform: "translateY(0)" },
+        ],
+        {
+          duration: 170,
+          easing: "cubic-bezier(0.2, 0, 0, 1)",
+        }
+      );
+    });
+
+    previousRowPositions.current = null;
+  }, [actions, dragState?.type]);
+
+  const captureActionRowPositions = useCallback(() => {
+    previousRowPositions.current = new Map(
+      Array.from(rowRefs.current.entries(), ([type, element]) => [
+        type,
+        element.getBoundingClientRect(),
+      ])
+    );
+  }, []);
+
+  function registerActionRow(type: CardActionType, element: HTMLDivElement | null) {
+    if (element) {
+      rowRefs.current.set(type, element);
+      return;
+    }
+
+    rowRefs.current.delete(type);
+  }
+
+  function commitActions(nextActions: CardActionConfigItem[]) {
+    onActionConfigChange({
+      version: 1,
+      actions: nextActions.map((action, index) => ({
+        ...action,
+        id: action.id || action.type,
+        label: actionLabelIsConfigurable(action.type)
+          ? action.label || defaultLabelForActionType(action.type)
+          : undefined,
+        order: index,
+      })),
+    });
+  }
+
+  function updateAction(
+    type: CardActionType,
+    updates: Partial<Pick<CardActionConfigItem, "label" | "visible">>
+  ) {
+    commitActions(
+      actions.map((action) =>
+        action.type === type
+          ? {
+              ...action,
+              ...updates,
+              label:
+                actionLabelIsConfigurable(type) && updates.label !== undefined
+                  ? updates.label
+                  : action.label,
+            }
+          : action
+      )
+    );
+  }
+
+  function addAction(type: CardActionType) {
+    const allowedAction = allowedActions.actions.find(
+      (action) => action.type === type
+    );
+
+    commitActions([
+      ...actions,
+      {
+        id: type,
+        type,
+        visible: allowedAction?.default_visible ?? true,
+        order: actions.length,
+        label: actionLabelIsConfigurable(type)
+          ? allowedAction?.default_label || defaultLabelForActionType(type)
+          : undefined,
+      },
+    ]);
+    setIsAddingAction(false);
+  }
+
+  function removeAction(type: CardActionType) {
+    commitActions(actions.filter((action) => action.type !== type));
+  }
+
+  function moveAction(
+    draggedType: CardActionType,
+    targetType: CardActionType,
+    position: "before" | "after" = "before"
+  ) {
+    if (draggedType === targetType) return;
+
+    const nextActions = [...actions];
+    const fromIndex = nextActions.findIndex((action) => action.type === draggedType);
+    if (fromIndex < 0) return;
+
+    const [movedAction] = nextActions.splice(fromIndex, 1);
+    const toIndex = nextActions.findIndex((action) => action.type === targetType);
+    if (toIndex < 0) return;
+
+    nextActions.splice(position === "after" ? toIndex + 1 : toIndex, 0, movedAction);
+    commitActions(nextActions);
+  }
+
+  function handleActionDragStart(
+    type: CardActionType,
+    pointerState: {
+      pointerId: number;
+      currentY: number;
+      grabOffsetY: number;
+      left: number;
+      width: number;
+      height: number;
+    }
+  ) {
+    setDragState({ type, ...pointerState });
+  }
+
+  function handleActionDragMove(
+    type: CardActionType,
+    event: PointerEvent<HTMLButtonElement>
+  ) {
+    if (!dragState || dragState.type !== type || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const pointerY = event.clientY;
+
+    setDragState((current) =>
+      current && current.type === type ? { ...current, currentY: pointerY } : current
+    );
+
+    snapActionToPointer(type, pointerY);
+  }
+
+  function snapActionToPointer(type: CardActionType, pointerY: number) {
+    const orderedRows = actions
+      .map((action) => action.type)
+      .filter((rowType) => rowType !== type)
+      .map((rowType) => ({
+        type: rowType,
+        element: rowRefs.current.get(rowType),
+      }))
+      .filter(
+        (row): row is { type: CardActionType; element: HTMLDivElement } =>
+          Boolean(row.element)
+      );
+
+    const target = resolveDragTargetPosition(
+      orderedRows,
+      pointerY,
+      (row) => row.type
+    );
+
+    if (!target) return;
+
+    captureActionRowPositions();
+    moveAction(type, target.item, target.position);
+  }
+
+  const snapActionToPointerRef = useRef(snapActionToPointer);
+
+  useEffect(() => {
+    snapActionToPointerRef.current = snapActionToPointer;
+  });
+
+  function handleActionDragEnd(pointerY = dragState?.currentY) {
+    if (dragState && pointerY !== undefined) {
+      snapActionToPointer(dragState.type, pointerY);
+    }
+
+    setDragState(null);
+  }
+
+  useEffect(() => {
+    if (!dragState) return;
+
+    const activeDrag = dragState;
+
+    function finishDrag(pointerY = activeDrag.currentY) {
+      if (pointerY !== undefined) {
+        snapActionToPointerRef.current(activeDrag.type, pointerY);
+      }
+
+      setDragState(null);
+    }
+
+    function handleWindowPointerUp(event: globalThis.PointerEvent) {
+      if (event.pointerId !== activeDrag.pointerId) return;
+
+      finishDrag(event.clientY);
+    }
+
+    function handleWindowPointerCancel(event: globalThis.PointerEvent) {
+      if (event.pointerId !== activeDrag.pointerId) return;
+
+      finishDrag();
+    }
+
+    function handleWindowBlur() {
+      finishDrag();
+    }
+
+    function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key !== "Escape") return;
+
+      setDragState(null);
+    }
+
+    window.addEventListener("pointerup", handleWindowPointerUp);
+    window.addEventListener("pointercancel", handleWindowPointerCancel);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("keydown", handleWindowKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerup", handleWindowPointerUp);
+      window.removeEventListener("pointercancel", handleWindowPointerCancel);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("keydown", handleWindowKeyDown);
+    };
+  }, [dragState]);
+
+  function toggleExpandedAction(type: CardActionType) {
+    setExpandedActionTypes((current) => {
+      const next = new Set(current);
+
+      if (next.has(type)) {
+        next.delete(type);
+      } else {
+        next.add(type);
+      }
+
+      return next;
+    });
+  }
+
+  return (
+    <div className="space-y-5 text-[var(--text-primary)]">
+      <div>
+        <h3 className="text-xl font-semibold">Your Actions</h3>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+          Choose what visitors can do from your digital card.
+        </p>
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] transition">
+        <div className="flex w-full items-center justify-between gap-4 bg-[var(--dmi-surface-soft)] px-4 py-3 text-left">
+          <span className="min-w-0">
+            <span className="block text-base font-semibold uppercase tracking-[0.08em] text-[var(--text-primary)]">
+              ACTION BUTTONS
+            </span>
+            <span className="mt-1 block text-xs text-[var(--text-secondary)]">
+              {actions.length} configured · {addableActions.length} available
+            </span>
+          </span>
+        </div>
+
+        <div className="space-y-3 border-t border-[var(--dmi-border)] p-4">
+          {allowedTypes.length === 0 ? (
+            <p className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-4 py-4 text-sm text-[var(--text-secondary)]">
+              This template does not have visitor actions enabled yet.
+            </p>
+          ) : (
+            <>
+              {actions.length > 0 ? (
+                <div className="space-y-3">
+                  {actions.map((action) => (
+                    <ActionConfigRow
+                      key={action.type}
+                      action={action}
+                      draftCard={draftCard}
+                      dragState={dragState?.type === action.type ? dragState : null}
+                      expanded={expandedActionTypes.has(action.type)}
+                      onUpdate={onUpdate}
+                      onUpdateAction={updateAction}
+                      onRemove={removeAction}
+                      onToggleExpanded={toggleExpandedAction}
+                      onDragStart={handleActionDragStart}
+                      onDragMove={handleActionDragMove}
+                      onDragEnd={handleActionDragEnd}
+                      registerRow={registerActionRow}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-4 py-4 text-sm text-[var(--text-secondary)]">
+                  No actions are configured yet. Add the first visitor action
+                  below.
+                </p>
+              )}
+
+              <div className="rounded-2xl border border-dashed border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-3">
+                {isAddingAction ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-[var(--text-primary)]">
+                        Add action
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingAction(false)}
+                        className="rounded-full p-1 text-[var(--text-secondary)] transition hover:bg-[var(--button-hover-bg)] hover:text-[var(--text-primary)]"
+                        aria-label="Close add action menu"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    {addableActions.length > 0 ? (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {addableActions.map((type) => {
+                          const Icon = editorActionIcons[type];
+
+                          return (
+                            <button
+                              key={type}
+                              type="button"
+                              onClick={() => addAction(type)}
+                              className="flex items-center gap-3 rounded-xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] px-3 py-2 text-left text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)]"
+                            >
+                              <Icon className="h-4 w-4 text-[var(--text-accent)]" />
+                              <span>{defaultLabelForActionType(type)}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-[var(--text-secondary)]">
+                        Every action available for this template has already been
+                        added.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingAction(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] px-4 py-3 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={addableActions.length === 0}
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>
+                      {addableActions.length > 0 ? "Add action" : "All actions added"}
+                    </span>
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActionConfigRow({
+  action,
+  draftCard,
+  dragState,
+  expanded,
+  onUpdate,
+  onUpdateAction,
+  onRemove,
+  onToggleExpanded,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  registerRow,
+}: {
+  action: CardActionConfigItem;
+  draftCard: ClientCard;
+  dragState: {
+    type: CardActionType;
+    pointerId: number;
+    currentY: number;
+    grabOffsetY: number;
+    left: number;
+    width: number;
+    height: number;
+  } | null;
+  expanded: boolean;
+  onUpdate: (field: keyof ClientCard, value: string) => void;
+  onUpdateAction: (
+    type: CardActionType,
+    updates: Partial<Pick<CardActionConfigItem, "label" | "visible">>
+  ) => void;
+  onRemove: (type: CardActionType) => void;
+  onToggleExpanded: (type: CardActionType) => void;
+  onDragStart: (
+    type: CardActionType,
+    pointerState: {
+      pointerId: number;
+      currentY: number;
+      grabOffsetY: number;
+      left: number;
+      width: number;
+      height: number;
+    }
+  ) => void;
+  onDragMove: (type: CardActionType, event: PointerEvent<HTMLButtonElement>) => void;
+  onDragEnd: (pointerY?: number) => void;
+  registerRow: (type: CardActionType, element: HTMLDivElement | null) => void;
+}) {
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const setRowElement = useCallback(
+    (element: HTMLDivElement | null) => {
+      rowRef.current = element;
+      registerRow(action.type, element);
+    },
+    [action.type, registerRow]
+  );
+  const Icon = editorActionIcons[action.type];
+  const fieldKey = fieldKeyForActionType(action.type);
+  const destinationValue = cardActionValue(draftCard, action.type);
+  const destinationLabel = actionDestinationLabel(action.type);
+  const hasDestination = actionIsComplete(action, draftCard);
+  const label = action.label || defaultLabelForActionType(action.type);
+  const summary = actionDestinationSummary(action.type, destinationValue);
+  const labelConfigurable = actionLabelIsConfigurable(action.type);
+  const dragging = Boolean(dragState);
+
+  return (
+    <div
+      ref={setRowElement}
+      style={dragState ? { height: dragState.height } : undefined}
+    >
+      <div
+        className={`rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-3 transition ${
+          dragging ? "shadow-[0_16px_34px_rgba(0,0,0,0.18)]" : "shadow-sm shadow-black/0"
+        }`}
+        style={
+          dragState
+            ? {
+                position: "fixed",
+                zIndex: 60,
+                top: dragState.currentY - dragState.grabOffsetY,
+                left: dragState.left,
+                width: dragState.width,
+              }
+            : undefined
+        }
+      >
+        <div className="grid items-center gap-3 md:grid-cols-[auto_auto_minmax(0,1fr)_auto_auto]">
+          <button
+            type="button"
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+
+              const row = rowRef.current;
+              if (!row) return;
+
+              const rect = row.getBoundingClientRect();
+
+              event.preventDefault();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              onDragStart(action.type, {
+                pointerId: event.pointerId,
+                currentY: event.clientY,
+                grabOffsetY: event.clientY - rect.top,
+                left: rect.left,
+                width: rect.width,
+                height: rect.height,
+              });
+            }}
+            onPointerMove={(event) => onDragMove(action.type, event)}
+            onPointerUp={(event) => {
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+
+              onDragEnd(event.clientY);
+            }}
+            onPointerCancel={(event) => {
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+
+              onDragEnd();
+            }}
+            className="flex h-10 w-9 cursor-grab touch-none items-center justify-center rounded-xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] text-[var(--text-secondary)] transition hover:border-[var(--border-brand)] hover:text-[var(--text-primary)] active:cursor-grabbing"
+            aria-label={`Reorder ${label}`}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] text-[var(--text-accent)]">
+            <Icon className="h-4 w-4" />
+          </span>
+
+          <button
+            type="button"
+            onClick={() => onToggleExpanded(action.type)}
+            className="min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#AC00FF]/55"
+            aria-expanded={expanded}
+          >
+            <span className="block truncate text-sm font-semibold text-[var(--text-primary)]">
+              {label}
+            </span>
+            <span
+              className={`mt-0.5 block truncate text-xs ${
+                hasDestination
+                  ? "text-[var(--text-secondary)]"
+                  : "text-yellow-700 dark:text-yellow-200"
+              }`}
+            >
+              {hasDestination ? summary : "Destination required"}
+            </span>
+          </button>
+
+          <div className="flex min-w-[68px] flex-col items-center gap-1 justify-self-start md:justify-self-center">
+            <VisibilitySwitch
+              visible={action.visible}
+              label={`${label} action visibility`}
+              onToggle={() =>
+                onUpdateAction(action.type, { visible: !action.visible })
+              }
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onToggleExpanded(action.type)}
+            className="flex h-9 w-9 items-center justify-center justify-self-end rounded-xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] text-[var(--text-secondary)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[#AC00FF]/50"
+            aria-label={`${expanded ? "Collapse" : "Edit"} ${label}`}
+            aria-expanded={expanded}
+          >
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+            />
+          </button>
+        </div>
+
+        <div
+          className={`grid transition-[grid-template-rows] duration-200 ease-out ${
+            expanded ? "mt-3 grid-rows-[1fr]" : "grid-rows-[0fr]"
+          }`}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-3">
+              <div className="grid gap-3 lg:grid-cols-2">
+                {labelConfigurable ? (
+                  <TextField
+                    label="Button label"
+                    value={label}
+                    onChange={(value) =>
+                      onUpdateAction(action.type, { label: value })
+                    }
+                  />
+                ) : (
+                  <div className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] px-4 py-3">
+                    <span className="block text-sm font-medium text-[var(--text-secondary)]">
+                      Button label
+                    </span>
+                    <span className="mt-2 block text-sm font-semibold text-[var(--text-primary)]">
+                      {defaultLabelForActionType(action.type)}
+                    </span>
+                  </div>
+                )}
+                {fieldKey ? (
+                  <TextField
+                    label={destinationLabel}
+                    helperText={actionDestinationHelper(action.type)}
+                    value={destinationValue}
+                    onChange={(value) => onUpdate(fieldKey as keyof ClientCard, value)}
+                  />
+                ) : action.type === "download_pdf" ? (
+                  <div className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] px-4 py-3">
+                    <span className="block text-sm font-medium text-[var(--text-secondary)]">
+                      PDF file
+                    </span>
+                    <span className="mt-2 block text-sm text-[var(--text-primary)]">
+                      Uses stored file metadata when file uploads are enabled.
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-[var(--text-secondary)]">
+                      No file data is embedded in the action configuration.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] px-4 py-3">
+                    <span className="block text-sm font-medium text-[var(--text-secondary)]">
+                      Save Contact
+                    </span>
+                    <span className="mt-2 block text-sm text-[var(--text-primary)]">
+                      Downloads the contact details on this card as a vCard.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => onRemove(action.type)}
+                  className="inline-flex min-h-9 items-center justify-center rounded-xl border border-red-300/40 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-600 transition hover:border-red-400/70 hover:bg-red-500/15 dark:text-red-200"
+                >
+                  Remove action
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function actionDestinationLabel(type: CardActionType) {
+  const fieldKey = fieldKeyForActionType(type);
+  if (!fieldKey) return "Destination";
+
+  return fieldLabels[fieldKey] || defaultLabelForActionType(type);
+}
+
+function actionDestinationSummary(type: CardActionType, value: string) {
+  if (type === "save_contact") return "vCard download";
+  if (type === "download_pdf") return "Stored PDF file";
+
+  const trimmed = value.trim();
+  if (!trimmed) return "Destination required";
+
+  return trimmed.length > 46 ? `${trimmed.slice(0, 43)}...` : trimmed;
+}
+
+function actionDestinationHelper(type: CardActionType) {
+  if (type === "download_pdf") {
+    return "This will reference stored PDF metadata when file uploads are enabled.";
+  }
+
+  const fieldKey = fieldKeyForActionType(type);
+  if (!fieldKey) return undefined;
+
+  return (
+    fieldHelperText[fieldKey] ||
+    `This uses the same ${actionDestinationLabel(type).toLowerCase()} value from Build Your Card.`
+  );
+}
+
+function normalizeActionConfigForDraft(
+  actionConfig: CardActionConfig
+): CardActionConfig {
+  return {
+    version: 1,
+    actions: actionConfig.actions
+      .filter((action) => cardActionTypes.includes(action.type))
+      .map((action, index) => ({
+        id: action.id || action.type,
+        type: action.type,
+        visible: action.visible !== false,
+        order: index,
+        label: actionLabelIsConfigurable(action.type)
+          ? action.label || defaultLabelForActionType(action.type)
+          : undefined,
+      })),
+  };
+}
+
 function SetUpStep({
+  card,
+  template,
   settings,
   isPaid,
   onSettingsChange,
@@ -2847,6 +4484,8 @@ function SetUpStep({
   saveMessage,
   saveError,
 }: {
+  card: ClientCard;
+  template: AdminTemplate;
   settings: LeadCaptureSettings;
   isPaid: boolean;
   onSettingsChange: (settings: LeadCaptureSettings) => void;
@@ -2854,51 +4493,83 @@ function SetUpStep({
   saveMessage: string;
   saveError: string;
 }) {
+  const normalizedSettings = normalizeLeadCaptureSettings(settings);
+  const recipient = leadRecipientName(card);
+  const fieldCount = normalizedSettings.fields.length;
+  const activeActions = effectiveCardActionConfig(card, template).actions.filter(
+    (action) => action.visible && actionIsComplete(action, card)
+  ).length;
+  const privacyUrl = normalizedSettings.privacy_policy_url || normalizedSettings.terms_url;
+
   function toggleField(field: LeadField) {
     onSettingsChange({
-      ...settings,
-      fields: settings.fields.includes(field)
-        ? settings.fields.filter((item) => item !== field)
-        : [...settings.fields, field],
+      ...normalizedSettings,
+      fields: normalizedSettings.fields.includes(field)
+        ? normalizedSettings.fields.filter((item) => item !== field)
+        : [...normalizedSettings.fields, field],
     });
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 text-[var(--text-primary)]">
       <div>
-        <h3 className="text-xl font-semibold">Set Up Your Card</h3>
-        <p className="mt-2 text-sm text-white/45">
-          Configure how recipients interact before or after viewing your card.
+        <h3 className="text-2xl font-semibold">Review &amp; Publish</h3>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+          Choose how visitors enter your card experience, then publish when the
+          setup looks ready.
         </p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
         {[
-          { value: "share_first", label: "Share first" },
-          { value: "collect_first", label: "Collect first" },
+          {
+            value: "share_first",
+            label: "Share First",
+            description: "Visitors see your card immediately.",
+          },
+          {
+            value: "collect_first",
+            label: "Collect First",
+            description: "Visitors submit selected details before the card is revealed.",
+          },
         ].map((option) => (
           <button
             key={option.value}
             type="button"
             onClick={() =>
               onSettingsChange({
-                ...settings,
+                ...normalizedSettings,
                 flow: option.value as "collect_first" | "share_first",
               })
             }
-            className={`rounded-2xl border px-4 py-4 text-left text-sm font-semibold transition ${
-              settings.flow === option.value
-                ? "border-[#AC00FF] bg-[#AC00FF]/15 text-white"
-                : "border-white/10 bg-white/5 text-white/55 hover:bg-white/10"
+            className={`rounded-2xl border bg-[var(--dmi-surface-soft)] px-4 py-4 text-left transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] ${
+              normalizedSettings.flow === option.value
+                ? "border-[#AC00FF]/55 ring-2 ring-[#AC00FF]/15"
+                : "border-[var(--dmi-border)]"
             }`}
           >
-            {option.label}
+            <span className="block text-sm font-semibold text-[var(--text-primary)]">
+              {option.label}
+            </span>
+            <span className="mt-1 block text-xs leading-5 text-[var(--text-secondary)]">
+              {option.description}
+            </span>
           </button>
         ))}
       </div>
 
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-        <p className="font-semibold">Recipient data to collect</p>
+      <div className="rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="font-semibold text-[var(--text-primary)]">Lead fields</p>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
+              Select the details to ask for when Collect First is enabled.
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full border border-[var(--dmi-border)] bg-[var(--dmi-surface)] px-3 py-1 text-xs font-semibold text-[var(--text-secondary)]">
+            {fieldCount} selected
+          </span>
+        </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {leadFields.map((field) => (
             <button
@@ -2906,65 +4577,158 @@ function SetUpStep({
               type="button"
               onClick={() => toggleField(field.key)}
               className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-sm transition ${
-                settings.fields.includes(field.key)
-                  ? "border-[#AC00FF]/60 bg-[#AC00FF]/15 text-white"
-                  : "border-white/10 bg-white/5 text-white/55"
+                normalizedSettings.fields.includes(field.key)
+                  ? "border-[#AC00FF]/50 bg-[#AC00FF]/10 text-[var(--text-primary)]"
+                  : "border-[var(--dmi-border)] bg-[var(--dmi-surface)] text-[var(--text-secondary)] hover:bg-[var(--button-hover-bg)]"
               }`}
             >
               {field.label}
-              {settings.fields.includes(field.key) && <Check className="h-4 w-4" />}
+              {normalizedSettings.fields.includes(field.key) && (
+                <Check className="h-4 w-4 text-[var(--text-accent)]" />
+              )}
             </button>
           ))}
         </div>
       </div>
 
-      {isPaid && (
-        <>
-          <div className="grid gap-4 md:grid-cols-2">
-            <TextArea
-              label="Consent notice"
-              value={settings.consent_notice}
-              onChange={(value) =>
-                onSettingsChange({ ...settings, consent_notice: value })
-              }
-            />
-            <TextField
-              label="Terms URL"
-              value={settings.terms_url}
-              onChange={(value) =>
-                onSettingsChange({ ...settings, terms_url: value })
-              }
-            />
-          </div>
+      <div className="rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-5">
+        <p className="font-semibold text-[var(--text-primary)]">Privacy &amp; data use</p>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+          {privacyNoticeForRecipient(recipient)}
+        </p>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <TextArea
+            label="Data-use notice"
+            value={normalizedSettings.consent_notice}
+            onChange={(value) =>
+              onSettingsChange({
+                ...normalizedSettings,
+                consent_notice: value,
+              })
+            }
+          />
+          <TextField
+            label="Privacy Policy URL"
+            value={privacyUrl}
+            onChange={(value) =>
+              onSettingsChange({
+                ...normalizedSettings,
+                terms_url: value,
+                privacy_policy_url: value,
+                privacy_policy_mode: "external",
+              })
+            }
+          />
+        </div>
+        <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">
+          A policy URL is optional for personal cards. Hosted DMI policy pages
+          can be added later without changing this setup.
+        </p>
+      </div>
 
+      <div className="rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="font-semibold text-[var(--text-primary)]">Marketing opt-in</p>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+              Optional and separate from submitting contact details. Visitors can
+              send their enquiry without opting into marketing.
+            </p>
+          </div>
           <button
             type="button"
             onClick={() =>
               onSettingsChange({
-                ...settings,
-                follow_up_enabled: !settings.follow_up_enabled,
+                ...normalizedSettings,
+                marketing_opt_in_enabled:
+                  !normalizedSettings.marketing_opt_in_enabled,
               })
             }
-            className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left transition hover:bg-white/10"
+            role="switch"
+            aria-checked={normalizedSettings.marketing_opt_in_enabled}
+            className={`flex h-7 w-12 shrink-0 items-center rounded-full border p-1 transition focus:outline-none focus:ring-2 focus:ring-[#AC00FF]/45 ${
+              normalizedSettings.marketing_opt_in_enabled
+                ? "border-[#AC00FF]/50 bg-[#AC00FF]"
+                : "border-[var(--dmi-border)] bg-[var(--dmi-surface)]"
+            }`}
           >
-            <div>
-              <p className="font-semibold">Follow-up email</p>
-              <p className="mt-1 text-sm text-white/40">
-                Placeholder toggle for V1.
-              </p>
-            </div>
             <span
-              className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                settings.follow_up_enabled
-                  ? "bg-[#AC00FF]/20 text-purple-100"
-                  : "bg-white/10 text-white/50"
+              className={`h-4 w-4 rounded-full bg-white shadow-sm transition ${
+                normalizedSettings.marketing_opt_in_enabled
+                  ? "translate-x-5"
+                  : "translate-x-0"
               }`}
-            >
-              {settings.follow_up_enabled ? "On" : "Off"}
-            </span>
+            />
           </button>
-        </>
-      )}
+        </div>
+        {normalizedSettings.marketing_opt_in_enabled && (
+          <label className="mt-4 block">
+            <span className="mb-2 block text-sm font-semibold text-[var(--text-primary)]">
+              Marketing checkbox wording
+            </span>
+            <input
+              value={normalizedSettings.marketing_opt_in_label || ""}
+              onChange={(event) =>
+                onSettingsChange({
+                  ...normalizedSettings,
+                  marketing_opt_in_label: event.target.value,
+                })
+              }
+              className="w-full rounded-2xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm text-[var(--input-text)] outline-none transition placeholder:text-[var(--dmi-text-tertiary)] focus:border-[var(--input-focus)] focus:ring-4 focus:ring-[var(--input-focus-ring)]"
+            />
+          </label>
+        )}
+      </div>
+
+      <div className="rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-5">
+        <p className="font-semibold text-[var(--text-primary)]">Publish readiness</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <ReadinessItem label="Card ready" value="Ready to publish" ready />
+          <ReadinessItem
+            label="Active actions"
+            value={`${activeActions} configured`}
+            ready
+          />
+          <ReadinessItem
+            label="Visitor flow"
+            value={
+              normalizedSettings.flow === "collect_first"
+                ? "Collect First"
+                : "Share First"
+            }
+            ready
+          />
+          <ReadinessItem
+            label="Fields collected"
+            value={
+              normalizedSettings.flow === "collect_first"
+                ? `${fieldCount} selected`
+                : "Not required before viewing"
+            }
+            ready={normalizedSettings.flow !== "collect_first" || fieldCount > 0}
+          />
+          <ReadinessItem
+            label="Privacy"
+            value={privacyUrl ? "Policy link added" : "Notice only"}
+            ready
+          />
+          <ReadinessItem
+            label="Follow-up email"
+            value={
+              normalizedSettings.follow_up_enabled
+                ? "Saved setting, delivery comes later"
+                : "Not enabled"
+            }
+            ready
+          />
+        </div>
+        {!isPaid && (
+          <p className="mt-4 text-xs leading-5 text-[var(--text-secondary)]">
+            Privacy and marketing controls are available here for all cards;
+            automated follow-up delivery will be handled in a later phase.
+          </p>
+        )}
+      </div>
 
       {(saveStatus === "saving" || saveMessage || saveError) && (
         <div
@@ -2981,6 +4745,190 @@ function SetUpStep({
       )}
     </div>
   );
+}
+
+function ReadinessItem({
+  label,
+  value,
+  ready,
+}: {
+  label: string;
+  value: string;
+  ready: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] px-4 py-3">
+      <div className="flex items-center gap-2">
+        <span
+          className={`flex h-5 w-5 items-center justify-center rounded-full ${
+            ready
+              ? "bg-[#AC00FF]/15 text-[var(--text-accent)]"
+              : "bg-amber-500/15 text-amber-500"
+          }`}
+        >
+          <Check className="h-3.5 w-3.5" />
+        </span>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-secondary)]">
+          {label}
+        </p>
+      </div>
+      <p className="mt-2 text-sm font-semibold text-[var(--text-primary)]">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function LeadCapturePreviewCard({
+  card,
+  settings,
+}: {
+  card: ClientCard;
+  settings: LeadCaptureSettings;
+}) {
+  const normalizedSettings = normalizeLeadCaptureSettings(settings);
+  const recipient = leadRecipientName(card);
+  const privacyNotice =
+    normalizedSettings.consent_notice || privacyNoticeForRecipient(recipient);
+  const privacyUrl = normalizedSettings.privacy_policy_url || normalizedSettings.terms_url;
+
+  return (
+    <div className="flex min-h-[650px] flex-col rounded-[2rem] bg-[#070B1A] p-6 text-white shadow-2xl">
+      <div className="mb-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/45">
+          Lead form preview
+        </p>
+        <h3 className="mt-2 text-2xl font-semibold">Share your details</h3>
+        <p className="mt-3 text-sm leading-6 text-white/65">
+          {privacyNotice}
+        </p>
+        {privacyUrl && (
+          <p className="mt-2 text-xs text-white/50">
+            Privacy Policy link shown to visitors.
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        {normalizedSettings.fields.length === 0 ? (
+          <div className="rounded-2xl border border-amber-300/25 bg-amber-400/10 p-4 text-sm text-amber-50">
+            Select at least one field to preview the Collect First form.
+          </div>
+        ) : (
+          normalizedSettings.fields.map((field) => (
+            <label key={field} className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-white/70">
+                {leadFieldLabel(field)}
+              </span>
+              {field === "message" ? (
+                <div className="min-h-[84px] rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white/35">
+                  Visitor message
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white/35">
+                  {leadFieldPlaceholder(field)}
+                </div>
+              )}
+            </label>
+          ))
+        )}
+      </div>
+
+      {normalizedSettings.marketing_opt_in_enabled && (
+        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm leading-6 text-white/65">
+          <span className="mr-2 inline-flex h-4 w-4 rounded border border-white/35 align-[-2px]" />
+          {normalizedSettings.marketing_opt_in_label ||
+            defaultLeadCaptureSettings.marketing_opt_in_label}
+        </div>
+      )}
+
+      <button
+        type="button"
+        className="mt-auto inline-flex min-h-12 items-center justify-center rounded-2xl bg-white px-5 text-sm font-bold text-[#070B1A]"
+      >
+        Continue to card
+      </button>
+    </div>
+  );
+}
+
+function PublishSuccessState({
+  card,
+  onViewPublicPage,
+  onCopyLink,
+  onEditAgain,
+}: {
+  card: ClientCard;
+  onViewPublicPage: (card: ClientCard) => void;
+  onCopyLink: (card: ClientCard) => void;
+  onEditAgain: () => void;
+}) {
+  return (
+    <section className="mx-auto flex min-h-[520px] w-full max-w-2xl flex-col items-center justify-center rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-6 text-center text-[var(--text-primary)] shadow-[var(--shadow-sm)]">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#AC00FF]/12 text-[var(--text-accent)]">
+        <Check className="h-7 w-7" />
+      </div>
+      <h3 className="mt-5 text-2xl font-semibold">Card published</h3>
+      <p className="mt-3 max-w-md text-sm leading-6 text-[var(--text-secondary)]">
+        Your public digital card is live. You can view it, copy the link, or
+        return to the editor.
+      </p>
+      <div className="mt-5 w-full rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+        <span className="block truncate">{card.public_url}</span>
+      </div>
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+        <button
+          type="button"
+          onClick={() => onViewPublicPage(card)}
+          className={clientButtonClass.primary}
+        >
+          <ExternalLink className="h-4 w-4" />
+          View Card
+        </button>
+        <button
+          type="button"
+          onClick={() => void onCopyLink(card)}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-5 py-3 text-sm font-semibold text-[var(--button-secondary-text)] shadow-sm transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)]"
+        >
+          <Copy className="h-4 w-4" />
+          Copy Link
+        </button>
+        <button
+          type="button"
+          onClick={onEditAgain}
+          className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-5 py-3 text-sm font-semibold text-[var(--button-secondary-text)] shadow-sm transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)]"
+        >
+          Edit Again
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function leadRecipientName(card: Pick<ClientCard, "company_name" | "first_name" | "last_name" | "full_name">) {
+  return card.company_name || displayName(card, "this card owner");
+}
+
+function privacyNoticeForRecipient(recipient: string) {
+  return `Your details will be shared with ${recipient} so they can respond to your enquiry.`;
+}
+
+function leadFieldLabel(field: LeadField) {
+  return leadFields.find((item) => item.key === field)?.label || friendlyFieldLabel(field);
+}
+
+function leadFieldPlaceholder(field: LeadField) {
+  const placeholders: Record<LeadField, string> = {
+    name: "Your name",
+    email: "you@example.com",
+    phone: "Phone number",
+    company: "Company",
+    job_title: "Job title",
+    website: "https://example.com",
+    message: "Visitor message",
+  };
+
+  return placeholders[field];
 }
 
 function buildTemplatePreview(
@@ -3103,22 +5051,10 @@ function sortCardsBySlotOrder(cards: ClientCard[]) {
   });
 }
 
-async function getActiveUserForCardSave(isPublishing: boolean): Promise<User | null> {
+async function getActiveUserForCardSave(): Promise<User | null> {
   const {
     data: { session },
-    error: sessionError,
   } = await supabase.auth.getSession();
-
-  if (isPublishing) {
-    console.log("[DMI publish] session before publish", {
-      hasSession: Boolean(session),
-      userId: session?.user?.id || null,
-      email: session?.user?.email || null,
-      error: sessionError
-        ? { name: sessionError.name, message: sessionError.message }
-        : null,
-    });
-  }
 
   if (session?.user) {
     return session.user;
@@ -3126,19 +5062,7 @@ async function getActiveUserForCardSave(isPublishing: boolean): Promise<User | n
 
   const {
     data: { user },
-    error: userError,
   } = await supabase.auth.getUser();
-
-  if (isPublishing) {
-    console.log("[DMI publish] user before publish", {
-      hasUser: Boolean(user),
-      userId: user?.id || null,
-      email: user?.email || null,
-      error: userError
-        ? { name: userError.name, message: userError.message }
-        : null,
-    });
-  }
 
   return user;
 }
@@ -3323,6 +5247,87 @@ function sectionConfig(
   }));
 }
 
+function buildStepSections(
+  template: CardRendererTemplate,
+  fieldOrder: FieldOrder
+): SectionConfig[] {
+  return sectionConfig(template, fieldOrder)
+    .map((section) =>
+      section.key === "social"
+        ? {
+            ...section,
+            fields: section.fields.filter(
+              (field) => !stepThreeDestinationFields.has(field)
+            ),
+          }
+        : section
+    )
+    .filter((section) => section.key !== "social" || section.fields.length > 0);
+}
+
+function fieldHasDraftValue(card: ClientCard, field: string) {
+  const value = isEditableCardField(field)
+    ? card[field]
+    : customFieldValue(card, field);
+
+  return typeof value === "string" ? value.trim().length > 0 : Boolean(value);
+}
+
+function forceHideFieldsOnCard(card: ClientCard, fields: string[]) {
+  const fieldVisibility = normalizeFieldVisibility(card.field_visibility);
+  const hiddenFieldSet = new Set(card.hidden_fields || []);
+
+  fields.forEach((field) => {
+    const visibilityKey = customFieldStorageKey(field);
+    fieldVisibility[visibilityKey] = false;
+    hiddenFieldSet.add(visibilityKey);
+  });
+
+  return {
+    ...card,
+    field_visibility: fieldVisibility,
+    hidden_fields: Array.from(hiddenFieldSet),
+  };
+}
+
+function actionIncompleteDetail(type: CardActionType) {
+  if (type === "download_pdf") {
+    return "Stored PDF metadata is required.";
+  }
+
+  const fieldKey = fieldKeyForActionType(type);
+  const destination = fieldKey
+    ? fieldLabels[fieldKey] || friendlyFieldLabel(fieldKey)
+    : "Destination";
+
+  return `${destination} is required.`;
+}
+
+function resolveDragTargetPosition<T extends string, TRow extends { element: HTMLElement }>(
+  orderedRows: TRow[],
+  pointerY: number,
+  itemForRow: (row: TRow) => T
+): DragTargetPosition<T> | null {
+  if (orderedRows.length === 0) return null;
+
+  const targetRow = orderedRows.find(({ element }) => {
+    const rect = element.getBoundingClientRect();
+    return pointerY < rect.top + rect.height / 2;
+  });
+
+  if (targetRow) {
+    return {
+      item: itemForRow(targetRow),
+      position: "before",
+    };
+  }
+
+  return {
+    item: itemForRow(orderedRows[orderedRows.length - 1]),
+    position: "after",
+  };
+}
+
 function NoTemplateState({ templates }: { templates: AdminTemplate[] }) {
   const paidTemplates = templates.filter((template) => isPaidTemplate(template));
 
@@ -3356,14 +5361,14 @@ function NoTemplateState({ templates }: { templates: AdminTemplate[] }) {
 
 function LockedSection({ title, message }: { title: string; message: string }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 opacity-80">
+    <div className="rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-5 opacity-90">
       <div className="flex gap-4">
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white/50">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-raised)] text-[var(--text-secondary)]">
           <Lock className="h-5 w-5" />
         </div>
         <div>
-          <p className="font-semibold text-white/70">{title}</p>
-          <p className="mt-2 text-sm leading-6 text-white/40">{message}</p>
+          <p className="font-semibold text-[var(--text-primary)]">{title}</p>
+          <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{message}</p>
         </div>
       </div>
     </div>
@@ -3372,23 +5377,30 @@ function LockedSection({ title, message }: { title: string; message: string }) {
 
 function TextField({
   label,
+  helperText,
   value,
   onChange,
 }: {
   label: string;
+  helperText?: string;
   value?: string | null;
   onChange: (value: string) => void;
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-medium text-white/55">
+      <span className="mb-2 block text-sm font-medium text-[var(--text-secondary)]">
         {label}
       </span>
       <input
         value={value || ""}
         onChange={(event) => onChange(event.target.value)}
-        className="h-12 w-full rounded-2xl border border-white/10 bg-[#070B1A]/70 px-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60"
+        className="h-12 w-full rounded-2xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 text-sm text-[var(--input-text)] outline-none transition placeholder:text-[var(--dmi-text-tertiary)] focus:border-[var(--input-focus)] focus:ring-4 focus:ring-[var(--input-focus-ring)]"
       />
+      {helperText && (
+        <span className="mt-2 block text-xs leading-5 text-[var(--text-secondary)]">
+          {helperText}
+        </span>
+      )}
     </label>
   );
 }
@@ -3406,13 +5418,13 @@ function SelectField({
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-medium text-white/55">
+      <span className="mb-2 block text-sm font-medium text-[var(--text-secondary)]">
         {label}
       </span>
       <select
         value={value || ""}
         onChange={(event) => onChange(event.target.value)}
-        className="h-12 w-full rounded-2xl border border-white/10 bg-[#070B1A]/70 px-4 text-sm text-white outline-none transition focus:border-[#AC00FF]/60"
+        className="h-12 w-full rounded-2xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 text-sm text-[var(--input-text)] outline-none transition focus:border-[var(--input-focus)] focus:ring-4 focus:ring-[var(--input-focus-ring)]"
       >
         {options.map((option) => (
           <option key={option || "none"} value={option}>
@@ -3426,24 +5438,56 @@ function SelectField({
 
 function TextArea({
   label,
+  helperText,
   value,
   onChange,
+  autoGrow = false,
+  minRows = 4,
 }: {
   label: string;
+  helperText?: string;
   value?: string | null;
   onChange: (value: string) => void;
+  autoGrow?: boolean;
+  minRows?: number;
 }) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const resizeTextarea = useCallback((element: HTMLTextAreaElement) => {
+    if (!autoGrow) return;
+
+    element.style.height = "auto";
+    element.style.height = `${element.scrollHeight}px`;
+  }, [autoGrow]);
+
+  useEffect(() => {
+    if (!textareaRef.current) return;
+
+    resizeTextarea(textareaRef.current);
+  }, [resizeTextarea, value]);
+
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-medium text-white/55">
+      <span className="mb-2 block text-sm font-medium text-[var(--text-secondary)]">
         {label}
       </span>
       <textarea
+        ref={textareaRef}
         value={value || ""}
-        onChange={(event) => onChange(event.target.value)}
-        rows={4}
-        className="w-full rounded-2xl border border-white/10 bg-[#070B1A]/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60"
+        onChange={(event) => {
+          onChange(event.target.value);
+          resizeTextarea(event.target);
+        }}
+        rows={autoGrow ? minRows : 4}
+        className={`w-full rounded-2xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm text-[var(--input-text)] outline-none transition placeholder:text-[var(--dmi-text-tertiary)] focus:border-[var(--input-focus)] focus:ring-4 focus:ring-[var(--input-focus-ring)] ${
+          autoGrow ? "min-h-[6rem] resize-none overflow-hidden" : ""
+        }`}
       />
+      {helperText && (
+        <span className="mt-2 block text-xs leading-5 text-[var(--text-secondary)]">
+          {helperText}
+        </span>
+      )}
     </label>
   );
 }
@@ -3466,7 +5510,7 @@ function UpgradeNotice({ message }: { message: string }) {
         />
         <p>{message}</p>
         </div>
-        <UpgradeToProButton className="inline-flex w-full shrink-0 items-center justify-center rounded-2xl bg-[#AC00FF] px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-purple-500/20 transition hover:bg-[#BE35FF] sm:w-auto">
+        <UpgradeToProButton className="dmi-gradient-primary inline-flex w-full shrink-0 items-center justify-center rounded-2xl bg-[image:var(--brand-gradient)] px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-purple-500/20 transition sm:w-auto">
           Upgrade
         </UpgradeToProButton>
       </div>
@@ -3486,10 +5530,10 @@ function AccessPill({
 
   return (
     <span
-      className={`inline-flex w-fit items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+      className={`inline-flex w-fit items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
         locked
-          ? "border border-[#AC00FF]/30 bg-[#AC00FF]/10 text-purple-100"
-          : "bg-white/10 text-white/55"
+          ? "border-[#AC00FF]/30 bg-[image:var(--brand-gradient-subtle)] text-[var(--text-accent)]"
+          : "border-[var(--dmi-border)] bg-[var(--dmi-surface)] text-[var(--text-secondary)]"
       }`}
     >
       {locked && <Lock className="h-3 w-3" />}
@@ -3503,9 +5547,7 @@ function StatusBadge({ status }: { status: CardStatus }) {
 
   return (
     <span
-      className={`inline-flex w-fit rounded-full border px-3 py-1 text-xs font-semibold capitalize ${
-        published ? "" : "border-white/10 bg-white/10 text-white/55"
-      }`}
+      className="inline-flex w-fit rounded-full border px-3 py-1 text-xs font-semibold"
       style={
         published
           ? {
@@ -3513,10 +5555,14 @@ function StatusBadge({ status }: { status: CardStatus }) {
               background: "var(--success-bg)",
               color: "var(--success)",
             }
-          : undefined
+          : {
+              borderColor: "rgba(248, 113, 113, 0.28)",
+              background: "rgba(248, 113, 113, 0.1)",
+              color: "#FCA5A5",
+            }
       }
     >
-      {status}
+      {published ? "Published" : "Unpublished"}
     </span>
   );
 }

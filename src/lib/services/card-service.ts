@@ -17,6 +17,14 @@ export type CardWriteResult = {
   error: { code?: string; message?: string } | null;
 };
 
+const criticalEditorPersistenceColumns = new Set([
+  "field_visibility",
+  "field_order",
+  "hidden_fields",
+  "lead_capture_settings",
+  "action_config",
+]);
+
 export async function listCardsForUser(userId: string) {
   return supabase
     .from("cards")
@@ -53,7 +61,6 @@ export async function saveClientCard({
   card,
   userId,
   mode,
-  isPublishing = false,
 }: {
   card: SharedClientCard;
   userId: string;
@@ -72,14 +79,6 @@ export async function saveClientCard({
     },
     userId
   );
-
-  if (isPublishing) {
-    console.log("[DMI publish] publish payload", {
-      shouldUpdate,
-      cardId: card.id,
-      payload,
-    });
-  }
 
   return writeCardPayload({
     cardId: card.id,
@@ -231,6 +230,10 @@ export async function writeCardPayload({
     const missingColumn = missingCardColumnFromError(result.error);
 
     if (!missingColumn || !(missingColumn in nextPayload)) {
+      break;
+    }
+
+    if (criticalEditorPersistenceColumns.has(missingColumn)) {
       break;
     }
 

@@ -20,7 +20,7 @@ type ApiSuccessBody<T> = {
 };
 
 export class ApiRouteError extends Error {
-  status: 400 | 401 | 403 | 404 | 409 | 500;
+  status: 400 | 401 | 403 | 404 | 409 | 429 | 500;
   code: ApiErrorCode;
 
   constructor(

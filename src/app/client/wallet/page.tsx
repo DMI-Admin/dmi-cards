@@ -13,7 +13,12 @@ import type { LucideIcon } from "lucide-react";
 import CardRenderer, {
   type CardRendererTemplate,
 } from "@/components/CardRenderer";
-import ClientSidebar from "@/components/ClientSidebar";
+import {
+  ClientPortalHeader,
+  ClientPortalPage,
+  ClientPortalWorkspace,
+  clientButtonClass,
+} from "@/components/ClientPortalShell";
 import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
 import { buildPublicCardUrl } from "@/lib/public-url";
 import {
@@ -153,18 +158,11 @@ export default function ClientWalletPage() {
   }, [currentPlan]);
 
   return (
-    <main className="flex min-h-screen bg-[#070B1A] text-white">
-      <ClientSidebar />
-
-      <section className="flex-1 p-10">
-        <div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <h1 className="text-4xl font-bold">Wallet</h1>
-            <p className="mt-3 max-w-3xl text-white/50">
-              Add your digital business card to Apple Wallet or Google Wallet.
-            </p>
-          </div>
-        </div>
+    <ClientPortalPage>
+        <ClientPortalHeader
+          title="Wallet"
+          description="Add your digital business card to Apple Wallet or Google Wallet."
+        />
 
         {loading ? (
           <MessageCard
@@ -183,8 +181,7 @@ export default function ClientWalletPage() {
             onSelectCard={(cardId) => setSelectedCardId(cardId)}
           />
         )}
-      </section>
-    </main>
+    </ClientPortalPage>
   );
 }
 
@@ -287,8 +284,30 @@ function WalletReadyState({
   }
 
   return (
-    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_430px]">
-      <div className="space-y-6">
+    <ClientPortalWorkspace
+      preview={
+        <section className="client-portal-panel p-5 sm:p-6">
+          <SectionTitle
+            title="Add to Wallet"
+            description="Generate a real wallet pass from the selected published card."
+          />
+
+          <div className="mt-6 space-y-4">
+            <SelectedWalletSummary
+              card={selectedCard}
+              selectedColour={selectedBackgroundColour}
+            />
+            <AppleWalletButton
+              loading={appleLoading}
+              error={appleError || contrastError}
+              disabled={!selectedCard || Boolean(contrastError)}
+              onClick={handleAppleWalletDownload}
+            />
+            <GoogleWalletButton />
+          </div>
+        </section>
+      }
+    >
         <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-5 shadow-2xl shadow-black/20 sm:p-6">
           <SectionTitle
             title="Wallet Settings"
@@ -329,30 +348,6 @@ function WalletReadyState({
             </SettingsBlock>
           </div>
         </section>
-      </div>
-
-      <aside className="xl:sticky xl:top-8 xl:self-start">
-        <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-5 shadow-2xl shadow-black/20 sm:p-6">
-          <SectionTitle
-            title="Add to Wallet"
-            description="Generate a real wallet pass from the selected published card."
-          />
-
-          <div className="mt-6 space-y-4">
-            <SelectedWalletSummary
-              card={selectedCard}
-              selectedColour={selectedBackgroundColour}
-            />
-            <AppleWalletButton
-              loading={appleLoading}
-              error={appleError || contrastError}
-              disabled={!selectedCard || Boolean(contrastError)}
-              onClick={handleAppleWalletDownload}
-            />
-            <GoogleWalletButton />
-          </div>
-        </section>
-      </aside>
 
       {passLink && selectedCard && (
         <AppleWalletFallbackModal
@@ -361,7 +356,7 @@ function WalletReadyState({
           onClose={() => setPassLink(null)}
         />
       )}
-    </div>
+    </ClientPortalWorkspace>
   );
 }
 
@@ -406,7 +401,7 @@ function AppleWalletFallbackModal({
             href={passLink.passPath}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex min-h-12 items-center justify-center rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/20 transition hover:shadow-purple-500/35"
+            className={clientButtonClass.primary}
           >
             Download Pass
           </a>
@@ -590,7 +585,7 @@ function WalletAppearanceControls({
           <button
             type="button"
             onClick={onReset}
-            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-white transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10"
+            className={clientButtonClass.utility}
           >
             Reset to default
           </button>
@@ -694,8 +689,8 @@ function AppearanceOption({
       disabled={disabled}
       className={`rounded-xl border p-3 text-left transition ${
         active
-          ? "border-[#AC00FF]/70 bg-[#AC00FF]/15 text-white ring-2 ring-[#AC00FF]/35"
-          : "border-white/10 bg-white/5 text-white/60 hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10 hover:text-white"
+          ? clientButtonClass.selected
+          : clientButtonClass.setting
       } disabled:cursor-not-allowed disabled:opacity-55`}
       aria-pressed={active}
     >

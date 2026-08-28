@@ -23,7 +23,12 @@ import CardRenderer, {
   type CardRendererData,
   type CardRendererTemplate,
 } from "@/components/CardRenderer";
-import ClientSidebar from "@/components/ClientSidebar";
+import {
+  ClientPortalHeader,
+  ClientPortalPage,
+  ClientPortalWorkspace,
+  clientButtonClass,
+} from "@/components/ClientPortalShell";
 import UpgradeToProButton from "@/components/UpgradeToProButton";
 import { supabase } from "@/lib/supabase";
 import {
@@ -206,22 +211,11 @@ export default function ClientDashboardPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-[var(--background)] text-[var(--text-primary)] lg:flex-row">
-      <div className="hidden lg:block">
-        <ClientSidebar />
-      </div>
-
-      <section className="min-w-0 flex-1 px-5 py-6 sm:px-7 lg:px-10 lg:py-9">
-        <div className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h1 className="text-4xl font-bold tracking-normal text-[var(--text-primary)] sm:text-5xl">
-              Dashboard
-            </h1>
-            <p className="mt-3 max-w-3xl text-base leading-7 text-[var(--text-secondary)]">
-              Manage your digital card, public link, QR code, and sharing tools
-              from one place.
-            </p>
-          </div>
+    <ClientPortalPage>
+      <ClientPortalHeader
+        title="Dashboard"
+        description="Manage your digital card, public link, QR code, and sharing tools from one place."
+        action={
           <div className="hidden lg:block">
             <AccountMenu
               profile={profile}
@@ -230,68 +224,66 @@ export default function ClientDashboardPage() {
               onNavigate={(href) => router.push(href)}
             />
           </div>
-        </div>
+        }
+      />
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="space-y-5">
-            <WelcomePanel profile={profile} />
-
-            <QuickActionsCard
-              hasSavedCard={hasSavedCard}
-              publicUrl={publicUrl}
-              onCopyLink={copyPublicCardLink}
-              onCreate={() => router.push("/client/cards")}
-              message={actionMessage}
-            />
-
-            <AnalyticsSummary isPaid={showPaidDashboard} planResolved={planResolved} />
-            <RecentContacts isPaid={showPaidDashboard} planResolved={planResolved} />
-            <IntegrationStatus isPaid={showPaidDashboard} planResolved={planResolved} />
-          </div>
-
-          <aside className="xl:sticky xl:top-8 xl:self-start">
-            <div className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)]/95 p-3.5 shadow-[var(--shadow-sm)]">
-              <div className="mb-4 flex items-center justify-between gap-3 px-1">
-                <div>
-                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-                    Live Card Preview
-                  </h2>
-                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                    {loadingPreview ? "Loading latest card." : "Latest saved card."}
-                  </p>
-                </div>
+      <ClientPortalWorkspace
+        preview={
+          <div className="client-portal-panel p-3.5">
+            <div className="mb-4 flex items-center justify-between gap-3 px-1">
+              <div>
+                <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+                  Live Card Preview
+                </h2>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                  {loadingPreview ? "Loading latest card." : "Latest saved card."}
+                </p>
               </div>
-
-              {latestCard ? (
-                <div className="flex justify-center overflow-hidden rounded-xl border border-[var(--dmi-border)] bg-black/70">
-                  <CardRenderer
-                    template={previewTemplate}
-                    cardData={latestCard}
-                    mode="preview"
-                  />
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-7 text-center">
-                  <h3 className="text-lg font-semibold text-[var(--text-primary)]">No card created yet</h3>
-                  <p className="mx-auto mt-3 max-w-xs text-sm leading-6 text-[var(--text-secondary)]">
-                    Create your first digital business card to unlock your
-                    preview, public URL, and QR tools.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => router.push("/client/cards")}
-                    className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-[image:var(--brand-gradient)] px-5 py-3 text-sm font-semibold text-[#FFFFFF] shadow-[var(--shadow-sm)] transition hover:-translate-y-0.5"
-                  >
-                    <CreditCard className="h-4 w-4" />
-                    Create My First Card
-                  </button>
-                </div>
-              )}
             </div>
-          </aside>
-        </div>
-      </section>
-    </main>
+
+            {latestCard ? (
+              <div className="flex max-h-[680px] justify-center overflow-hidden rounded-xl border border-[var(--dmi-border)] bg-black/70">
+                <CardRenderer
+                  template={previewTemplate}
+                  cardData={latestCard}
+                  mode="preview"
+                />
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-7 text-center">
+                <h3 className="text-lg font-semibold text-[var(--text-primary)]">No card created yet</h3>
+                <p className="mx-auto mt-3 max-w-xs text-sm leading-6 text-[var(--text-secondary)]">
+                  Create your first digital business card to unlock your
+                  preview, public URL, and QR tools.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => router.push("/client/cards")}
+                  className={`mt-6 ${clientButtonClass.primary}`}
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Create My First Card
+                </button>
+              </div>
+            )}
+            </div>
+        }
+      >
+        <WelcomePanel profile={profile} />
+
+        <QuickActionsCard
+          hasSavedCard={hasSavedCard}
+          publicUrl={publicUrl}
+          onCopyLink={copyPublicCardLink}
+          onCreate={() => router.push("/client/cards")}
+          message={actionMessage}
+        />
+
+        <AnalyticsSummary isPaid={showPaidDashboard} planResolved={planResolved} />
+        <RecentContacts isPaid={showPaidDashboard} planResolved={planResolved} />
+        <IntegrationStatus isPaid={showPaidDashboard} planResolved={planResolved} />
+      </ClientPortalWorkspace>
+    </ClientPortalPage>
   );
 }
 
@@ -614,7 +606,7 @@ function QuickActionsCard({
           <button
             type="button"
             onClick={onCreate}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[image:var(--brand-gradient)] px-4 py-2.5 text-sm font-semibold text-white shadow-[var(--shadow-sm)] transition hover:-translate-y-0.5"
+            className={clientButtonClass.primary}
           >
             <CreditCard className="h-4 w-4" />
             Create card
@@ -882,9 +874,9 @@ function LockedPreviewOverlay({
         </div>
         <h3 className="mt-4 text-base font-semibold text-[var(--text-primary)]">{title}</h3>
         <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{description}</p>
-        <UpgradeToProButton className="mt-4 inline-flex min-h-10 items-center justify-center rounded-xl bg-[image:var(--brand-gradient)] px-4 py-2 text-sm font-semibold text-white shadow-[var(--shadow-sm)] transition hover:-translate-y-0.5">
-          Upgrade to Pro
-        </UpgradeToProButton>
+        <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-accent)]">
+          Available on Pro
+        </p>
       </div>
     </div>
   );

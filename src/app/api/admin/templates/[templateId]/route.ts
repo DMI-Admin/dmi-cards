@@ -4,6 +4,10 @@ import {
   emailFromClerkUser,
   requireAdminAccess,
 } from "@/lib/admin-auth";
+import {
+  isStepThreeOwnedTemplateField,
+  normalizeTemplateAllowedActions,
+} from "@/lib/card-actions";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
 type TemplatePayload = Record<string, unknown>;
@@ -11,6 +15,7 @@ type TemplateWriteResult = {
   data: unknown;
   error: { message: string } | null;
 };
+const criticalTemplatePersistenceColumns = new Set(["allowed_actions"]);
 
 export async function PATCH(
   request: Request,
@@ -135,7 +140,31 @@ function stripLocalOnlyFields(payload: TemplatePayload) {
   void created_at;
   void updated_at;
 
+  if ("allowed_actions" in databasePayload) {
+    databasePayload.allowed_actions = normalizeTemplateAllowedActions(
+      databasePayload.allowed_actions
+    );
+  }
+
+  if (Array.isArray(databasePayload.allowed_fields)) {
+    databasePayload.allowed_fields = sanitizeAllowedFields(
+      databasePayload.allowed_fields
+    );
+  }
+
   return databasePayload;
+}
+
+function sanitizeAllowedFields(fields: unknown[]) {
+  return Array.from(
+    new Set(
+      fields
+        .filter((field): field is string => typeof field === "string")
+        .map((field) => field.trim())
+        .filter(Boolean)
+        .filter((field) => !isStepThreeOwnedTemplateField(field))
+    )
+  );
 }
 
 async function writeTemplateWithSchemaRetry(
@@ -150,6 +179,7 @@ async function writeTemplateWithSchemaRetry(
     const missingColumn = missingColumnFromError(result.error);
 
     if (!missingColumn || removedColumns.has(missingColumn)) break;
+    if (criticalTemplatePersistenceColumns.has(missingColumn)) break;
 
     removedColumns.add(missingColumn);
     const nextPayload = { ...databasePayload };

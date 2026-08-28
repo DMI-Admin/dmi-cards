@@ -42,10 +42,18 @@ export function isApprovedAdmin(identity: AdminIdentity) {
   const email =
     identity.email?.trim().toLowerCase() ||
     emailFromSessionClaims(identity.sessionClaims);
-  const adminUserIds = envList("DMI_ADMIN_CLERK_USER_IDS", "CLERK_ADMIN_USER_IDS");
-  const adminEmails = envList("DMI_ADMIN_EMAILS", "ADMIN_EMAILS").map((item) =>
-    item.toLowerCase()
+  const adminUserIds = envList(
+    "DMI_ADMIN_CLERK_USER_IDS",
+    "DMI_ADMIN_CLERK_USER_ID",
+    "CLERK_ADMIN_USER_IDS",
+    "CLERK_ADMIN_USER_ID"
   );
+  const adminEmails = envList(
+    "DMI_ADMIN_EMAILS",
+    "DMI_ADMIN_EMAIL",
+    "ADMIN_EMAILS",
+    "ADMIN_EMAIL"
+  ).map((item) => item.toLowerCase());
 
   if (userId && adminUserIds.includes(userId)) return true;
   if (email && adminEmails.includes(email)) return true;
@@ -86,8 +94,14 @@ export async function requireAdminAccess(
 
 export function isAdminAllowlistConfigured() {
   return (
-    envList("DMI_ADMIN_CLERK_USER_IDS", "CLERK_ADMIN_USER_IDS").length > 0 ||
-    envList("DMI_ADMIN_EMAILS", "ADMIN_EMAILS").length > 0
+    envList(
+      "DMI_ADMIN_CLERK_USER_IDS",
+      "DMI_ADMIN_CLERK_USER_ID",
+      "CLERK_ADMIN_USER_IDS",
+      "CLERK_ADMIN_USER_ID"
+    ).length > 0 ||
+    envList("DMI_ADMIN_EMAILS", "DMI_ADMIN_EMAIL", "ADMIN_EMAILS", "ADMIN_EMAIL")
+      .length > 0
   );
 }
 

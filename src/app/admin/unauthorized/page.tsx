@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { SignOutButton } from "@clerk/nextjs";
 import { currentUser } from "@clerk/nextjs/server";
-import { LogOut, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 
+import AdminUnauthorizedSignOutButton from "@/components/AdminUnauthorizedSignOutButton";
 import { emailFromClerkUser } from "@/lib/admin-auth";
 
 export default async function AdminUnauthorizedPage() {
@@ -31,15 +31,7 @@ export default async function AdminUnauthorizedPage() {
           >
             Go to client portal
           </Link>
-          <SignOutButton redirectUrl="/admin">
-            <button
-              type="button"
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/10"
-            >
-              <LogOut className="h-4 w-4" />
-              Sign out and use another account
-            </button>
-          </SignOutButton>
+          <AdminUnauthorizedSignOutButton />
         </div>
       </div>
     </main>

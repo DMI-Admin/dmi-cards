@@ -1,13 +1,39 @@
 import {
   Briefcase,
   Building2,
+  Calendar,
+  FileText,
   Globe,
   Link as LinkIcon,
   Mail,
   MapPin,
   Phone,
+  UserRound,
   type LucideIcon,
 } from "lucide-react";
+import {
+  FaFacebookF,
+  FaInstagram,
+  FaLinkedinIn,
+  FaWhatsapp,
+  FaYoutube,
+} from "react-icons/fa";
+import type { IconType } from "react-icons";
+import type {
+  CardActionConfig,
+  CardActionConfigItem,
+  CardActionType,
+  TemplateAllowedActions,
+} from "@/lib/card-actions";
+import {
+  actionFileReference,
+  actionIsComplete,
+  cardActionValue,
+  defaultLabelForActionType,
+  effectiveCardActionConfig,
+  fieldKeyForActionType,
+  normalizeCardActionConfig,
+} from "@/lib/card-actions";
 
 type CardRendererMode = "preview" | "public" | "compact";
 type LogoSize = "compact" | "standard" | "large" | "banner";
@@ -23,6 +49,22 @@ type DisplayRow = {
   value?: string | null;
   icon?: LucideIcon;
   href?: string | null;
+};
+
+type TemplateActionIcon = LucideIcon | IconType;
+
+const templateActionIcons: Record<CardActionType, TemplateActionIcon> = {
+  save_contact: UserRound,
+  call: Phone,
+  email: Mail,
+  whatsapp: FaWhatsapp,
+  book_meeting: Calendar,
+  custom_link: LinkIcon,
+  download_pdf: FileText,
+  linkedin: FaLinkedinIn,
+  instagram: FaInstagram,
+  facebook: FaFacebookF,
+  youtube: FaYoutube,
 };
 
 function toDisplayValue(value: unknown): string | null {
@@ -66,6 +108,7 @@ export type CardRendererTemplate = {
   default_font?: string | null;
   supports_bio?: boolean | null;
   supports_save_contact?: boolean | null;
+  allowed_actions?: TemplateAllowedActions | null;
   allowed_fields?: string[] | null;
   custom_fields?: CustomFieldMap | null;
   show_personal_section?: boolean | null;
@@ -94,6 +137,7 @@ export type CardRendererData = {
   youtube?: string | null;
   booking_link?: string | null;
   custom_url?: string | null;
+  action_config?: CardActionConfig | null;
   selected_text_colour?: string | null;
   profile_image_url?: string | null;
   company_logo_url?: string | null;
@@ -156,6 +200,16 @@ const classicSectionDefaults: Record<ClassicSectionKey, string[]> = {
     "custom_url",
   ],
 };
+
+const actionOwnedDetailFields = new Set([
+  "whatsapp",
+  "linkedin",
+  "instagram",
+  "facebook",
+  "youtube",
+  "booking_link",
+  "custom_url",
+]);
 
 export function displayName(
   cardData: Pick<CardRendererData, "title" | "first_name" | "last_name" | "full_name">,
@@ -229,6 +283,20 @@ export default function CardRenderer({
   const saveContactHref = mode === "public" ? vCardDataHref(cardData) : null;
   const saveContactFilename =
     mode === "public" ? `${slugifyFilename(displayName(cardData, "dmi-card"))}.vcf` : undefined;
+  const previewSaveContactContrastClass =
+    mode === "public"
+      ? ""
+      : "![background-color:var(--card-save-contact-bg)] ![color:var(--card-save-contact-text)]";
+  const saveContactStyle = {
+    "--card-save-contact-bg": buttonColor,
+    "--card-save-contact-text": buttonTextColor,
+    backgroundColor: buttonColor,
+    color: buttonTextColor,
+  } as React.CSSProperties;
+  const configuredActionConfig = normalizeCardActionConfig(cardData.action_config);
+  const actionConfig = configuredActionConfig
+    ? effectiveCardActionConfig(cardData, template)
+    : null;
   const shellClass = compact
     ? "min-h-[420px] rounded-3xl p-4"
     : "min-h-[650px] rounded-[2rem] p-6";
@@ -255,6 +323,7 @@ export default function CardRenderer({
         compact={compact}
         isPaid={isPaid}
         theme={theme}
+        actionConfig={actionConfig}
       />
     ),
     premium_classic: (
@@ -272,6 +341,7 @@ export default function CardRenderer({
         compact={compact}
         isPaid
         theme={theme}
+        actionConfig={actionConfig}
       />
     ),
     glassmorphism: (
@@ -289,6 +359,7 @@ export default function CardRenderer({
         compact={compact}
         isPaid
         theme={theme}
+        actionConfig={actionConfig}
       />
     ),
     banner_card: (
@@ -306,6 +377,7 @@ export default function CardRenderer({
         compact={compact}
         isPaid
         theme={theme}
+        actionConfig={actionConfig}
       />
     ),
     split_card: (
@@ -323,6 +395,7 @@ export default function CardRenderer({
         compact={compact}
         isPaid
         theme={theme}
+        actionConfig={actionConfig}
       />
     ),
     monogram_card: (
@@ -340,6 +413,7 @@ export default function CardRenderer({
         compact={compact}
         isPaid
         theme={theme}
+        actionConfig={actionConfig}
       />
     ),
     modern: (
@@ -424,10 +498,20 @@ export default function CardRenderer({
     >
       {content}
 
-      {compact ? (
+      {actionConfig ? (
+        <TemplateActionList
+          compact={compact}
+          theme={theme}
+          cardData={cardData}
+          mode={mode}
+          actionConfig={actionConfig}
+          className="mt-8"
+          itemClassName="w-full"
+        />
+      ) : compact ? (
         <div
-          className="mt-8 w-full rounded-2xl py-4 text-center font-bold transition hover:opacity-90"
-          style={{ backgroundColor: buttonColor, color: buttonTextColor }}
+          className={`mt-8 w-full rounded-2xl py-4 text-center font-bold transition hover:opacity-90 ${previewSaveContactContrastClass}`}
+          style={saveContactStyle}
         >
           Save Contact
         </div>
@@ -436,15 +520,15 @@ export default function CardRenderer({
           href={saveContactHref}
           download={saveContactFilename}
           className="mt-8 block w-full rounded-2xl py-4 text-center font-bold transition hover:opacity-90"
-          style={{ backgroundColor: buttonColor, color: buttonTextColor }}
+          style={saveContactStyle}
         >
           Save Contact
         </a>
       ) : (
         <button
           type="button"
-          className="mt-8 w-full rounded-2xl py-4 font-bold transition hover:opacity-90"
-          style={{ backgroundColor: buttonColor, color: buttonTextColor }}
+          className={`mt-8 w-full rounded-2xl py-4 font-bold transition hover:opacity-90 ${previewSaveContactContrastClass}`}
+          style={saveContactStyle}
         >
           Save Contact
         </button>
@@ -471,6 +555,7 @@ function ClassicLayout({
   requiresBanner,
   isPaid,
   theme,
+  actionConfig,
 }: LayoutProps) {
   const rendererTheme = getRendererTheme(theme);
   const mutedText = colorAlpha(rendererTheme.text, 0.62);
@@ -519,6 +604,9 @@ function ClassicLayout({
     allowed,
     previewMode
   );
+  const displayedSocialRows = actionConfig
+    ? socialRows.filter((row) => !row.field || !actionOwnedDetailFields.has(row.field))
+    : socialRows;
   const paidPersonalRows = addPublicRowActions(
     isPaid
     ? buildPaidPersonalRows({
@@ -540,7 +628,7 @@ function ClassicLayout({
     : contactRows,
     publicMode
   );
-  const socialActionRows = addPublicRowActions(socialRows, publicMode);
+  const socialActionRows = addPublicRowActions(displayedSocialRows, publicMode);
 
   const hasPersonalDetails =
     sectionSettings.personal && paidPersonalRows.length > 0;
@@ -949,6 +1037,7 @@ function layoutRows({
     social: false,
   },
   mode = "preview",
+  actionConfig,
 }: LayoutProps) {
   const allowed = new Set(allowedFields);
   const previewMode = mode === "preview" || mode === "compact";
@@ -964,7 +1053,12 @@ function layoutRows({
       title,
       rows: enabled
         ? addPublicRowActions(
-            classicRows(key, templateCustomFields, cardData, allowed, previewMode),
+            classicRows(key, templateCustomFields, cardData, allowed, previewMode)
+              .filter((row) =>
+                actionConfig && key === "social" && row.field
+                  ? !actionOwnedDetailFields.has(row.field)
+                  : true
+              ),
             mode === "public"
           )
         : [],
@@ -1050,13 +1144,24 @@ function GlassmorphismLayout(props: LayoutProps) {
           </div>
         )}
 
-        <TemplateSaveButton
-          compact={compact}
-          theme={theme}
-          cardData={cardData}
-          mode={props.mode || "preview"}
-          className="mx-5 mb-5 mt-auto"
-        />
+        {props.actionConfig ? (
+          <TemplateActionList
+            compact={compact}
+            theme={theme}
+            cardData={cardData}
+            mode={props.mode || "preview"}
+            actionConfig={props.actionConfig}
+            className="mx-5 mb-5 mt-auto"
+          />
+        ) : (
+          <TemplateSaveButton
+            compact={compact}
+            theme={theme}
+            cardData={cardData}
+            mode={props.mode || "preview"}
+            className="mx-5 mb-5 mt-auto"
+          />
+        )}
       </div>
     </div>
   );
@@ -1133,13 +1238,24 @@ function BannerCardLayout(props: LayoutProps) {
 
       <PaidRowList rows={detailRows} theme={theme} className="px-5 py-5" emptyPanelColor={softPanel} />
 
-      <TemplateSaveButton
-        compact={compact}
-        theme={theme}
-        cardData={cardData}
-        mode={props.mode || "preview"}
-        className="mx-5 mb-5 mt-auto"
-      />
+      {props.actionConfig ? (
+        <TemplateActionList
+          compact={compact}
+          theme={theme}
+          cardData={cardData}
+          mode={props.mode || "preview"}
+          actionConfig={props.actionConfig}
+          className="mx-5 mb-5 mt-auto"
+        />
+      ) : (
+        <TemplateSaveButton
+          compact={compact}
+          theme={theme}
+          cardData={cardData}
+          mode={props.mode || "preview"}
+          className="mx-5 mb-5 mt-auto"
+        />
+      )}
     </div>
   );
 }
@@ -1209,13 +1325,24 @@ function SplitCardLayout(props: LayoutProps) {
 
         <PaidRowList rows={detailRows} theme={theme} className="flex-1" />
 
-        <TemplateSaveButton
-          compact={compact}
-          theme={theme}
-          cardData={cardData}
-          mode={props.mode || "preview"}
-          className="mt-auto"
-        />
+        {props.actionConfig ? (
+          <TemplateActionList
+            compact={compact}
+            theme={theme}
+            cardData={cardData}
+            mode={props.mode || "preview"}
+            actionConfig={props.actionConfig}
+            className="mt-auto"
+          />
+        ) : (
+          <TemplateSaveButton
+            compact={compact}
+            theme={theme}
+            cardData={cardData}
+            mode={props.mode || "preview"}
+            className="mt-auto"
+          />
+        )}
       </div>
     </div>
   );
@@ -1280,13 +1407,24 @@ function MonogramCardLayout(props: LayoutProps) {
 
       <PaidRowList rows={detailRows} theme={theme} className="px-5 py-5" />
 
-      <TemplateSaveButton
-        compact={compact}
-        theme={theme}
-        cardData={cardData}
-        mode={props.mode || "preview"}
-        className="mx-5 mb-5 mt-auto"
-      />
+      {props.actionConfig ? (
+        <TemplateActionList
+          compact={compact}
+          theme={theme}
+          cardData={cardData}
+          mode={props.mode || "preview"}
+          actionConfig={props.actionConfig}
+          className="mx-5 mb-5 mt-auto"
+        />
+      ) : (
+        <TemplateSaveButton
+          compact={compact}
+          theme={theme}
+          cardData={cardData}
+          mode={props.mode || "preview"}
+          className="mx-5 mb-5 mt-auto"
+        />
+      )}
     </div>
   );
 }
@@ -1619,6 +1757,7 @@ type LayoutProps = {
   mode?: CardRendererMode;
   isPaid?: boolean;
   theme?: RendererTheme;
+  actionConfig?: CardActionConfig | null;
 };
 
 function IdentityBlock({
@@ -1930,12 +2069,18 @@ function TemplateSaveButton({
   mode: CardRendererMode;
   className?: string;
 }) {
-  const buttonClass = `${className} w-auto rounded-2xl py-4 text-center font-bold transition hover:opacity-90`;
+  const previewContrastClass =
+    mode === "public"
+      ? ""
+      : "![background-color:var(--card-save-contact-bg)] ![color:var(--card-save-contact-text)]";
+  const buttonClass = `${className} w-auto rounded-2xl py-4 text-center font-bold transition hover:opacity-90 ${previewContrastClass}`;
   const buttonStyle = {
+    "--card-save-contact-bg": theme.buttonColor,
+    "--card-save-contact-text": theme.buttonTextColor,
     backgroundColor: theme.buttonColor,
     color: theme.buttonTextColor,
     fontFamily: theme.fontFamily,
-  };
+  } as React.CSSProperties;
   const href = mode === "public" ? vCardDataHref(cardData) : null;
   const filename =
     mode === "public" ? `${slugifyFilename(displayName(cardData, "dmi-card"))}.vcf` : undefined;
@@ -1966,6 +2111,160 @@ function TemplateSaveButton({
       Save Contact
     </a>
   );
+}
+
+function TemplateActionList({
+  compact,
+  theme,
+  cardData,
+  mode,
+  actionConfig,
+  className = "",
+  itemClassName = "",
+}: {
+  compact: boolean;
+  theme: RendererTheme;
+  cardData: CardRendererData;
+  mode: CardRendererMode;
+  actionConfig: CardActionConfig;
+  className?: string;
+  itemClassName?: string;
+}) {
+  const visibleActions = actionConfig.actions.filter((action) => action.visible);
+
+  if (visibleActions.length === 0) return null;
+
+  return (
+    <div className={`${className} space-y-2`}>
+      {visibleActions.map((action) => (
+        <TemplateActionButton
+          key={`${action.type}-${action.id}`}
+          action={action}
+          compact={compact}
+          theme={theme}
+          cardData={cardData}
+          mode={mode}
+          className={itemClassName}
+        />
+      ))}
+    </div>
+  );
+}
+
+function TemplateActionButton({
+  action,
+  compact,
+  theme,
+  cardData,
+  mode,
+  className = "",
+}: {
+  action: CardActionConfigItem;
+  compact: boolean;
+  theme: RendererTheme;
+  cardData: CardRendererData;
+  mode: CardRendererMode;
+  className?: string;
+}) {
+  const label = action.label || defaultLabelForActionType(action.type);
+  const href =
+    action.type === "save_contact"
+      ? mode === "public"
+        ? vCardDataHref(cardData)
+        : null
+      : actionHrefForCardAction(action.type, cardData);
+  const filename =
+    action.type === "save_contact" && mode === "public"
+      ? `${slugifyFilename(displayName(cardData, "dmi-card"))}.vcf`
+      : undefined;
+  const incomplete = !actionIsComplete(action, cardData);
+  const actionStyle = actionButtonStyleForType(action.type, theme);
+  const contrastClass =
+    "![color:var(--card-action-text)] [&_*]:![color:inherit] [&_svg]:![color:inherit]";
+  const buttonClass = `${className} flex min-w-0 items-center justify-between gap-3 rounded-2xl px-4 text-left font-bold transition hover:opacity-90 ${compact ? "py-3 text-xs" : "py-4 text-sm"} ${contrastClass} ${
+    incomplete ? "opacity-60" : ""
+  }`;
+  const buttonStyle = {
+    "--card-action-text": actionStyle.color,
+    background: actionStyle.background,
+    color: actionStyle.color,
+    fontFamily: theme.fontFamily,
+  } as React.CSSProperties;
+  const Icon = templateActionIcons[action.type];
+
+  const content = (
+    <>
+      <span className="flex min-w-0 items-center gap-2">
+        <Icon className="h-4 w-4 shrink-0" />
+        <span className="truncate">{label}</span>
+      </span>
+      {incomplete && (
+        <span className="shrink-0 text-[10px] font-semibold uppercase opacity-70">
+          Set up
+        </span>
+      )}
+    </>
+  );
+
+  if (compact || mode !== "public" || !href) {
+    return (
+      <button type="button" className={buttonClass} style={buttonStyle}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      download={filename}
+      target={href.startsWith("http") ? "_blank" : undefined}
+      rel={href.startsWith("http") ? "noopener noreferrer" : undefined}
+      className={`block ${buttonClass}`}
+      style={buttonStyle}
+    >
+      {content}
+    </a>
+  );
+}
+
+function actionHrefForCardAction(type: CardActionType, cardData: CardRendererData) {
+  if (type === "download_pdf") {
+    const action = cardData.action_config?.actions.find(
+      (item) => item.type === "download_pdf"
+    );
+    const fileReference = action ? actionFileReference(action) : null;
+
+    return fileReference?.public_url
+      ? safeExternalHref(fileReference.public_url)
+      : null;
+  }
+
+  const fieldKey = fieldKeyForActionType(type);
+  if (!fieldKey) return null;
+
+  return actionHrefForField(fieldKey, cardActionValue(cardData, type));
+}
+
+function actionButtonStyleForType(type: CardActionType, theme: RendererTheme) {
+  switch (type) {
+    case "whatsapp":
+      return { background: "#25D366", color: "#061B0F" };
+    case "linkedin":
+      return { background: "#0A66C2", color: "#FFFFFF" };
+    case "instagram":
+      return {
+        background:
+          "linear-gradient(135deg, #F58529 0%, #DD2A7B 45%, #8134AF 100%)",
+        color: "#FFFFFF",
+      };
+    case "facebook":
+      return { background: "#1877F2", color: "#FFFFFF" };
+    case "youtube":
+      return { background: "#FF0000", color: "#FFFFFF" };
+    default:
+      return { background: theme.buttonColor, color: theme.buttonTextColor };
+  }
 }
 
 function isTemplateShelllessPaidLayout(layout: string) {
@@ -2024,8 +2323,8 @@ function resolveButtonColours(
   }
 
   return {
-    buttonColor: defaultButton,
-    buttonTextColor: defaultButtonText,
+    buttonColor,
+    buttonTextColor: readableTextForBackground(buttonColor),
   };
 }
 
@@ -2121,7 +2420,7 @@ function actionHrefForField(field: string, value: string | null | undefined) {
   const normalizedField = field.toLowerCase();
 
   if (normalizedField === "website") {
-    return websiteHref(displayValue);
+    return safeExternalHref(displayValue);
   }
 
   if (normalizedField === "address") {
@@ -2131,20 +2430,115 @@ function actionHrefForField(field: string, value: string | null | undefined) {
   }
 
   if (normalizedField === "email") {
-    return `mailto:${displayValue}`;
+    return emailHref(displayValue);
   }
 
   if (normalizedField === "phone") {
-    return `tel:${displayValue.replace(/\s+/g, "")}`;
+    return phoneHref(displayValue);
+  }
+
+  if (normalizedField === "whatsapp") {
+    return whatsappHref(displayValue);
+  }
+
+  if (
+    normalizedField === "linkedin" ||
+    normalizedField === "instagram" ||
+    normalizedField === "facebook" ||
+    normalizedField === "youtube" ||
+    normalizedField === "booking_link" ||
+    normalizedField === "custom_url"
+  ) {
+    return safeExternalHref(displayValue);
   }
 
   return null;
 }
 
 function websiteHref(value: string) {
+  return safeExternalHref(value);
+}
+
+function safeExternalHref(value: string) {
   const trimmed = value.trim();
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith("//")) {
+    return validHttpUrl(`https:${trimmed}`);
+  }
+
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    return /^https?:\/\//i.test(trimmed) ? validHttpUrl(trimmed) : null;
+  }
+
+  return validHttpUrl(`https://${trimmed}`);
+}
+
+function validHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function emailHref(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || /[\r\n]/.test(trimmed)) return null;
+
+  return `mailto:${trimmed}`;
+}
+
+function phoneHref(value: string) {
+  const normalized = value.trim().replace(/[^\d+]/g, "");
+  if (!normalized || !/^\+?\d{3,20}$/.test(normalized)) return null;
+
+  return `tel:${normalized}`;
+}
+
+function whatsappHref(value: string) {
+  const trimmed = value.trim();
+  const existingUrl = safeExternalHref(trimmed);
+
+  if (existingUrl && isWhatsAppUrl(existingUrl)) {
+    return existingUrl;
+  }
+
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith("//")) {
+    return null;
+  }
+
+  const normalizedPhone = normalizeInternationalPhoneForWhatsApp(trimmed);
+  return normalizedPhone ? `https://wa.me/${normalizedPhone}` : null;
+}
+
+function isWhatsAppUrl(value: string) {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      (host === "wa.me" ||
+        host === "api.whatsapp.com" ||
+        host === "web.whatsapp.com" ||
+        host.endsWith(".whatsapp.com"))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function normalizeInternationalPhoneForWhatsApp(value: string) {
+  const trimmed = value.trim();
+  const hasInternationalPrefix = trimmed.startsWith("+");
+  const digits = trimmed.replace(/\D/g, "");
+
+  if (!digits || digits.length < 8 || digits.length > 15) return null;
+  if (hasInternationalPrefix) return digits;
+  if (digits.startsWith("0")) return null;
+
+  return digits;
 }
 
 function vCardDataHref(cardData: CardRendererData) {
@@ -2163,6 +2557,7 @@ function vCardText(cardData: CardRendererData) {
   const email = toDisplayValue(cardData.email);
   const phone = toDisplayValue(cardData.phone);
   const website = toDisplayValue(cardData.website);
+  const websiteUrl = website ? websiteHref(website) : null;
   const address = toDisplayValue(cardData.address);
   const lines = [
     "BEGIN:VCARD",
@@ -2177,7 +2572,7 @@ function vCardText(cardData: CardRendererData) {
   if (companyName) lines.push(`ORG:${vCardEscape(companyName)}`);
   if (email) lines.push(`EMAIL;TYPE=INTERNET:${vCardEscape(email)}`);
   if (phone) lines.push(`TEL;TYPE=CELL:${vCardEscape(phone)}`);
-  if (website) lines.push(`URL:${vCardEscape(websiteHref(website))}`);
+  if (websiteUrl) lines.push(`URL:${vCardEscape(websiteUrl)}`);
   if (address) lines.push(`ADR;TYPE=WORK:;;${vCardEscape(address)};;;;`);
 
   lines.push("END:VCARD");

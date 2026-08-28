@@ -11,6 +11,15 @@ import {
   saveAdminTemplate,
   type SharedTemplate,
 } from "@/lib/templates";
+import {
+  actionLabelIsConfigurable,
+  cardActionDefinitions,
+  defaultLabelForActionType,
+  isStepThreeOwnedTemplateField,
+  normalizeTemplateAllowedActions,
+  type CardActionType,
+  type TemplateAllowedActions,
+} from "@/lib/card-actions";
 
 type Template = {
   id: string;
@@ -31,6 +40,7 @@ type Template = {
   default_font?: string | null;
   supports_bio: boolean | null;
   supports_save_contact: boolean | null;
+  allowed_actions?: TemplateAllowedActions | null;
   allowed_fields: string[] | null;
   primary_color: string | null;
   secondary_color: string | null;
@@ -52,8 +62,15 @@ type CustomFields = Partial<Record<SectionKey, string[]>>;
 type DraggedField = { section: SectionKey; field: string } | null;
 type TemplatePayload = Record<
   string,
-  string | boolean | number | null | string[] | CustomFields
+  string | boolean | number | null | string[] | CustomFields | TemplateAllowedActions
 >;
+
+type ActionPermissionDraft = {
+  type: CardActionType;
+  enabled: boolean;
+  default_visible: boolean;
+  default_label: string;
+};
 
 const cardHeaderFields = ["title", "first_name", "last_name"];
 
@@ -84,16 +101,8 @@ const sectionFieldGroups: {
   {
     key: "social",
     title: "Social",
-    description: "Optional social and custom links.",
-    fields: [
-      "whatsapp",
-      "linkedin",
-      "instagram",
-      "facebook",
-      "youtube",
-      "booking_link",
-      "custom_url",
-    ],
+    description: "Legacy custom social details. Visitor actions are configured below.",
+    fields: [],
   },
 ];
 
@@ -115,15 +124,7 @@ const defaultCustomFields: Required<CustomFields> = {
   personal: ["job_title", "department", "bio"],
   company: ["company_name", "website", "address"],
   contact: ["email", "phone"],
-  social: [
-    "whatsapp",
-    "linkedin",
-    "instagram",
-    "facebook",
-    "youtube",
-    "booking_link",
-    "custom_url",
-  ],
+  social: [],
 };
 
 const paidFields = [
@@ -138,13 +139,6 @@ const paidFields = [
   "address",
   "email",
   "phone",
-  "whatsapp",
-  "linkedin",
-  "instagram",
-  "facebook",
-  "youtube",
-  "booking_link",
-  "custom_url",
 ];
 
 const freeLayouts = [
@@ -168,6 +162,13 @@ const defaultFreeColourPalette = [
   "#0F172A",
 ];
 const defaultTextColourPalette = ["#FFFFFF", "#0F172A"];
+const defaultTemplateActionPermissions: ActionPermissionDraft[] =
+  cardActionDefinitions.map((definition) => ({
+    type: definition.type,
+    enabled: true,
+    default_visible: definition.type === "save_contact",
+    default_label: definition.label,
+  }));
 
 const fontChoices = [
   "Inter",
@@ -223,6 +224,9 @@ export default function TemplatesPage() {
     useState<string[]>(defaultAllowedFonts);
   const [defaultFont, setDefaultFont] = useState("");
   const [allowedFields, setAllowedFields] = useState<string[]>(freeFields);
+  const [actionPermissions, setActionPermissions] = useState<
+    ActionPermissionDraft[]
+  >(defaultTemplateActionPermissions);
   const [customFields, setCustomFields] =
     useState<CustomFields>(defaultCustomFields);
 
@@ -302,6 +306,7 @@ export default function TemplatesPage() {
     setAllowedFonts(defaultAllowedFonts);
     setDefaultFont("");
     setAllowedFields(freeFields);
+    setActionPermissions(defaultTemplateActionPermissions);
     setCustomFields(defaultCustomFields);
     setPrimaryColor("#AC00FF");
     setSecondaryColor("#101935");
@@ -328,6 +333,7 @@ export default function TemplatesPage() {
       setAllowedFonts(defaultAllowedFonts);
       setDefaultFont("");
       setAllowedFields(freeFields);
+      setActionPermissions(defaultTemplateActionPermissions);
       setCustomFields(defaultCustomFields);
       setShowPersonalSection(true);
       setShowCompanySection(true);
@@ -344,20 +350,55 @@ export default function TemplatesPage() {
       setAllowedFonts([...fontChoices]);
       setDefaultFont("");
       setAllowedFields(paidFields);
+      setActionPermissions(defaultTemplateActionPermissions);
       setCustomFields(defaultCustomFields);
       setShowPersonalSection(true);
       setShowCompanySection(true);
       setShowContactSection(true);
-      setShowSocialSection(true);
+      setShowSocialSection(false);
     }
   }
 
   function toggleAllowedField(field: string) {
+    if (isStepThreeOwnedTemplateField(field)) return;
+
     if (allowedFields.includes(field)) {
       setAllowedFields(allowedFields.filter((item) => item !== field));
     } else {
       setAllowedFields([...allowedFields, field]);
     }
+  }
+
+  function toggleActionPermission(type: CardActionType) {
+    setActionPermissions((current) =>
+      current.map((action) =>
+        action.type === type
+          ? {
+              ...action,
+              enabled: !action.enabled,
+              default_visible: action.enabled ? false : action.default_visible,
+            }
+          : action
+      )
+    );
+  }
+
+  function toggleActionDefault(type: CardActionType) {
+    setActionPermissions((current) =>
+      current.map((action) =>
+        action.type === type && action.enabled
+          ? { ...action, default_visible: !action.default_visible }
+          : action
+      )
+    );
+  }
+
+  function updateActionDefaultLabel(type: CardActionType, label: string) {
+    setActionPermissions((current) =>
+      current.map((action) =>
+        action.type === type ? { ...action, default_label: label } : action
+      )
+    );
   }
 
   function addCustomField(section: SectionKey) {
@@ -569,7 +610,8 @@ export default function TemplatesPage() {
         ? template.default_font
         : ""
     );
-    setAllowedFields(template.allowed_fields || freeFields);
+    setAllowedFields(sanitizeAllowedFields(template.allowed_fields || freeFields));
+    setActionPermissions(actionPermissionsFromTemplate(template));
     setCustomFields(normalizeCustomFields(template.custom_fields));
     setPrimaryColor(template.primary_color || "#AC00FF");
     setSecondaryColor(template.secondary_color || "#101935");
@@ -618,6 +660,7 @@ export default function TemplatesPage() {
         accessLevel === "paid" ? sanitizeTemplateFonts(allowedFonts) : defaultAllowedFonts,
       default_font: accessLevel === "paid" ? defaultFont || null : "Inter",
       allowed_fields: allowedFields,
+      allowed_actions: buildTemplateAllowedActions(actionPermissions),
       custom_fields: customFields,
       show_personal_section: showPersonalSection,
       show_company_section: showCompanySection,
@@ -703,7 +746,12 @@ export default function TemplatesPage() {
         template.access_level === "free"
           ? "Inter"
           : sanitizeDefaultFont(template.default_font, template.allowed_fonts),
-      allowed_fields: template.allowed_fields || freeFields,
+      allowed_fields: sanitizeAllowedFields(template.allowed_fields || freeFields),
+      allowed_actions:
+        normalizeTemplateAllowedActions(template.allowed_actions) ??
+        buildTemplateAllowedActions(
+          actionPermissionsFromTemplate(template)
+        ),
       custom_fields: normalizeCustomFields(template.custom_fields),
       show_personal_section: template.show_personal_section ?? true,
       show_company_section: template.show_company_section ?? true,
@@ -716,6 +764,9 @@ export default function TemplatesPage() {
       is_published: false,
       status: "draft",
       usage_count: 0,
+      allowed_actions:
+        normalizeTemplateAllowedActions(template.allowed_actions) ??
+        buildTemplateAllowedActions(actionPermissionsFromTemplate(template)),
     };
 
     try {
@@ -1038,6 +1089,13 @@ export default function TemplatesPage() {
               </div>
             </div>
 
+            <ActionButtonsControl
+              actions={actionPermissions}
+              onToggleAction={toggleActionPermission}
+              onToggleDefault={toggleActionDefault}
+              onUpdateDefaultLabel={updateActionDefaultLabel}
+            />
+
             <button
               type="button"
               onClick={() => void saveTemplate()}
@@ -1074,8 +1132,12 @@ export default function TemplatesPage() {
                       : defaultAllowedFonts,
                   default_font: accessLevel === "paid" ? defaultFont || null : "Inter",
                   supports_bio: true,
-                  supports_save_contact: true,
+                  supports_save_contact: actionPermissionEnabled(
+                    actionPermissions,
+                    "save_contact"
+                  ),
                   allowed_fields: allowedFields,
+                  allowed_actions: buildTemplateAllowedActions(actionPermissions),
                   custom_fields: customFields,
                   primary_color: primaryColor,
                   secondary_color: secondaryColor,
@@ -1283,6 +1345,113 @@ function ColorField({
         />
       </div>
     </label>
+  );
+}
+
+function ActionButtonsControl({
+  actions,
+  onToggleAction,
+  onToggleDefault,
+  onUpdateDefaultLabel,
+}: {
+  actions: ActionPermissionDraft[];
+  onToggleAction: (type: CardActionType) => void;
+  onToggleDefault: (type: CardActionType) => void;
+  onUpdateDefaultLabel: (type: CardActionType, label: string) => void;
+}) {
+  const enabledCount = actions.filter((action) => action.enabled).length;
+  const defaultCount = actions.filter(
+    (action) => action.enabled && action.default_visible
+  ).length;
+
+  return (
+    <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Action Buttons</h3>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-white/45">
+            Choose which visitor actions clients can add to cards using this
+            template. Defaults apply only when a new card is created.
+          </p>
+        </div>
+        <span className="w-fit rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/10 px-3 py-1 text-xs font-semibold text-purple-100">
+          {enabledCount} allowed · {defaultCount} default
+        </span>
+      </div>
+
+      <div className="mt-5 space-y-2.5">
+        {actions.map((action) => {
+          const definition = cardActionDefinitions.find(
+            (item) => item.type === action.type
+          );
+          const destinationLabel =
+            definition?.destination === "file"
+              ? "Stored file metadata"
+              : definition?.destination === "scalar"
+              ? "Uses card field"
+              : "No destination required";
+          const configurable = actionLabelIsConfigurable(action.type);
+
+          return (
+            <div
+              key={action.type}
+              className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center"
+            >
+              <div className="min-w-0">
+                <p className="font-semibold">
+                  {definition?.label || defaultLabelForActionType(action.type)}
+                </p>
+                <p className="mt-1 text-xs text-white/45">
+                  {destinationLabel}
+                  {action.type === "download_pdf"
+                    ? " · upload/storage is not enabled in this phase"
+                    : ""}
+                </p>
+                {configurable && (
+                  <label className="mt-3 block max-w-sm">
+                    <span className="mb-1 block text-xs font-medium text-white/45">
+                      Default label
+                    </span>
+                    <input
+                      value={action.default_label}
+                      onChange={(event) =>
+                        onUpdateDefaultLabel(action.type, event.target.value)
+                      }
+                      className="inputStyle h-10"
+                    />
+                  </label>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => onToggleAction(action.type)}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                  action.enabled
+                    ? "bg-[#AC00FF] text-white"
+                    : "bg-white/10 text-white/50 hover:bg-white/15"
+                }`}
+              >
+                {action.enabled ? "Allowed" : "Not allowed"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onToggleDefault(action.type)}
+                disabled={!action.enabled}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                  action.enabled && action.default_visible
+                    ? "bg-[#AC00FF]/25 text-purple-100"
+                    : "bg-white/10 text-white/50 hover:bg-white/15"
+                } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white/10`}
+              >
+                {action.default_visible ? "Default" : "Not default"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -1658,6 +1827,10 @@ function normalizeCustomFields(customFields?: CustomFields | null) {
       const fields = [...incomingFields, ...defaultFields]
         .filter((field) => field !== "full_name")
         .filter((field) => !(section.key === "personal" && cardHeaderFields.includes(field)))
+        .filter(
+          (field) =>
+            section.key !== "social" || !isStepThreeOwnedTemplateField(field)
+        )
         .map((field) => normalizeSectionField(section.key, field))
         .filter((field) => {
           const key = field.toLowerCase();
@@ -1728,6 +1901,7 @@ function buildTemplatePayload({
   allowed_fonts,
   default_font,
   allowed_fields,
+  allowed_actions,
   custom_fields,
   show_personal_section,
   show_company_section,
@@ -1752,6 +1926,7 @@ function buildTemplatePayload({
   allowed_fonts: string[];
   default_font: string | null;
   allowed_fields: string[];
+  allowed_actions: TemplateAllowedActions;
   custom_fields: CustomFields;
   show_personal_section: boolean;
   show_company_section: boolean;
@@ -1780,8 +1955,12 @@ function buildTemplatePayload({
     allowed_fonts: sanitizeTemplateFonts(allowed_fonts),
     default_font: sanitizeDefaultFont(default_font, allowed_fonts),
     supports_bio: true,
-    supports_save_contact: true,
+    supports_save_contact: templateAllowedActionsIncludes(
+      allowed_actions,
+      "save_contact"
+    ),
     allowed_fields: sanitizeAllowedFields(allowed_fields),
+    allowed_actions: sanitizeTemplateAllowedActions(allowed_actions),
     custom_fields: sanitizeCustomFields(custom_fields),
     logo_size: "standard",
     show_personal_section,
@@ -1798,8 +1977,77 @@ function sanitizeAllowedFields(fields: string[]) {
         .filter((field): field is string => typeof field === "string")
         .map((field) => field.trim())
         .filter(Boolean)
+        .filter((field) => !isStepThreeOwnedTemplateField(field))
     )
   );
+}
+
+function actionPermissionsFromTemplate(
+  template: Pick<Template, "allowed_actions" | "supports_save_contact">
+): ActionPermissionDraft[] {
+  const configured = normalizeTemplateAllowedActions(template.allowed_actions);
+  const configuredByType = new Map(
+    configured?.actions.map((action) => [action.type, action]) || []
+  );
+
+  return cardActionDefinitions.map((definition) => {
+    const configuredAction = configuredByType.get(definition.type);
+    const legacySaveContactDisabled =
+      !configured && definition.type === "save_contact" &&
+      template.supports_save_contact === false;
+
+    return {
+      type: definition.type,
+      enabled: configured ? Boolean(configuredAction) : !legacySaveContactDisabled,
+      default_visible:
+        configuredAction?.default_visible === true ||
+        (!configured && definition.type === "save_contact" && !legacySaveContactDisabled),
+      default_label:
+        configuredAction?.default_label ||
+        defaultLabelForActionType(definition.type),
+    };
+  });
+}
+
+function buildTemplateAllowedActions(
+  permissions: ActionPermissionDraft[]
+): TemplateAllowedActions {
+  return {
+    version: 1,
+    actions: permissions
+      .filter((action) => action.enabled)
+      .map((action) => ({
+        type: action.type,
+        enabled: true,
+        default_visible: action.default_visible,
+        default_label: actionLabelIsConfigurable(action.type)
+          ? action.default_label
+          : undefined,
+      })),
+  };
+}
+
+function sanitizeTemplateAllowedActions(
+  value: TemplateAllowedActions
+): TemplateAllowedActions {
+  return (
+    normalizeTemplateAllowedActions(value) ||
+    buildTemplateAllowedActions(defaultTemplateActionPermissions)
+  );
+}
+
+function templateAllowedActionsIncludes(
+  allowedActions: TemplateAllowedActions,
+  type: CardActionType
+) {
+  return allowedActions.actions.some((action) => action.type === type);
+}
+
+function actionPermissionEnabled(
+  permissions: ActionPermissionDraft[],
+  type: CardActionType
+) {
+  return permissions.some((action) => action.type === type && action.enabled);
 }
 
 function sanitizeFreeColourPalette(colours?: unknown) {

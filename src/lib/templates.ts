@@ -1,5 +1,9 @@
 import { supabase } from "@/lib/supabase";
 import type { CardRendererTemplate } from "@/components/CardRenderer";
+import {
+  normalizeTemplateAllowedActions,
+  type TemplateAllowedActions,
+} from "@/lib/card-actions";
 import type { DmiPlan } from "@/lib/entitlements";
 
 export type TemplatePlan = DmiPlan;
@@ -17,6 +21,7 @@ export type SharedTemplate = CardRendererTemplate & {
   supports_company_banner?: boolean | null;
   supports_gradient?: boolean | null;
   font_family?: string | null;
+  allowed_actions?: TemplateAllowedActions | null;
 };
 
 type TemplatePayload = Partial<SharedTemplate> & {
@@ -185,6 +190,7 @@ export function normalizeTemplate(template: SharedTemplate | TemplatePayload): S
     free_colour_palette: sanitizedPalette,
     text_colours: textColours,
     allowed_fields: template.allowed_fields || [],
+    allowed_actions: normalizeTemplateAllowedActions(template.allowed_actions),
     custom_fields: normalizeTemplateCustomFields(template.custom_fields),
     show_personal_section: template.show_personal_section ?? true,
     show_company_section: template.show_company_section ?? true,

@@ -1,5 +1,5 @@
-import CardRenderer from "@/components/CardRenderer";
 import { getPublishedPublicCardBySlug } from "@/lib/services/public-card-service";
+import PublicCardExperience from "./PublicCardExperience";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -46,10 +46,11 @@ export default async function PublicCardPage({ params }: PublicCardPageProps) {
     <main className="public-card-page min-h-screen bg-[#070B1A] px-4 py-8 text-white sm:px-6">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md items-center justify-center">
         <div className="w-full">
-          <CardRenderer
-            mode="public"
+          <PublicCardExperience
+            slug={slug}
             template={result.template}
-            cardData={result.card}
+            card={result.card}
+            leadCaptureSettings={result.leadCaptureSettings}
           />
         </div>
       </div>

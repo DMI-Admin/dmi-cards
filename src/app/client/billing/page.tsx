@@ -9,7 +9,7 @@ import {
   RefreshCw,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import ClientSidebar from "@/components/ClientSidebar";
 import UpgradeToProButton from "@/components/UpgradeToProButton";
 import type { DmiPlan } from "@/lib/entitlements";
@@ -65,7 +65,7 @@ const billingPillClass =
   "inline-flex min-h-8 items-center justify-center whitespace-nowrap rounded-full border px-3 py-0 text-xs font-semibold leading-none align-middle";
 
 export default function ClientBillingPage() {
-  const { plan, isPaid } = useClientPlan();
+  const { plan, isPaid, loading: planLoading } = useClientPlan();
   const [billingState, setBillingState] = useState<BillingApiState>({
     status: "loading",
     data: null,
@@ -78,33 +78,32 @@ export default function ClientBillingPage() {
   const [subscriptionActionError, setSubscriptionActionError] = useState("");
   const billing = billingState.data;
   const currentPlan = (billing?.plan || plan || "free") as DmiPlan;
-  const planName = currentPlan === "pro" ? "Individual Pro" : currentPlan === "enterprise" ? "Enterprise" : "Free";
+  const planName =
+    billingState.status === "loading" && !billing
+      ? "Loading"
+      : currentPlan === "pro"
+        ? "Individual Pro"
+        : currentPlan === "enterprise"
+          ? "Enterprise"
+          : "Free";
   const statusDisplay = billing
     ? customerStatusLabel(billing)
     : { title: "Loading", caption: "Checking Stripe billing" };
   const nextPayment = nextPaymentDisplay(billing);
 
-  useEffect(() => {
-    void loadBillingSummary();
-  }, []);
-
-  async function loadBillingSummary() {
+  const loadBillingSummary = useCallback(async () => {
     setBillingState({ status: "loading", data: null, error: "" });
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const accessToken = await waitForAccessToken();
 
-      if (!session?.access_token) {
-        throw new Error("Please sign in again to view billing details.");
+      let response = await fetchBillingSummary(accessToken);
+
+      if (response.status === 401) {
+        const retryAccessToken = await waitForAccessToken({ forceRefresh: true });
+        response = await fetchBillingSummary(retryAccessToken);
       }
 
-      const response = await fetch("/api/v1/billing/subscription", {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
       const payload = await response.json().catch(() => null);
 
       if (!response.ok || !payload?.data) {
@@ -126,7 +125,15 @@ export default function ClientBillingPage() {
             : "Could not load billing details.",
       });
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    const loadTimer = window.setTimeout(() => {
+      void loadBillingSummary();
+    }, 0);
+
+    return () => window.clearTimeout(loadTimer);
+  }, [loadBillingSummary]);
 
   async function updateSubscriptionCancellation(cancelAtPeriodEnd: boolean) {
     if (subscriptionActionLoading) return;
@@ -240,7 +247,7 @@ export default function ClientBillingPage() {
             </p>
           </div>
 
-          {!isPaid && (
+          {!planLoading && !isPaid && (
             <UpgradeToProButton className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35 sm:w-auto">
               <Sparkles className="h-4 w-4" />
               Upgrade to Individual Pro
@@ -262,7 +269,7 @@ export default function ClientBillingPage() {
                   />
                 </div>
 
-                {!isPaid && (
+                {!planLoading && !isPaid && (
                   <UpgradeToProButton className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#AC00FF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/20 transition hover:bg-[#BE35FF] sm:w-auto">
                     Upgrade to Individual Pro
                     <ArrowUpRight className="h-4 w-4" />
@@ -392,6 +399,57 @@ function BillingErrorState({
       </div>
     </div>
   );
+}
+
+async function waitForAccessToken({
+  forceRefresh = false,
+  timeoutMs = 4000,
+}: {
+  forceRefresh?: boolean;
+  timeoutMs?: number;
+} = {}) {
+  if (forceRefresh) {
+    const {
+      data: { session: refreshedSession },
+    } = await supabase.auth.refreshSession();
+
+    if (refreshedSession?.access_token) {
+      return refreshedSession.access_token;
+    }
+  }
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (session?.access_token) {
+    return session.access_token;
+  }
+
+  return new Promise<string>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      subscription.unsubscribe();
+      reject(new Error("Please sign in again to view billing details."));
+    }, timeoutMs);
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!nextSession?.access_token) return;
+
+      window.clearTimeout(timeout);
+      subscription.unsubscribe();
+      resolve(nextSession.access_token);
+    });
+  });
+}
+
+function fetchBillingSummary(accessToken: string) {
+  return fetch("/api/v1/billing/subscription", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
 }
 
 function SubscriptionManagementPanel({

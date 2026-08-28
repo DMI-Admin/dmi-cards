@@ -226,6 +226,75 @@ body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"] {
   max-width: 100%;
 }
 
+.client-portal-root img.max-w-none {
+  max-width: none;
+}
+
+.client-portal-shell {
+  width: 100%;
+  overflow-x: clip;
+}
+
+.client-portal-page {
+  min-width: 0;
+  width: 100%;
+  max-width: 1680px;
+  margin-inline: auto;
+  padding: clamp(1.25rem, 2.4vw, 2.5rem);
+}
+
+.client-portal-header {
+  min-width: 0;
+}
+
+.client-portal-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  gap: clamp(1.25rem, 2vw, 2rem);
+  align-items: start;
+}
+
+.client-portal-preview {
+  position: sticky;
+  top: 2rem;
+  align-self: start;
+}
+
+.client-portal-panel {
+  border: 1px solid var(--dmi-border);
+  border-radius: 1.5rem;
+  background: color-mix(in srgb, var(--dmi-surface) 88%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+
+.client-portal-panel-muted {
+  border: 1px solid var(--dmi-border);
+  border-radius: 1.25rem;
+  background: var(--dmi-surface-soft);
+}
+
+@media (max-width: 1500px) {
+  .client-portal-workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  }
+}
+
+@media (max-width: 1180px) {
+  .client-portal-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .client-portal-preview {
+    position: static;
+  }
+}
+
+@media (max-width: 1024px) {
+  .client-portal-page {
+    padding: 1.25rem;
+  }
+}
+
 @media (max-width: 767px) {
   .client-portal-root {
     min-height: 100dvh;
@@ -435,6 +504,35 @@ body:not(:has(.public-card-page)) [class*="text-zinc-950"] {
   color: var(--foreground) !important;
 }
 
+body:not(:has(.public-card-page)) main .dmi-gradient-primary[class*="text-white"],
+body:not(:has(.public-card-page)) main .dmi-gradient-primary[class*="text-white"]:hover,
+body:not(:has(.public-card-page)) main .dmi-gradient-primary[class*="text-white"]:active,
+body:not(:has(.public-card-page)) main .dmi-gradient-primary[class*="text-white"]:focus,
+body:not(:has(.public-card-page)) main .dmi-gradient-primary[class*="text-white"]:focus-visible,
+body:not(:has(.public-card-page)) main .dmi-gradient-primary[class*="text-white"] *,
+body:not(:has(.public-card-page)) main .dmi-gradient-primary[class*="text-white"]:hover *,
+body:not(:has(.public-card-page)) main .dmi-gradient-primary[class*="text-white"]:active *,
+body:not(:has(.public-card-page)) main .dmi-gradient-primary[class*="text-white"]:focus *,
+body:not(:has(.public-card-page)) main .dmi-gradient-primary[class*="text-white"]:focus-visible *,
+body:not(:has(.public-card-page)) section .dmi-gradient-primary[class*="text-white"],
+body:not(:has(.public-card-page)) section .dmi-gradient-primary[class*="text-white"]:hover,
+body:not(:has(.public-card-page)) section .dmi-gradient-primary[class*="text-white"]:active,
+body:not(:has(.public-card-page)) section .dmi-gradient-primary[class*="text-white"]:focus,
+body:not(:has(.public-card-page)) section .dmi-gradient-primary[class*="text-white"]:focus-visible,
+body:not(:has(.public-card-page)) section .dmi-gradient-primary[class*="text-white"] *,
+body:not(:has(.public-card-page)) section .dmi-gradient-primary[class*="text-white"]:hover *,
+body:not(:has(.public-card-page)) section .dmi-gradient-primary[class*="text-white"]:active *,
+body:not(:has(.public-card-page)) section .dmi-gradient-primary[class*="text-white"]:focus *,
+body:not(:has(.public-card-page)) section .dmi-gradient-primary[class*="text-white"]:focus-visible * {
+  color: #ffffff !important;
+}
+
+body:not(:has(.public-card-page)) main .dmi-gradient-primary[class*="text-white"] svg,
+body:not(:has(.public-card-page)) section .dmi-gradient-primary[class*="text-white"] svg {
+  color: #ffffff !important;
+  stroke: currentColor !important;
+}
+
 body:not(:has(.public-card-page)) button[class*="bg-white/"],
 body:not(:has(.public-card-page)) a[class*="bg-white/"] {
   border-color: var(--button-secondary-border) !important;
@@ -571,6 +669,23 @@ body:not(:has(.public-card-page)) [class*="bg-gradient-to-r"] *,
 body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"],
 body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"] * {
   color: #ffffff !important;
+}
+
+body:not(:has(.public-card-page)) .dmi-solid-primary,
+body:not(:has(.public-card-page)) .dmi-solid-primary:hover,
+body:not(:has(.public-card-page)) .dmi-solid-primary:focus,
+body:not(:has(.public-card-page)) .dmi-solid-primary:focus-visible,
+body:not(:has(.public-card-page)) .dmi-solid-primary:active {
+  background-color: var(--brand-secondary) !important;
+  background-image: none !important;
+  color: #ffffff !important;
+  text-shadow: 0 1px 1px color-mix(in srgb, var(--brand-navy) 22%, transparent);
+}
+
+body:not(:has(.public-card-page)) .dmi-solid-primary *,
+body:not(:has(.public-card-page)) .dmi-solid-primary svg {
+  color: #ffffff !important;
+  stroke: currentColor !important;
 }
 
 body:not(:has(.public-card-page)) [class*="shadow-purple"],

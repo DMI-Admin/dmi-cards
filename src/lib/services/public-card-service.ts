@@ -4,6 +4,10 @@ import type {
   CardRendererData,
   CardRendererTemplate,
 } from "@/components/CardRenderer";
+import {
+  normalizeCardActionConfig,
+  type CardActionConfig,
+} from "@/lib/card-actions";
 import { supabase } from "@/lib/supabase";
 import {
   fallbackColour,
@@ -12,8 +16,10 @@ import {
   mergeFieldOrderWithTemplate,
   normalizeFieldVisibility,
   readableTextForColour,
+  normalizeLeadCaptureSettings,
   type CardFieldOrder,
   type CardFieldVisibility,
+  type LeadCaptureSettings,
 } from "@/lib/services/card-payload";
 import { normalizeColourPalette, normalizeTemplate } from "@/lib/templates";
 
@@ -29,6 +35,7 @@ export type PublicCardResolveResult =
       status: "ok";
       card: PublicCardData;
       template: CardRendererTemplate;
+      leadCaptureSettings: LeadCaptureSettings;
     };
 
 type PublicCardRow = CardRendererData & {
@@ -44,6 +51,8 @@ type PublicCardRow = CardRendererData & {
   hidden_fields?: string[] | null;
   field_visibility?: CardFieldVisibility | null;
   field_order?: Partial<CardFieldOrder> | null;
+  lead_capture_settings?: LeadCaptureSettings | null;
+  action_config?: CardActionConfig | null;
 };
 
 export async function getPublishedPublicCardBySlug(
@@ -73,25 +82,13 @@ export async function getPublishedPublicCardBySlug(
 
   const publicTemplate = buildPublicTemplate(template, publicCardRow);
 
-  console.log("[DMI public card] fetched by slug", {
-    slug,
-    cardId: publicCardRow.id || null,
-    templateId: publicCardRow.template_id || null,
-    status: publicCardRow.status || null,
-    isPublished: Boolean(publicCardRow.is_published),
-    updatedAt: publicCardRow.updated_at || null,
-    department: publicCardRow.department || null,
-    hiddenFields: publicCardRow.hidden_fields || [],
-    fieldVisibility: publicCardRow.field_visibility || {},
-    fieldOrder: publicCardRow.field_order || null,
-    allowedFields: publicTemplate.allowed_fields || [],
-    rendererFields: publicTemplate.custom_fields || null,
-  });
-
   return {
     status: "ok",
     card: toPublicCardData(publicCardRow),
     template: publicTemplate,
+    leadCaptureSettings: normalizeLeadCaptureSettings(
+      publicCardRow.lead_capture_settings
+    ),
   };
 }
 
@@ -167,6 +164,7 @@ function buildPublicTemplate(
   return {
     ...normalizedTemplate,
     allowed_fields: allowedFields,
+    allowed_actions: normalizedTemplate.allowed_actions,
     custom_fields: rendererFieldOrder,
     text_color: selectedTextColour,
     free_colour_palette:
@@ -271,6 +269,7 @@ function toPublicCardData(card: PublicCardRow): PublicCardData {
     youtube: card.youtube || null,
     booking_link: card.booking_link || null,
     custom_url: card.custom_url || null,
+    action_config: normalizeCardActionConfig(card.action_config),
     selected_text_colour: card.selected_text_colour || null,
     profile_image_url: card.profile_image_url || null,
     company_logo_url: card.company_logo_url || null,

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
+import ThemeInitializer from "@/components/ThemeInitializer";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -23,20 +24,6 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const themeScript = `
-    (() => {
-      try {
-        const storedTheme = window.localStorage.getItem("dmi-theme");
-        const theme = storedTheme === "light" || storedTheme === "dark" || storedTheme === "system"
-          ? storedTheme
-          : "system";
-        document.documentElement.dataset.theme = theme;
-      } catch {
-        document.documentElement.dataset.theme = "system";
-      }
-    })();
-  `;
-
   return (
     <ClerkProvider>
       <html
@@ -45,10 +32,10 @@ export default function RootLayout({
         data-theme="system"
         suppressHydrationWarning
       >
-        <head>
-          <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-        </head>
-        <body className="min-h-full flex flex-col">{children}</body>
+        <body className="min-h-full flex flex-col">
+          <ThemeInitializer />
+          {children}
+        </body>
       </html>
     </ClerkProvider>
   );
