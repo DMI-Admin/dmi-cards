@@ -16,7 +16,6 @@ type RouteContext = {
 type PublicLeadCardRow = {
   id: string;
   user_id: string | null;
-  profile_id: string | null;
   slug: string | null;
   status: string | null;
   is_published: boolean | null;
@@ -60,7 +59,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const supabaseAdmin = createSupabaseAdminClient();
     const { data: card, error: cardError } = await supabaseAdmin
       .from("cards")
-      .select("id, user_id, profile_id, slug, status, is_published, card_slot, lead_capture_settings")
+      .select("id, user_id, slug, status, is_published, card_slot, lead_capture_settings")
       .eq("slug", normalizedSlug)
       .maybeSingle();
 
@@ -80,7 +79,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       throw new ApiRouteError(404, "NOT_FOUND", "Card not found.");
     }
 
-    const ownerUserId = publicCard.user_id || publicCard.profile_id;
+    const ownerUserId = publicCard.user_id;
     if (!ownerUserId) {
       throw new ApiRouteError(500, "INTERNAL_ERROR", "Could not submit your details.");
     }
