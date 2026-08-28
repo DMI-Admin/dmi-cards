@@ -17,7 +17,20 @@ export function buildPublicCardUrl(slug: string) {
 
 function normalisePublicOrigin(value: string) {
   try {
-    return new URL(value).origin;
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+
+    if (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.endsWith(".localhost") ||
+      hostname.endsWith(".vercel.app")
+    ) {
+      return fallbackPublicAppOrigin;
+    }
+
+    return url.origin;
   } catch {
     return fallbackPublicAppOrigin;
   }
