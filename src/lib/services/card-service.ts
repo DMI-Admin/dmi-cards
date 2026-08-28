@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { buildPublicCardUrl } from "@/lib/public-url";
 import {
   buildCardSlugBase,
   buildSupabaseCardPayload,
@@ -75,7 +76,7 @@ export async function saveClientCard({
     {
       ...card,
       slug,
-      public_url: `/u/${slug}`,
+      public_url: buildPublicCardUrl(slug),
     },
     userId
   );

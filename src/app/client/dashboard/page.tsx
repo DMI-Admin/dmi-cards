@@ -38,6 +38,7 @@ import {
 } from "@/lib/templates";
 import type { ClientProfile } from "@/lib/profiles";
 import { getCurrentProfile, getCurrentUser } from "@/lib/client-auth";
+import { buildPublicCardUrl } from "@/lib/public-url";
 import type { DmiPlan } from "@/lib/entitlements";
 import { useClientPlan } from "@/lib/use-client-plan";
 
@@ -197,10 +198,9 @@ export default function ClientDashboardPage() {
     templates,
   ]);
   const publicUrl = latestCard?.slug ? `/u/${latestCard.slug}` : "/u/your-card-url";
-  const publicCardUrl =
-    typeof window !== "undefined" && latestCard?.slug
-      ? `${window.location.origin}${publicUrl}`
-      : publicUrl;
+  const publicCardUrl = latestCard?.slug
+    ? buildPublicCardUrl(latestCard.slug)
+    : publicUrl;
   const hasSavedCard = Boolean(latestCard);
 
   async function copyPublicCardLink() {

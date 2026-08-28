@@ -9,6 +9,7 @@ import {
   type CardActionConfig,
 } from "@/lib/card-actions";
 import type { DmiPlan } from "@/lib/entitlements";
+import { buildPublicCardUrl } from "@/lib/public-url";
 import { normalizeColourPalette, type SharedTemplate } from "@/lib/templates";
 
 export type ClientCardStatus = "published" | "unpublished";
@@ -407,7 +408,7 @@ export function mapSupabaseCard(
     template_id: rowTemplate?.id || row.template_id || "",
     template_name: templateName,
     status: row.is_published || row.status === "published" ? "published" : "unpublished",
-    public_url: `/u/${slug}`,
+    public_url: buildPublicCardUrl(slug),
     last_updated: row.updated_at || row.created_at || "Saved",
     card_slot: normalizedCardSlot(row.card_slot),
     created_at: row.created_at || null,

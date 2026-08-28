@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import { supabase } from "@/lib/supabase";
+import { buildPublicCardUrl } from "@/lib/public-url";
 
 type Client = {
   id: string;
@@ -733,7 +734,7 @@ function StatsModal({
 }
 
 function publicUrl(slug: string) {
-  return `${window.location.origin}/u/${slug}`;
+  return buildPublicCardUrl(slug);
 }
 
 function csvCell(value: string) {

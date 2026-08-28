@@ -57,6 +57,7 @@ import {
   type SharedTemplate,
 } from "@/lib/templates";
 import { ClientAuthRequiredError, getCurrentUser } from "@/lib/client-auth";
+import { buildPublicCardUrl } from "@/lib/public-url";
 import { useClientPlan } from "@/lib/use-client-plan";
 import {
   actionIsComplete,
@@ -1156,7 +1157,7 @@ export default function ClientCardsPage() {
         template_id: selectedTemplate.id,
         template_name: selectedTemplate.name,
         slug,
-        public_url: `/u/${slug}`,
+        public_url: buildPublicCardUrl(slug),
         status,
         last_updated: "Just now",
         field_order: fieldOrder,
