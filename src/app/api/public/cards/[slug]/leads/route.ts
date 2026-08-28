@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { ApiRouteError, apiErrorFromUnknown, apiSuccess } from "@/lib/api/responses";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
-import { createContactForUser } from "@/lib/services/contact-service";
 import {
   normalizeLeadCaptureSettings,
   type LeadField,
@@ -112,33 +111,49 @@ export async function POST(request: NextRequest, context: RouteContext) {
       settings.privacy_policy_url || settings.terms_url
     );
 
-    const contact = await createContactForUser(supabaseAdmin, ownerUserId, {
-      ...contactPayload,
-      card_id: publicCard.id,
-      source: "digital_card",
-      status: "new",
-      consent_notice: settings.consent_notice,
-      terms_url: privacyPolicyUrl,
-      submitted_at: submittedAt,
-      metadata: {
-        public_submission: true,
-        card_slug: normalizedSlug,
-        configured_fields: settings.fields,
-        marketing_consent: {
-          enabled: settings.marketing_opt_in_enabled === true,
-          opted_in: settings.marketing_opt_in_enabled === true ? marketingOptedIn : false,
-          submitted_at: submittedAt,
-          label: marketingLabel,
-          version: settings.marketing_opt_in_version || null,
+    const { data: contactId, error: leadError } = await supabaseAdmin.rpc(
+      "create_public_card_lead",
+      {
+        p_card_slug: normalizedSlug,
+        p_name: contactPayload.name || null,
+        p_email: contactPayload.email || null,
+        p_phone: contactPayload.phone || null,
+        p_company: contactPayload.company || null,
+        p_job_title: contactPayload.job_title || null,
+        p_website: contactPayload.website || null,
+        p_message: contactPayload.message || null,
+        p_consent_given: null,
+        p_consent_notice: settings.consent_notice,
+        p_terms_url: privacyPolicyUrl,
+        p_submitted_at: submittedAt,
+        p_metadata: {
+          public_submission: true,
+          card_slug: normalizedSlug,
+          configured_fields: settings.fields,
+          marketing_consent: {
+            enabled: settings.marketing_opt_in_enabled === true,
+            opted_in: settings.marketing_opt_in_enabled === true ? marketingOptedIn : false,
+            submitted_at: submittedAt,
+            label: marketingLabel,
+            version: settings.marketing_opt_in_version || null,
+          },
+          privacy_notice: {
+            wording: settings.consent_notice,
+            privacy_policy_url: privacyPolicyUrl,
+          },
         },
-        privacy_notice: {
-          wording: settings.consent_notice,
-          privacy_policy_url: privacyPolicyUrl,
-        },
-      },
-    });
+      }
+    );
 
-    return apiSuccess({ contactId: contact.id });
+    if (leadError) {
+      console.error("[DMI public leads] contact creation failed", {
+        code: leadError.code,
+        message: leadError.message,
+      });
+      throw new ApiRouteError(500, "INTERNAL_ERROR", "Could not submit your details.");
+    }
+
+    return apiSuccess({ contactId });
   } catch (error) {
     return apiErrorFromUnknown(error);
   }
