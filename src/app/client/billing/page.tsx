@@ -9,9 +9,9 @@ import {
   RefreshCw,
   Sparkles,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ClientSidebar from "@/components/ClientSidebar";
-import UpgradeToProButton from "@/components/UpgradeToProButton";
+import UpgradeToProButton, { openUpgradeToProModal } from "@/components/UpgradeToProButton";
 import type { DmiPlan } from "@/lib/entitlements";
 import { supabase } from "@/lib/supabase";
 import { useClientPlan } from "@/lib/use-client-plan";
@@ -76,6 +76,7 @@ export default function ClientBillingPage() {
   const [subscriptionPanelOpen, setSubscriptionPanelOpen] = useState(false);
   const [subscriptionActionLoading, setSubscriptionActionLoading] = useState(false);
   const [subscriptionActionError, setSubscriptionActionError] = useState("");
+  const signupUpgradeHandledRef = useRef(false);
   const billing = billingState.data;
   const currentPlan = (billing?.plan || plan || "free") as DmiPlan;
   const planName =
@@ -134,6 +135,26 @@ export default function ClientBillingPage() {
 
     return () => window.clearTimeout(loadTimer);
   }, [loadBillingSummary]);
+
+  useEffect(() => {
+    if (signupUpgradeHandledRef.current || planLoading || billingState.status === "loading") {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const shouldResumeProCheckout = params.get("upgrade") === "individual_pro";
+
+    if (!shouldResumeProCheckout) {
+      return;
+    }
+
+    signupUpgradeHandledRef.current = true;
+    window.history.replaceState(null, "", "/client/billing");
+
+    if (!isPaid) {
+      window.setTimeout(() => openUpgradeToProModal(), 0);
+    }
+  }, [billingState.status, isPaid, planLoading]);
 
   async function updateSubscriptionCancellation(cancelAtPeriodEnd: boolean) {
     if (subscriptionActionLoading) return;

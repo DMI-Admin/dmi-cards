@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { AlertCircle, Mail, RotateCw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import { buildAuthCallbackRedirectUrl } from "@/lib/auth-redirect";
 import { supabase } from "@/lib/supabase";
 
 export default function EmailVerificationErrorPage() {
@@ -21,25 +22,36 @@ function EmailVerificationErrorContent() {
   const reason = searchParams.get("message") || "";
   const [email, setEmail] = useState(initialEmail);
   const [message, setMessage] = useState("");
+  const [resendError, setResendError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   async function resendVerification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
+    setResendError("");
     setSubmitting(true);
 
     try {
-      await supabase.auth.resend({
+      const { error } = await supabase.auth.resend({
         type: "signup",
         email: email.trim(),
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=/email-verified`,
+          emailRedirectTo: buildAuthCallbackRedirectUrl("/email-verified"),
         },
       });
+
+      if (error) {
+        throw error;
+      }
+
       setMessage("If an account exists for this email, we’ve sent a new verification link.");
     } catch (error) {
       console.error("[DMI auth] verification resend failed", error);
-      setMessage("If an account exists for this email, we’ve sent a new verification link.");
+      setResendError(
+        error instanceof Error
+          ? error.message
+          : "Could not send a new verification link. Please try again."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -82,6 +94,12 @@ function EmailVerificationErrorContent() {
           {message && (
             <div className="rounded-2xl border border-green-400/20 bg-green-500/10 px-4 py-3 text-sm leading-6 text-green-100">
               {message}
+            </div>
+          )}
+
+          {resendError && (
+            <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm leading-6 text-red-100">
+              {resendError}
             </div>
           )}
 

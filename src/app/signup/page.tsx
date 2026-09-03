@@ -15,17 +15,26 @@ import {
 } from "lucide-react";
 import { FaApple, FaMicrosoft } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
+import { buildAuthCallbackRedirectUrl } from "@/lib/auth-redirect";
 import { supabase } from "@/lib/supabase";
 import { getOrCreateClientProfile } from "@/lib/profiles";
 
-const plans = [
+type SignupPlan = "free" | "individual_pro";
+
+const plans: Array<{
+  id: SignupPlan;
+  name: string;
+  description: string;
+  features: string[];
+}> = [
   {
+    id: "free",
     name: "Free",
     description: "Start with one polished public digital business card.",
     features: ["1 digital card", "Free Classic template", "QR code", "Wallet", "Public page"],
-    selected: true,
   },
   {
+    id: "individual_pro",
     name: "Individual Pro",
     description: "Unlock advanced sharing, lead capture, and premium branding.",
     features: [
@@ -39,6 +48,7 @@ const plans = [
 ];
 
 const titleOptions = ["Mr", "Mrs", "Miss", "Ms", "Mx", "Dr", "Prof", "Sir", "Dame", "Lord", "Lady", "Other"];
+const proCheckoutPath = "/client/billing?upgrade=individual_pro";
 
 function buildFullName(title: string, firstName: string, lastName: string) {
   return [title, firstName, lastName]
@@ -61,6 +71,7 @@ export default function ClientSignupPage() {
   const [verificationPending, setVerificationPending] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<SignupPlan>("free");
 
   useEffect(() => {
     const {
@@ -98,69 +109,82 @@ export default function ClientSignupPage() {
       return;
     }
 
-    setSubmitting(true);
     const signupEmail = email.trim();
     const fullName = buildFullName(title, firstName, lastName);
+    const intendedPlan = selectedPlan;
+    const verificationRedirectUrl = buildAuthCallbackRedirectUrl(
+      intendedPlan === "individual_pro" ? proCheckoutPath : "/email-verified"
+    );
 
-    console.log("[DMI auth] signup request", {
-      email: signupEmail,
-      title: title.trim() || null,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      fullName,
-      projectUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    });
+    setSubmitting(true);
 
-    const { data, error } = await supabase.auth.signUp({
-      email: signupEmail,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/email-verified`,
-        data: {
-          title: title.trim(),
-          first_name: firstName.trim(),
-          last_name: lastName.trim(),
-          full_name: fullName,
-          subscription_plan: "free",
-          plan: "free",
-          account_type: "individual",
+    try {
+      console.log("[DMI auth] signup request", {
+        email: signupEmail,
+        title: title.trim() || null,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        fullName,
+        intendedPlan,
+        emailRedirectTo: verificationRedirectUrl,
+        projectUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      });
+
+      const { data, error } = await supabase.auth.signUp({
+        email: signupEmail,
+        password,
+        options: {
+          emailRedirectTo: verificationRedirectUrl,
+          data: {
+            title: title.trim(),
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
+            full_name: fullName,
+            subscription_plan: "free",
+            plan: "free",
+            intended_plan: intendedPlan,
+            signup_plan_intent: intendedPlan,
+            account_type: "individual",
+          },
         },
-      },
-    });
+      });
 
-    console.log("[DMI auth] signup result", {
-      error: error ? { name: error.name, message: error.message, status: error.status } : null,
-      hasUser: Boolean(data.user),
-      hasSession: Boolean(data.session),
-      user: data.user
-        ? {
-            id: data.user.id,
-            email: data.user.email,
-            metadata: data.user.user_metadata,
-          }
-        : null,
-    });
+      console.log("[DMI auth] signup result", {
+        error: error ? { name: error.name, message: error.message, status: error.status } : null,
+        hasUser: Boolean(data.user),
+        hasSession: Boolean(data.session),
+        user: data.user
+          ? {
+              id: data.user.id,
+              email: data.user.email,
+              metadata: data.user.user_metadata,
+            }
+          : null,
+      });
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+      if (error) {
+        setSignupError(error.message || "Could not create your account. Please check your details and try again.");
+        return;
+      }
 
-    console.log("[DMI auth] session state", {
-      page: "signup",
-      event: "AFTER_SIGNUP",
-      hasSession: Boolean(session),
-      userId: session?.user?.id || null,
-      email: session?.user?.email || null,
-    });
+      if (!data.user) {
+        setSignupError("Supabase did not return an account confirmation. Please try again.");
+        return;
+      }
 
-    if (error) {
-      setSignupError("Could not create your account. Please check your details and try again.");
-      setSubmitting(false);
-      return;
-    }
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    if (data.user && data.session) {
-      try {
+      console.log("[DMI auth] session state", {
+        page: "signup",
+        event: "AFTER_SIGNUP",
+        hasSession: Boolean(session),
+        userId: session?.user?.id || null,
+        email: session?.user?.email || null,
+      });
+
+      if (data.session) {
         const profile = await getOrCreateClientProfile(data.user);
         console.log("[DMI auth] auth user", {
           id: data.user.id,
@@ -172,41 +196,39 @@ export default function ClientSignupPage() {
         });
         console.log("[DMI auth] loaded profile", profile);
         console.log("[DMI auth] mock fallback used", false);
-      } catch (profileError) {
-        setSignupError(
-          profileError instanceof Error
-            ? profileError.message
-            : "Could not create your profile."
-        );
-        setSubmitting(false);
-        return;
       }
+
+      if (data.session) {
+        await supabase.auth.signOut();
+      }
+
+      console.log("[DMI auth] auth user", {
+        id: data.user.id,
+        email: data.user.email,
+      });
+      console.log("[DMI auth] session state", {
+        page: "signup",
+        event: "SIGNED_UP_VERIFY_EMAIL",
+        hasSession: false,
+        userId: data.user.id,
+        email: data.user.email || signupEmail,
+      });
+
+      setCreatedEmail(signupEmail);
+      setVerificationPending(true);
+      setSignupMessage("");
+      setPassword("");
+      setConfirmPassword("");
+    } catch (error) {
+      console.error("[DMI auth] signup failed", error);
+      setSignupError(
+        error instanceof Error
+          ? error.message
+          : "Could not create your account. Please check your details and try again."
+      );
+    } finally {
+      setSubmitting(false);
     }
-
-    if (data.session) {
-      await supabase.auth.signOut();
-    }
-
-    console.log("[DMI auth] auth user", data.user
-      ? {
-          id: data.user.id,
-          email: data.user.email,
-        }
-      : null);
-    console.log("[DMI auth] session state", {
-      page: "signup",
-      event: "SIGNED_UP_VERIFY_EMAIL",
-      hasSession: false,
-      userId: data.user?.id || null,
-      email: data.user?.email || signupEmail,
-    });
-
-    setCreatedEmail(signupEmail);
-    setVerificationPending(true);
-    setSignupMessage("");
-    setPassword("");
-    setConfirmPassword("");
-    setSubmitting(false);
   }
 
   function handleSocialSignup() {
@@ -222,20 +244,32 @@ export default function ClientSignupPage() {
     }
 
     setSignupError("");
+    setSignupMessage("");
     setResending(true);
 
     try {
-      await supabase.auth.resend({
+      const { error } = await supabase.auth.resend({
         type: "signup",
         email: resendEmail,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=/email-verified`,
+          emailRedirectTo: buildAuthCallbackRedirectUrl(
+            selectedPlan === "individual_pro" ? proCheckoutPath : "/email-verified"
+          ),
         },
       });
+
+      if (error) {
+        throw error;
+      }
+
       setSignupMessage("Verification email sent. Please check your inbox.");
     } catch (error) {
       console.error("[DMI auth] verification resend failed", error);
-      setSignupMessage("If an account exists for this email, we’ve sent a verification link.");
+      setSignupError(
+        error instanceof Error
+          ? error.message
+          : "Could not resend the verification email. Please try again."
+      );
     } finally {
       setResending(false);
     }
@@ -311,6 +345,7 @@ export default function ClientSignupPage() {
                 <VerificationSuccess
                   email={createdEmail}
                   message={signupMessage}
+                  error={signupError}
                   resending={resending}
                   onGoToLogin={() => router.push("/")}
                   onResend={resendVerificationEmail}
@@ -405,13 +440,18 @@ export default function ClientSignupPage() {
                   <div className="mb-3 flex items-center justify-between gap-4">
                     <h3 className="font-semibold">Choose your plan</h3>
                     <span className="rounded-full border border-green-400/20 bg-green-500/10 px-3 py-1 text-xs font-semibold text-green-100">
-                      Selected: Free
+                      Selected: {selectedPlan === "individual_pro" ? "Individual Pro" : "Free"}
                     </span>
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
                     {plans.map((plan) => (
-                      <PlanCard key={plan.name} {...plan} />
+                      <PlanCard
+                        key={plan.id}
+                        {...plan}
+                        selected={plan.id === selectedPlan}
+                        onSelect={() => setSelectedPlan(plan.id)}
+                      />
                     ))}
                   </div>
                 </section>
@@ -569,12 +609,14 @@ function Field({
 function VerificationSuccess({
   email,
   message,
+  error,
   resending,
   onGoToLogin,
   onResend,
 }: {
   email: string;
   message: string;
+  error: string;
   resending: boolean;
   onGoToLogin: () => void;
   onResend: () => void;
@@ -599,6 +641,11 @@ function VerificationSuccess({
       {message && (
         <div className="mt-5 rounded-2xl border border-green-400/20 bg-green-500/10 px-4 py-3 text-sm text-green-100">
           {message}
+        </div>
+      )}
+      {error && (
+        <div className="mt-5 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          {error}
         </div>
       )}
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
@@ -628,15 +675,20 @@ function PlanCard({
   description,
   features,
   selected = false,
+  onSelect,
 }: {
   name: string;
   description: string;
   features: string[];
   selected?: boolean;
+  onSelect: () => void;
 }) {
   return (
     <button
       type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      aria-label={`Select ${name} plan`}
       className={`rounded-3xl border p-5 text-left transition ${
         selected
           ? "border-[#AC00FF]/60 bg-[#AC00FF]/15 shadow-lg shadow-purple-500/15"

@@ -23,7 +23,7 @@ function AuthCallbackContent() {
     let ignore = false;
 
     async function completeAuth() {
-      const nextPath = searchParams.get("next") || "/client/dashboard";
+      const nextPath = normalizeSafeNextPath(searchParams.get("next"));
       const code = searchParams.get("code");
       const tokenHash = searchParams.get("token_hash");
       const type = searchParams.get("type");
@@ -93,10 +93,9 @@ function AuthCallbackContent() {
           });
         }
 
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
+        const { session, sessionError } = await resolveVerifiedCallbackSession({
+          requiresHostedSessionCheck: !code && !(tokenHash && type),
+        });
 
         console.log("[DMI auth] auth callback session state", {
           error: sessionError
@@ -110,8 +109,10 @@ function AuthCallbackContent() {
           verifiedEmail,
         });
 
-        if (session?.user) {
+        if (session?.user && isUserEmailVerified(session.user)) {
           await getCurrentProfile(session.user);
+        } else if (session?.user) {
+          throw new Error("Your email address has not been verified yet.");
         } else if (nextPath === "/email-verified" && !verifiedUserId) {
           throw new Error("Verification link is missing its confirmation token.");
         } else if (nextPath !== "/email-verified") {
@@ -144,7 +145,7 @@ function AuthCallbackContent() {
     }
 
     function routeVerificationError(message: string, email: string) {
-      if (nextIsEmailVerification(searchParams.get("next"))) {
+      if (nextIsEmailVerification(normalizeSafeNextPath(searchParams.get("next")))) {
         router.replace(
           `/email-verification-error?message=${encodeURIComponent(message)}${
             email ? `&email=${encodeURIComponent(email)}` : ""
@@ -185,6 +186,90 @@ function AuthCallbackContent() {
 
 function nextIsEmailVerification(nextPath: string | null) {
   return nextPath === "/email-verified";
+}
+
+function normalizeSafeNextPath(nextPath: string | null) {
+  if (!nextPath) return "/client/dashboard";
+
+  try {
+    const decodedPath = decodeURIComponent(nextPath).trim();
+
+    if (
+      !decodedPath.startsWith("/") ||
+      decodedPath.startsWith("//") ||
+      decodedPath.includes("\\")
+    ) {
+      return "/client/dashboard";
+    }
+
+    return decodedPath;
+  } catch {
+    return "/client/dashboard";
+  }
+}
+
+async function resolveVerifiedCallbackSession({
+  requiresHostedSessionCheck,
+}: {
+  requiresHostedSessionCheck: boolean;
+}) {
+  const maxAttempts = requiresHostedSessionCheck ? 8 : 1;
+  let sessionError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (attempt > 0) {
+      await wait(150);
+    }
+
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
+
+    sessionError = error || null;
+
+    if (session?.user && isUserEmailVerified(session.user)) {
+      return { session, sessionError };
+    }
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError) {
+      sessionError = userError;
+    }
+
+    if (user && isUserEmailVerified(user)) {
+      return {
+        session: session ?? {
+          access_token: "",
+          refresh_token: "",
+          expires_in: 0,
+          expires_at: 0,
+          token_type: "bearer",
+          user,
+        },
+        sessionError,
+      };
+    }
+  }
+
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession();
+
+  return { session, sessionError: error || sessionError };
+}
+
+function isUserEmailVerified(user: { email_confirmed_at?: string | null; confirmed_at?: string | null }) {
+  return Boolean(user.email_confirmed_at || user.confirmed_at);
+}
+
+function wait(milliseconds: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 function normalizeOtpType(type: string) {
