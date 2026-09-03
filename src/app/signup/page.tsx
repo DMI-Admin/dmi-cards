@@ -689,19 +689,19 @@ function PlanCard({
       onClick={onSelect}
       aria-pressed={selected}
       aria-label={`Select ${name} plan`}
-      className={`rounded-3xl border p-5 text-left transition ${
+      className={`rounded-3xl border bg-white p-5 text-left text-[#101935] shadow-lg shadow-black/10 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#AC00FF] ${
         selected
-          ? "border-[#AC00FF]/60 bg-[#AC00FF]/15 shadow-lg shadow-purple-500/15"
-          : "border-white/10 bg-white/5 hover:border-[#AC00FF]/35 hover:bg-white/10"
+          ? "border-[#AC00FF] ring-2 ring-[#AC00FF]/25 shadow-purple-500/20"
+          : "border-white/80 hover:border-[#AC00FF]/45 hover:shadow-purple-500/10"
       }`}
     >
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-lg font-semibold">{name}</h3>
-          <p className="mt-2 text-sm leading-6 text-white/50">{description}</p>
+          <p className="mt-2 text-sm leading-6 text-[#31405F]">{description}</p>
         </div>
         {selected && (
-          <span className="rounded-full bg-[#AC00FF] px-3 py-1 text-xs font-semibold text-white">
+          <span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/10 px-3 py-1 text-xs font-semibold text-[#7A12B8]">
             Selected
           </span>
         )}
@@ -709,8 +709,8 @@ function PlanCard({
 
       <div className="mt-5 space-y-2">
         {features.map((feature) => (
-          <div key={feature} className="flex items-center gap-2 text-sm text-white/65">
-            <Check className="h-4 w-4 shrink-0 text-purple-200" />
+          <div key={feature} className="flex items-center gap-2 text-sm text-[#31405F]">
+            <Check className="h-4 w-4 shrink-0 text-[#AC00FF]" />
             <span>{feature}</span>
           </div>
         ))}
