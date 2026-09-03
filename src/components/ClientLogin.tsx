@@ -21,11 +21,28 @@ export default function ClientLogin() {
       ? "This account has been suspended. Please contact DMI Cards support."
       : ""
   );
-  const [resetEmail, setResetEmail] = useState("");
+  const [resetEmail, setResetEmail] = useState(() =>
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("forgot") === "1"
+      ? new URLSearchParams(window.location.search).get("email") || ""
+      : ""
+  );
   const [resetMessage, setResetMessage] = useState("");
-  const [showResetModal, setShowResetModal] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("forgot") === "1"
+  );
   const [submitting, setSubmitting] = useState(false);
   const [resetSubmitting, setResetSubmitting] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.get("forgot") === "1") {
+      window.history.replaceState(null, "", "/");
+    }
+  }, []);
 
   useEffect(() => {
     const {

@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
-  BriefcaseBusiness,
   Check,
   LockKeyhole,
   Mail,
@@ -19,36 +18,7 @@ import { buildAuthCallbackRedirectUrl } from "@/lib/auth-redirect";
 import { supabase } from "@/lib/supabase";
 import { getOrCreateClientProfile } from "@/lib/profiles";
 
-type SignupPlan = "free" | "individual_pro";
-
-const plans: Array<{
-  id: SignupPlan;
-  name: string;
-  description: string;
-  features: string[];
-}> = [
-  {
-    id: "free",
-    name: "Free",
-    description: "Start with one polished public digital business card.",
-    features: ["1 digital card", "Free Classic template", "QR code", "Wallet", "Public page"],
-  },
-  {
-    id: "individual_pro",
-    name: "Individual Pro",
-    description: "Unlock advanced sharing, lead capture, and premium branding.",
-    features: [
-      "Premium templates",
-      "Tap to Share",
-      "Contacts",
-      "Analytics",
-      "Integrations",
-    ],
-  },
-];
-
 const titleOptions = ["Mr", "Mrs", "Miss", "Ms", "Mx", "Dr", "Prof", "Sir", "Dame", "Lord", "Lady", "Other"];
-const proCheckoutPath = "/client/billing?upgrade=individual_pro";
 
 function buildFullName(title: string, firstName: string, lastName: string) {
   return [title, firstName, lastName]
@@ -69,9 +39,9 @@ export default function ClientSignupPage() {
   const [signupError, setSignupError] = useState("");
   const [signupMessage, setSignupMessage] = useState("");
   const [verificationPending, setVerificationPending] = useState(false);
+  const [accountExists, setAccountExists] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<SignupPlan>("free");
 
   useEffect(() => {
     const {
@@ -93,6 +63,7 @@ export default function ClientSignupPage() {
     event.preventDefault();
     setSignupError("");
     setSignupMessage("");
+    setAccountExists(false);
 
     if (!firstName.trim() || !lastName.trim()) {
       setSignupError("First name and last name are required.");
@@ -111,10 +82,7 @@ export default function ClientSignupPage() {
 
     const signupEmail = email.trim();
     const fullName = buildFullName(title, firstName, lastName);
-    const intendedPlan = selectedPlan;
-    const verificationRedirectUrl = buildAuthCallbackRedirectUrl(
-      intendedPlan === "individual_pro" ? proCheckoutPath : "/email-verified"
-    );
+    const verificationRedirectUrl = buildAuthCallbackRedirectUrl("/email-verified");
 
     setSubmitting(true);
 
@@ -125,7 +93,6 @@ export default function ClientSignupPage() {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         fullName,
-        intendedPlan,
         emailRedirectTo: verificationRedirectUrl,
         projectUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
       });
@@ -142,8 +109,6 @@ export default function ClientSignupPage() {
             full_name: fullName,
             subscription_plan: "free",
             plan: "free",
-            intended_plan: intendedPlan,
-            signup_plan_intent: intendedPlan,
             account_type: "individual",
           },
         },
@@ -162,6 +127,14 @@ export default function ClientSignupPage() {
           : null,
       });
 
+      if (isAlreadyRegisteredError(error)) {
+        setCreatedEmail(signupEmail);
+        setAccountExists(true);
+        setPassword("");
+        setConfirmPassword("");
+        return;
+      }
+
       if (error) {
         setSignupError(error.message || "Could not create your account. Please check your details and try again.");
         return;
@@ -169,6 +142,14 @@ export default function ClientSignupPage() {
 
       if (!data.user) {
         setSignupError("Supabase did not return an account confirmation. Please try again.");
+        return;
+      }
+
+      if (isObfuscatedExistingUser(data.user)) {
+        setCreatedEmail(signupEmail);
+        setAccountExists(true);
+        setPassword("");
+        setConfirmPassword("");
         return;
       }
 
@@ -252,9 +233,7 @@ export default function ClientSignupPage() {
         type: "signup",
         email: resendEmail,
         options: {
-          emailRedirectTo: buildAuthCallbackRedirectUrl(
-            selectedPlan === "individual_pro" ? proCheckoutPath : "/email-verified"
-          ),
+          emailRedirectTo: buildAuthCallbackRedirectUrl("/email-verified"),
         },
       });
 
@@ -340,7 +319,7 @@ export default function ClientSignupPage() {
               </p>
             </div>
 
-            <div className="rounded-3xl border border-white/10 bg-[#101935]/80 p-7 shadow-2xl shadow-purple-950/25">
+            <div className="rounded-3xl border border-white/10 bg-[#101935]/80 p-6 shadow-2xl shadow-purple-950/25">
               {verificationPending ? (
                 <VerificationSuccess
                   email={createdEmail}
@@ -352,10 +331,7 @@ export default function ClientSignupPage() {
                 />
               ) : (
               <>
-              <div className="mb-8">
-                <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#AC00FF]/15 text-purple-100">
-                  <UserRound className="h-6 w-6" />
-                </div>
+              <div className="mb-5">
                 <h2 className="text-3xl font-bold">
                   Create your DMI Cards account
                 </h2>
@@ -365,13 +341,14 @@ export default function ClientSignupPage() {
                 </p>
               </div>
 
-              <form onSubmit={handleSignup} className="space-y-6">
+              <form onSubmit={handleSignup} className="space-y-5">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Title" icon={UserRound}>
                     <select
                       value={title}
                       onChange={(event) => setTitle(event.target.value)}
                       className="inputStyle"
+                      autoComplete="honorific-prefix"
                     >
                       <option value="">Optional</option>
                       {titleOptions.map((option) => (
@@ -388,6 +365,7 @@ export default function ClientSignupPage() {
                       onChange={(event) => setFirstName(event.target.value)}
                       placeholder="First name"
                       className="inputStyle"
+                      autoComplete="given-name"
                       required
                     />
                   </Field>
@@ -398,6 +376,7 @@ export default function ClientSignupPage() {
                       onChange={(event) => setLastName(event.target.value)}
                       placeholder="Last name"
                       className="inputStyle"
+                      autoComplete="family-name"
                       required
                     />
                   </Field>
@@ -409,6 +388,7 @@ export default function ClientSignupPage() {
                       onChange={(event) => setEmail(event.target.value)}
                       placeholder="you@company.com"
                       className="inputStyle"
+                      autoComplete="email"
                       required
                     />
                   </Field>
@@ -420,6 +400,7 @@ export default function ClientSignupPage() {
                       onChange={(event) => setPassword(event.target.value)}
                       placeholder="Create a password"
                       className="inputStyle"
+                      autoComplete="new-password"
                       required
                     />
                   </Field>
@@ -431,54 +412,18 @@ export default function ClientSignupPage() {
                       onChange={(event) => setConfirmPassword(event.target.value)}
                       placeholder="Confirm password"
                       className="inputStyle"
+                      autoComplete="new-password"
                       required
                     />
                   </Field>
                 </div>
 
-                <section>
-                  <div className="mb-3 flex items-center justify-between gap-4">
-                    <h3 className="font-semibold">Choose your plan</h3>
-                    <span className="rounded-full border border-green-400/20 bg-green-500/10 px-3 py-1 text-xs font-semibold text-green-100">
-                      Selected: {selectedPlan === "individual_pro" ? "Individual Pro" : "Free"}
-                    </span>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {plans.map((plan) => (
-                      <PlanCard
-                        key={plan.id}
-                        {...plan}
-                        selected={plan.id === selectedPlan}
-                        onSelect={() => setSelectedPlan(plan.id)}
-                      />
-                    ))}
-                  </div>
-                </section>
-
-                <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-start gap-4">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#AC00FF]/15 text-purple-200">
-                        <BriefcaseBusiness className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold">Need cards for a team?</h3>
-                        <p className="mt-1 text-sm leading-6 text-white/50">
-                          Business and Enterprise onboarding will be handled by
-                          the DMI Cards team.
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/70 transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/15 hover:text-white"
-                    >
-                      Contact Sales
-                    </button>
-                  </div>
-                </div>
+                {accountExists && (
+                  <AccountAlreadyExistsInline
+                    email={createdEmail || email.trim()}
+                    onGoToLogin={() => router.push("/")}
+                  />
+                )}
 
                 {signupError && (
                   <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
@@ -504,7 +449,7 @@ export default function ClientSignupPage() {
 
               <SocialLoginSection onSocialLogin={handleSocialSignup} />
 
-              <div className="mt-6 flex flex-col gap-3 text-center text-sm text-white/45 sm:flex-row sm:items-center sm:justify-between">
+              <div className="mt-5 flex flex-col gap-3 text-center text-sm text-white/45 sm:flex-row sm:items-center sm:justify-between">
                 <Link href="/" className="transition hover:text-purple-100">
                   Already have an account? Log in
                 </Link>
@@ -518,18 +463,25 @@ export default function ClientSignupPage() {
                   </Link>
                 </div>
               </div>
+              <p className="mt-4 text-center text-xs text-white/30">
+                DMI Cards by DevMaster Inc
+              </p>
               </>
               )}
             </div>
-
-            <p className="mt-8 text-center text-xs text-white/30">
-              Powered by DevMaster Inc
-            </p>
           </div>
         </section>
       </div>
     </main>
   );
+}
+
+function isAlreadyRegisteredError(error: { message?: string | null } | null) {
+  return typeof error?.message === "string" && /already registered/i.test(error.message);
+}
+
+function isObfuscatedExistingUser(user: { identities?: unknown }) {
+  return Array.isArray(user.identities) && user.identities.length === 0;
 }
 
 function SocialLoginSection({
@@ -538,7 +490,7 @@ function SocialLoginSection({
   onSocialLogin: () => void;
 }) {
   return (
-    <div className="mt-7">
+    <div className="mt-5">
       <div className="flex items-center gap-3">
         <div className="h-px flex-1 bg-white/10" />
         <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/35">
@@ -547,7 +499,7 @@ function SocialLoginSection({
         <div className="h-px flex-1 bg-white/10" />
       </div>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-2">
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
         <button
           type="button"
           onClick={onSocialLogin}
@@ -579,9 +531,6 @@ function SocialLoginSection({
         </button>
       </div>
 
-      <p className="mt-5 text-center text-xs text-white/35">
-        Secure authentication powered by DMI Cards.
-      </p>
     </div>
   );
 }
@@ -670,51 +619,49 @@ function VerificationSuccess({
   );
 }
 
-function PlanCard({
-  name,
-  description,
-  features,
-  selected = false,
-  onSelect,
+function AccountAlreadyExistsInline({
+  email,
+  onGoToLogin,
 }: {
-  name: string;
-  description: string;
-  features: string[];
-  selected?: boolean;
-  onSelect: () => void;
+  email: string;
+  onGoToLogin: () => void;
 }) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
-      aria-label={`Select ${name} plan`}
-      className={`rounded-3xl border bg-white p-5 text-left text-[#101935] shadow-lg shadow-black/10 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#AC00FF] ${
-        selected
-          ? "border-[#AC00FF] ring-2 ring-[#AC00FF]/25 shadow-purple-500/20"
-          : "border-white/80 hover:border-[#AC00FF]/45 hover:shadow-purple-500/10"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold">{name}</h3>
-          <p className="mt-2 text-sm leading-6 text-[#31405F]">{description}</p>
-        </div>
-        {selected && (
-          <span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/10 px-3 py-1 text-xs font-semibold text-[#7A12B8]">
-            Selected
-          </span>
-        )}
-      </div>
+  const resetHref = email
+    ? `/?forgot=1&email=${encodeURIComponent(email)}`
+    : "/?forgot=1";
 
-      <div className="mt-5 space-y-2">
-        {features.map((feature) => (
-          <div key={feature} className="flex items-center gap-2 text-sm text-[#31405F]">
-            <Check className="h-4 w-4 shrink-0 text-[#AC00FF]" />
-            <span>{feature}</span>
-          </div>
-        ))}
+  return (
+    <div className="rounded-3xl border border-amber-300/25 bg-amber-300/10 p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-amber-50">
+            Account already exists
+          </h3>
+          <p className="mt-2 text-sm leading-6 text-amber-50/75">
+            An account already exists for this email. Please sign in, or reset
+            your password if you can&apos;t remember it.
+          </p>
+          {email && (
+            <p className="mt-2 text-xs font-medium text-amber-50/55">{email}</p>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+          <button
+            type="button"
+            onClick={onGoToLogin}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35"
+          >
+            Go to login
+            <ArrowRight className="h-4 w-4" />
+          </button>
+          <Link
+            href={resetHref}
+            className="inline-flex items-center justify-center rounded-2xl border border-amber-50/20 bg-amber-50/10 px-4 py-2.5 text-sm font-semibold text-amber-50/80 transition hover:bg-amber-50/15 hover:text-white"
+          >
+            Forgot password
+          </Link>
+        </div>
       </div>
-    </button>
+    </div>
   );
 }
