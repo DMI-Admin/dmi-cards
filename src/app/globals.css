@@ -172,15 +172,6 @@ body:not(:has(.public-card-page)) h6 {
   color: var(--dmi-muted);
 }
 
-body:not(:has(.public-card-page)) [class*="from-[#AC00FF]"],
-body:not(:has(.public-card-page)) [class*="from-[#FF424A]"],
-body:not(:has(.public-card-page)) [class*="bg-[#AC00FF]"],
-body:not(:has(.public-card-page)) [class*="bg-gradient-to-r"],
-body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"] {
-  color: #ffffff;
-  text-shadow: 0 1px 1px color-mix(in srgb, var(--brand-navy) 22%, transparent);
-}
-
 .dmi-hero-panel {
   position: relative;
   overflow: hidden;
@@ -359,20 +350,6 @@ body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"] {
   .client-portal-root [class*="rounded-[2rem]"] {
     overflow-wrap: anywhere;
   }
-}
-
-body:not(:has(.public-card-page)) [class~="bg-[#AC00FF]"],
-body:not(:has(.public-card-page)) [class~="from-[#AC00FF]"][class~="to-[#6C2CFF]"],
-body:not(:has(.public-card-page)) [class~="from-[#AC00FF]"][class~="to-[#5B2CFF]"],
-body:not(:has(.public-card-page)) [class~="from-[#AC00FF]"][class~="to-purple-200/80"],
-body:not(:has(.public-card-page)) [class~="from-[#AC00FF]/70"],
-body:not(:has(.public-card-page)) [class~="from-[#FF424A]"] {
-  background-image: var(--dmi-gradient) !important;
-  background-color: var(--brand-secondary) !important;
-  border-color: rgba(255, 255, 255, 0.24) !important;
-  box-shadow: var(--dmi-gradient-glow) !important;
-  color: #ffffff !important;
-  text-shadow: 0 1px 1px color-mix(in srgb, var(--brand-navy) 22%, transparent);
 }
 
 body:not(:has(.public-card-page)) [class~="border-[#AC00FF]/25"],
@@ -567,15 +544,6 @@ body:not(:has(.public-card-page)) a[class*="bg-white/"]:hover {
   color: var(--foreground) !important;
 }
 
-body:not(:has(.public-card-page)) button[class*="bg-[#AC00FF]/"],
-body:not(:has(.public-card-page)) a[class*="bg-[#AC00FF]/"] {
-  color: var(--button-primary-text) !important;
-  background-image: var(--button-primary-bg) !important;
-  background-color: var(--brand-secondary) !important;
-  box-shadow: var(--shadow-brand) !important;
-  text-shadow: 0 1px 1px color-mix(in srgb, var(--brand-navy) 22%, transparent);
-}
-
 body:not(:has(.public-card-page)) input,
 body:not(:has(.public-card-page)) textarea,
 body:not(:has(.public-card-page)) select {
@@ -656,19 +624,6 @@ body:not(:has(.public-card-page)) [style*="font-family"] [class*="bg-white/"],
 body:not(:has(.public-card-page)) [style*="font-family"] [class*="bg-[#AC00FF]/"] {
   background-color: revert !important;
   background-image: revert !important;
-}
-
-body:not(:has(.public-card-page)) [class*="bg-[#AC00FF]"],
-body:not(:has(.public-card-page)) [class*="bg-[#AC00FF]"] *,
-body:not(:has(.public-card-page)) [class*="from-[#FF424A]"],
-body:not(:has(.public-card-page)) [class*="from-[#FF424A]"] *,
-body:not(:has(.public-card-page)) [class*="from-[#AC00FF]"],
-body:not(:has(.public-card-page)) [class*="from-[#AC00FF]"] *,
-body:not(:has(.public-card-page)) [class*="bg-gradient-to-r"],
-body:not(:has(.public-card-page)) [class*="bg-gradient-to-r"] *,
-body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"],
-body:not(:has(.public-card-page)) [class*="bg-gradient-to-br"] * {
-  color: #ffffff !important;
 }
 
 body:not(:has(.public-card-page)) .dmi-solid-primary,
