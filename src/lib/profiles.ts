@@ -33,29 +33,23 @@ export async function getOrCreateClientProfile(user: User) {
   }
 
   if (profile) {
-    const normalizedProfile = normalizeProfile(profile);
+    const normalizedProfile = await fillMissingProfileNameFromAuthMetadata(
+      user,
+      normalizeProfile(profile)
+    );
     const clientAccount = await ensureClientAccount();
     logClientSignupFlow(user.id, normalizedProfile.id, clientAccount);
     return normalizedProfile;
   }
 
-  const metadataTitle =
-    typeof user.user_metadata?.title === "string" ? user.user_metadata.title : "";
-  const metadataFirstName =
-    typeof user.user_metadata?.first_name === "string" ? user.user_metadata.first_name : "";
-  const metadataLastName =
-    typeof user.user_metadata?.last_name === "string" ? user.user_metadata.last_name : "";
-  const metadataFullName =
-    typeof user.user_metadata?.full_name === "string"
-      ? user.user_metadata.full_name
-      : [metadataTitle, metadataFirstName, metadataLastName].filter(Boolean).join(" ");
+  const metadataName = profileNameFromAuthUser(user);
 
   const fallbackProfile = {
     id: user.id,
-    title: metadataTitle,
-    first_name: metadataFirstName,
-    last_name: metadataLastName,
-    full_name: metadataFullName,
+    title: metadataName.title,
+    first_name: metadataName.firstName,
+    last_name: metadataName.lastName,
+    full_name: metadataName.fullName,
     email: user.email || "",
     subscription_plan: "free",
     plan: "free",
@@ -126,6 +120,101 @@ function normalizeProfile(profile: Record<string, unknown>): ClientProfile {
     updated_at:
       typeof profile.updated_at === "string" ? profile.updated_at : null,
   };
+}
+
+async function fillMissingProfileNameFromAuthMetadata(
+  user: User,
+  profile: ClientProfile
+) {
+  const metadataName = profileNameFromAuthUser(user);
+  const patch: Partial<ClientProfile> = {};
+
+  if (!profile.title?.trim() && metadataName.title) {
+    patch.title = metadataName.title;
+  }
+
+  if (!profile.first_name?.trim() && metadataName.firstName) {
+    patch.first_name = metadataName.firstName;
+  }
+
+  if (!profile.last_name?.trim() && metadataName.lastName) {
+    patch.last_name = metadataName.lastName;
+  }
+
+  if (!profile.full_name?.trim() && metadataName.fullName) {
+    patch.full_name = metadataName.fullName;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return profile;
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .update(patch)
+    .eq("id", user.id)
+    .select("*")
+    .single();
+
+  if (error) {
+    throw new Error(`Could not update profile name: ${error.message}`);
+  }
+
+  return normalizeProfile(data);
+}
+
+function profileNameFromAuthUser(user: User) {
+  const title = metadataString(user, "title");
+  const explicitFirstName = metadataString(user, "first_name");
+  const explicitLastName = metadataString(user, "last_name");
+  const googleFirstName = metadataString(user, "given_name");
+  const googleLastName = metadataString(user, "family_name");
+  const metadataFullName =
+    metadataString(user, "full_name") || metadataString(user, "name");
+
+  const parsedFullName = parseFullName(metadataFullName);
+  const emailPrefix = emailLocalPart(user.email);
+  const firstName =
+    explicitFirstName || googleFirstName || parsedFullName.firstName || emailPrefix;
+  const lastName = explicitLastName || googleLastName || parsedFullName.lastName;
+  const fullName =
+    metadataFullName ||
+    [title, firstName, lastName].filter(Boolean).join(" ") ||
+    emailPrefix;
+
+  return {
+    title,
+    firstName,
+    lastName,
+    fullName,
+  };
+}
+
+function metadataString(user: User, key: string) {
+  const value = user.user_metadata?.[key];
+
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parseFullName(fullName: string) {
+  const parts = fullName.split(/\s+/).map((part) => part.trim()).filter(Boolean);
+
+  if (parts.length === 0) {
+    return { firstName: "", lastName: "" };
+  }
+
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: "" };
+  }
+
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(" "),
+  };
+}
+
+function emailLocalPart(email?: string) {
+  return email?.split("@")[0]?.trim() || "";
 }
 
 function logClientSignupFlow(
