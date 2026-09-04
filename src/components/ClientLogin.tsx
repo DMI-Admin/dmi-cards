@@ -4,12 +4,13 @@ import { useEffect, useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, LockKeyhole, Mail, Sparkles, X } from "lucide-react";
+import { ArrowRight, LockKeyhole, Mail, X } from "lucide-react";
 import { FaApple, FaMicrosoft } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
 import { supabase } from "@/lib/supabase";
 import { getOrCreateClientProfile } from "@/lib/profiles";
 import { getCurrentClientAccountStatus } from "@/lib/client-auth";
+import styles from "./ClientLogin.module.css";
 
 export default function ClientLogin() {
   const router = useRouter();
@@ -235,12 +236,13 @@ export default function ClientLogin() {
   }
 
   return (
-    <main className="min-h-screen bg-[#070B1A] text-white">
-      <div className="grid min-h-screen lg:grid-cols-[minmax(0,0.9fr)_minmax(480px,0.6fr)]">
-        <section className="relative hidden overflow-hidden border-r border-white/10 bg-[#0F0E38] p-12 lg:flex lg:flex-col lg:justify-between">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(172,0,255,0.22),transparent_32%),radial-gradient(circle_at_78%_18%,rgba(91,44,255,0.18),transparent_28%),linear-gradient(135deg,rgba(255,255,255,0.05),transparent_45%)]" />
+    <main className="min-h-dvh overflow-x-hidden bg-[#070B1A] text-white">
+      <div className="grid min-h-dvh lg:h-dvh lg:grid-cols-[minmax(0,0.9fr)_minmax(460px,0.6fr)] lg:overflow-hidden">
+        <section className="relative hidden overflow-hidden border-r border-white/10 bg-[#0F0E38] p-8 lg:flex lg:flex-col lg:justify-center lg:gap-10 xl:p-12">
+          <div className={styles.brandAurora} />
+          <div className={styles.brandAuroraAccent} />
           <div className="relative">
-            <div className="relative mb-8 h-24 w-24">
+            <div className="relative mb-7 h-20 w-20 xl:h-24 xl:w-24">
               <Image
                 src="/dmi-cards-logo.svg"
                 alt="DMI Cards Logo"
@@ -251,31 +253,27 @@ export default function ClientLogin() {
               />
             </div>
 
-            <p className="mb-6 text-xs font-semibold uppercase tracking-[0.35em] text-white/40">
-              DevMaster Inc
-            </p>
-
-            <h1 className="max-w-2xl text-5xl font-bold leading-tight">
+            <h1 className="max-w-2xl text-4xl font-bold leading-tight xl:text-5xl">
               DMI Cards Client Portal
             </h1>
 
-            <p className="mt-6 max-w-xl text-lg leading-8 text-white/60">
+            <p className="mt-5 max-w-xl text-base leading-7 text-white/62 xl:text-lg xl:leading-8">
               Access your digital business card dashboard, manage your public
               card, download QR codes, preview wallet passes, and track leads.
             </p>
           </div>
 
-          <div className="relative grid gap-4 sm:grid-cols-3">
+          <div className="relative grid gap-3 xl:grid-cols-3 xl:gap-4">
             <InfoCard label="Cards" value="Public profiles" />
             <InfoCard label="Sharing" value="QR, Wallet, Tap" />
             <InfoCard label="Leads" value="Contacts & analytics" />
           </div>
         </section>
 
-        <section className="flex items-center justify-center p-6 sm:p-10">
+        <section className="flex min-h-dvh items-center justify-center p-5 sm:p-8 lg:min-h-0 lg:p-8">
           <div className="w-full max-w-md">
-            <div className="mb-8 flex flex-col items-center text-center lg:hidden">
-              <div className="relative mb-4 h-20 w-20">
+            <div className="mb-6 flex flex-col items-center text-center lg:hidden">
+              <div className="relative mb-3 h-16 w-16">
                 <Image
                   src="/dmi-cards-logo.svg"
                   alt="DMI Cards Logo"
@@ -290,13 +288,10 @@ export default function ClientLogin() {
               </p>
             </div>
 
-            <div className="rounded-3xl border border-white/10 bg-[#101935]/80 p-7 shadow-2xl shadow-purple-950/25">
-              <div className="mb-8">
-                <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#AC00FF]/15 text-purple-100">
-                  <Sparkles className="h-6 w-6" />
-                </div>
-                <h2 className="text-3xl font-bold">Welcome back</h2>
-                <p className="mt-3 text-sm leading-6 text-white/50">
+            <div className="rounded-3xl border border-white/10 bg-[#101935]/80 p-6 shadow-2xl shadow-purple-950/25 sm:p-7">
+              <div className="mb-6 text-center">
+                <h2 className="text-3xl font-bold">Welcome</h2>
+                <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-white/50">
                   Access your digital business card dashboard.
                 </p>
               </div>
@@ -365,10 +360,10 @@ export default function ClientLogin() {
                     <button
                       type="submit"
                       disabled={submitting}
-                      className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35"
+                      className="dmi-gradient-primary mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35 [&_svg]:text-white"
                     >
                       {submitting ? "Logging in..." : "Login"}
-                      <ArrowRight className="h-4 w-4" />
+                      <ArrowRight className="h-4 w-4 text-white" />
                     </button>
                   </form>
 
@@ -389,8 +384,8 @@ export default function ClientLogin() {
               )}
             </div>
 
-            <p className="mt-8 text-center text-xs text-white/30">
-              Powered by DevMaster Inc
+            <p className="mt-4 text-center text-xs text-white/30">
+              DMI Cards by DevMaster Inc
             </p>
           </div>
         </section>
@@ -479,7 +474,7 @@ function PasswordResetModal({
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35 disabled:cursor-not-allowed disabled:opacity-60"
+              className="dmi-gradient-primary inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting ? "Sending..." : "Send reset instructions"}
             </button>
@@ -496,7 +491,7 @@ function SocialLoginSection({
   onSocialLogin: () => void;
 }) {
   return (
-    <div className="mt-7">
+    <div className="mt-6">
       <div className="flex items-center gap-3">
         <div className="h-px flex-1 bg-white/10" />
         <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/35">
@@ -505,7 +500,7 @@ function SocialLoginSection({
         <div className="h-px flex-1 bg-white/10" />
       </div>
 
-      <div className="mt-5 grid gap-3">
+      <div className="mt-4 grid gap-3">
         <button
           type="button"
           onClick={onSocialLogin}
@@ -536,10 +531,6 @@ function SocialLoginSection({
           </span>
         </button>
       </div>
-
-      <p className="mt-5 text-center text-xs text-white/35">
-        Secure authentication powered by DMI Cards.
-      </p>
     </div>
   );
 }
@@ -568,11 +559,11 @@ function safeNextPath(nextPath: string | null) {
 
 function InfoCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm xl:p-5">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/35">
         {label}
       </p>
-      <p className="mt-3 text-lg font-semibold">{value}</p>
+      <p className="mt-2 text-base font-semibold xl:mt-3 xl:text-lg">{value}</p>
     </div>
   );
 }

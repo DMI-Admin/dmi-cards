@@ -271,10 +271,6 @@ export default function ClientSignupPage() {
               />
             </div>
 
-            <p className="mb-6 text-xs font-semibold uppercase tracking-[0.35em] text-white/40">
-              DevMaster Inc
-            </p>
-
             <h1 className="max-w-2xl text-5xl font-bold leading-tight">
               Launch your DMI Cards profile in minutes.
             </h1>
@@ -440,10 +436,10 @@ export default function ClientSignupPage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35"
+                  className="dmi-gradient-primary inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition hover:shadow-purple-400/35 [&_svg]:text-white"
                 >
                   {submitting ? "Creating account..." : "Create Account"}
-                  <ArrowRight className="h-4 w-4" />
+                  <ArrowRight className="h-4 w-4 text-white" />
                 </button>
               </form>
 
