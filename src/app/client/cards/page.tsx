@@ -12,6 +12,7 @@ import {
   type PointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import type { User } from "@supabase/supabase-js";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -45,6 +46,8 @@ import CardRenderer, {
   displayName,
   type CardRendererTemplate,
 } from "@/components/CardRenderer";
+import PhoneInput from "@/components/PhoneInput";
+import PublicLeadCaptureForm from "@/components/PublicLeadCaptureForm";
 import {
   ClientPortalHeader,
   ClientPortalPage,
@@ -58,6 +61,7 @@ import {
 } from "@/lib/templates";
 import { ClientAuthRequiredError, getCurrentUser } from "@/lib/client-auth";
 import { buildPublicCardUrl } from "@/lib/public-url";
+import { normalizeInternationalPhoneNumber } from "@/lib/phone-number";
 import { useClientPlan } from "@/lib/use-client-plan";
 import {
   actionIsComplete,
@@ -1119,7 +1123,7 @@ export default function ClientCardsPage() {
       return;
     }
 
-    const cardToSave = options.cardOverride || draftCard;
+    const cardToSave = normalizeCardPhoneFields(options.cardOverride || draftCard);
     setSaveError("");
     setSaveMessage("");
     setSaveStatus("saving");
@@ -1434,29 +1438,19 @@ export default function ClientCardsPage() {
               <EditorModal
                 onClose={() => setShowBuilder(false)}
                 actionBar={
-                  publishedSuccessCard ? null : (
-                    <EditorStepNavigation
-                      activeStep={activeStep}
-                      saveStatus={saveStatus}
-                      onBack={() =>
-                        changeEditorStep(Math.max(0, activeStep - 1) as BuilderStep)
-                      }
-                      onNext={() =>
-                        changeEditorStep(Math.min(3, activeStep + 1) as BuilderStep)
-                      }
-                      onPublish={handlePublishCard}
-                    />
-                  )
+                  <EditorStepNavigation
+                    activeStep={activeStep}
+                    saveStatus={saveStatus}
+                    onBack={() =>
+                      changeEditorStep(Math.max(0, activeStep - 1) as BuilderStep)
+                    }
+                    onNext={() =>
+                      changeEditorStep(Math.min(3, activeStep + 1) as BuilderStep)
+                    }
+                    onPublish={handlePublishCard}
+                  />
                 }
               >
-                {publishedSuccessCard ? (
-                  <PublishSuccessState
-                    card={publishedSuccessCard}
-                    onViewPublicPage={viewPublicPage}
-                    onCopyLink={copyLink}
-                    onEditAgain={() => setPublishedSuccessCard(null)}
-                  />
-                ) : (
                 <div className="grid gap-5 min-[1180px]:grid-cols-[minmax(0,1fr)_minmax(340px,420px)] min-[1500px]:grid-cols-[minmax(0,1fr)_minmax(380px,460px)]">
                   <EditorPanel
                     key={activeStep}
@@ -1511,7 +1505,15 @@ export default function ClientCardsPage() {
                     </div>
                   </aside>
                 </div>
-                )}
+                {publishedSuccessCard ? (
+                  <PublishSuccessState
+                    card={publishedSuccessCard}
+                    onAddToWallet={() => router.push("/client/wallet")}
+                    onViewPublicPage={viewPublicPage}
+                    onCopyLink={copyLink}
+                    onEditAgain={() => setPublishedSuccessCard(null)}
+                  />
+                ) : null}
                 {pendingValidation && (
                   <CompletionValidationModal
                     validation={pendingValidation}
@@ -1714,7 +1716,11 @@ function PreviewPanelContent({
       </div>
 
       {previewCard ? (
-        <DevicePreviewFrame device={selectedDevice} dimensions={dimensions}>
+        <DevicePreviewFrame
+          device={selectedDevice}
+          dimensions={dimensions}
+          scaleToWidthOnly={previewMode === "lead_form"}
+        >
           {previewMode === "lead_form" && leadSettings ? (
             <LeadCapturePreviewCard
               card={previewCard}
@@ -2338,10 +2344,12 @@ function DevicePreviewPicker({
 function DevicePreviewFrame({
   device,
   dimensions,
+  scaleToWidthOnly = false,
   children,
 }: {
   device: DevicePreviewDevice;
   dimensions: { width: string; minWidth: string; height: number };
+  scaleToWidthOnly?: boolean;
   children: React.ReactNode;
 }) {
   const isIphone = device.frameType === "iphone";
@@ -2357,11 +2365,13 @@ function DevicePreviewFrame({
   const shellHeight = dimensions.height + shellPadding * 2;
   const previewScale =
     previewViewport.width > 0 && previewViewport.height > 0
-      ? Math.min(
-          previewViewport.width / shellWidth,
-          previewViewport.height / shellHeight,
-          1
-        )
+      ? scaleToWidthOnly
+        ? Math.min(previewViewport.width / shellWidth, 1)
+        : Math.min(
+            previewViewport.width / shellWidth,
+            previewViewport.height / shellHeight,
+            1
+          )
       : 1;
 
   useEffect(() => {
@@ -2398,7 +2408,16 @@ function DevicePreviewFrame({
       <div className="p-5 md:p-6">
         <div
           ref={previewViewportRef}
-          className="relative flex h-[clamp(420px,calc(100vh-260px),620px)] min-h-[360px] w-full items-start justify-center overflow-hidden"
+          className={`relative flex w-full items-start justify-center ${
+            scaleToWidthOnly
+              ? "overflow-visible"
+              : "h-[clamp(420px,calc(100vh-260px),620px)] min-h-[360px] overflow-hidden"
+          }`}
+          style={
+            scaleToWidthOnly
+              ? { minHeight: Math.ceil(shellHeight * previewScale) }
+              : undefined
+          }
         >
           <div
             className="origin-top transform-gpu transition-transform duration-300 ease-out"
@@ -2440,7 +2459,7 @@ function DevicePreviewFrame({
                   borderRadius: screenRadius,
                 }}
               >
-                <div className="w-full min-w-full [&>*]:w-full">{children}</div>
+                <div className="h-full w-full min-w-full [&>*]:w-full">{children}</div>
               </div>
             </div>
           </div>
@@ -3691,7 +3710,14 @@ function FieldRow({
         >
           <GripVertical className="h-4 w-4" />
         </button>
-        {field === "bio" ? (
+        {field === "phone" || field === "whatsapp" ? (
+          <PhoneInput
+            label={fieldLabels[field] || friendlyFieldLabel(field)}
+            helperText={helperText}
+            value={String(value || "")}
+            onChange={onChange}
+          />
+        ) : field === "bio" ? (
           <TextArea
             label={fieldLabels[field] || friendlyFieldLabel(field)}
             helperText={helperText}
@@ -4378,12 +4404,21 @@ function ActionConfigRow({
                   </div>
                 )}
                 {fieldKey ? (
-                  <TextField
-                    label={destinationLabel}
-                    helperText={actionDestinationHelper(action.type)}
-                    value={destinationValue}
-                    onChange={(value) => onUpdate(fieldKey as keyof ClientCard, value)}
-                  />
+                  fieldKey === "phone" || fieldKey === "whatsapp" ? (
+                    <PhoneInput
+                      label={destinationLabel}
+                      helperText={actionDestinationHelper(action.type)}
+                      value={destinationValue}
+                      onChange={(value) => onUpdate(fieldKey as keyof ClientCard, value)}
+                    />
+                  ) : (
+                    <TextField
+                      label={destinationLabel}
+                      helperText={actionDestinationHelper(action.type)}
+                      value={destinationValue}
+                      onChange={(value) => onUpdate(fieldKey as keyof ClientCard, value)}
+                    />
+                  )
                 ) : action.type === "download_pdf" ? (
                   <div className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] px-4 py-3">
                     <span className="block text-sm font-medium text-[var(--text-secondary)]">
@@ -4794,115 +4829,154 @@ function LeadCapturePreviewCard({
   const privacyUrl = normalizedSettings.privacy_policy_url || normalizedSettings.terms_url;
 
   return (
-    <div className="flex min-h-[650px] flex-col rounded-[2rem] bg-[#070B1A] p-6 text-white shadow-2xl">
-      <div className="mb-5">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/45">
-          Lead form preview
-        </p>
-        <h3 className="mt-2 text-2xl font-semibold">Share your details</h3>
-        <p className="mt-3 text-sm leading-6 text-white/65">
-          {privacyNotice}
-        </p>
-        {privacyUrl && (
-          <p className="mt-2 text-xs text-white/50">
-            Privacy Policy link shown to visitors.
-          </p>
-        )}
+    <IsolatedPublicCardPreview>
+      <PublicLeadCaptureForm
+        settings={normalizedSettings}
+        privacyNotice={privacyNotice}
+        privacyUrl={privacyUrl}
+        readOnly
+        emptyFieldsMessage="Select at least one field to preview the Collect First form."
+      />
+    </IsolatedPublicCardPreview>
+  );
+}
+
+function IsolatedPublicCardPreview({ children }: { children: React.ReactNode }) {
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [mountNode, setMountNode] = useState<HTMLElement | null>(null);
+  const srcDoc =
+    '<!doctype html><html><head><title>Lead form preview</title></head><body><div id="public-card-preview-root"></div></body></html>';
+
+  useLayoutEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    function syncFrameDocument() {
+      const frameDocument = iframe?.contentDocument;
+      if (!frameDocument) return;
+
+      const head = frameDocument.head;
+      head.replaceChildren();
+
+      const baseStyle = frameDocument.createElement("style");
+      baseStyle.textContent =
+        "html,body{margin:0;min-height:100%;background:#070B1A;}body{overflow:auto;}*{box-sizing:border-box;}";
+      head.appendChild(baseStyle);
+
+      document
+        .querySelectorAll('link[rel="stylesheet"], style')
+        .forEach((node) => {
+          head.appendChild(node.cloneNode(true));
+        });
+
+      setMountNode(frameDocument.getElementById("public-card-preview-root"));
+    }
+
+    syncFrameDocument();
+    iframe.addEventListener("load", syncFrameDocument);
+
+    return () => iframe.removeEventListener("load", syncFrameDocument);
+  }, []);
+
+  const publicPreviewContent = (
+    <main className="public-card-page min-h-screen bg-[#070B1A] px-4 py-8 text-white sm:px-6">
+      <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md items-center justify-center">
+        <div className="w-full">{children}</div>
       </div>
+    </main>
+  );
 
-      <div className="space-y-3">
-        {normalizedSettings.fields.length === 0 ? (
-          <div className="rounded-2xl border border-amber-300/25 bg-amber-400/10 p-4 text-sm text-amber-50">
-            Select at least one field to preview the Collect First form.
-          </div>
-        ) : (
-          normalizedSettings.fields.map((field) => (
-            <label key={field} className="block">
-              <span className="mb-1.5 block text-xs font-semibold text-white/70">
-                {leadFieldLabel(field)}
-              </span>
-              {field === "message" ? (
-                <div className="min-h-[84px] rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white/35">
-                  Visitor message
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white/35">
-                  {leadFieldPlaceholder(field)}
-                </div>
-              )}
-            </label>
-          ))
-        )}
-      </div>
-
-      {normalizedSettings.marketing_opt_in_enabled && (
-        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm leading-6 text-white/65">
-          <span className="mr-2 inline-flex h-4 w-4 rounded border border-white/35 align-[-2px]" />
-          {normalizedSettings.marketing_opt_in_label ||
-            defaultLeadCaptureSettings.marketing_opt_in_label}
-        </div>
-      )}
-
-      <button
-        type="button"
-        className="mt-auto inline-flex min-h-12 items-center justify-center rounded-2xl bg-white px-5 text-sm font-bold text-[#070B1A]"
-      >
-        Continue to card
-      </button>
+  return (
+    <div className="h-full w-full">
+      <iframe
+        ref={iframeRef}
+        title="Lead form preview"
+        srcDoc={srcDoc}
+        className="block h-full w-full border-0 bg-[#070B1A]"
+      />
+      {mountNode ? createPortal(publicPreviewContent, mountNode) : null}
     </div>
   );
 }
 
 function PublishSuccessState({
   card,
+  onAddToWallet,
   onViewPublicPage,
   onCopyLink,
   onEditAgain,
 }: {
   card: ClientCard;
+  onAddToWallet: () => void;
   onViewPublicPage: (card: ClientCard) => void;
   onCopyLink: (card: ClientCard) => void;
   onEditAgain: () => void;
 }) {
   return (
-    <section className="mx-auto flex min-h-[520px] w-full max-w-2xl flex-col items-center justify-center rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-6 text-center text-[var(--text-primary)] shadow-[var(--shadow-sm)]">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#AC00FF]/12 text-[var(--text-accent)]">
-        <Check className="h-7 w-7" />
-      </div>
-      <h3 className="mt-5 text-2xl font-semibold">Card published</h3>
-      <p className="mt-3 max-w-md text-sm leading-6 text-[var(--text-secondary)]">
-        Your public digital card is live. You can view it, copy the link, or
-        return to the editor.
-      </p>
-      <div className="mt-5 w-full rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-4 py-3 text-sm text-[var(--text-secondary)]">
-        <span className="block truncate">{card.public_url}</span>
-      </div>
-      <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-[#050713]/72 px-4 py-6 backdrop-blur-md"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="publish-success-title"
+    >
+      <section className="w-full max-w-[31rem] rounded-3xl border border-white/10 bg-[#101935] p-5 text-center text-white shadow-2xl shadow-black/45 sm:p-6">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-[#AC00FF]/25 bg-[#AC00FF]/15 text-white shadow-lg shadow-purple-500/20">
+          <Check className="h-7 w-7" />
+        </div>
+        <h3 id="publish-success-title" className="mt-5 text-2xl font-semibold text-white">
+          Your card is live
+        </h3>
+        <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-white/65">
+          Your digital business card has been published successfully and is
+          ready to share.
+        </p>
+
+        <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
+            Public card URL
+          </p>
+          <span className="mt-1 block truncate text-sm font-medium text-white/80">
+            {card.public_url}
+          </span>
+        </div>
+
         <button
           type="button"
-          onClick={() => onViewPublicPage(card)}
-          className={clientButtonClass.primary}
+          onClick={onAddToWallet}
+          className={`${clientButtonClass.primary} mt-6 w-full`}
         >
-          <ExternalLink className="h-4 w-4" />
-          View Card
+          <CreditCard className="h-4 w-4" />
+          Add to Wallet
         </button>
-        <button
-          type="button"
-          onClick={() => void onCopyLink(card)}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-5 py-3 text-sm font-semibold text-[var(--button-secondary-text)] shadow-sm transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)]"
-        >
-          <Copy className="h-4 w-4" />
-          Copy Link
-        </button>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => onViewPublicPage(card)}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-semibold text-white/80 shadow-sm transition hover:border-[#AC00FF]/35 hover:bg-white/[0.09] hover:text-white"
+          >
+            <ExternalLink className="h-4 w-4" />
+            View Card
+          </button>
+          <button
+            type="button"
+            onClick={() => void onCopyLink(card)}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-semibold text-white/80 shadow-sm transition hover:border-[#AC00FF]/35 hover:bg-white/[0.09] hover:text-white"
+          >
+            <Copy className="h-4 w-4" />
+            Copy Link
+          </button>
+        </div>
+
         <button
           type="button"
           onClick={onEditAgain}
-          className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-5 py-3 text-sm font-semibold text-[var(--button-secondary-text)] shadow-sm transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)]"
+          className="mt-3 inline-flex min-h-10 items-center justify-center rounded-2xl px-4 py-2 text-sm font-semibold text-white/50 transition hover:text-white"
         >
           Edit Again
         </button>
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }
 
@@ -4912,24 +4986,6 @@ function leadRecipientName(card: Pick<ClientCard, "company_name" | "first_name" 
 
 function privacyNoticeForRecipient(recipient: string) {
   return `Your details will be shared with ${recipient} so they can respond to your enquiry.`;
-}
-
-function leadFieldLabel(field: LeadField) {
-  return leadFields.find((item) => item.key === field)?.label || friendlyFieldLabel(field);
-}
-
-function leadFieldPlaceholder(field: LeadField) {
-  const placeholders: Record<LeadField, string> = {
-    name: "Your name",
-    email: "you@example.com",
-    phone: "Phone number",
-    company: "Company",
-    job_title: "Job title",
-    website: "https://example.com",
-    message: "Visitor message",
-  };
-
-  return placeholders[field];
 }
 
 function buildTemplatePreview(
@@ -5288,6 +5344,14 @@ function forceHideFieldsOnCard(card: ClientCard, fields: string[]) {
     ...card,
     field_visibility: fieldVisibility,
     hidden_fields: Array.from(hiddenFieldSet),
+  };
+}
+
+function normalizeCardPhoneFields(card: ClientCard): ClientCard {
+  return {
+    ...card,
+    phone: normalizeInternationalPhoneNumber(card.phone) || card.phone,
+    whatsapp: normalizeInternationalPhoneNumber(card.whatsapp) || card.whatsapp,
   };
 }
 

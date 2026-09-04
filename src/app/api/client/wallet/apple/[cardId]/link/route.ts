@@ -10,6 +10,7 @@ import {
   createWalletPassToken,
   walletPassColoursAreReadable,
 } from "@/lib/wallet/pass-link";
+import { requestIdFromRequest, withRequestIdHeader } from "@/lib/observability/request";
 
 type AppleWalletLinkRouteContext = {
   params: Promise<{
@@ -22,19 +23,23 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 export async function POST(request: Request, context: AppleWalletLinkRouteContext) {
+  const requestId = requestIdFromRequest(request);
   const { cardId } = await context.params;
 
   try {
     await loadWalletCardForRequest(request, cardId);
   } catch (error) {
     if (error instanceof WalletRouteError) {
-      return NextResponse.json(
-        {
-          cardId,
-          code: error.code,
-          message: error.message,
-        },
-        { status: error.status }
+      return withRequestIdHeader(
+        NextResponse.json(
+          {
+            cardId,
+            code: error.code,
+            message: error.message,
+          },
+          { status: error.status }
+        ),
+        requestId
       );
     }
 
@@ -44,15 +49,18 @@ export async function POST(request: Request, context: AppleWalletLinkRouteContex
   const appleConfig = getAppleWalletConfig();
 
   if (!appleConfig.configured) {
-    return NextResponse.json(
-      {
-        ready: false,
-        cardId,
-        code: "APPLE_WALLET_NOT_CONFIGURED",
-        message: "Apple Wallet configuration is incomplete.",
-        missingVariables: appleConfig.missingVariables,
-      },
-      { status: 503 }
+    return withRequestIdHeader(
+      NextResponse.json(
+        {
+          ready: false,
+          cardId,
+          code: "APPLE_WALLET_NOT_CONFIGURED",
+          message: "Apple Wallet configuration is incomplete.",
+          missingVariables: appleConfig.missingVariables,
+        },
+        { status: 503 }
+      ),
+      requestId
     );
   }
 
@@ -73,12 +81,15 @@ export async function POST(request: Request, context: AppleWalletLinkRouteContex
   const labelColor = requestedBackgroundColor(body.labelColor);
 
   if (!walletPassColoursAreReadable({ backgroundColor, foregroundColor })) {
-    return NextResponse.json(
-      {
-        code: "WALLET_PASS_COLOUR_CONTRAST_INVALID",
-        message: "Choose a Wallet text colour with stronger contrast.",
-      },
-      { status: 400 }
+    return withRequestIdHeader(
+      NextResponse.json(
+        {
+          code: "WALLET_PASS_COLOUR_CONTRAST_INVALID",
+          message: "Choose a Wallet text colour with stronger contrast.",
+        },
+        { status: 400 }
+      ),
+      requestId
     );
   }
 
@@ -89,10 +100,13 @@ export async function POST(request: Request, context: AppleWalletLinkRouteContex
     labelColor,
   });
 
-  return NextResponse.json({
-    passPath: buildWalletPassPath(token),
-    publicPassUrl: buildPublicWalletPassUrl(token),
-  });
+  return withRequestIdHeader(
+    NextResponse.json({
+      passPath: buildWalletPassPath(token),
+      publicPassUrl: buildPublicWalletPassUrl(token),
+    }),
+    requestId
+  );
 }
 
 function requestedBackgroundColor(value: string | undefined) {

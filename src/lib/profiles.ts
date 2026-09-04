@@ -1,5 +1,6 @@
 import type { User } from "@supabase/supabase-js";
 import { normalizeDmiPlan, type DmiPlan } from "@/lib/entitlements";
+import { logInfo } from "@/lib/observability/logger";
 import { supabase } from "@/lib/supabase";
 
 export type ClientProfile = {
@@ -132,10 +133,13 @@ function logClientSignupFlow(
   profileId: string,
   clientAccount: ClientAccount
 ) {
-  console.log("[DMI signup] client account ensured", {
-    authUserId,
-    profileId,
-    clientId: clientAccount.clientId,
-    clientUserId: clientAccount.clientUserId,
+  logInfo({
+    code: "CLIENT_ACCOUNT_ENSURED",
+    metadata: {
+      authUserId,
+      profileId,
+      clientId: clientAccount.clientId,
+      clientUserId: clientAccount.clientUserId,
+    },
   });
 }

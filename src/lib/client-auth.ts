@@ -1,6 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 import type { DmiPlan } from "@/lib/entitlements";
 import { resolveEffectiveClientPlan } from "@/lib/entitlements/plan-resolver";
+import { logInfo, logWarn } from "@/lib/observability/logger";
 import { getOrCreateClientProfile, type ClientProfile } from "@/lib/profiles";
 import { supabase } from "@/lib/supabase";
 
@@ -33,29 +34,20 @@ export type ClientAccountStatus = {
   isSuspended: boolean;
 };
 
-export function authUserLog(user: User | null | undefined) {
-  return user
-    ? {
-        id: user.id,
-        email: user.email,
-      }
-    : null;
-}
-
 export async function getCurrentUser() {
   const {
     data: { session },
     error: sessionError,
   } = await supabase.auth.getSession();
 
-  console.log("[DMI auth] session state", {
-    helper: "getCurrentUser",
-    hasSession: Boolean(session),
-    userId: session?.user?.id || null,
-    email: session?.user?.email || null,
-    error: sessionError
-      ? { name: sessionError.name, message: sessionError.message }
-      : null,
+  logInfo({
+    code: "CLIENT_AUTH_SESSION_STATE",
+    metadata: {
+      helper: "getCurrentUser",
+      hasSession: Boolean(session),
+      userId: session?.user?.id || null,
+      errorName: sessionError?.name || null,
+    },
   });
 
   if (session?.user) {
@@ -67,12 +59,13 @@ export async function getCurrentUser() {
     error: userError,
   } = await supabase.auth.getUser();
 
-  console.log("[DMI auth] auth user", {
-    helper: "getCurrentUser",
-    user: authUserLog(user),
-    error: userError
-      ? { name: userError.name, message: userError.message }
-      : null,
+  logInfo({
+    code: "CLIENT_AUTH_USER_LOOKUP",
+    metadata: {
+      helper: "getCurrentUser",
+      userId: user?.id || null,
+      errorName: userError?.name || null,
+    },
   });
 
   return user;
@@ -86,7 +79,14 @@ export async function getCurrentProfile(user?: User | null) {
   }
 
   const profile = await getOrCreateClientProfile(authUser);
-  console.log("[DMI auth] loaded profile", profile);
+  logInfo({
+    code: "CLIENT_AUTH_PROFILE_LOADED",
+    metadata: {
+      userId: authUser.id,
+      profileId: profile.id,
+      plan: profile.plan || profile.subscription_plan,
+    },
+  });
   return profile;
 }
 
@@ -94,9 +94,11 @@ export async function requireClientUser(): Promise<CurrentClient> {
   const user = await getCurrentUser();
 
   if (!user) {
-    console.log("[DMI auth] requireClientUser", {
-      authenticated: false,
-      mockFallbackUsed: false,
+    logWarn({
+      code: "CLIENT_AUTH_REQUIRED",
+      metadata: {
+        authenticated: false,
+      },
     });
     throw new ClientAuthRequiredError();
   }
@@ -110,17 +112,19 @@ export async function requireClientUser(): Promise<CurrentClient> {
   const status = await getCurrentClientAccountStatus(user.id);
   const { plan, source: planSource } = await resolveEffectiveClientPlan(user);
 
-  console.log("[DMI auth] client portal status decision", {
-    source: "requireClientUser",
-    authenticatedUserId: user.id,
-    email: user.email || null,
-    clientId: status.clientId,
-    clientStatus: status.clientStatus,
-    clientUserId: status.clientUserId,
-    clientUserStatus: status.clientUserStatus,
-    plan,
-    planSource,
-    redirectDecision: status.isSuspended ? "sign-out-and-redirect-login" : "allow",
+  logInfo({
+    code: "CLIENT_PORTAL_STATUS_DECISION",
+    metadata: {
+      source: "requireClientUser",
+      authenticatedUserId: user.id,
+      clientId: status.clientId,
+      clientStatus: status.clientStatus,
+      clientUserId: status.clientUserId,
+      clientUserStatus: status.clientUserStatus,
+      plan,
+      planSource,
+      redirectDecision: status.isSuspended ? "sign-out-and-redirect-login" : "allow",
+    },
   });
 
   if (status.isSuspended) {
@@ -128,10 +132,12 @@ export async function requireClientUser(): Promise<CurrentClient> {
     throw new ClientSuspendedError();
   }
 
-  console.log("[DMI auth] requireClientUser", {
-    authenticated: true,
-    user: authUserLog(user),
-    mockFallbackUsed: false,
+  logInfo({
+    code: "CLIENT_AUTH_RESOLVED",
+    metadata: {
+      authenticated: true,
+      userId: user.id,
+    },
   });
 
   return { user, profile, plan, planSource };
@@ -162,14 +168,17 @@ export async function getCurrentClientAccountStatus(userIdForLog?: string | null
     isSuspended: Boolean(result?.is_suspended),
   };
 
-  console.log("[DMI auth] suspended status lookup", {
-    authenticatedUserId: userIdForLog || null,
-    checkedTables: ["clients.status", "client_users.status"],
-    clientId: status.clientId,
-    clientStatus: status.clientStatus,
-    clientUserId: status.clientUserId,
-    clientUserStatus: status.clientUserStatus,
-    redirectDecision: status.isSuspended ? "block" : "allow",
+  logInfo({
+    code: "CLIENT_ACCOUNT_STATUS_LOOKUP",
+    metadata: {
+      authenticatedUserId: userIdForLog || null,
+      checkedTables: ["clients.status", "client_users.status"],
+      clientId: status.clientId,
+      clientStatus: status.clientStatus,
+      clientUserId: status.clientUserId,
+      clientUserStatus: status.clientUserStatus,
+      redirectDecision: status.isSuspended ? "block" : "allow",
+    },
   });
 
   return status;

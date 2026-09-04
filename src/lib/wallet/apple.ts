@@ -6,14 +6,13 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import forge from "node-forge";
 import { PKPass, type Barcode, type OverridablePassProps } from "passkit-generator";
-import sharp from "sharp";
 import { buildPublicCardUrl } from "@/lib/public-url";
 import type { WalletCardForPass } from "@/lib/wallet/card-loader";
 
 const dmiBrandColor = "#AC00FF";
 const walletAssetDirectory = path.join(process.cwd(), "public", "apple-wallet");
 const walletLogoSize = 50;
-const walletLogoScale = 2;
+const walletImageScales = [1, 2] as const;
 const maxProfileImageBytes = 5 * 1024 * 1024;
 const maxProfileImageRedirects = 3;
 const allowedProfileImageTypes = new Set([
@@ -132,6 +131,15 @@ export function getAppleWalletConfig(): AppleWalletConfigResult {
   };
 }
 
+export function validateAppleWalletConfig(config: AppleWalletConfig) {
+  try {
+    decodeAppleWalletCertificates(config);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function buildApplePassData(
   card: WalletCardForPass,
   config: AppleWalletConfig,
@@ -242,20 +250,21 @@ function buildWalletContentRevision(data: ApplePassData) {
 
 async function loadAppleWalletAssetBuffers(data: ApplePassData) {
   try {
-    const [icon, icon2x, fallbackLogo, fallbackLogo2x] = await Promise.all([
+    const [icon, icon2x] = await Promise.all([
       readWalletAsset("icon.png"),
       readWalletAsset("icon@2x.png"),
-      readWalletAsset("logo.png"),
-      readWalletAsset("logo@2x.png"),
     ]);
     const profileLogos = await loadProfileLogoAssets(data.profileImageUrl);
-
-    return {
+    const assets: Record<string, Buffer> = {
       "icon.png": icon,
       "icon@2x.png": icon2x,
-      "logo.png": profileLogos?.logo || fallbackLogo,
-      "logo@2x.png": profileLogos?.logo2x || fallbackLogo2x,
     };
+
+    if (profileLogos) {
+      Object.assign(assets, profileLogos);
+    }
+
+    return assets;
   } catch (error) {
     console.error("Apple Wallet asset load failed", {
       code: "APPLE_WALLET_ASSET_LOAD_FAILED",
@@ -277,12 +286,17 @@ async function loadProfileLogoAssets(profileImageUrl: string) {
 
   try {
     const source = await loadProfileImageSource(profileImageUrl);
-    const [logo, logo2x] = await Promise.all([
-      processProfileLogo(source, walletLogoSize),
-      processProfileLogo(source, walletLogoSize * walletLogoScale),
-    ]);
+    const images = await Promise.all(
+      walletImageScales.map((scale) => processProfileLogo(source, scale))
+    );
+    const assets: Record<string, Buffer> = {};
 
-    return { logo, logo2x };
+    walletImageScales.forEach((scale, index) => {
+      const suffix = scale === 1 ? "" : `@${scale}x`;
+      assets[`logo${suffix}.png`] = images[index];
+    });
+
+    return assets;
   } catch (error) {
     const code =
       error instanceof WalletProfileImageError
@@ -502,8 +516,11 @@ function isBlockedProfileImageHost(hostname: string) {
   );
 }
 
-async function processProfileLogo(source: Buffer, size: number) {
+async function processProfileLogo(source: Buffer, scale: (typeof walletImageScales)[number]) {
   try {
+    const sharp = (await import("sharp")).default;
+    const size = walletLogoSize * scale;
+
     return await sharp(source, { limitInputPixels: 16_000_000, animated: false })
       .rotate()
       .resize(size, size, {

@@ -15,6 +15,7 @@ export const adminRoutePatterns = [
   "/uploads(.*)",
   "/support(.*)",
   "/audit-logs(.*)",
+  "/system-health(.*)",
   "/settings(.*)",
   "/security(.*)",
   "/api/admin(.*)",

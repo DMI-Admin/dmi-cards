@@ -11,6 +11,8 @@ import {
   getAppleWalletConfig,
 } from "@/lib/wallet/apple";
 import { walletPassColoursAreReadable } from "@/lib/wallet/pass-link";
+import { logError, safeErrorMetadata } from "@/lib/observability/logger";
+import { requestIdFromRequest, withRequestIdHeader } from "@/lib/observability/request";
 
 type AppleWalletRouteContext = {
   params: Promise<{
@@ -23,6 +25,8 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 export async function GET(request: Request, context: AppleWalletRouteContext) {
+  const requestId = requestIdFromRequest(request);
+  const route = "/api/client/wallet/apple/[cardId]";
   const { cardId } = await context.params;
   let card;
 
@@ -30,13 +34,16 @@ export async function GET(request: Request, context: AppleWalletRouteContext) {
     card = await loadWalletCardForRequest(request, cardId);
   } catch (error) {
     if (error instanceof WalletRouteError) {
-      return NextResponse.json(
-        {
-          cardId,
-          code: error.code,
-          message: error.message,
-        },
-        { status: error.status }
+      return withRequestIdHeader(
+        NextResponse.json(
+          {
+            cardId,
+            code: error.code,
+            message: error.message,
+          },
+          { status: error.status }
+        ),
+        requestId
       );
     }
 
@@ -46,15 +53,18 @@ export async function GET(request: Request, context: AppleWalletRouteContext) {
   const appleConfig = getAppleWalletConfig();
 
   if (!appleConfig.configured) {
-    return NextResponse.json(
-      {
-        ready: false,
-        cardId: card.id,
-        code: "APPLE_WALLET_NOT_CONFIGURED",
-        message: "Apple Wallet configuration is incomplete.",
-        missingVariables: appleConfig.missingVariables,
-      },
-      { status: 503 }
+    return withRequestIdHeader(
+      NextResponse.json(
+        {
+          ready: false,
+          cardId: card.id,
+          code: "APPLE_WALLET_NOT_CONFIGURED",
+          message: "Apple Wallet configuration is incomplete.",
+          missingVariables: appleConfig.missingVariables,
+        },
+        { status: 503 }
+      ),
+      requestId
     );
   }
 
@@ -63,12 +73,15 @@ export async function GET(request: Request, context: AppleWalletRouteContext) {
   const labelColor = requestedLabelColor(request);
 
   if (!walletPassColoursAreReadable({ backgroundColor, foregroundColor })) {
-    return NextResponse.json(
-      {
-        code: "WALLET_PASS_COLOUR_CONTRAST_INVALID",
-        message: "Choose a Wallet text colour with stronger contrast.",
-      },
-      { status: 400 }
+    return withRequestIdHeader(
+      NextResponse.json(
+        {
+          code: "WALLET_PASS_COLOUR_CONTRAST_INVALID",
+          message: "Choose a Wallet text colour with stronger contrast.",
+        },
+        { status: 400 }
+      ),
+      requestId
     );
   }
 
@@ -87,46 +100,58 @@ export async function GET(request: Request, context: AppleWalletRouteContext) {
         "Content-Type": "application/vnd.apple.pkpass",
         "Content-Disposition": 'inline; filename="DMI-Card.pkpass"',
         "Cache-Control": "private, no-store",
+        "x-request-id": requestId,
       },
     });
   } catch (error) {
+    logError({
+      code: "APPLE_WALLET_GENERATION_FAILED",
+      requestId,
+      route,
+      metadata: safeErrorMetadata(error),
+    });
+
     if (error instanceof AppleWalletCertificateError) {
-      return NextResponse.json(
-        {
-          ready: false,
-          cardId: card.id,
-          code: error.code,
-          message: "Apple Wallet configuration is invalid.",
-        },
-        { status: 503 }
+      return withRequestIdHeader(
+        NextResponse.json(
+          {
+            ready: false,
+            cardId: card.id,
+            code: error.code,
+            message: "Apple Wallet configuration is invalid.",
+          },
+          { status: 503 }
+        ),
+        requestId
       );
     }
 
     if (error instanceof ApplePassGenerationError) {
-      return NextResponse.json(
-        {
-          ready: false,
-          cardId: card.id,
-          code: error.code,
-          message: "Could not generate Apple Wallet pass.",
-        },
-        { status: 500 }
+      return withRequestIdHeader(
+        NextResponse.json(
+          {
+            ready: false,
+            cardId: card.id,
+            code: error.code,
+            message: "Could not generate Apple Wallet pass.",
+          },
+          { status: 500 }
+        ),
+        requestId
       );
     }
 
-    console.error("Apple Wallet pass generation failed", {
-      code: "APPLE_PASS_UNEXPECTED_ERROR",
-      errorName: error instanceof Error ? error.name : "UnknownError",
-    });
-
-    return NextResponse.json(
-      {
-        ready: false,
-        cardId: card.id,
-        code: "APPLE_PASS_GENERATION_FAILED",
-        message: "Could not generate Apple Wallet pass.",
-      },
-      { status: 500 }
+    return withRequestIdHeader(
+      NextResponse.json(
+        {
+          ready: false,
+          cardId: card.id,
+          code: "APPLE_PASS_GENERATION_FAILED",
+          message: "Could not generate Apple Wallet pass.",
+        },
+        { status: 500 }
+      ),
+      requestId
     );
   }
 }

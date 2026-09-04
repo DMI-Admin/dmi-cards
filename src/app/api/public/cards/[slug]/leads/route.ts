@@ -5,6 +5,10 @@ import {
   normalizeLeadCaptureSettings,
   type LeadField,
 } from "@/lib/services/card-payload";
+import { enforcePublicLeadRateLimit } from "@/lib/security/public-lead-rate-limit";
+import { logError, logInfo, logWarn, safeErrorMetadata } from "@/lib/observability/logger";
+import { requestIdFromRequest, withRequestIdHeader } from "@/lib/observability/request";
+import { normalizeInternationalPhoneNumber } from "@/lib/phone-number";
 
 type RouteContext = {
   params: Promise<{
@@ -40,19 +44,38 @@ const fieldLimits: Record<LeadField, number> = {
   website: 2048,
   message: 2000,
 };
-const requestBuckets = new Map<string, number[]>();
-const rateLimitWindowMs = 60_000;
-const rateLimitMax = 10;
+const splitNameFieldLimits = {
+  first_name: 90,
+  last_name: 90,
+} as const;
+const minimumSuspiciousFormTimeMs = envInt("PUBLIC_LEAD_MIN_FORM_TIME_MS", 800);
 
 export async function POST(request: NextRequest, context: RouteContext) {
+  const requestId = requestIdFromRequest(request);
+  const route = "/api/public/cards/[slug]/leads";
+
   try {
     const { slug } = await context.params;
     const normalizedSlug = normalizeSlug(slug);
-    enforcePublicLeadRateLimit(request, normalizedSlug);
+    await enforcePublicLeadRateLimit({ request, slug: normalizedSlug, requestId });
 
     const body = await request.json().catch(() => null);
     if (!isRecord(body)) {
       throw new ApiRouteError(400, "INVALID_REQUEST", "Lead payload is invalid.");
+    }
+
+    const antiBot = normalizeAntiBotPayload(body.anti_bot);
+    if (antiBot.honeypotFilled) {
+      throw new ApiRouteError(400, "INVALID_REQUEST", "Lead payload is invalid.");
+    }
+
+    if (antiBot.submittedTooQuickly) {
+      await enforcePublicLeadRateLimit({
+        request,
+        slug: normalizedSlug,
+        phase: "suspicious",
+        requestId,
+      });
     }
 
     const supabaseAdmin = createSupabaseAdminClient();
@@ -63,8 +86,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       .maybeSingle();
 
     if (cardError) {
-      console.error("[DMI public leads] card lookup failed", {
-        code: cardError.code,
+      logError({
+        code: "PUBLIC_LEAD_CARD_LOOKUP_FAILED",
+        requestId,
+        route,
+        metadata: {
+          databaseCode: cardError.code,
+        },
       });
       throw new ApiRouteError(500, "INTERNAL_ERROR", "Could not submit your details.");
     }
@@ -111,11 +139,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       settings.privacy_policy_url || settings.terms_url
     );
 
-    const { data: contactId, error: leadError } = await supabaseAdmin.rpc(
-      "create_public_card_lead",
+    const { data: leadResult, error: leadError } = await supabaseAdmin.rpc(
+      "create_public_card_lead_v2",
       {
         p_card_slug: normalizedSlug,
         p_name: contactPayload.name || null,
+        p_first_name: contactPayload.first_name || null,
+        p_last_name: contactPayload.last_name || null,
         p_email: contactPayload.email || null,
         p_phone: contactPayload.phone || null,
         p_company: contactPayload.company || null,
@@ -146,16 +176,58 @@ export async function POST(request: NextRequest, context: RouteContext) {
     );
 
     if (leadError) {
-      console.error("[DMI public leads] contact creation failed", {
-        code: leadError.code,
-        message: leadError.message,
+      logError({
+        code: "PUBLIC_LEAD_CONTACT_CREATION_FAILED",
+        requestId,
+        route,
+        metadata: {
+          databaseCode: leadError.code,
+        },
       });
       throw new ApiRouteError(500, "INTERNAL_ERROR", "Could not submit your details.");
     }
 
-    return apiSuccess({ contactId });
+    const normalizedLeadResult = normalizeLeadResult(leadResult);
+    logInfo({
+      code: "PUBLIC_LEAD_SUBMITTED",
+      requestId,
+      route,
+      metadata: {
+        created: normalizedLeadResult.created,
+        fieldCount: settings.fields.length,
+        marketingEnabled: settings.marketing_opt_in_enabled === true,
+      },
+    });
+
+    return withRequestIdHeader(
+      apiSuccess({
+        contactId: normalizedLeadResult.contactId,
+        created: normalizedLeadResult.created,
+      }),
+      requestId
+    );
   } catch (error) {
-    return apiErrorFromUnknown(error);
+    if (error instanceof ApiRouteError) {
+      const log = error.status >= 500 ? logError : error.status === 429 ? logWarn : logInfo;
+      log({
+        code: error.status === 429 ? "PUBLIC_LEAD_RATE_LIMITED" : "PUBLIC_LEAD_REJECTED",
+        requestId,
+        route,
+        metadata: {
+          status: error.status,
+          errorCode: error.code,
+        },
+      });
+    } else {
+      logError({
+        code: "PUBLIC_LEAD_FAILED",
+        requestId,
+        route,
+        metadata: safeErrorMetadata(error),
+      });
+    }
+
+    return withRequestIdHeader(apiErrorFromUnknown(error), requestId);
   }
 }
 
@@ -175,47 +247,76 @@ function buildContactPayloadFromConfiguredFields(
 
   for (const field of configuredFields) {
     if (!allowedLeadFields.has(field)) continue;
+    if (field === "name") {
+      const firstName = normalizeSubmittedTextField(
+        submittedFields.first_name,
+        splitNameFieldLimits.first_name,
+        "first_name"
+      );
+      const lastName = normalizeSubmittedTextField(
+        submittedFields.last_name,
+        splitNameFieldLimits.last_name,
+        "last_name"
+      );
+      const legacyName = normalizeSubmittedTextField(
+        submittedFields.name,
+        fieldLimits.name,
+        "name"
+      );
+      const combinedName = [firstName, lastName].filter(Boolean).join(" ").trim();
+
+      if (firstName) payload.first_name = firstName;
+      if (lastName) payload.last_name = lastName;
+      if (combinedName || legacyName) payload.name = combinedName || legacyName;
+      continue;
+    }
+
     const rawValue = submittedFields[field];
-    if (rawValue === undefined || rawValue === null || rawValue === "") continue;
-    if (typeof rawValue !== "string") {
-      throw new ApiRouteError(400, "INVALID_REQUEST", `${field} must be text.`);
-    }
-
-    const value = rawValue.trim();
+    const value = normalizeSubmittedTextField(rawValue, fieldLimits[field], field);
     if (!value) continue;
-    if (value.length > fieldLimits[field]) {
-      throw new ApiRouteError(400, "INVALID_REQUEST", `${field} is too long.`);
-    }
-
-    payload[field] = value;
+    payload[field] = field === "phone" ? normalizeInternationalPhoneNumber(value) || value : value;
   }
 
   return payload;
 }
 
-function enforcePublicLeadRateLimit(request: NextRequest, slug: string) {
-  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const ip =
-    forwardedFor ||
-    request.headers.get("x-real-ip") ||
-    request.headers.get("cf-connecting-ip") ||
-    "unknown";
-  const key = `${ip}:${slug}`;
-  const now = Date.now();
-  const recent = (requestBuckets.get(key) || []).filter(
-    (timestamp) => now - timestamp < rateLimitWindowMs
-  );
-
-  if (recent.length >= rateLimitMax) {
-    throw new ApiRouteError(429, "INVALID_REQUEST", "Please wait before trying again.");
+function normalizeSubmittedTextField(
+  rawValue: unknown,
+  limit: number,
+  field: string
+) {
+  if (rawValue === undefined || rawValue === null || rawValue === "") return null;
+  if (typeof rawValue !== "string") {
+    throw new ApiRouteError(400, "INVALID_REQUEST", `${field} must be text.`);
   }
 
-  recent.push(now);
-  requestBuckets.set(key, recent);
+  const value = rawValue.trim();
+  if (!value) return null;
+  if (value.length > limit) {
+    throw new ApiRouteError(400, "INVALID_REQUEST", `${field} is too long.`);
+  }
+
+  return value;
 }
 
 function isPublished(card: PublicLeadCardRow) {
   return card.status === "published" || card.is_published === true;
+}
+
+function normalizeAntiBotPayload(value: unknown) {
+  const payload = isRecord(value) ? value : {};
+  const honeypot = typeof payload.website_confirm === "string" ? payload.website_confirm : "";
+  const renderedAt =
+    typeof payload.rendered_at === "string" || typeof payload.rendered_at === "number"
+      ? Number(payload.rendered_at)
+      : NaN;
+  const elapsedMs = Number.isFinite(renderedAt) ? Date.now() - renderedAt : null;
+
+  return {
+    honeypotFilled: honeypot.trim().length > 0,
+    submittedTooQuickly:
+      elapsedMs !== null && elapsedMs >= 0 && elapsedMs < minimumSuspiciousFormTimeMs,
+  };
 }
 
 function normalizeOptionalPublicUrl(value: string | undefined) {
@@ -232,4 +333,24 @@ function normalizeOptionalPublicUrl(value: string | undefined) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeLeadResult(value: unknown) {
+  if (!isRecord(value)) {
+    throw new ApiRouteError(500, "INTERNAL_ERROR", "Could not submit your details.");
+  }
+
+  const contactId = typeof value.contact_id === "string" ? value.contact_id : "";
+  const created = value.created === true;
+
+  if (!contactId) {
+    throw new ApiRouteError(500, "INTERNAL_ERROR", "Could not submit your details.");
+  }
+
+  return { contactId, created };
+}
+
+function envInt(name: string, fallback: number) {
+  const value = Number.parseInt(process.env[name] || "", 10);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
 }

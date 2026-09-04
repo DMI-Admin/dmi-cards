@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import {
   AlertCircle,
   Check,
@@ -53,6 +59,13 @@ type WalletColourMode = "default" | "custom";
 type AppleWalletPassLink = {
   passPath: string;
   publicPassUrl: string;
+};
+
+type GoogleWalletSaveLink = {
+  classId: string;
+  objectId: string;
+  publicCardUrl: string;
+  saveUrl: string;
 };
 
 type PublishedWalletCard = {
@@ -200,6 +213,9 @@ function WalletReadyState({
 }) {
   const [appleLoading, setAppleLoading] = useState(false);
   const [appleError, setAppleError] = useState("");
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleError, setGoogleError] = useState("");
+  const [googleWalletFallbackUrl, setGoogleWalletFallbackUrl] = useState("");
   const [passLink, setPassLink] = useState<AppleWalletPassLink | null>(null);
   const [backgroundMode, setBackgroundMode] = useState<WalletColourMode>("default");
   const [customBackgroundColour, setCustomBackgroundColour] = useState("#AC00FF");
@@ -283,47 +299,113 @@ function WalletReadyState({
     }
   }
 
+  async function handleGoogleWalletDownload() {
+    if (googleLoading || !selectedCard) return;
+
+    const googleWalletWindow = window.open("about:blank", "_blank");
+    if (googleWalletWindow) googleWalletWindow.opener = null;
+
+    setGoogleLoading(true);
+    setGoogleError("");
+    setGoogleWalletFallbackUrl("");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        googleWalletWindow?.close();
+        setGoogleError("Please sign in again before adding this pass.");
+        return;
+      }
+
+      const response = await fetch(
+        `/api/client/wallet/google/${encodeURIComponent(selectedCard.id)}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            backgroundColor: selectedBackgroundColour,
+          }),
+          cache: "no-store",
+        }
+      );
+
+      if (!response.ok) {
+        googleWalletWindow?.close();
+        setGoogleError(await googleWalletErrorMessage(response));
+        return;
+      }
+
+      const saveLink = (await response.json()) as GoogleWalletSaveLink;
+
+      if (googleWalletWindow) {
+        googleWalletWindow.location.href = saveLink.saveUrl;
+      } else {
+        setGoogleWalletFallbackUrl(saveLink.saveUrl);
+      }
+    } catch (error) {
+      googleWalletWindow?.close();
+      console.error("Google Wallet download failed", error);
+      setGoogleError("Could not generate your Google Wallet pass. Please try again.");
+    } finally {
+      setGoogleLoading(false);
+    }
+  }
+
   return (
     <ClientPortalWorkspace
       preview={
         <section className="client-portal-panel p-5 sm:p-6">
           <SectionTitle
             title="Add to Wallet"
-            description="Generate a real wallet pass from the selected published card."
+            description="Add your selected published card to your preferred wallet."
           />
 
-          <div className="mt-6 space-y-4">
-            <SelectedWalletSummary
-              card={selectedCard}
-              selectedColour={selectedBackgroundColour}
-            />
+          <div className="mt-7 flex flex-col items-center gap-7">
             <AppleWalletButton
               loading={appleLoading}
               error={appleError || contrastError}
               disabled={!selectedCard || Boolean(contrastError)}
               onClick={handleAppleWalletDownload}
             />
-            <GoogleWalletButton />
+
+            <div className="h-px w-full bg-white/10" aria-hidden="true" />
+
+            <GoogleWalletButton
+              loading={googleLoading}
+              error={googleError}
+              disabled={!selectedCard}
+              fallbackUrl={googleWalletFallbackUrl}
+              onClick={handleGoogleWalletDownload}
+            />
           </div>
         </section>
       }
     >
-        <section className="rounded-3xl border border-white/10 bg-[#101935]/70 p-5 shadow-2xl shadow-black/20 sm:p-6">
+        <section className="client-portal-panel p-5 sm:p-6">
           <SectionTitle
             title="Wallet Settings"
             description="Choose the published card and pass colour for Wallet."
           />
 
-          <div className="mt-6 space-y-6">
-            <SettingsBlock title="Select Card">
+          <div className="mt-6 space-y-8">
+            <div>
+              <SettingsTitle>Select Card</SettingsTitle>
               <WalletCardSelector
                 cards={cards}
                 selectedCardId={selectedCardId}
                 onSelect={onSelectCard}
               />
-            </SettingsBlock>
+            </div>
 
-            <SettingsBlock title="Wallet Colour">
+            <div>
+              <SettingsTitle>Wallet Colour</SettingsTitle>
               <WalletAppearanceControls
                 backgroundMode={backgroundMode}
                 contrastError={contrastError}
@@ -345,7 +427,7 @@ function WalletReadyState({
                 selectedTextColour={selectedTextColour}
                 textMode={textMode}
               />
-            </SettingsBlock>
+            </div>
           </div>
         </section>
 
@@ -430,7 +512,7 @@ function WalletCardSelector({
   const cardsBySlot = new Map(cards.map((card) => [card.slot, card]));
 
   return (
-    <div className="grid gap-3 md:grid-cols-3">
+    <div className="grid gap-3 md:grid-cols-3" role="radiogroup" aria-label="Wallet card slots">
       {walletSlots.map((slot) => {
         const card = cardsBySlot.get(slot);
 
@@ -461,17 +543,23 @@ function WalletCardSelector({
         const selected = card.id === selectedCardId;
 
         return (
-          <button
+          <div
             key={card.id}
-            type="button"
             onClick={() => onSelect(card.id)}
+            onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              onSelect(card.id);
+            }}
+            role="radio"
+            tabIndex={0}
             className={`min-h-[190px] rounded-2xl border p-3 text-left transition ${
               selected
                 ? "border-[#AC00FF]/70 shadow-lg shadow-purple-500/15 ring-2 ring-[#AC00FF]/45"
                 : "border-white/10 bg-white/5 hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10"
             }`}
             style={selected ? { backgroundColor: "rgba(172, 0, 255, 0.12)" } : undefined}
-            aria-pressed={selected}
+            aria-checked={selected}
           >
             <span className="mb-3 flex items-center justify-between gap-3">
               <span className="text-xs font-semibold uppercase tracking-[0.14em] text-white/45">
@@ -479,7 +567,11 @@ function WalletCardSelector({
               </span>
               <PublishedBadge />
             </span>
-            <span className="block h-28 overflow-hidden rounded-xl border border-white/10 bg-black/70 text-white">
+            <span
+              className="block h-28 overflow-hidden rounded-xl border border-white/10 bg-black/70 text-white"
+              aria-hidden="true"
+              inert={true}
+            >
               {card.template ? (
                 <span className="flex w-full justify-center overflow-hidden">
                   <span className="origin-top scale-[0.44]">
@@ -499,7 +591,7 @@ function WalletCardSelector({
             <span className="mt-3 block truncate text-sm font-semibold text-white">
               {card.name}
             </span>
-          </button>
+          </div>
         );
       })}
     </div>
@@ -553,8 +645,9 @@ function WalletAppearanceControls({
         customColour={customTextColour}
         customLabel="Custom text"
         defaultColour={defaultWalletTextColour}
+        helperText="Google Wallet controls text colour automatically."
         isPaid={isPaid}
-        label="Text Colour"
+        label="Apple Wallet text colour"
         mode={textMode}
         onCustomColourChange={onCustomTextColourChange}
         onModeChange={onTextModeChange}
@@ -604,6 +697,7 @@ function AppearanceSection({
   customColour,
   customLabel,
   defaultColour,
+  helperText,
   isPaid,
   label,
   mode,
@@ -613,6 +707,7 @@ function AppearanceSection({
   customColour: string;
   customLabel: string;
   defaultColour: string;
+  helperText?: string;
   isPaid: boolean;
   label: string;
   mode: WalletColourMode;
@@ -622,7 +717,12 @@ function AppearanceSection({
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm font-semibold">{label}</p>
+        <div>
+          <p className="text-sm font-semibold">{label}</p>
+          {helperText && (
+            <p className="mt-1 text-xs leading-5 text-white/45">{helperText}</p>
+          )}
+        </div>
         <span className="font-mono text-xs text-white/45">
           {mode === "custom" && isPaid ? customColour : defaultColour}
         </span>
@@ -642,7 +742,6 @@ function AppearanceSection({
           onClick={() => {
             if (isPaid) onModeChange("custom");
           }}
-          pro
         />
       </div>
       {mode === "custom" && isPaid && (
@@ -673,14 +772,12 @@ function AppearanceOption({
   disabled = false,
   label,
   onClick,
-  pro = false,
 }: {
   active: boolean;
   colour: string;
   disabled?: boolean;
   label: string;
   onClick: () => void;
-  pro?: boolean;
 }) {
   return (
     <button
@@ -705,58 +802,8 @@ function AppearanceOption({
           aria-hidden="true"
         />
         <span className="font-mono text-xs">{colour}</span>
-        {pro && <ProBadge />}
       </span>
     </button>
-  );
-}
-
-function ProBadge() {
-  return (
-    <span
-      className="ml-auto rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]"
-      style={{
-        borderColor: "var(--border-accent)",
-        background: "var(--brand-gradient-subtle)",
-        color: "var(--text-accent)",
-      }}
-    >
-      Pro
-    </span>
-  );
-}
-
-function SelectedWalletSummary({
-  card,
-  selectedColour,
-}: {
-  card: PublishedWalletCard | null;
-  selectedColour: string;
-}) {
-  if (!card) {
-    return (
-      <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-5 text-sm text-white/45">
-        Publish and select a card before adding it to Wallet.
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-      <div className="flex items-center gap-3">
-        <span
-          className="h-11 w-11 rounded-2xl border border-white/10"
-          style={{ backgroundColor: selectedColour }}
-          aria-hidden="true"
-        />
-        <div className="min-w-0">
-          <p className="truncate text-base font-semibold">{card.name}</p>
-          <p className="mt-1 text-sm text-white/45">
-            Slot {card.slot} will be used for the Apple Wallet pass.
-          </p>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -787,16 +834,16 @@ function AppleWalletButton({
   onClick: () => void;
 }) {
   return (
-    <div className="rounded-2xl border border-[#AC00FF]/25 bg-[#AC00FF]/10 p-4">
+    <div className="flex flex-col items-center">
       <button
         type="button"
         onClick={onClick}
         disabled={loading || disabled}
-        className="inline-flex min-h-14 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 transition hover:border-[#AC00FF]/35 hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-45"
+        className="inline-flex min-h-12 items-center justify-center rounded-xl transition hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#AC00FF] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
         aria-label="Add to Apple Wallet"
       >
         {loading ? (
-          <span className="inline-flex items-center gap-2 text-sm font-semibold text-white/75">
+          <span className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-5 text-sm font-semibold text-white/75">
             <Loader2 className="h-4 w-4 animate-spin" />
             Preparing pass...
           </span>
@@ -805,36 +852,66 @@ function AppleWalletButton({
           <img
             src="/wallet/add-to-apple-wallet.svg"
             alt="Add to Apple Wallet"
-            className="h-[35px] w-auto"
+            className="h-11 w-auto"
           />
         )}
       </button>
-      <p className="mt-3 text-sm leading-6 text-white/55">
+      <p className="mt-3 text-center text-sm leading-6 text-white/55">
         {error || "Creates a signed Apple Wallet pass from the selected card."}
       </p>
     </div>
   );
 }
 
-function GoogleWalletButton() {
+function GoogleWalletButton({
+  loading,
+  error,
+  disabled,
+  fallbackUrl,
+  onClick,
+}: {
+  loading: boolean;
+  error: string;
+  disabled: boolean;
+  fallbackUrl: string;
+  onClick: () => void;
+}) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+    <div className="flex flex-col items-center">
       <button
         type="button"
-        disabled
-        className="inline-flex min-h-14 w-full cursor-not-allowed items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 opacity-45"
-        aria-label="Add to Google Wallet coming soon"
+        onClick={onClick}
+        disabled={loading || disabled}
+        className="inline-flex min-h-12 items-center justify-center rounded-xl transition hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#AC00FF] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+        aria-label="Add to Google Wallet"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/wallet/add-to-google-wallet.svg"
-          alt="Add to Google Wallet"
-          className="h-[35px] w-auto"
-        />
+        {loading ? (
+          <span className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-5 text-sm font-semibold text-white/75">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Preparing pass...
+          </span>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src="/wallet/add-to-google-wallet.svg"
+            alt="Add to Google Wallet"
+            className="h-11 w-auto"
+          />
+        )}
       </button>
-      <p className="mt-3 text-sm font-semibold leading-6 text-white/50">
-        Google Wallet coming soon
+      <p className="mt-3 text-center text-sm leading-6 text-white/55">
+        {error || "Creates a Google Wallet pass from the selected published card."}
       </p>
+      {fallbackUrl && (
+        <a
+          href={fallbackUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2 text-sm font-semibold text-white transition hover:border-[#AC00FF]/35 hover:bg-white/[0.08]"
+        >
+          Open Google Wallet
+        </a>
+      )}
     </div>
   );
 }
@@ -854,20 +931,11 @@ function SectionTitle({
   );
 }
 
-function SettingsBlock({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+function SettingsTitle({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-      <p className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-white/45">
-        {title}
-      </p>
+    <p className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-white/45">
       {children}
-    </div>
+    </p>
   );
 }
 
@@ -1042,13 +1110,34 @@ async function appleWalletErrorMessage(response: Response) {
   return "Could not generate your Apple Wallet pass. Please try again.";
 }
 
-function WalletQrCode({ value }: { value: string }) {
+async function googleWalletErrorMessage(response: Response) {
+  try {
+    const body = (await response.json()) as { message?: string; code?: string };
+
+    if (body.message) {
+      return body.message;
+    }
+  } catch {
+    // The API should return JSON for errors, but keep a readable fallback.
+  }
+
+  if (response.status === 401) return "Please sign in again before adding this pass.";
+  if (response.status === 404) return "Could not find a published card for this account.";
+  if (response.status === 409) return "Publish this card before adding it to Google Wallet.";
+  if (response.status === 503) return "Google Wallet is not configured yet.";
+
+  return "Could not generate your Google Wallet pass. Please try again.";
+}
+
+function WalletQrCode({ compact = false, value }: { compact?: boolean; value: string }) {
   const matrix = useMemo(() => createWalletQrMatrix(value), [value]);
   const moduleCount = matrix.length + walletQrQuietZone * 2;
 
   return (
     <svg
-      className="mx-auto aspect-square w-full max-w-[260px] rounded-2xl bg-white"
+      className={`mx-auto aspect-square w-full bg-white ${
+        compact ? "rounded-md" : "max-w-[260px] rounded-2xl"
+      }`}
       viewBox={`0 0 ${moduleCount} ${moduleCount}`}
       role="img"
       aria-label="Apple Wallet pass QR code"

@@ -24,6 +24,7 @@ import {
 import { normalizeColourPalette, normalizeTemplate } from "@/lib/templates";
 
 export type PublicCardData = CardRendererData & {
+  id: string;
   slug: string;
 };
 
@@ -249,6 +250,7 @@ function isPublicCardPublished(card: PublicCardRow) {
 
 function toPublicCardData(card: PublicCardRow): PublicCardData {
   return {
+    id: card.id || "",
     slug: card.slug || "",
     title: card.title || null,
     first_name: card.first_name || null,

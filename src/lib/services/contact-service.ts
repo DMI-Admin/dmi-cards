@@ -241,9 +241,9 @@ export async function deleteContactForUser(
 
 export function contactsToCsv(contacts: ContactRow[]) {
   const headers = [
-    "name",
     "first_name",
     "last_name",
+    "name",
     "email",
     "phone",
     "mobile",
@@ -595,10 +595,21 @@ function escapeSearchValue(value: string) {
 
 function csvValue(contact: ContactRow, header: string) {
   if (header === "tags") return contact.tags.join("; ");
+  if (header === "first_name") {
+    return contact.first_name || legacyNameFallback(contact);
+  }
+  if (header === "last_name") {
+    return contact.last_name || "";
+  }
   const value = contact[header as keyof ContactRow];
   if (value === null || value === undefined) return "";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function legacyNameFallback(contact: ContactRow) {
+  if (contact.first_name || contact.last_name) return "";
+  return contact.name || "";
 }
 
 function csvEscape(value: string) {

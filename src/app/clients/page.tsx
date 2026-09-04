@@ -261,6 +261,16 @@ export default function ClientsPage() {
 
   async function toggleClientStatus(client: Client) {
     const nextStatus = client.status === "suspended" ? "active" : "suspended";
+    const actionLabel = nextStatus === "suspended" ? "Suspend" : "Reactivate";
+    const clientLabel =
+      client.company_name || client.full_name || client.email || "this client";
+    const confirmed = window.confirm(
+      nextStatus === "suspended"
+        ? `${actionLabel} ${clientLabel}? The client will lose access to the Client Portal, but their cards, contacts, profile, billing records, Wallet passes, and account data will remain intact.`
+        : `${actionLabel} ${clientLabel}? This restores Client Portal access using the existing account data.`
+    );
+
+    if (!confirmed) return;
 
     const { error } = await supabase
       .from("clients")
@@ -276,60 +286,6 @@ export default function ClientsPage() {
     if (usersError) return alert(usersError.message);
 
     void fetchClientData();
-  }
-
-  async function deleteClient(client: Client) {
-    const confirmed = window.confirm(
-      `Delete ${client.full_name || client.email}? This removes the client, client user link, profile, cards, and Supabase Auth user where linked. This cannot be undone.`
-    );
-
-    if (!confirmed) return;
-
-    const response = await fetch(`/api/admin/clients/${encodeURIComponent(client.id)}`, {
-      method: "DELETE",
-    });
-    const result = (await response.json().catch(() => null)) as { error?: string } | null;
-
-    if (!response.ok) {
-      return alert(result?.error || "Could not delete client.");
-    }
-
-    removeDeletedClientFromState(client.id);
-    void fetchClientData();
-  }
-
-  async function deleteCompany(client: Client) {
-    const confirmed = window.confirm(
-      `Delete ${client.company_name || client.full_name}? This removes the company, linked users, profiles, cards, and Supabase Auth users where linked. This cannot be undone.`
-    );
-
-    if (!confirmed) return;
-
-    const response = await fetch(`/api/admin/clients/${encodeURIComponent(client.id)}`, {
-      method: "DELETE",
-    });
-    const result = (await response.json().catch(() => null)) as { error?: string } | null;
-
-    if (!response.ok) {
-      return alert(result?.error || "Could not delete company.");
-    }
-
-    if (expandedCompany === client.id) setExpandedCompany(null);
-    removeDeletedClientFromState(client.id);
-    void fetchClientData();
-  }
-
-  function removeDeletedClientFromState(clientId: string) {
-    setClients((current) => current.filter((client) => client.id !== clientId));
-    setClientUsers((current) => current.filter((user) => user.client_id !== clientId));
-    setCards((current) => current.filter((card) => card.client_id !== clientId));
-    setPreviewCards((current) => current.filter((card) => card.client_id !== clientId));
-    if (previewUserId) {
-      const deletedUserIds = new Set(
-        clientUsers.filter((user) => user.client_id === clientId).map((user) => user.id)
-      );
-      if (deletedUserIds.has(previewUserId)) setPreviewUserId(null);
-    }
   }
 
   async function createClientUser(client: Client) {
@@ -788,7 +744,6 @@ export default function ClientsPage() {
             clients={filteredIndividualClients}
             openClientDetails={openClientDetails}
             toggleClientStatus={toggleClientStatus}
-            deleteClient={deleteClient}
           />
         </ClientSection>
 
@@ -820,7 +775,6 @@ export default function ClientsPage() {
             expandedCompany={expandedCompany}
             toggleCompany={toggleCompany}
             toggleClientStatus={toggleClientStatus}
-            deleteCompany={deleteCompany}
             openAdminContactDetails={openAdminContactDetails}
             staffFullName={staffFullName}
             setStaffFullName={setStaffFullName}
@@ -862,7 +816,6 @@ export default function ClientsPage() {
                   clients={filteredIndividualClients}
                   openClientDetails={openClientDetails}
                   toggleClientStatus={toggleClientStatus}
-                  deleteClient={deleteClient}
                 />
               </div>
             </div>
@@ -889,7 +842,6 @@ export default function ClientsPage() {
                   expandedCompany={expandedCompany}
                   toggleCompany={toggleCompany}
                   toggleClientStatus={toggleClientStatus}
-                  deleteCompany={deleteCompany}
                   openAdminContactDetails={openAdminContactDetails}
                   staffFullName={staffFullName}
                   setStaffFullName={setStaffFullName}
@@ -1191,7 +1143,6 @@ function IndividualTable(props: {
   clients: Client[];
   openClientDetails: (client: Client) => void;
   toggleClientStatus: (client: Client) => void;
-  deleteClient: (client: Client) => void;
 }) {
   return (
     <table className="w-full">
@@ -1210,7 +1161,7 @@ function IndividualTable(props: {
             <td className="p-5"><BillingBadge status={client.billing_status || "paid"} /></td>
             <td className="p-5 text-white/70">{client.cards_active ?? 0}</td>
             <td className="p-5"><StatusBadge status={client.status} /></td>
-            <td className="p-5"><ClientActions client={client} onView={props.openClientDetails} onToggle={props.toggleClientStatus} onDelete={props.deleteClient} /></td>
+            <td className="p-5"><ClientActions client={client} onView={props.openClientDetails} onToggle={props.toggleClientStatus} /></td>
           </tr>
         ))}
       </tbody>
@@ -1226,7 +1177,6 @@ function BusinessTable(props: {
   expandedCompany: string | null;
   toggleCompany: (id: string) => void;
   toggleClientStatus: (client: Client) => void;
-  deleteCompany: (client: Client) => void;
   openAdminContactDetails: (client: Client) => void;
   staffFullName: string;
   setStaffFullName: (value: string) => void;
@@ -1267,8 +1217,7 @@ function BusinessTable(props: {
                 <td className="p-5">
                   <div className="flex gap-3">
                     <button onClick={(e) => { e.stopPropagation(); props.toggleCompany(company.id); }} className="text-sm text-blue-300 hover:text-blue-200">View</button>
-                    <button onClick={(e) => { e.stopPropagation(); props.toggleClientStatus(company); }} className="text-sm text-yellow-300 hover:text-yellow-200">{company.status === "suspended" ? "Activate" : "Suspend"}</button>
-                    <button onClick={(e) => { e.stopPropagation(); props.deleteCompany(company); }} className="text-sm text-red-300 hover:text-red-200">Delete</button>
+                    <button onClick={(e) => { e.stopPropagation(); props.toggleClientStatus(company); }} className="text-sm text-yellow-300 hover:text-yellow-200">{company.status === "suspended" ? "Reactivate Client" : "Suspend Client"}</button>
                   </div>
                 </td>
               </tr>
@@ -1558,8 +1507,8 @@ function PublishedCardPreviewModal({ cards, user, currentIndex, templates, onPre
   );
 }
 
-function ClientActions({ client, onView, onToggle, onDelete }: { client: Client; onView: (client: Client) => void; onToggle: (client: Client) => void; onDelete: (client: Client) => void }) {
-  return <div className="flex gap-3"><button onClick={() => onView(client)} className="text-sm text-blue-300 hover:text-blue-200">View</button><button onClick={() => onToggle(client)} className="text-sm text-yellow-300 hover:text-yellow-200">{client.status === "suspended" ? "Activate" : "Suspend"}</button><button onClick={() => onDelete(client)} className="text-sm text-red-300 hover:text-red-200">Delete</button></div>;
+function ClientActions({ client, onView, onToggle }: { client: Client; onView: (client: Client) => void; onToggle: (client: Client) => void }) {
+  return <div className="flex gap-3"><button onClick={() => onView(client)} className="text-sm text-blue-300 hover:text-blue-200">View</button><button onClick={() => onToggle(client)} className="text-sm text-yellow-300 hover:text-yellow-200">{client.status === "suspended" ? "Reactivate Client" : "Suspend Client"}</button></div>;
 }
 
 function BillingBadge({ status }: { status: string }) {

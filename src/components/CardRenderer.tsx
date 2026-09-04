@@ -26,14 +26,17 @@ import type {
   TemplateAllowedActions,
 } from "@/lib/card-actions";
 import {
-  actionFileReference,
   actionIsComplete,
-  cardActionValue,
   defaultLabelForActionType,
   effectiveCardActionConfig,
-  fieldKeyForActionType,
   normalizeCardActionConfig,
 } from "@/lib/card-actions";
+import {
+  resolveCardActionHref,
+  resolveCardFieldHref,
+  vCardDataHref,
+  vCardFilename,
+} from "@/lib/card-action-routing";
 
 type CardRendererMode = "preview" | "public" | "compact";
 type LogoSize = "compact" | "standard" | "large" | "banner";
@@ -281,8 +284,7 @@ export default function CardRenderer({
     fontFamily,
   };
   const saveContactHref = mode === "public" ? vCardDataHref(cardData) : null;
-  const saveContactFilename =
-    mode === "public" ? `${slugifyFilename(displayName(cardData, "dmi-card"))}.vcf` : undefined;
+  const saveContactFilename = mode === "public" ? vCardFilename(cardData) : undefined;
   const previewSaveContactContrastClass =
     mode === "public"
       ? ""
@@ -2082,8 +2084,7 @@ function TemplateSaveButton({
     fontFamily: theme.fontFamily,
   } as React.CSSProperties;
   const href = mode === "public" ? vCardDataHref(cardData) : null;
-  const filename =
-    mode === "public" ? `${slugifyFilename(displayName(cardData, "dmi-card"))}.vcf` : undefined;
+  const filename = mode === "public" ? vCardFilename(cardData) : undefined;
 
   if (compact) {
     return (
@@ -2168,14 +2169,10 @@ function TemplateActionButton({
 }) {
   const label = action.label || defaultLabelForActionType(action.type);
   const href =
-    action.type === "save_contact"
-      ? mode === "public"
-        ? vCardDataHref(cardData)
-        : null
-      : actionHrefForCardAction(action.type, cardData);
+    mode === "public" ? resolveCardActionHref(action, cardData) : null;
   const filename =
     action.type === "save_contact" && mode === "public"
-      ? `${slugifyFilename(displayName(cardData, "dmi-card"))}.vcf`
+      ? vCardFilename(cardData)
       : undefined;
   const incomplete = !actionIsComplete(action, cardData);
   const actionStyle = actionButtonStyleForType(action.type, theme);
@@ -2206,7 +2203,11 @@ function TemplateActionButton({
     </>
   );
 
-  if (compact || mode !== "public" || !href) {
+  if (mode === "public" && !href) {
+    return null;
+  }
+
+  if (compact || mode !== "public") {
     return (
       <button type="button" className={buttonClass} style={buttonStyle}>
         {content}
@@ -2214,36 +2215,20 @@ function TemplateActionButton({
     );
   }
 
+  const resolvedHref = href || "";
+
   return (
     <a
-      href={href}
+      href={resolvedHref}
       download={filename}
-      target={href.startsWith("http") ? "_blank" : undefined}
-      rel={href.startsWith("http") ? "noopener noreferrer" : undefined}
+      target={resolvedHref.startsWith("http") ? "_blank" : undefined}
+      rel={resolvedHref.startsWith("http") ? "noopener noreferrer" : undefined}
       className={`block ${buttonClass}`}
       style={buttonStyle}
     >
       {content}
     </a>
   );
-}
-
-function actionHrefForCardAction(type: CardActionType, cardData: CardRendererData) {
-  if (type === "download_pdf") {
-    const action = cardData.action_config?.actions.find(
-      (item) => item.type === "download_pdf"
-    );
-    const fileReference = action ? actionFileReference(action) : null;
-
-    return fileReference?.public_url
-      ? safeExternalHref(fileReference.public_url)
-      : null;
-  }
-
-  const fieldKey = fieldKeyForActionType(type);
-  if (!fieldKey) return null;
-
-  return actionHrefForField(fieldKey, cardActionValue(cardData, type));
 }
 
 function actionButtonStyleForType(type: CardActionType, theme: RendererTheme) {
@@ -2398,7 +2383,7 @@ function fieldItems(cardData: CardRendererData, fields: string[], publicMode = f
       return {
         label: field.replace("_", " "),
         value,
-        href: publicMode ? actionHrefForField(field, value) : null,
+        href: publicMode ? resolveCardFieldHref(field, value) : null,
       };
     })
     .filter((item) => item.value);
@@ -2409,194 +2394,8 @@ function addPublicRowActions(rows: DisplayRow[], publicMode: boolean): DisplayRo
 
   return rows.map((row) => ({
     ...row,
-    href: row.field ? actionHrefForField(row.field, row.value || "") : null,
+    href: row.field ? resolveCardFieldHref(row.field, row.value || "") : null,
   }));
-}
-
-function actionHrefForField(field: string, value: string | null | undefined) {
-  const displayValue = toDisplayValue(value);
-  if (!displayValue) return null;
-
-  const normalizedField = field.toLowerCase();
-
-  if (normalizedField === "website") {
-    return safeExternalHref(displayValue);
-  }
-
-  if (normalizedField === "address") {
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-      displayValue
-    )}`;
-  }
-
-  if (normalizedField === "email") {
-    return emailHref(displayValue);
-  }
-
-  if (normalizedField === "phone") {
-    return phoneHref(displayValue);
-  }
-
-  if (normalizedField === "whatsapp") {
-    return whatsappHref(displayValue);
-  }
-
-  if (
-    normalizedField === "linkedin" ||
-    normalizedField === "instagram" ||
-    normalizedField === "facebook" ||
-    normalizedField === "youtube" ||
-    normalizedField === "booking_link" ||
-    normalizedField === "custom_url"
-  ) {
-    return safeExternalHref(displayValue);
-  }
-
-  return null;
-}
-
-function websiteHref(value: string) {
-  return safeExternalHref(value);
-}
-
-function safeExternalHref(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-
-  if (trimmed.startsWith("//")) {
-    return validHttpUrl(`https:${trimmed}`);
-  }
-
-  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
-    return /^https?:\/\//i.test(trimmed) ? validHttpUrl(trimmed) : null;
-  }
-
-  return validHttpUrl(`https://${trimmed}`);
-}
-
-function validHttpUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-function emailHref(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed || /[\r\n]/.test(trimmed)) return null;
-
-  return `mailto:${trimmed}`;
-}
-
-function phoneHref(value: string) {
-  const normalized = value.trim().replace(/[^\d+]/g, "");
-  if (!normalized || !/^\+?\d{3,20}$/.test(normalized)) return null;
-
-  return `tel:${normalized}`;
-}
-
-function whatsappHref(value: string) {
-  const trimmed = value.trim();
-  const existingUrl = safeExternalHref(trimmed);
-
-  if (existingUrl && isWhatsAppUrl(existingUrl)) {
-    return existingUrl;
-  }
-
-  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith("//")) {
-    return null;
-  }
-
-  const normalizedPhone = normalizeInternationalPhoneForWhatsApp(trimmed);
-  return normalizedPhone ? `https://wa.me/${normalizedPhone}` : null;
-}
-
-function isWhatsAppUrl(value: string) {
-  try {
-    const url = new URL(value);
-    const host = url.hostname.toLowerCase();
-    return (
-      (url.protocol === "http:" || url.protocol === "https:") &&
-      (host === "wa.me" ||
-        host === "api.whatsapp.com" ||
-        host === "web.whatsapp.com" ||
-        host.endsWith(".whatsapp.com"))
-    );
-  } catch {
-    return false;
-  }
-}
-
-function normalizeInternationalPhoneForWhatsApp(value: string) {
-  const trimmed = value.trim();
-  const hasInternationalPrefix = trimmed.startsWith("+");
-  const digits = trimmed.replace(/\D/g, "");
-
-  if (!digits || digits.length < 8 || digits.length > 15) return null;
-  if (hasInternationalPrefix) return digits;
-  if (digits.startsWith("0")) return null;
-
-  return digits;
-}
-
-function vCardDataHref(cardData: CardRendererData) {
-  return `data:text/vcard;charset=utf-8,${encodeURIComponent(vCardText(cardData))}`;
-}
-
-function vCardText(cardData: CardRendererData) {
-  const title = toDisplayValue(cardData.title);
-  const firstName = toDisplayValue(cardData.first_name);
-  const lastName = toDisplayValue(cardData.last_name);
-  const fallbackName =
-    [title, firstName, lastName].filter(Boolean).join(" ") || "DMI Card";
-  const fullName = displayName(cardData, fallbackName);
-  const jobTitle = toDisplayValue(cardData.job_title);
-  const companyName = toDisplayValue(cardData.company_name);
-  const email = toDisplayValue(cardData.email);
-  const phone = toDisplayValue(cardData.phone);
-  const website = toDisplayValue(cardData.website);
-  const websiteUrl = website ? websiteHref(website) : null;
-  const address = toDisplayValue(cardData.address);
-  const lines = [
-    "BEGIN:VCARD",
-    "VERSION:3.0",
-    `N:${vCardEscape(lastName || "")};${vCardEscape(firstName || "")};;;${vCardEscape(
-      title || ""
-    )}`,
-    `FN:${vCardEscape(fullName)}`,
-  ];
-
-  if (jobTitle) lines.push(`TITLE:${vCardEscape(jobTitle)}`);
-  if (companyName) lines.push(`ORG:${vCardEscape(companyName)}`);
-  if (email) lines.push(`EMAIL;TYPE=INTERNET:${vCardEscape(email)}`);
-  if (phone) lines.push(`TEL;TYPE=CELL:${vCardEscape(phone)}`);
-  if (websiteUrl) lines.push(`URL:${vCardEscape(websiteUrl)}`);
-  if (address) lines.push(`ADR;TYPE=WORK:;;${vCardEscape(address)};;;;`);
-
-  lines.push("END:VCARD");
-
-  return lines.join("\r\n");
-}
-
-function vCardEscape(value: string) {
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/\n/g, "\\n")
-    .replace(/\r/g, "")
-    .replace(/,/g, "\\,")
-    .replace(/;/g, "\\;");
-}
-
-function slugifyFilename(value: string) {
-  const slug = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  return slug || "dmi-card";
 }
 
 function classicRows(

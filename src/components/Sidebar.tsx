@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useClerk } from "@clerk/nextjs";
 import type { LucideIcon } from "lucide-react";
 import {
+  Activity,
   BarChart3,
   CreditCard,
   FileText,
@@ -60,6 +61,7 @@ export default function Sidebar() {
         { name: "Uploads", href: "/uploads", icon: UploadCloud },
         { name: "Support", href: "/support", icon: Headphones },
         { name: "Audit Logs", href: "/audit-logs", icon: ScrollText },
+        { name: "System Health", href: "/system-health", icon: Activity },
         { name: "Security", href: "/security", icon: ShieldCheck },
         { name: "Settings", href: "/settings", icon: Settings },
       ],

@@ -23,7 +23,9 @@ import {
   X,
 } from "lucide-react";
 import ClientSidebar from "@/components/ClientSidebar";
+import PhoneInput from "@/components/PhoneInput";
 import UpgradeToProButton from "@/components/UpgradeToProButton";
+import { normalizeInternationalPhoneNumber } from "@/lib/phone-number";
 import { supabase } from "@/lib/supabase";
 import { useClientPlan } from "@/lib/use-client-plan";
 
@@ -59,8 +61,22 @@ type PersistedContact = {
   consent_notice: string | null;
   terms_url: string | null;
   submitted_at: string | null;
+  metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+};
+
+type MarketingConsentStatus = "opted_in" | "not_opted_in" | "unknown";
+
+type MarketingConsentDetails = {
+  status: MarketingConsentStatus;
+  enabled: boolean | null;
+  optedIn: boolean | null;
+  submittedAt: string | null;
+  label: string | null;
+  version: string | null;
+  privacyNotice: string | null;
+  privacyPolicyUrl: string | null;
 };
 
 type ContactFormState = {
@@ -407,7 +423,7 @@ export default function ClientContactsPage() {
                   <input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Search name, company, email, or phone"
+                    placeholder="Search first name, last name, company, email, or phone"
                     className="w-full rounded-2xl border border-white/10 bg-white/5 py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60"
                   />
                 </div>
@@ -427,14 +443,16 @@ export default function ClientContactsPage() {
             </div>
 
             <div className="max-h-[620px] max-w-full overflow-auto">
-              <table className="w-full min-w-[1080px] text-sm">
+              <table className="w-full min-w-[1260px] text-sm">
                 <thead className="sticky top-0 z-10 bg-[#070B1A] text-left text-white/45">
                   <tr className="border-b border-white/10">
-                    <th className="p-4">Name</th>
+                    <th className="p-4">First name</th>
+                    <th className="p-4">Last name</th>
                     <th className="p-4">Company</th>
                     <th className="p-4">Email</th>
                     <th className="p-4">Phone</th>
                     <th className="p-4">Source</th>
+                    <th className="p-4">Marketing</th>
                     <th className="p-4">Status</th>
                     <th className="p-4">Date</th>
                     <th className="p-4">Actions</th>
@@ -442,21 +460,25 @@ export default function ClientContactsPage() {
                 </thead>
                 <tbody>
                   {loading || planLoading ? (
-                    <TableMessage colSpan={8} message="Loading contacts..." />
+                    <TableMessage colSpan={10} message="Loading contacts..." />
                   ) : loadError ? (
-                    <TableMessage colSpan={8} message={loadError} tone="error" />
+                    <TableMessage colSpan={10} message={loadError} tone="error" />
                   ) : contacts.length ? (
                     contacts.map((contact) => (
                       <tr key={contact.id} className="border-b border-white/5">
                         <td className="p-4">
-                          <p className="font-semibold">{displayContactName(contact)}</p>
+                          <p className="font-semibold">{displayFirstName(contact)}</p>
                           <p className="mt-1 text-xs text-white/40">{contact.job_title || "No job title"}</p>
                         </td>
+                        <td className="p-4 text-white/65">{displayLastName(contact)}</td>
                         <td className="p-4 text-white/65">{contact.company || "-"}</td>
                         <td className="p-4 text-white/65">{contact.email || "-"}</td>
                         <td className="p-4 text-white/65">{contact.phone || contact.mobile || "-"}</td>
                         <td className="p-4">
                           <SourceBadge contact={contact} />
+                        </td>
+                        <td className="p-4">
+                          <MarketingBadge details={marketingConsentDetails(contact)} />
                         </td>
                         <td className="p-4">
                           <StatusBadge status={contact.status} />
@@ -472,7 +494,7 @@ export default function ClientContactsPage() {
                       </tr>
                     ))
                   ) : (
-                    <TableMessage colSpan={8} message="No contacts found." />
+                    <TableMessage colSpan={10} message="No contacts found." />
                   )}
                 </tbody>
               </table>
@@ -626,6 +648,31 @@ function StatusBadge({ status }: { status: ContactStatus }) {
   );
 }
 
+function MarketingBadge({ details }: { details: MarketingConsentDetails }) {
+  if (details.status === "unknown") {
+    return <span className="text-white/35">—</span>;
+  }
+
+  const optedIn = details.status === "opted_in";
+
+  return (
+    <span
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
+        optedIn
+          ? "border-emerald-300/25 bg-emerald-400/10 text-emerald-100"
+          : "border-white/10 bg-white/5 text-white/55"
+      }`}
+    >
+      <span
+        className={`h-2 w-2 rounded-full ${
+          optedIn ? "bg-emerald-300" : "bg-white/35"
+        }`}
+      />
+      {optedIn ? "Opted in" : "Not opted in"}
+    </span>
+  );
+}
+
 function ActionButton({
   icon: Icon,
   children,
@@ -760,8 +807,8 @@ function ContactFormModal({
           <TextField label="Last name" value={formState.last_name} onChange={(value) => update("last_name", value)} />
           <TextField label="Job title" value={formState.job_title} onChange={(value) => update("job_title", value)} />
           <TextField label="Email" value={formState.email} onChange={(value) => update("email", value)} />
-          <TextField label="Phone" value={formState.phone} onChange={(value) => update("phone", value)} />
-          <TextField label="Mobile" value={formState.mobile} onChange={(value) => update("mobile", value)} />
+          <PhoneInput label="Phone" value={formState.phone} onChange={(value) => update("phone", value)} />
+          <PhoneInput label="Mobile" value={formState.mobile} onChange={(value) => update("mobile", value)} />
           <TextField label="Website" value={formState.website} onChange={(value) => update("website", value)} />
           <TextField label="Address" value={formState.address} onChange={(value) => update("address", value)} />
           <label className="block">
@@ -816,6 +863,8 @@ function ContactDrawer({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const marketingConsent = marketingConsentDetails(contact);
+
   return (
     <div className="fixed inset-0 z-50">
       <button
@@ -856,7 +905,11 @@ function ContactDrawer({
           </div>
 
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <DetailItem label="Name" value={displayContactName(contact)} />
+            <DetailItem label="First name" value={displayFirstName(contact)} />
+            <DetailItem label="Last name" value={displayLastName(contact)} />
+            {hasLegacyCombinedNameOnly(contact) && (
+              <DetailItem label="Legacy name" value={contact.name || "-"} />
+            )}
             <DetailItem label="Company" value={contact.company || "-"} />
             <DetailItem label="Job title" value={contact.job_title || "-"} />
             <DetailItem label="Email" value={contact.email || "-"} />
@@ -869,6 +922,8 @@ function ContactDrawer({
             <DetailItem label="Created" value={formatDate(contact.created_at)} />
             <DetailItem label="Updated" value={formatDate(contact.updated_at)} />
           </div>
+
+          <MarketingConsentPanel details={marketingConsent} />
 
           <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
             <p className="text-sm font-semibold text-white/55">Notes</p>
@@ -891,6 +946,69 @@ function ContactDrawer({
           </div>
         </div>
       </aside>
+    </div>
+  );
+}
+
+function MarketingConsentPanel({
+  details,
+}: {
+  details: MarketingConsentDetails;
+}) {
+  return (
+    <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-white/55">
+            Marketing consent
+          </p>
+          <p className="mt-1 text-xs text-white/35">
+            Visitor marketing preference captured from the public card form.
+          </p>
+        </div>
+        <MarketingBadge details={details} />
+      </div>
+
+      {details.status === "unknown" ? (
+        <p className="mt-4 text-sm leading-6 text-white/50">
+          No marketing consent record is available for this contact.
+        </p>
+      ) : (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <DetailItem
+            label="Status"
+            value={details.status === "opted_in" ? "Opted in" : "Not opted in"}
+          />
+          <DetailItem
+            label="Consent date"
+            value={formatDateTime(details.submittedAt)}
+          />
+          <DetailItem
+            label="Consent version"
+            value={details.version || "-"}
+          />
+          <DetailItem
+            label="Privacy policy"
+            value={details.privacyPolicyUrl || "-"}
+          />
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 sm:col-span-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/35">
+              Consent wording
+            </p>
+            <p className="mt-2 break-words text-sm font-semibold">
+              {details.label || "-"}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 sm:col-span-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/35">
+              Data-use notice
+            </p>
+            <p className="mt-2 break-words text-sm font-semibold">
+              {details.privacyNotice || "-"}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1043,8 +1161,8 @@ function contactPayloadFromForm(form: ContactFormState) {
     company: form.company,
     job_title: form.job_title,
     email: form.email,
-    phone: form.phone,
-    mobile: form.mobile,
+    phone: normalizeInternationalPhoneNumber(form.phone) || form.phone,
+    mobile: normalizeInternationalPhoneNumber(form.mobile) || form.mobile,
     website: form.website,
     address: form.address,
     status: form.status,
@@ -1071,14 +1189,32 @@ function hasAnyIdentityField(form: ContactFormState) {
 
 function displayContactName(contact: PersistedContact) {
   return (
+    splitContactName(contact) ||
     contact.name ||
-    [contact.first_name, contact.last_name].filter(Boolean).join(" ") ||
     contact.email ||
     contact.phone ||
     contact.mobile ||
     contact.company ||
     "Unnamed contact"
   );
+}
+
+function displayFirstName(contact: PersistedContact) {
+  if (contact.first_name) return contact.first_name;
+  if (hasLegacyCombinedNameOnly(contact)) return contact.name || "-";
+  return "-";
+}
+
+function displayLastName(contact: PersistedContact) {
+  return contact.last_name || "-";
+}
+
+function hasLegacyCombinedNameOnly(contact: PersistedContact) {
+  return Boolean(contact.name && !contact.first_name && !contact.last_name);
+}
+
+function splitContactName(contact: PersistedContact) {
+  return [contact.first_name, contact.last_name].filter(Boolean).join(" ");
 }
 
 function sourceLabel(source: ContactSource) {
@@ -1101,6 +1237,46 @@ function sourceDetail(contact: PersistedContact) {
   return sourceLabel(contact.source);
 }
 
+function marketingConsentDetails(contact: PersistedContact): MarketingConsentDetails {
+  const metadata = isRecord(contact.metadata) ? contact.metadata : {};
+  const marketing = isRecord(metadata.marketing_consent)
+    ? metadata.marketing_consent
+    : null;
+  const privacyNotice = isRecord(metadata.privacy_notice)
+    ? metadata.privacy_notice
+    : null;
+  const enabled =
+    typeof marketing?.enabled === "boolean" ? marketing.enabled : null;
+  const optedIn =
+    typeof marketing?.opted_in === "boolean" ? marketing.opted_in : null;
+  const status = marketingConsentStatus(enabled, optedIn);
+
+  return {
+    status,
+    enabled,
+    optedIn,
+    submittedAt:
+      stringValue(marketing?.submitted_at) ||
+      stringValue(metadata.submitted_at) ||
+      contact.submitted_at,
+    label: stringValue(marketing?.label),
+    version: stringValue(marketing?.version),
+    privacyNotice:
+      stringValue(privacyNotice?.wording) || contact.consent_notice,
+    privacyPolicyUrl:
+      stringValue(privacyNotice?.privacy_policy_url) || contact.terms_url,
+  };
+}
+
+function marketingConsentStatus(
+  enabled: boolean | null,
+  optedIn: boolean | null
+): MarketingConsentStatus {
+  if (optedIn === true) return "opted_in";
+  if (enabled === true && optedIn === false) return "not_opted_in";
+  return "unknown";
+}
+
 function statusLabel(status: ContactStatus) {
   const labels: Record<ContactStatus, string> = {
     new: "New",
@@ -1112,6 +1288,14 @@ function statusLabel(status: ContactStatus) {
   return labels[status];
 }
 
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function formatDate(value: string | null) {
   if (!value) return "-";
   const date = new Date(value);
@@ -1121,5 +1305,19 @@ function formatDate(value: string | null) {
     day: "2-digit",
     month: "short",
     year: "numeric",
+  }).format(date);
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   }).format(date);
 }
