@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, LockKeyhole, Mail, X } from "lucide-react";
 import { FaApple, FaMicrosoft } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
+import { buildAuthCallbackRedirectUrl } from "@/lib/auth-redirect";
 import { supabase } from "@/lib/supabase";
 import { getOrCreateClientProfile } from "@/lib/profiles";
 import { getCurrentClientAccountStatus } from "@/lib/client-auth";
@@ -199,7 +200,27 @@ export default function ClientLogin() {
     router.push(nextPath);
   }
 
-  function handleSocialLogin() {
+  async function handleGoogleLogin() {
+    setLoginError("");
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: buildAuthCallbackRedirectUrl("/client/dashboard"),
+      },
+    });
+
+    if (error) {
+      console.error("[DMI auth] Google login start failed", {
+        name: error.name,
+        message: error.message,
+        status: error.status,
+      });
+      setLoginError("Could not start Google sign-in. Please try again.");
+    }
+  }
+
+  function handleUnavailableSocialLogin() {
     setLoginError("Social login is not enabled yet. Please use email and password.");
   }
 
@@ -367,7 +388,10 @@ export default function ClientLogin() {
                     </button>
                   </form>
 
-                  <SocialLoginSection onSocialLogin={handleSocialLogin} />
+                  <SocialLoginSection
+                    onGoogleLogin={handleGoogleLogin}
+                    onUnavailableSocialLogin={handleUnavailableSocialLogin}
+                  />
                 </>
               ) : (
                 <PasswordResetModal
@@ -486,9 +510,11 @@ function PasswordResetModal({
 }
 
 function SocialLoginSection({
-  onSocialLogin,
+  onGoogleLogin,
+  onUnavailableSocialLogin,
 }: {
-  onSocialLogin: () => void;
+  onGoogleLogin: () => void;
+  onUnavailableSocialLogin: () => void;
 }) {
   return (
     <div className="mt-6">
@@ -503,7 +529,7 @@ function SocialLoginSection({
       <div className="mt-4 grid gap-3">
         <button
           type="button"
-          onClick={onSocialLogin}
+          onClick={onGoogleLogin}
           className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/20 bg-white px-4 py-3 text-sm font-semibold text-[#101935] shadow-lg shadow-white/5 transition hover:shadow-white/15"
         >
           <FcGoogle className="h-5 w-5 shrink-0" />
@@ -512,7 +538,7 @@ function SocialLoginSection({
 
         <button
           type="button"
-          onClick={onSocialLogin}
+          onClick={onUnavailableSocialLogin}
           className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/15 bg-black px-4 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-black/80"
         >
           <FaApple className="h-5 w-5 shrink-0" />
@@ -521,7 +547,7 @@ function SocialLoginSection({
 
         <button
           type="button"
-          onClick={onSocialLogin}
+          onClick={onUnavailableSocialLogin}
           className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/65 transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10 hover:text-white"
         >
           <FaMicrosoft className="h-5 w-5 shrink-0 text-[#2F6FED]" />

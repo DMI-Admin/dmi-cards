@@ -212,7 +212,29 @@ export default function ClientSignupPage() {
     }
   }
 
-  function handleSocialSignup() {
+  async function handleGoogleSignup() {
+    setSignupError("");
+    setSignupMessage("");
+    setAccountExists(false);
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: buildAuthCallbackRedirectUrl("/client/dashboard"),
+      },
+    });
+
+    if (error) {
+      console.error("[DMI auth] Google signup start failed", {
+        name: error.name,
+        message: error.message,
+        status: error.status,
+      });
+      setSignupError("Could not start Google sign-up. Please try again.");
+    }
+  }
+
+  function handleUnavailableSocialSignup() {
     setSignupError("Social signup is not enabled yet. Please use email and password.");
   }
 
@@ -443,7 +465,10 @@ export default function ClientSignupPage() {
                 </button>
               </form>
 
-              <SocialLoginSection onSocialLogin={handleSocialSignup} />
+              <SocialLoginSection
+                onGoogleSignup={handleGoogleSignup}
+                onUnavailableSocialSignup={handleUnavailableSocialSignup}
+              />
 
               <div className="mt-5 flex flex-col gap-3 text-center text-sm text-white/45 sm:flex-row sm:items-center sm:justify-between">
                 <Link href="/" className="transition hover:text-purple-100">
@@ -481,9 +506,11 @@ function isObfuscatedExistingUser(user: { identities?: unknown }) {
 }
 
 function SocialLoginSection({
-  onSocialLogin,
+  onGoogleSignup,
+  onUnavailableSocialSignup,
 }: {
-  onSocialLogin: () => void;
+  onGoogleSignup: () => void;
+  onUnavailableSocialSignup: () => void;
 }) {
   return (
     <div className="mt-5">
@@ -498,7 +525,7 @@ function SocialLoginSection({
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <button
           type="button"
-          onClick={onSocialLogin}
+          onClick={onGoogleSignup}
           className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/20 bg-white px-4 py-3 text-sm font-semibold text-[#101935] shadow-lg shadow-white/5 transition hover:shadow-white/15"
         >
           <FcGoogle className="h-5 w-5 shrink-0" />
@@ -507,7 +534,7 @@ function SocialLoginSection({
 
         <button
           type="button"
-          onClick={onSocialLogin}
+          onClick={onUnavailableSocialSignup}
           className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/15 bg-black px-4 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-black/80"
         >
           <FaApple className="h-5 w-5 shrink-0" />
@@ -516,7 +543,7 @@ function SocialLoginSection({
 
         <button
           type="button"
-          onClick={onSocialLogin}
+          onClick={onUnavailableSocialSignup}
           className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/65 transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10 hover:text-white md:col-span-2"
         >
           <FaMicrosoft className="h-5 w-5 shrink-0 text-[#2F6FED]" />
