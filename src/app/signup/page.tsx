@@ -82,7 +82,7 @@ export default function ClientSignupPage() {
 
     const signupEmail = email.trim();
     const fullName = buildFullName(title, firstName, lastName);
-    const verificationRedirectUrl = buildAuthCallbackRedirectUrl("/email-verified");
+    const verificationRedirectUrl = buildAuthCallbackRedirectUrl("/client/dashboard");
 
     setSubmitting(true);
 
@@ -255,7 +255,7 @@ export default function ClientSignupPage() {
         type: "signup",
         email: resendEmail,
         options: {
-          emailRedirectTo: buildAuthCallbackRedirectUrl("/email-verified"),
+          emailRedirectTo: buildAuthCallbackRedirectUrl("/client/dashboard"),
         },
       });
 
@@ -603,7 +603,7 @@ function VerificationSuccess({
       </h2>
       <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-white/55">
         We’ve sent a verification link to your email address. Open the link,
-        then return here to log in.
+        then you’ll be taken to your DMI Cards dashboard.
       </p>
       {email && (
         <p className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
