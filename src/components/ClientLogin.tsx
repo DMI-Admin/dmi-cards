@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -14,6 +14,12 @@ import { getCurrentClientAccountStatus } from "@/lib/client-auth";
 import styles from "./ClientLogin.module.css";
 
 type SocialAuthProvider = "google" | "apple";
+
+function waitForNextPaint() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
 
 export default function ClientLogin() {
   const router = useRouter();
@@ -41,6 +47,8 @@ export default function ClientLogin() {
   const [resetSubmitting, setResetSubmitting] = useState(false);
   const [startingSocialProvider, setStartingSocialProvider] =
     useState<SocialAuthProvider | null>(null);
+  const pendingSocialAuthRef = useRef(false);
+  const socialAuthLostFocusRef = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -54,6 +62,8 @@ export default function ClientLogin() {
     let pageWasHidden = false;
 
     function resetRestoredSocialAuthState() {
+      pendingSocialAuthRef.current = false;
+      socialAuthLostFocusRef.current = false;
       setStartingSocialProvider(null);
     }
 
@@ -69,11 +79,34 @@ export default function ClientLogin() {
       }
     }
 
+    function handleWindowBlur() {
+      if (pendingSocialAuthRef.current) {
+        socialAuthLostFocusRef.current = true;
+      }
+    }
+
+    function handleWindowFocus() {
+      const isLoginPage =
+        window.location.pathname === "/" || window.location.pathname === "/login";
+
+      if (
+        pendingSocialAuthRef.current &&
+        socialAuthLostFocusRef.current &&
+        isLoginPage
+      ) {
+        resetRestoredSocialAuthState();
+      }
+    }
+
     window.addEventListener("pageshow", resetRestoredSocialAuthState);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("focus", handleWindowFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       window.removeEventListener("pageshow", resetRestoredSocialAuthState);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("focus", handleWindowFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
@@ -234,9 +267,13 @@ export default function ClientLogin() {
 
   async function handleGoogleLogin() {
     setLoginError("");
+    pendingSocialAuthRef.current = true;
+    socialAuthLostFocusRef.current = false;
     setStartingSocialProvider("google");
 
     try {
+      await waitForNextPaint();
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
@@ -251,20 +288,28 @@ export default function ClientLogin() {
           status: error.status,
         });
         setLoginError("Could not start Google sign-in. Please try again.");
+        pendingSocialAuthRef.current = false;
+        socialAuthLostFocusRef.current = false;
         setStartingSocialProvider(null);
       }
     } catch (error) {
       console.error("[DMI auth] Google login start failed", error);
       setLoginError("Could not start Google sign-in. Please try again.");
+      pendingSocialAuthRef.current = false;
+      socialAuthLostFocusRef.current = false;
       setStartingSocialProvider(null);
     }
   }
 
   async function handleAppleLogin() {
     setLoginError("");
+    pendingSocialAuthRef.current = true;
+    socialAuthLostFocusRef.current = false;
     setStartingSocialProvider("apple");
 
     try {
+      await waitForNextPaint();
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "apple",
         options: {
@@ -279,11 +324,15 @@ export default function ClientLogin() {
           status: error.status,
         });
         setLoginError("Could not start Apple sign-in. Please try again.");
+        pendingSocialAuthRef.current = false;
+        socialAuthLostFocusRef.current = false;
         setStartingSocialProvider(null);
       }
     } catch (error) {
       console.error("[DMI auth] Apple login start failed", error);
       setLoginError("Could not start Apple sign-in. Please try again.");
+      pendingSocialAuthRef.current = false;
+      socialAuthLostFocusRef.current = false;
       setStartingSocialProvider(null);
     }
   }

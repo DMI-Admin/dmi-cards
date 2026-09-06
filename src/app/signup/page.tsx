@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -21,6 +21,12 @@ import { getOrCreateClientProfile } from "@/lib/profiles";
 const titleOptions = ["Mr", "Mrs", "Miss", "Ms", "Mx", "Dr", "Prof", "Sir", "Dame", "Lord", "Lady", "Other"];
 
 type SocialAuthProvider = "google" | "apple";
+
+function waitForNextPaint() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
 
 function buildFullName(title: string, firstName: string, lastName: string) {
   return [title, firstName, lastName]
@@ -46,11 +52,15 @@ export default function ClientSignupPage() {
   const [resending, setResending] = useState(false);
   const [startingSocialProvider, setStartingSocialProvider] =
     useState<SocialAuthProvider | null>(null);
+  const pendingSocialAuthRef = useRef(false);
+  const socialAuthLostFocusRef = useRef(false);
 
   useEffect(() => {
     let pageWasHidden = false;
 
     function resetRestoredSocialAuthState() {
+      pendingSocialAuthRef.current = false;
+      socialAuthLostFocusRef.current = false;
       setStartingSocialProvider(null);
     }
 
@@ -66,11 +76,31 @@ export default function ClientSignupPage() {
       }
     }
 
+    function handleWindowBlur() {
+      if (pendingSocialAuthRef.current) {
+        socialAuthLostFocusRef.current = true;
+      }
+    }
+
+    function handleWindowFocus() {
+      if (
+        pendingSocialAuthRef.current &&
+        socialAuthLostFocusRef.current &&
+        window.location.pathname === "/signup"
+      ) {
+        resetRestoredSocialAuthState();
+      }
+    }
+
     window.addEventListener("pageshow", resetRestoredSocialAuthState);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("focus", handleWindowFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       window.removeEventListener("pageshow", resetRestoredSocialAuthState);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("focus", handleWindowFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
@@ -248,9 +278,13 @@ export default function ClientSignupPage() {
     setSignupError("");
     setSignupMessage("");
     setAccountExists(false);
+    pendingSocialAuthRef.current = true;
+    socialAuthLostFocusRef.current = false;
     setStartingSocialProvider("google");
 
     try {
+      await waitForNextPaint();
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
@@ -265,11 +299,15 @@ export default function ClientSignupPage() {
           status: error.status,
         });
         setSignupError("Could not start Google sign-up. Please try again.");
+        pendingSocialAuthRef.current = false;
+        socialAuthLostFocusRef.current = false;
         setStartingSocialProvider(null);
       }
     } catch (error) {
       console.error("[DMI auth] Google signup start failed", error);
       setSignupError("Could not start Google sign-up. Please try again.");
+      pendingSocialAuthRef.current = false;
+      socialAuthLostFocusRef.current = false;
       setStartingSocialProvider(null);
     }
   }
@@ -278,9 +316,13 @@ export default function ClientSignupPage() {
     setSignupError("");
     setSignupMessage("");
     setAccountExists(false);
+    pendingSocialAuthRef.current = true;
+    socialAuthLostFocusRef.current = false;
     setStartingSocialProvider("apple");
 
     try {
+      await waitForNextPaint();
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "apple",
         options: {
@@ -295,11 +337,15 @@ export default function ClientSignupPage() {
           status: error.status,
         });
         setSignupError("Could not start Apple sign-up. Please try again.");
+        pendingSocialAuthRef.current = false;
+        socialAuthLostFocusRef.current = false;
         setStartingSocialProvider(null);
       }
     } catch (error) {
       console.error("[DMI auth] Apple signup start failed", error);
       setSignupError("Could not start Apple sign-up. Please try again.");
+      pendingSocialAuthRef.current = false;
+      socialAuthLostFocusRef.current = false;
       setStartingSocialProvider(null);
     }
   }
