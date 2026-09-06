@@ -13,6 +13,8 @@ import { getOrCreateClientProfile } from "@/lib/profiles";
 import { getCurrentClientAccountStatus } from "@/lib/client-auth";
 import styles from "./ClientLogin.module.css";
 
+type SocialAuthProvider = "google" | "apple";
+
 export default function ClientLogin() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -37,6 +39,8 @@ export default function ClientLogin() {
   );
   const [submitting, setSubmitting] = useState(false);
   const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [startingSocialProvider, setStartingSocialProvider] =
+    useState<SocialAuthProvider | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -44,6 +48,34 @@ export default function ClientLogin() {
     if (params.get("forgot") === "1") {
       window.history.replaceState(null, "", "/");
     }
+  }, []);
+
+  useEffect(() => {
+    let pageWasHidden = false;
+
+    function resetRestoredSocialAuthState() {
+      setStartingSocialProvider(null);
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        pageWasHidden = true;
+        return;
+      }
+
+      if (pageWasHidden && document.visibilityState === "visible") {
+        pageWasHidden = false;
+        resetRestoredSocialAuthState();
+      }
+    }
+
+    window.addEventListener("pageshow", resetRestoredSocialAuthState);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("pageshow", resetRestoredSocialAuthState);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -202,41 +234,57 @@ export default function ClientLogin() {
 
   async function handleGoogleLogin() {
     setLoginError("");
+    setStartingSocialProvider("google");
 
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: buildAuthCallbackRedirectUrl("/client/dashboard"),
-      },
-    });
-
-    if (error) {
-      console.error("[DMI auth] Google login start failed", {
-        name: error.name,
-        message: error.message,
-        status: error.status,
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: buildAuthCallbackRedirectUrl("/client/dashboard"),
+        },
       });
+
+      if (error) {
+        console.error("[DMI auth] Google login start failed", {
+          name: error.name,
+          message: error.message,
+          status: error.status,
+        });
+        setLoginError("Could not start Google sign-in. Please try again.");
+        setStartingSocialProvider(null);
+      }
+    } catch (error) {
+      console.error("[DMI auth] Google login start failed", error);
       setLoginError("Could not start Google sign-in. Please try again.");
+      setStartingSocialProvider(null);
     }
   }
 
   async function handleAppleLogin() {
     setLoginError("");
+    setStartingSocialProvider("apple");
 
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "apple",
-      options: {
-        redirectTo: buildAuthCallbackRedirectUrl("/client/dashboard"),
-      },
-    });
-
-    if (error) {
-      console.error("[DMI auth] Apple login start failed", {
-        name: error.name,
-        message: error.message,
-        status: error.status,
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "apple",
+        options: {
+          redirectTo: buildAuthCallbackRedirectUrl("/client/dashboard"),
+        },
       });
+
+      if (error) {
+        console.error("[DMI auth] Apple login start failed", {
+          name: error.name,
+          message: error.message,
+          status: error.status,
+        });
+        setLoginError("Could not start Apple sign-in. Please try again.");
+        setStartingSocialProvider(null);
+      }
+    } catch (error) {
+      console.error("[DMI auth] Apple login start failed", error);
       setLoginError("Could not start Apple sign-in. Please try again.");
+      setStartingSocialProvider(null);
     }
   }
 
@@ -278,6 +326,7 @@ export default function ClientLogin() {
 
   return (
     <main className="min-h-dvh overflow-x-hidden bg-[#070B1A] text-white">
+      <AuthResourceHints />
       <div className="grid min-h-dvh lg:h-dvh lg:grid-cols-[minmax(0,0.9fr)_minmax(460px,0.6fr)] lg:overflow-hidden">
         <section className="relative hidden overflow-hidden border-r border-white/10 bg-[#0F0E38] p-8 lg:flex lg:flex-col lg:justify-center lg:gap-10 xl:p-12">
           <div className={styles.brandAurora} />
@@ -411,6 +460,7 @@ export default function ClientLogin() {
                   <SocialLoginSection
                     onGoogleLogin={handleGoogleLogin}
                     onAppleLogin={handleAppleLogin}
+                    startingProvider={startingSocialProvider}
                     onUnavailableSocialLogin={handleUnavailableSocialLogin}
                   />
                 </>
@@ -447,6 +497,19 @@ function getFriendlyLoginError(error: { message?: string }) {
   }
 
   return message || "Could not log in. Please try again.";
+}
+
+function AuthResourceHints() {
+  return (
+    <>
+      <link rel="dns-prefetch" href="https://auth.dmicards.com" />
+      <link rel="preconnect" href="https://auth.dmicards.com" />
+      <link rel="dns-prefetch" href="https://accounts.google.com" />
+      <link rel="preconnect" href="https://accounts.google.com" />
+      <link rel="dns-prefetch" href="https://appleid.apple.com" />
+      <link rel="preconnect" href="https://appleid.apple.com" />
+    </>
+  );
 }
 
 function PasswordResetModal({
@@ -533,12 +596,18 @@ function PasswordResetModal({
 function SocialLoginSection({
   onGoogleLogin,
   onAppleLogin,
+  startingProvider,
   onUnavailableSocialLogin,
 }: {
   onGoogleLogin: () => void;
   onAppleLogin: () => void;
+  startingProvider: SocialAuthProvider | null;
   onUnavailableSocialLogin: () => void;
 }) {
+  const isStartingGoogle = startingProvider === "google";
+  const isStartingApple = startingProvider === "apple";
+  const isStartingSocialAuth = Boolean(startingProvider);
+
   return (
     <div className="mt-6">
       <div className="flex items-center gap-3">
@@ -553,19 +622,31 @@ function SocialLoginSection({
         <button
           type="button"
           onClick={onGoogleLogin}
-          className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/20 bg-white px-4 py-3 text-sm font-semibold text-[#101935] shadow-lg shadow-white/5 transition hover:shadow-white/15"
+          disabled={isStartingSocialAuth}
+          aria-busy={isStartingGoogle}
+          className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/20 bg-white px-4 py-3 text-sm font-semibold text-[#101935] shadow-lg shadow-white/5 transition hover:shadow-white/15 disabled:cursor-not-allowed disabled:opacity-70"
         >
-          <FcGoogle className="h-5 w-5 shrink-0" />
-          Continue with Google
+          {isStartingGoogle ? (
+            <Spinner className="border-[#101935]/25 border-t-[#101935]" />
+          ) : (
+            <FcGoogle className="h-5 w-5 shrink-0" />
+          )}
+          {isStartingGoogle ? "Connecting to Google..." : "Continue with Google"}
         </button>
 
         <button
           type="button"
           onClick={onAppleLogin}
-          className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/15 bg-black px-4 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-black/80"
+          disabled={isStartingSocialAuth}
+          aria-busy={isStartingApple}
+          className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/15 bg-black px-4 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-70"
         >
-          <FaApple className="h-5 w-5 shrink-0" />
-          Continue with Apple
+          {isStartingApple ? (
+            <Spinner className="border-white/25 border-t-white" />
+          ) : (
+            <FaApple className="h-5 w-5 shrink-0" />
+          )}
+          {isStartingApple ? "Connecting to Apple..." : "Continue with Apple"}
         </button>
 
         <button
@@ -581,6 +662,15 @@ function SocialLoginSection({
         </button>
       </div>
     </div>
+  );
+}
+
+function Spinner({ className = "" }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`h-4 w-4 shrink-0 animate-spin rounded-full border-2 ${className}`}
+    />
   );
 }
 

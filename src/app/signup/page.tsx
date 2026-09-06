@@ -20,6 +20,8 @@ import { getOrCreateClientProfile } from "@/lib/profiles";
 
 const titleOptions = ["Mr", "Mrs", "Miss", "Ms", "Mx", "Dr", "Prof", "Sir", "Dame", "Lord", "Lady", "Other"];
 
+type SocialAuthProvider = "google" | "apple";
+
 function buildFullName(title: string, firstName: string, lastName: string) {
   return [title, firstName, lastName]
     .map((part) => part.trim())
@@ -42,6 +44,36 @@ export default function ClientSignupPage() {
   const [accountExists, setAccountExists] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
+  const [startingSocialProvider, setStartingSocialProvider] =
+    useState<SocialAuthProvider | null>(null);
+
+  useEffect(() => {
+    let pageWasHidden = false;
+
+    function resetRestoredSocialAuthState() {
+      setStartingSocialProvider(null);
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        pageWasHidden = true;
+        return;
+      }
+
+      if (pageWasHidden && document.visibilityState === "visible") {
+        pageWasHidden = false;
+        resetRestoredSocialAuthState();
+      }
+    }
+
+    window.addEventListener("pageshow", resetRestoredSocialAuthState);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("pageshow", resetRestoredSocialAuthState);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     const {
@@ -216,21 +248,29 @@ export default function ClientSignupPage() {
     setSignupError("");
     setSignupMessage("");
     setAccountExists(false);
+    setStartingSocialProvider("google");
 
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: buildAuthCallbackRedirectUrl("/client/dashboard"),
-      },
-    });
-
-    if (error) {
-      console.error("[DMI auth] Google signup start failed", {
-        name: error.name,
-        message: error.message,
-        status: error.status,
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: buildAuthCallbackRedirectUrl("/client/dashboard"),
+        },
       });
+
+      if (error) {
+        console.error("[DMI auth] Google signup start failed", {
+          name: error.name,
+          message: error.message,
+          status: error.status,
+        });
+        setSignupError("Could not start Google sign-up. Please try again.");
+        setStartingSocialProvider(null);
+      }
+    } catch (error) {
+      console.error("[DMI auth] Google signup start failed", error);
       setSignupError("Could not start Google sign-up. Please try again.");
+      setStartingSocialProvider(null);
     }
   }
 
@@ -238,21 +278,29 @@ export default function ClientSignupPage() {
     setSignupError("");
     setSignupMessage("");
     setAccountExists(false);
+    setStartingSocialProvider("apple");
 
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "apple",
-      options: {
-        redirectTo: buildAuthCallbackRedirectUrl("/client/dashboard"),
-      },
-    });
-
-    if (error) {
-      console.error("[DMI auth] Apple signup start failed", {
-        name: error.name,
-        message: error.message,
-        status: error.status,
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "apple",
+        options: {
+          redirectTo: buildAuthCallbackRedirectUrl("/client/dashboard"),
+        },
       });
+
+      if (error) {
+        console.error("[DMI auth] Apple signup start failed", {
+          name: error.name,
+          message: error.message,
+          status: error.status,
+        });
+        setSignupError("Could not start Apple sign-up. Please try again.");
+        setStartingSocialProvider(null);
+      }
+    } catch (error) {
+      console.error("[DMI auth] Apple signup start failed", error);
       setSignupError("Could not start Apple sign-up. Please try again.");
+      setStartingSocialProvider(null);
     }
   }
 
@@ -300,6 +348,7 @@ export default function ClientSignupPage() {
 
   return (
     <main className="min-h-screen bg-[#070B1A] text-white">
+      <AuthResourceHints />
       <div className="grid min-h-screen lg:grid-cols-[minmax(0,0.8fr)_minmax(560px,0.7fr)]">
         <section className="relative hidden overflow-hidden border-r border-white/10 bg-[#0F0E38] p-12 lg:flex lg:flex-col lg:justify-between">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_18%,rgba(172,0,255,0.24),transparent_32%),radial-gradient(circle_at_76%_28%,rgba(91,44,255,0.18),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.06),transparent_48%)]" />
@@ -490,6 +539,7 @@ export default function ClientSignupPage() {
               <SocialLoginSection
                 onGoogleSignup={handleGoogleSignup}
                 onAppleSignup={handleAppleSignup}
+                startingProvider={startingSocialProvider}
                 onUnavailableSocialSignup={handleUnavailableSocialSignup}
               />
 
@@ -528,15 +578,34 @@ function isObfuscatedExistingUser(user: { identities?: unknown }) {
   return Array.isArray(user.identities) && user.identities.length === 0;
 }
 
+function AuthResourceHints() {
+  return (
+    <>
+      <link rel="dns-prefetch" href="https://auth.dmicards.com" />
+      <link rel="preconnect" href="https://auth.dmicards.com" />
+      <link rel="dns-prefetch" href="https://accounts.google.com" />
+      <link rel="preconnect" href="https://accounts.google.com" />
+      <link rel="dns-prefetch" href="https://appleid.apple.com" />
+      <link rel="preconnect" href="https://appleid.apple.com" />
+    </>
+  );
+}
+
 function SocialLoginSection({
   onGoogleSignup,
   onAppleSignup,
+  startingProvider,
   onUnavailableSocialSignup,
 }: {
   onGoogleSignup: () => void;
   onAppleSignup: () => void;
+  startingProvider: SocialAuthProvider | null;
   onUnavailableSocialSignup: () => void;
 }) {
+  const isStartingGoogle = startingProvider === "google";
+  const isStartingApple = startingProvider === "apple";
+  const isStartingSocialAuth = Boolean(startingProvider);
+
   return (
     <div className="mt-5">
       <div className="flex items-center gap-3">
@@ -551,19 +620,31 @@ function SocialLoginSection({
         <button
           type="button"
           onClick={onGoogleSignup}
-          className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/20 bg-white px-4 py-3 text-sm font-semibold text-[#101935] shadow-lg shadow-white/5 transition hover:shadow-white/15"
+          disabled={isStartingSocialAuth}
+          aria-busy={isStartingGoogle}
+          className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/20 bg-white px-4 py-3 text-sm font-semibold text-[#101935] shadow-lg shadow-white/5 transition hover:shadow-white/15 disabled:cursor-not-allowed disabled:opacity-70"
         >
-          <FcGoogle className="h-5 w-5 shrink-0" />
-          Continue with Google
+          {isStartingGoogle ? (
+            <Spinner className="border-[#101935]/25 border-t-[#101935]" />
+          ) : (
+            <FcGoogle className="h-5 w-5 shrink-0" />
+          )}
+          {isStartingGoogle ? "Connecting to Google..." : "Continue with Google"}
         </button>
 
         <button
           type="button"
           onClick={onAppleSignup}
-          className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/15 bg-black px-4 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-black/80"
+          disabled={isStartingSocialAuth}
+          aria-busy={isStartingApple}
+          className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/15 bg-black px-4 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-70"
         >
-          <FaApple className="h-5 w-5 shrink-0" />
-          Continue with Apple
+          {isStartingApple ? (
+            <Spinner className="border-white/25 border-t-white" />
+          ) : (
+            <FaApple className="h-5 w-5 shrink-0" />
+          )}
+          {isStartingApple ? "Connecting to Apple..." : "Continue with Apple"}
         </button>
 
         <button
@@ -580,6 +661,15 @@ function SocialLoginSection({
       </div>
 
     </div>
+  );
+}
+
+function Spinner({ className = "" }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`h-4 w-4 shrink-0 animate-spin rounded-full border-2 ${className}`}
+    />
   );
 }
 

@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { getCurrentProfile } from "@/lib/client-auth";
 
@@ -30,6 +31,8 @@ function AuthCallbackContent() {
       const email = searchParams.get("email") || "";
       let verifiedUserId: string | null = null;
       let verifiedEmail: string | null = email || null;
+      let exchangedSession: Session | null = null;
+      let exchangedUser: User | null = null;
       const urlError =
         searchParams.get("error_description") ||
         searchParams.get("error") ||
@@ -64,6 +67,8 @@ function AuthCallbackContent() {
 
           verifiedUserId = data.user?.id || data.session?.user?.id || null;
           verifiedEmail = data.user?.email || data.session?.user?.email || email || null;
+          exchangedSession = data.session;
+          exchangedUser = data.user || null;
 
           if (error) throw error;
         } else if (tokenHash && type) {
@@ -93,25 +98,35 @@ function AuthCallbackContent() {
           });
         }
 
-        const { session, sessionError } = await resolveVerifiedCallbackSession({
-          requiresHostedSessionCheck: !code && !(tokenHash && type),
-        });
+        let session = exchangedSession;
+        let sessionError: Error | null = null;
+        let callbackUser = exchangedUser || session?.user || null;
+
+        if (!callbackUser) {
+          const resolvedSession = await resolveVerifiedCallbackSession({
+            requiresHostedSessionCheck: !code && !(tokenHash && type),
+          });
+          session = resolvedSession.session;
+          sessionError = resolvedSession.sessionError;
+          callbackUser = session?.user || null;
+        }
 
         console.log("[DMI auth] auth callback session state", {
           error: sessionError
             ? { name: sessionError.name, message: sessionError.message }
             : null,
           hasSession: Boolean(session),
-          userId: session?.user?.id || null,
-          email: session?.user?.email || null,
-          emailConfirmedAt: session?.user?.email_confirmed_at || null,
+          usedExchangeSession: Boolean(exchangedSession),
+          userId: callbackUser?.id || null,
+          email: callbackUser?.email || null,
+          emailConfirmedAt: callbackUser?.email_confirmed_at || null,
           verifiedUserId,
           verifiedEmail,
         });
 
-        if (session?.user && isUserEmailVerified(session.user)) {
-          await getCurrentProfile(session.user);
-        } else if (session?.user) {
+        if (callbackUser && isUserEmailVerified(callbackUser)) {
+          await getCurrentProfile(callbackUser);
+        } else if (callbackUser) {
           throw new Error("Your email address has not been verified yet.");
         } else if (nextPath === "/email-verified" && !verifiedUserId) {
           throw new Error("Verification link is missing its confirmation token.");
