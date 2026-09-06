@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, LockKeyhole, Mail, X } from "lucide-react";
 import { FaApple, FaMicrosoft } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
-import { buildAuthCallbackRedirectUrl } from "@/lib/auth-redirect";
+import { buildAuthCallbackRedirectUrl, buildAuthRedirectUrl } from "@/lib/auth-redirect";
 import { supabase } from "@/lib/supabase";
 import { getOrCreateClientProfile } from "@/lib/profiles";
 import { getCurrentClientAccountStatus } from "@/lib/client-auth";
@@ -232,7 +232,7 @@ export default function ClientLogin() {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
-        redirectTo: `${window.location.origin}/auth/reset-password`,
+        redirectTo: buildAuthRedirectUrl("/auth/reset-password"),
       });
 
       if (error) {

@@ -6,6 +6,10 @@ export function buildAuthCallbackRedirectUrl(nextPath: string) {
   return url.toString();
 }
 
+export function buildAuthRedirectUrl(path: string) {
+  return new URL(path, resolveAuthRedirectOrigin()).toString();
+}
+
 function resolveAuthRedirectOrigin() {
   if (typeof window !== "undefined") {
     const currentOrigin = window.location.origin;
