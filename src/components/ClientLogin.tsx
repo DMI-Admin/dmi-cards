@@ -220,6 +220,26 @@ export default function ClientLogin() {
     }
   }
 
+  async function handleAppleLogin() {
+    setLoginError("");
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "apple",
+      options: {
+        redirectTo: buildAuthCallbackRedirectUrl("/client/dashboard"),
+      },
+    });
+
+    if (error) {
+      console.error("[DMI auth] Apple login start failed", {
+        name: error.name,
+        message: error.message,
+        status: error.status,
+      });
+      setLoginError("Could not start Apple sign-in. Please try again.");
+    }
+  }
+
   function handleUnavailableSocialLogin() {
     setLoginError("Social login is not enabled yet. Please use email and password.");
   }
@@ -390,6 +410,7 @@ export default function ClientLogin() {
 
                   <SocialLoginSection
                     onGoogleLogin={handleGoogleLogin}
+                    onAppleLogin={handleAppleLogin}
                     onUnavailableSocialLogin={handleUnavailableSocialLogin}
                   />
                 </>
@@ -511,9 +532,11 @@ function PasswordResetModal({
 
 function SocialLoginSection({
   onGoogleLogin,
+  onAppleLogin,
   onUnavailableSocialLogin,
 }: {
   onGoogleLogin: () => void;
+  onAppleLogin: () => void;
   onUnavailableSocialLogin: () => void;
 }) {
   return (
@@ -538,7 +561,7 @@ function SocialLoginSection({
 
         <button
           type="button"
-          onClick={onUnavailableSocialLogin}
+          onClick={onAppleLogin}
           className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/15 bg-black px-4 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-black/80"
         >
           <FaApple className="h-5 w-5 shrink-0" />

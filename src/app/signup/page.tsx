@@ -234,6 +234,28 @@ export default function ClientSignupPage() {
     }
   }
 
+  async function handleAppleSignup() {
+    setSignupError("");
+    setSignupMessage("");
+    setAccountExists(false);
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "apple",
+      options: {
+        redirectTo: buildAuthCallbackRedirectUrl("/client/dashboard"),
+      },
+    });
+
+    if (error) {
+      console.error("[DMI auth] Apple signup start failed", {
+        name: error.name,
+        message: error.message,
+        status: error.status,
+      });
+      setSignupError("Could not start Apple sign-up. Please try again.");
+    }
+  }
+
   function handleUnavailableSocialSignup() {
     setSignupError("Social signup is not enabled yet. Please use email and password.");
   }
@@ -467,6 +489,7 @@ export default function ClientSignupPage() {
 
               <SocialLoginSection
                 onGoogleSignup={handleGoogleSignup}
+                onAppleSignup={handleAppleSignup}
                 onUnavailableSocialSignup={handleUnavailableSocialSignup}
               />
 
@@ -507,9 +530,11 @@ function isObfuscatedExistingUser(user: { identities?: unknown }) {
 
 function SocialLoginSection({
   onGoogleSignup,
+  onAppleSignup,
   onUnavailableSocialSignup,
 }: {
   onGoogleSignup: () => void;
+  onAppleSignup: () => void;
   onUnavailableSocialSignup: () => void;
 }) {
   return (
@@ -534,7 +559,7 @@ function SocialLoginSection({
 
         <button
           type="button"
-          onClick={onUnavailableSocialSignup}
+          onClick={onAppleSignup}
           className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/15 bg-black px-4 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-black/80"
         >
           <FaApple className="h-5 w-5 shrink-0" />
