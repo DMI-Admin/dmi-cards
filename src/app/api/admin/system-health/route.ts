@@ -6,7 +6,7 @@ import {
   requireAdminAccess,
 } from "@/lib/admin-auth";
 import { getAppleWalletConfig, validateAppleWalletConfig } from "@/lib/wallet/apple";
-import { getGoogleWalletConfig } from "@/lib/wallet/google";
+import { checkGoogleWalletReadOnlyHealth } from "@/lib/wallet/google";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { isEmailOAuthStateConfigured } from "@/lib/email/oauth-state";
 import { isEmailTokenEncryptionConfigured } from "@/lib/email/token-encryption";
@@ -20,6 +20,7 @@ type HealthCheckResult = {
   status: HealthStatus;
   latencyMs: number;
   message: string;
+  metadata?: Record<string, string | number | boolean | null>;
 };
 
 export const dynamic = "force-dynamic";
@@ -252,14 +253,25 @@ async function checkAppleWalletConfig() {
 }
 
 async function checkGoogleWalletConfig() {
-  const config = getGoogleWalletConfig();
+  const health = await checkGoogleWalletReadOnlyHealth();
 
   return {
-    status: config.configured ? ("operational" as const) : ("degraded" as const),
-    message: config.configured
-      ? "Google Wallet configuration is present."
-      : "Google Wallet configuration is incomplete.",
+    status: googleWalletHealthStatus(health.status),
+    message: health.message,
+    metadata: {
+      walletStatus: health.status,
+      timestamp: health.timestamp,
+      category: health.category,
+      httpStatus: health.httpStatus ?? null,
+      providerStatus: health.providerStatus ?? null,
+    },
   };
+}
+
+function googleWalletHealthStatus(status: "healthy" | "degraded" | "failed") {
+  if (status === "healthy") return "operational" as const;
+  if (status === "failed") return "outage" as const;
+  return "degraded" as const;
 }
 
 async function checkGoogleEmailOAuthConfig() {

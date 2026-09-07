@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createSign } from "node:crypto";
+import { createPrivateKey, createSign } from "node:crypto";
 import { buildPublicCardUrl, getCanonicalPublicAppOrigin } from "@/lib/public-url";
 import type { WalletCardForPass } from "@/lib/wallet/card-loader";
 
@@ -42,6 +42,15 @@ export type GoogleWalletSaveLink = {
   objectId: string;
   publicCardUrl: string;
   saveUrl: string;
+};
+
+export type GoogleWalletHealthResult = {
+  status: "healthy" | "degraded" | "failed";
+  timestamp: string;
+  category: string;
+  message: string;
+  httpStatus?: number;
+  providerStatus?: string;
 };
 
 class GoogleWalletApiError extends Error {
@@ -88,6 +97,70 @@ export function getGoogleWalletConfig(): GoogleWalletConfigResult {
       privateKey: normalisePrivateKey(values.GOOGLE_WALLET_PRIVATE_KEY),
     },
     missingVariables: [],
+  };
+}
+
+export async function checkGoogleWalletReadOnlyHealth(): Promise<GoogleWalletHealthResult> {
+  const timestamp = new Date().toISOString();
+  const config = getGoogleWalletConfig();
+
+  if (!config.configured) {
+    return {
+      status: "degraded",
+      timestamp,
+      category: "missing_configuration",
+      message: `Google Wallet configuration is incomplete: ${config.missingVariables.join(", ")}.`,
+    };
+  }
+
+  if (!isParseablePrivateKey(config.config.privateKey)) {
+    return {
+      status: "failed",
+      timestamp,
+      category: "invalid_private_key",
+      message: "Google Wallet private key is present but could not be parsed as a PEM private key.",
+    };
+  }
+
+  let accessToken = "";
+
+  try {
+    accessToken = await createGoogleWalletAccessToken(config.config);
+  } catch (error) {
+    return googleWalletHealthFailure(
+      timestamp,
+      "oauth_token_failed",
+      "Google Wallet OAuth token generation failed.",
+      error
+    );
+  }
+
+  const classId = buildGoogleWalletClassId(config.config.issuerId);
+  const response = await googleWalletRequest(
+    accessToken,
+    `genericClass/${resourceId(classId)}`
+  );
+
+  if (!response.ok) {
+    const error = await googleWalletApiError(
+      response,
+      "GOOGLE_WALLET_CLASS_LOOKUP_FAILED"
+    );
+
+    return googleWalletHealthFailure(
+      timestamp,
+      "class_lookup_failed",
+      "Google Wallet class lookup failed.",
+      error
+    );
+  }
+
+  return {
+    status: "healthy",
+    timestamp,
+    category: "class_lookup_succeeded",
+    message: "Google Wallet OAuth token generation and class lookup succeeded.",
+    httpStatus: response.status,
   };
 }
 
@@ -427,6 +500,46 @@ function localizedString(value: string) {
 
 function normalisePrivateKey(value: string) {
   return value.replace(/\\n/g, "\n");
+}
+
+function isParseablePrivateKey(value: string) {
+  try {
+    createPrivateKey(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function googleWalletHealthFailure(
+  timestamp: string,
+  category: string,
+  message: string,
+  error: unknown
+): GoogleWalletHealthResult {
+  if (error instanceof GoogleWalletApiError) {
+    return {
+      status: "failed",
+      timestamp,
+      category,
+      message: `${message} ${safeGoogleWalletProviderMessage(error.message)}`,
+      httpStatus: error.status,
+      providerStatus: error.code,
+    };
+  }
+
+  return {
+    status: "failed",
+    timestamp,
+    category,
+    message,
+  };
+}
+
+function safeGoogleWalletProviderMessage(value: string) {
+  const message = value.trim();
+
+  return message ? `Provider message: ${message}` : "";
 }
 
 function safeGoogleWalletImageUri(value: string) {

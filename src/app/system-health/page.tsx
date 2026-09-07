@@ -18,6 +18,7 @@ type HealthCheck = {
   status: HealthStatus;
   latencyMs: number;
   message: string;
+  metadata?: Record<string, string | number | boolean | null>;
 };
 
 type HealthResponse = {
@@ -257,11 +258,35 @@ function HealthServiceCard({ check }: { check: HealthCheck }) {
 
       <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
         <p className="text-sm leading-6 text-white/75">{safeHealthMessage(check.message)}</p>
+        {check.metadata ? <SafeMetadata metadata={check.metadata} /> : null}
         <p className="mt-3 text-xs font-semibold uppercase tracking-[0.2em] text-white/35">
           {check.latencyMs}ms
         </p>
       </div>
     </article>
+  );
+}
+
+function SafeMetadata({
+  metadata,
+}: {
+  metadata: Record<string, string | number | boolean | null>;
+}) {
+  const entries = Object.entries(metadata).filter(([, value]) => value !== null && value !== "");
+
+  if (entries.length === 0) return null;
+
+  return (
+    <dl className="mt-4 grid gap-2 text-xs text-white/55 sm:grid-cols-2">
+      {entries.map(([key, value]) => (
+        <div key={key} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
+          <dt className="font-semibold uppercase tracking-[0.16em] text-white/35">
+            {titleFromService(key)}
+          </dt>
+          <dd className="mt-1 break-words text-white/65">{safeHealthMessage(String(value))}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
