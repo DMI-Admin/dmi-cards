@@ -34,7 +34,6 @@ import { ClientAuthRequiredError, getCurrentUser } from "@/lib/client-auth";
 import { useClientPlan } from "@/lib/use-client-plan";
 import { getClientVisibleTemplates } from "@/lib/templates";
 import {
-  defaultTemplateForPlan,
   firstTemplateColour,
   getInitialFieldOrder,
   hiddenFieldsForCard,
@@ -130,7 +129,6 @@ export default function ClientQrCodePage() {
         const templates = (await getClientVisibleTemplates(
           currentPlan
         )) as CardTemplate[];
-        const defaultTemplate = defaultTemplateForPlan(templates, currentPlan);
         const { data, error } = await supabase
           .from("cards")
           .select("*")
@@ -154,8 +152,7 @@ export default function ClientQrCodePage() {
             toSavedQrCard(
               row as SupabaseCardRow,
               templates,
-              currentPlan,
-              defaultTemplate
+              currentPlan
             )
           )
           .filter((card): card is SavedQrCard => Boolean(card));
@@ -1114,8 +1111,7 @@ function QrSvgModule({
 function toSavedQrCard(
   row: SupabaseCardRow,
   templates: CardTemplate[],
-  plan: ClientCardPlan,
-  defaultTemplate: CardTemplate | null
+  plan: ClientCardPlan
 ): SavedQrCard | null {
   const id = row.id || "";
   const slug = row.slug?.trim() || "";
@@ -1123,8 +1119,8 @@ function toSavedQrCard(
 
   if (!id || !slug || !cardSlot) return null;
 
-  const cardData = mapSupabaseCard(row, templates, plan);
-  const cardTemplate = templateForCard(cardData, templates, plan) || defaultTemplate;
+  const cardData = mapSupabaseCard(row, templates, plan, null);
+  const cardTemplate = templateForCard(cardData, templates, plan);
   const previewTemplate = buildQrCardPreviewTemplate(cardTemplate, cardData);
 
   return {

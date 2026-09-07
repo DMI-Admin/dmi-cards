@@ -94,24 +94,13 @@ export async function getPublishedPublicCardBySlug(
 }
 
 async function loadPublicTemplate(templateId?: string | null) {
-  if (templateId) {
-    const { data } = await supabase
-      .from("templates")
-      .select("*")
-      .eq("id", templateId)
-      .or("status.eq.published,is_published.eq.true")
-      .maybeSingle();
-
-    if (data) return data;
-  }
+  if (!templateId) return null;
 
   const { data } = await supabase
     .from("templates")
     .select("*")
-    .eq("access_level", "free")
+    .eq("id", templateId)
     .or("status.eq.published,is_published.eq.true")
-    .order("created_at", { ascending: true })
-    .limit(1)
     .maybeSingle();
 
   return data;

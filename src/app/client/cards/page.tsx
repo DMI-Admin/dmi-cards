@@ -756,7 +756,7 @@ export default function ClientCardsPage() {
       setDatabaseReady(true);
       setDatabaseNotice("");
       const savedCards = cardRows.map((row) =>
-        mapSupabaseCard(row, nextTemplates, nextDefaultTemplate, currentPlan)
+        mapSupabaseCard(row, nextTemplates, null, currentPlan)
       );
       console.log("[DMI auth] loaded cards", savedCards);
       const orderedCards = sortCardsBySlotOrder(savedCards);
@@ -820,7 +820,15 @@ export default function ClientCardsPage() {
     setPanelMode("edit");
     setActiveStep(0);
     setHasVisitedActionsStep(false);
-    const cardTemplate = templateForCard(card, adminTemplates, currentPlan) || currentDefaultTemplate;
+    const cardTemplate = templateForCard(card, adminTemplates, currentPlan);
+
+    if (!cardTemplate) {
+      setSaveError(
+        "This card references a template that is not currently published. Ask an admin to republish the template before editing."
+      );
+      return;
+    }
+
     const savedFieldOrder = mergeFieldOrderWithTemplate(card.field_order, cardTemplate);
     setFieldOrder(savedFieldOrder);
     setDraftCard({
@@ -1205,8 +1213,11 @@ export default function ClientCardsPage() {
     }
 
     try {
-      const selectedTemplate =
-        templateForCard(cardToSave, adminTemplates, currentPlan) || currentDefaultTemplate;
+      const selectedTemplate = templateForCard(
+        cardToSave,
+        adminTemplates,
+        currentPlan
+      );
 
       if (!selectedTemplate?.id) {
         setSaveStatus("failed");
@@ -1330,7 +1341,7 @@ export default function ClientCardsPage() {
       return null;
     }
 
-    return mapSupabaseCard(data, adminTemplates, currentDefaultTemplate, currentPlan);
+    return mapSupabaseCard(data, adminTemplates, null, currentPlan);
   }
 
   async function togglePublish(card: ClientCard) {
@@ -1345,8 +1356,7 @@ export default function ClientCardsPage() {
       return false;
     }
 
-    const selectedTemplate =
-      templateForCard(card, adminTemplates, currentPlan) || currentDefaultTemplate;
+    const selectedTemplate = templateForCard(card, adminTemplates, currentPlan);
 
     console.log("[DMI cards] selectedTemplate.id", selectedTemplate?.id || null);
 
@@ -1489,7 +1499,6 @@ export default function ClientCardsPage() {
               cards={cards}
               isPaid={isPaid}
               templates={adminTemplates}
-              defaultTemplate={currentDefaultTemplate}
               currentPlan={currentPlan}
               onCreate={openCreatePanel}
               onSelect={setSelectedCardId}
@@ -1868,7 +1877,6 @@ function CardList({
   cards,
   isPaid,
   templates,
-  defaultTemplate,
   currentPlan,
   onCreate,
   onSelect,
@@ -1881,7 +1889,6 @@ function CardList({
   cards: ClientCard[];
   isPaid: boolean;
   templates: AdminTemplate[];
-  defaultTemplate: ResolvedCardTemplate | null;
   currentPlan: ClientCardPlan;
   onCreate: (cardSlot: 1 | 2 | 3) => void;
   onSelect: (id: string) => void;
@@ -1939,7 +1946,6 @@ function CardList({
               key={card.id}
               card={card}
               templates={templates}
-              defaultTemplate={defaultTemplate}
               currentPlan={currentPlan}
               onSelect={onSelect}
               onEdit={onEdit}
@@ -1958,7 +1964,6 @@ function CardList({
 function GalleryCardSlot({
   card,
   templates,
-  defaultTemplate,
   currentPlan,
   onSelect,
   onEdit,
@@ -1969,7 +1974,6 @@ function GalleryCardSlot({
 }: {
   card: ClientCard;
   templates: AdminTemplate[];
-  defaultTemplate: ResolvedCardTemplate | null;
   currentPlan: ClientCardPlan;
   onSelect: (id: string) => void;
   onEdit: (card: ClientCard) => void;
@@ -1982,7 +1986,7 @@ function GalleryCardSlot({
   const [deleteConfirming, setDeleteConfirming] = useState(false);
   const [actionPending, setActionPending] = useState<"publish" | "delete" | null>(null);
   const [inlineError, setInlineError] = useState("");
-  const cardTemplate = templateForCard(card, templates, currentPlan) || defaultTemplate;
+  const cardTemplate = templateForCard(card, templates, currentPlan);
   const previewTemplate = cardTemplate
     ? buildTemplatePreview(
         cardTemplate,

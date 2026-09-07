@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildPublicCardUrl } from "@/lib/public-url";
 import {
   buildCardSlugBase,
@@ -25,6 +26,7 @@ const criticalEditorPersistenceColumns = new Set([
   "lead_capture_settings",
   "action_config",
 ]);
+type CardDatabaseClient = SupabaseClient;
 
 export async function listCardsForUser(userId: string) {
   return supabase
@@ -68,10 +70,63 @@ export async function saveClientCard({
   mode: CardWriteMode;
   isPublishing?: boolean;
 }): Promise<CardWriteResult> {
+  void userId;
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    return {
+      data: null,
+      error: { code: "UNAUTHENTICATED", message: "Please sign in to save your card." },
+    };
+  }
+
+  const response = await fetch("/api/client/cards", {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ card, mode }),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const error = result?.error || {};
+
+    return {
+      data: null,
+      error: {
+        code: typeof error.code === "string" ? error.code : String(response.status),
+        message:
+          typeof error.message === "string"
+            ? error.message
+            : "Failed to save card. Please try again.",
+      },
+    };
+  }
+
+  return { data: (result?.data?.card || null) as SupabaseCardRow | null, error: null };
+}
+
+export async function saveClientCardRecord({
+  card,
+  userId,
+  mode,
+  database = supabase,
+}: {
+  card: SharedClientCard;
+  userId: string;
+  mode: CardWriteMode;
+  database?: CardDatabaseClient;
+}): Promise<CardWriteResult> {
   const shouldUpdate = mode === "edit" && !card.id.startsWith("card-");
   const currentCardId = shouldUpdate ? card.id : null;
   const slugBase = buildCardSlugBase(card);
-  const slug = await ensureUniqueCardSlug(slugBase, currentCardId);
+  const slug = await ensureUniqueCardSlug(slugBase, currentCardId, database);
   const payload = buildSupabaseCardPayload(
     {
       ...card,
@@ -88,6 +143,7 @@ export async function saveClientCard({
     shouldUpdate,
     slugBase,
     currentCardId,
+    database,
   });
 }
 
@@ -165,6 +221,7 @@ export async function writeCardPayload({
   shouldUpdate,
   slugBase,
   currentCardId,
+  database = supabase,
 }: {
   cardId: string;
   userId: string;
@@ -172,6 +229,7 @@ export async function writeCardPayload({
   shouldUpdate: boolean;
   slugBase: string;
   currentCardId: string | null;
+  database?: CardDatabaseClient;
 }): Promise<CardWriteResult> {
   const timestamp = new Date().toISOString();
   const { card_slot: _cardSlot, ...updatePayload } = payload;
@@ -182,14 +240,14 @@ export async function writeCardPayload({
   const attemptedSlugs = new Set<string>();
   const writePayload = async () =>
     shouldUpdate
-      ? await supabase
+      ? await database
           .from("cards")
           .update(nextPayload)
           .eq("id", cardId)
           .eq("user_id", userId)
           .select("*")
           .single()
-      : await supabase.from("cards").insert([nextPayload]).select("*").single();
+      : await database.from("cards").insert([nextPayload]).select("*").single();
 
   let result = await writePayload();
   let cardSlotCollisionRetried = false;
@@ -212,7 +270,8 @@ export async function writeCardPayload({
       const nextSlug = await nextUniqueCardSlugCandidate(
         slugBase,
         currentCardId,
-        attemptedSlugs
+        attemptedSlugs,
+        database
       );
 
       if (!nextSlug) {
@@ -257,7 +316,8 @@ function isCardSlotCollisionError(error: { code?: string; message?: string } | n
 
 export async function ensureUniqueCardSlug(
   baseSlug: string,
-  currentCardId: string | null
+  currentCardId: string | null,
+  database = supabase
 ) {
   const cleanBase = slugify(baseSlug) || "digital-card";
   let suffix = 1;
@@ -265,7 +325,7 @@ export async function ensureUniqueCardSlug(
   while (suffix <= 100) {
     const candidate = cardSlugCandidate(cleanBase, suffix);
 
-    if (!(await cardSlugExists(candidate, currentCardId))) {
+    if (!(await cardSlugExists(candidate, currentCardId, database))) {
       return candidate;
     }
 
@@ -278,7 +338,8 @@ export async function ensureUniqueCardSlug(
 async function nextUniqueCardSlugCandidate(
   baseSlug: string,
   currentCardId: string | null,
-  attemptedSlugs: Set<string>
+  attemptedSlugs: Set<string>,
+  database = supabase
 ) {
   const cleanBase = slugify(baseSlug) || "digital-card";
 
@@ -289,7 +350,7 @@ async function nextUniqueCardSlugCandidate(
       continue;
     }
 
-    if (!(await cardSlugExists(candidate, currentCardId))) {
+    if (!(await cardSlugExists(candidate, currentCardId, database))) {
       return candidate;
     }
   }
@@ -298,8 +359,12 @@ async function nextUniqueCardSlugCandidate(
   return attemptedSlugs.has(timestampedCandidate) ? null : timestampedCandidate;
 }
 
-async function cardSlugExists(slug: string, currentCardId: string | null) {
-  let query = supabase.from("cards").select("id").eq("slug", slug).limit(1);
+async function cardSlugExists(
+  slug: string,
+  currentCardId: string | null,
+  database = supabase
+) {
+  let query = database.from("cards").select("id").eq("slug", slug).limit(1);
 
   if (currentCardId) {
     query = query.neq("id", currentCardId);

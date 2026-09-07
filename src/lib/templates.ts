@@ -66,14 +66,40 @@ export async function getPublishedTemplates() {
 }
 
 export async function getClientVisibleTemplates(plan: TemplatePlan) {
-  const published = await getPublishedTemplates();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  if (plan === "free") return published;
+  if (!session?.access_token) {
+    throw new Error("Please sign in to load templates.");
+  }
 
-  return published.filter(
-    (template) =>
-      template.access_level === "free" || template.access_level === "paid"
-  );
+  const response = await fetch("/api/client/templates", {
+    method: "GET",
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const message =
+      typeof result?.error?.message === "string"
+        ? result.error.message
+        : "Could not load templates from Supabase.";
+
+    throw new Error(message);
+  }
+
+  const templates = normalizeTemplates((result?.data?.templates || []) as SharedTemplate[]);
+
+  return plan === "free"
+    ? templates.filter((template) => template.access_level === "free")
+    : templates.filter(
+        (template) =>
+          template.access_level === "free" || template.access_level === "paid"
+      );
 }
 
 export async function saveAdminTemplate(
@@ -177,7 +203,8 @@ export function normalizeTemplate(template: SharedTemplate | TemplatePayload): S
     slug: template.slug || slugify(template.name),
     access_level: accessLevel,
     layout_type:
-      accessLevel === "free" ? "classic_free" : template.layout_type || "premium_classic",
+      template.layout_type ||
+      (accessLevel === "free" ? "classic_free" : "premium_classic"),
     status: isPublished ? "published" : "draft",
     is_published: isPublished,
     requires_banner: requiresBanner,

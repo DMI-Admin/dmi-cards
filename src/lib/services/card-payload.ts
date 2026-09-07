@@ -312,10 +312,7 @@ export function normalizeCardTemplates(templates: CardTemplate[]) {
       return {
         ...template,
         access_level: template.access_level === "free" ? "free" : "paid",
-        layout_type:
-          template.access_level === "free"
-            ? "classic_free"
-            : template.layout_type || "premium_classic",
+        layout_type: template.layout_type,
         colour_palette: colourPalette.length ? colourPalette : templatePalette,
         free_colour_palette: templatePalette,
       };
@@ -328,7 +325,11 @@ export function visibleTemplatesForPlan(
 ) {
   const published = normalizeCardTemplates(templates);
 
-  if (plan === "free") return published;
+  if (plan === "free") {
+    return published.filter(
+      (template) => template.access_level === "free" && canSelectTemplate(template, plan)
+    );
+  }
 
   return published.filter(
     (template) => template.access_level === "free" || isPaidTemplate(template)
@@ -389,14 +390,14 @@ export function mapSupabaseCard(
   row: SupabaseCardRow,
   templates: CardTemplate[] = [],
   plan: ClientCardPlan = "free",
-  defaultTemplate = defaultTemplateForPlan(templates, plan)
+  defaultTemplate: CardTemplate | null = null
 ): SharedClientCard {
   const rowName = displayName(row, "");
   const slug = row.slug || slugify(rowName || row.card_name || "digital-card");
   const rowTemplate =
     templateForCard({ template_id: row.template_id || "" }, templates, plan) ||
     defaultTemplate;
-  const templateName = rowTemplate?.name || "Free Classic";
+  const templateName = rowTemplate?.name || "Template unavailable";
   const fieldOrder = mergeFieldOrderWithTemplate(row.field_order, rowTemplate);
   const fieldVisibility = fieldVisibilityWithHiddenFallback(
     row.field_visibility,

@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import CardRenderer, {
   type CardRendererData,
-  type CardRendererTemplate,
 } from "@/components/CardRenderer";
 import {
   ClientPortalHeader,
@@ -45,31 +44,6 @@ import { useClientPlan } from "@/lib/use-client-plan";
 type ThemeChoice = "system" | "light" | "dark";
 
 const themeStorageKey = "dmi-theme";
-const fallbackTemplate: CardRendererTemplate = {
-  access_level: "free",
-  layout_type: "classic_free",
-  allowed_fields: [
-    "job_title",
-    "department",
-    "company_name",
-    "website",
-    "address",
-    "email",
-    "phone",
-  ],
-  custom_fields: {
-    personal: ["job_title", "department"],
-    company: ["company_name", "website", "address"],
-    contact: ["email", "phone"],
-    social: [],
-  },
-  show_personal_section: true,
-  show_company_section: true,
-  show_contact_section: true,
-  show_social_section: false,
-  free_colour_palette: ["#AC00FF", "#101935"],
-};
-
 const analyticsMetrics = [
   { label: "Views", value: "0" },
   { label: "Saves", value: "0" },
@@ -172,11 +146,9 @@ export default function ClientDashboardPage() {
 
   const previewTemplate = useMemo(() => {
     const selectedTemplate =
-      templates.find((template) => template.id === latestCard?.template_id) ||
-      templates.find((template) => template.access_level === "free") ||
-      null;
+      templates.find((template) => template.id === latestCard?.template_id) || null;
 
-    if (!selectedTemplate) return fallbackTemplate;
+    if (!selectedTemplate) return null;
 
     if (selectedTemplate.access_level === "free") {
       return {
@@ -242,13 +214,24 @@ export default function ClientDashboardPage() {
             </div>
 
             {latestCard ? (
-              <div className="flex max-h-[680px] justify-center overflow-hidden rounded-xl border border-[var(--dmi-border)] bg-black/70">
-                <CardRenderer
-                  template={previewTemplate}
-                  cardData={latestCard}
-                  mode="preview"
-                />
-              </div>
+              previewTemplate ? (
+                <div className="flex max-h-[680px] justify-center overflow-hidden rounded-xl border border-[var(--dmi-border)] bg-black/70">
+                  <CardRenderer
+                    template={previewTemplate}
+                    cardData={latestCard}
+                    mode="preview"
+                  />
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-7 text-center">
+                  <h3 className="text-lg font-semibold text-[var(--text-primary)]">
+                    Template unavailable
+                  </h3>
+                  <p className="mx-auto mt-3 max-w-xs text-sm leading-6 text-[var(--text-secondary)]">
+                    This card references a template that is not currently published.
+                  </p>
+                </div>
+              )
             ) : (
               <div className="rounded-2xl border border-dashed border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-7 text-center">
                 <h3 className="text-lg font-semibold text-[var(--text-primary)]">No card created yet</h3>

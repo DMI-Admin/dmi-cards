@@ -28,7 +28,6 @@ import {
 import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
 import { buildPublicCardUrl } from "@/lib/public-url";
 import {
-  defaultTemplateForPlan,
   firstTemplateColour,
   getInitialFieldOrder,
   hiddenFieldsForCard,
@@ -109,7 +108,6 @@ export default function ClientWalletPage() {
         const templates = (await getClientVisibleTemplates(
           currentPlan
         )) as CardTemplate[];
-        const defaultTemplate = defaultTemplateForPlan(templates, currentPlan);
         const { data, error } = await supabase
           .from("cards")
           .select("*")
@@ -134,8 +132,7 @@ export default function ClientWalletPage() {
             toPublishedWalletCard(
               row as SupabaseCardRow,
               templates,
-              currentPlan,
-              defaultTemplate
+              currentPlan
             )
           )
           .filter((card): card is PublishedWalletCard => Boolean(card));
@@ -964,8 +961,7 @@ function MessageCard({
 function toPublishedWalletCard(
   row: SupabaseCardRow,
   templates: CardTemplate[],
-  plan: ClientCardPlan,
-  defaultTemplate: CardTemplate | null
+  plan: ClientCardPlan
 ): PublishedWalletCard | null {
   const id = row.id || "";
   const slug = row.slug?.trim() || "";
@@ -973,13 +969,13 @@ function toPublishedWalletCard(
 
   if (!id || !slug || !slot) return null;
 
-  const cardData = mapSupabaseCard(row, templates, plan);
+  const cardData = mapSupabaseCard(row, templates, plan, null);
   const fullName =
     cardData.full_name ||
     [cardData.first_name, cardData.last_name].filter(Boolean).join(" ") ||
     cardData.card_name ||
     "Full Name";
-  const cardTemplate = templateForCard(cardData, templates, plan) || defaultTemplate;
+  const cardTemplate = templateForCard(cardData, templates, plan);
   const previewTemplate = buildWalletCardPreviewTemplate(cardTemplate, cardData);
 
   return {

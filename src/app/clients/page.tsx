@@ -120,19 +120,6 @@ const importHeaders = [
   "custom_url",
 ];
 
-const fallbackTemplate: Template = {
-  id: "fallback",
-  name: "Digital Card",
-  layout_type: "classic",
-  logo_size: "standard",
-  access_level: "premium",
-  requires_profile_image: true,
-  requires_logo: true,
-  supports_bio: true,
-  supports_save_contact: true,
-  allowed_fields: ["phone", "email", "website", "address"],
-};
-
 export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [clientUsers, setClientUsers] = useState<ClientUser[]>([]);
@@ -1483,13 +1470,13 @@ function PublishedCardPreviewModal({ cards, user, currentIndex, templates, onPre
   onDeleteCard: (card: Card) => void;
 }) {
   const card = cards[currentIndex];
-  const template = templates.find((item) => item.id === card.template_id) || fallbackTemplate;
+  const template = templates.find((item) => item.id === card.template_id) || null;
   const data = user ? { ...card, full_name: user.full_name || user.name || card.full_name, job_title: user.job_title || card.job_title, email: user.email || card.email, phone: user.phone || card.phone, website: user.website || card.website, address: user.address || card.address, whatsapp: user.whatsapp || card.whatsapp, linkedin: user.linkedin || card.linkedin, instagram: user.instagram || card.instagram, facebook: user.facebook || card.facebook, youtube: user.youtube || card.youtube, booking_link: user.booking_link || card.booking_link, custom_url: user.custom_url || card.custom_url } : card;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
       <div className="max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/10 bg-[#0F0E38] text-white shadow-2xl shadow-[#AC00FF]/20">
         <div className="flex items-start justify-between gap-6 border-b border-white/10 p-6">
-          <div><h2 className="text-2xl font-semibold">Card Preview</h2><p className="mt-1 text-sm text-white/45">{card.card_name || card.name || "Digital card"} · {template.name}</p></div>
+          <div><h2 className="text-2xl font-semibold">Card Preview</h2><p className="mt-1 text-sm text-white/45">{card.card_name || card.name || "Digital card"} · {template?.name || "Template unavailable"}</p></div>
           <div className="flex items-center gap-3">
             {cards.length > 1 && <><button onClick={onPrevious} className="rounded-2xl bg-white/10 px-4 py-2.5 text-sm">←</button><span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/15 px-3 py-1 text-xs font-medium text-purple-100">Card {currentIndex + 1} of {cards.length}</span><button onClick={onNext} className="rounded-2xl bg-white/10 px-4 py-2.5 text-sm">→</button></>}
             <button onClick={() => onDeleteCard(card)} className="rounded-2xl bg-red-500/15 px-5 py-2.5 text-sm font-medium text-red-200 transition hover:bg-red-500/25">Delete Card</button>
@@ -1500,7 +1487,13 @@ function PublishedCardPreviewModal({ cards, user, currentIndex, templates, onPre
           <p className="mb-4 text-center text-xs text-white/35">
             Admin deletion is for support and enterprise management only.
           </p>
-          <div className="mx-auto max-w-md"><CardRenderer mode="preview" showActions={template.supports_save_contact ?? true} template={template} cardData={data} /></div>
+          {template ? (
+            <div className="mx-auto max-w-md"><CardRenderer mode="preview" showActions={template.supports_save_contact ?? true} template={template} cardData={data} /></div>
+          ) : (
+            <div className="mx-auto max-w-md rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-center text-sm leading-6 text-white/55">
+              This card references a template that is not currently published.
+            </div>
+          )}
         </div>
       </div>
     </div>

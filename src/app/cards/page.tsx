@@ -798,14 +798,17 @@ export default function CardsPage() {
       )}
 
       {previewActiveCard && (
-        <CardPreviewModal
-          cardData={previewActiveCard}
-          template={
-            templates.find((template) => template.id === previewActiveCard.template_id) ||
-            fallbackTemplate
-          }
-          onClose={() => setPreviewActiveCard(null)}
-        />
+        templates.find((template) => template.id === previewActiveCard.template_id) ? (
+          <CardPreviewModal
+            cardData={previewActiveCard}
+            template={
+              templates.find((template) => template.id === previewActiveCard.template_id)!
+            }
+            onClose={() => setPreviewActiveCard(null)}
+          />
+        ) : (
+          <TemplateUnavailableModal onClose={() => setPreviewActiveCard(null)} />
+        )
       )}
     </main>
   );
@@ -1106,16 +1109,6 @@ function EditPreparedUserModal({
   );
 }
 
-const fallbackTemplate: Template = {
-  id: "fallback",
-  name: "Digital Card",
-  layout_type: "classic",
-  logo_size: "standard",
-  access_level: "premium",
-  allowed_fields: ["phone", "email", "website", "address"],
-  is_published: true,
-};
-
 function CardPreviewModal({
   cardData,
   template,
@@ -1155,6 +1148,26 @@ function CardPreviewModal({
             />
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function TemplateUnavailableModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
+      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0F0E38] p-6 text-white shadow-2xl shadow-[#AC00FF]/20">
+        <h2 className="text-2xl font-semibold">Template unavailable</h2>
+        <p className="mt-3 text-sm leading-6 text-white/55">
+          This card references a template that is not currently published.
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-6 rounded-2xl bg-white/10 px-5 py-2.5 text-sm font-medium"
+        >
+          Close
+        </button>
       </div>
     </div>
   );
