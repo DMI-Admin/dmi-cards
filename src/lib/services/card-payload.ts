@@ -344,13 +344,13 @@ export function defaultTemplateForPlan(
   const freeTemplate =
     published.find((template) => template.access_level === "free") || null;
 
-  if (plan === "free") return freeTemplate;
+  if (freeTemplate) return freeTemplate;
+  if (plan === "free") return null;
 
   return (
     published.find(
       (template) => isPaidTemplate(template) && canSelectTemplate(template, plan)
     ) ||
-    freeTemplate ||
     null
   );
 }

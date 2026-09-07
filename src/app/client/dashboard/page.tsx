@@ -174,9 +174,12 @@ export default function ClientDashboardPage() {
     ? buildPublicCardUrl(latestCard.slug)
     : publicUrl;
   const hasSavedCard = Boolean(latestCard);
+  const hasPublishedCard = Boolean(
+    latestCard?.is_published || latestCard?.status === "published"
+  );
 
   async function copyPublicCardLink() {
-    if (!latestCard?.slug) return;
+    if (!latestCard?.slug || !hasPublishedCard) return;
 
     await navigator.clipboard?.writeText(publicCardUrl);
     setActionMessage("Card link copied.");
@@ -252,11 +255,12 @@ export default function ClientDashboardPage() {
             </div>
         }
       >
-        <WelcomePanel profile={profile} />
+        <WelcomePanel profile={profile} cardState={dashboardCardState(latestCard)} />
 
         <QuickActionsCard
           hasSavedCard={hasSavedCard}
-          publicUrl={publicUrl}
+          hasPublishedCard={hasPublishedCard}
+          publicUrl={hasPublishedCard ? publicUrl : "#"}
           onCopyLink={copyPublicCardLink}
           onCreate={() => router.push("/client/cards")}
           message={actionMessage}
@@ -270,8 +274,20 @@ export default function ClientDashboardPage() {
   );
 }
 
-function WelcomePanel({ profile }: { profile: ClientProfile | null }) {
+function WelcomePanel({
+  profile,
+  cardState,
+}: {
+  profile: ClientProfile | null;
+  cardState: "none" | "draft" | "published";
+}) {
   const firstName = firstNameFromProfile(profile);
+  const message =
+    cardState === "published"
+      ? "Your digital business card is live and ready to share."
+      : cardState === "draft"
+      ? "Your digital business card is saved as a draft. Publish it when you are ready to share."
+      : "Create your first digital business card when you are ready.";
 
   return (
     <div
@@ -293,7 +309,7 @@ function WelcomePanel({ profile }: { profile: ClientProfile | null }) {
           className="mt-3 max-w-2xl text-base font-medium leading-7"
           style={{ color: "rgba(255,255,255,0.78)" }}
         >
-          Your digital business card is live and ready to share.
+          {message}
         </p>
       </div>
     </div>
@@ -319,6 +335,17 @@ function firstNameFromProfile(profile: ClientProfile | null) {
   const emailLocalPart = profile?.email?.split("@")[0]?.trim();
 
   return emailLocalPart || "";
+}
+
+function dashboardCardState(
+  card: {
+    status?: string | null;
+    is_published?: boolean | null;
+  } | null
+): "none" | "draft" | "published" {
+  if (!card) return "none";
+
+  return card.is_published || card.status === "published" ? "published" : "draft";
 }
 
 function AccountMenu({
@@ -562,12 +589,14 @@ function ThemeOption({
 
 function QuickActionsCard({
   hasSavedCard,
+  hasPublishedCard,
   publicUrl,
   onCopyLink,
   onCreate,
   message,
 }: {
   hasSavedCard: boolean;
+  hasPublishedCard: boolean;
   publicUrl: string;
   onCopyLink: () => void;
   onCreate: () => void;
@@ -603,11 +632,11 @@ function QuickActionsCard({
           Edit card
         </a>
         <a
-          href={hasSavedCard ? publicUrl : "#"}
-          target={hasSavedCard ? "_blank" : undefined}
-          rel={hasSavedCard ? "noreferrer" : undefined}
-          aria-disabled={!hasSavedCard}
-          className={`${actionClass} ${!hasSavedCard ? "pointer-events-none opacity-50" : ""}`}
+          href={hasPublishedCard ? publicUrl : "#"}
+          target={hasPublishedCard ? "_blank" : undefined}
+          rel={hasPublishedCard ? "noreferrer" : undefined}
+          aria-disabled={!hasPublishedCard}
+          className={`${actionClass} ${!hasPublishedCard ? "pointer-events-none opacity-50" : ""}`}
         >
           <ExternalLink className="h-4 w-4 text-[var(--text-accent)]" />
           Open public page
@@ -615,7 +644,7 @@ function QuickActionsCard({
         <button
           type="button"
           onClick={onCopyLink}
-          disabled={!hasSavedCard}
+          disabled={!hasPublishedCard}
           className={actionClass}
         >
           <Copy className="h-4 w-4 text-[var(--text-accent)]" />
