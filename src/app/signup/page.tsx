@@ -20,7 +20,7 @@ import { getOrCreateClientProfile } from "@/lib/profiles";
 
 const titleOptions = ["Mr", "Mrs", "Miss", "Ms", "Mx", "Dr", "Prof", "Sir", "Dame", "Lord", "Lady", "Other"];
 
-type SocialAuthProvider = "google" | "apple";
+type SocialAuthProvider = "google" | "apple" | "microsoft";
 
 function waitForNextPaint() {
   return new Promise<void>((resolve) => {
@@ -350,8 +350,43 @@ export default function ClientSignupPage() {
     }
   }
 
-  function handleUnavailableSocialSignup() {
-    setSignupError("Social signup is not enabled yet. Please use email and password.");
+  async function handleMicrosoftSignup() {
+    setSignupError("");
+    setSignupMessage("");
+    setAccountExists(false);
+    pendingSocialAuthRef.current = true;
+    socialAuthLostFocusRef.current = false;
+    setStartingSocialProvider("microsoft");
+
+    try {
+      await waitForNextPaint();
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "azure",
+        options: {
+          redirectTo: buildAuthCallbackRedirectUrl("/client/dashboard"),
+          scopes: "email profile",
+        },
+      });
+
+      if (error) {
+        console.error("[DMI auth] Microsoft signup start failed", {
+          name: error.name,
+          message: error.message,
+          status: error.status,
+        });
+        setSignupError("Could not start Microsoft sign-up. Please try again.");
+        pendingSocialAuthRef.current = false;
+        socialAuthLostFocusRef.current = false;
+        setStartingSocialProvider(null);
+      }
+    } catch (error) {
+      console.error("[DMI auth] Microsoft signup start failed", error);
+      setSignupError("Could not start Microsoft sign-up. Please try again.");
+      pendingSocialAuthRef.current = false;
+      socialAuthLostFocusRef.current = false;
+      setStartingSocialProvider(null);
+    }
   }
 
   async function resendVerificationEmail() {
@@ -585,8 +620,8 @@ export default function ClientSignupPage() {
               <SocialLoginSection
                 onGoogleSignup={handleGoogleSignup}
                 onAppleSignup={handleAppleSignup}
+                onMicrosoftSignup={handleMicrosoftSignup}
                 startingProvider={startingSocialProvider}
-                onUnavailableSocialSignup={handleUnavailableSocialSignup}
               />
 
               <div className="mt-5 flex flex-col gap-3 text-center text-sm text-white/45 sm:flex-row sm:items-center sm:justify-between">
@@ -640,16 +675,17 @@ function AuthResourceHints() {
 function SocialLoginSection({
   onGoogleSignup,
   onAppleSignup,
+  onMicrosoftSignup,
   startingProvider,
-  onUnavailableSocialSignup,
 }: {
   onGoogleSignup: () => void;
   onAppleSignup: () => void;
+  onMicrosoftSignup: () => void;
   startingProvider: SocialAuthProvider | null;
-  onUnavailableSocialSignup: () => void;
 }) {
   const isStartingGoogle = startingProvider === "google";
   const isStartingApple = startingProvider === "apple";
+  const isStartingMicrosoft = startingProvider === "microsoft";
   const isStartingSocialAuth = Boolean(startingProvider);
 
   return (
@@ -695,14 +731,19 @@ function SocialLoginSection({
 
         <button
           type="button"
-          onClick={onUnavailableSocialSignup}
-          className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/65 transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10 hover:text-white md:col-span-2"
+          onClick={onMicrosoftSignup}
+          disabled={isStartingSocialAuth}
+          aria-busy={isStartingMicrosoft}
+          className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/65 transition hover:border-[#AC00FF]/45 hover:bg-[#AC00FF]/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-70 md:col-span-2"
         >
-          <FaMicrosoft className="h-5 w-5 shrink-0 text-[#2F6FED]" />
-          Continue with Microsoft
-          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-white/45">
-            Coming Soon
-          </span>
+          {isStartingMicrosoft ? (
+            <Spinner className="border-white/25 border-t-white" />
+          ) : (
+            <FaMicrosoft className="h-5 w-5 shrink-0 text-[#2F6FED]" />
+          )}
+          {isStartingMicrosoft
+            ? "Connecting to Microsoft..."
+            : "Continue with Microsoft"}
         </button>
       </div>
 
