@@ -346,7 +346,9 @@ export function defaultTemplateForPlan(
   if (plan === "free") return freeTemplate;
 
   return (
-    published.find((template) => canSelectTemplate(template, plan)) ||
+    published.find(
+      (template) => isPaidTemplate(template) && canSelectTemplate(template, plan)
+    ) ||
     freeTemplate ||
     null
   );

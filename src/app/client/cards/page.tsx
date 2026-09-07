@@ -59,7 +59,7 @@ import {
   getClientVisibleTemplates,
   type SharedTemplate,
 } from "@/lib/templates";
-import { ClientAuthRequiredError, getCurrentUser } from "@/lib/client-auth";
+import { ClientAuthRequiredError, getCurrentProfile, getCurrentUser } from "@/lib/client-auth";
 import { buildPublicCardUrl } from "@/lib/public-url";
 import { normalizeInternationalPhoneNumber } from "@/lib/phone-number";
 import { useClientPlan } from "@/lib/use-client-plan";
@@ -510,6 +510,37 @@ const initialCards: ClientCard[] = [];
 const slotShellClass =
   "group mx-auto flex h-[30rem] w-full max-w-[22rem] min-w-0 flex-col rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-4 text-[var(--text-primary)] shadow-[0_18px_48px_rgba(0,0,0,0.18)] transition-[background-color,border-color,box-shadow,transform] duration-200 ease-out min-[1180px]:max-w-none md:hover:border-[#AC00FF]/25 md:hover:bg-[var(--dmi-surface-hover)] md:hover:shadow-[0_18px_46px_rgba(172,0,255,0.12)] motion-safe:md:hover:-translate-y-0.5";
 
+function createProDraftCardFromProfile(
+  profile: Awaited<ReturnType<typeof getCurrentProfile>>,
+  fallbackEmail: string,
+  template: ResolvedCardTemplate
+): ClientCard {
+  const fieldOrder = getInitialFieldOrder(template);
+  const firstName = profile?.first_name || "";
+  const lastName = profile?.last_name || "";
+  const fullName =
+    profile?.full_name || combineNameParts({ first_name: firstName, last_name: lastName });
+
+  return {
+    ...blankCard,
+    id: `card-${Date.now()}`,
+    template_id: template.id,
+    template_name: template.name,
+    card_name: "Premium Classic Card",
+    title: profile?.title || "",
+    first_name: firstName,
+    last_name: lastName,
+    full_name: fullName,
+    email: profile?.email || fallbackEmail,
+    selected_colour: firstTemplateColour(template),
+    selected_text_colour: firstTemplateTextColour(template),
+    card_slot: 1,
+    field_order: fieldOrder,
+    lead_capture_settings: defaultLeadCaptureSettings,
+    action_config: defaultCardActionConfigForTemplate(template),
+  };
+}
+
 export default function ClientCardsPage() {
   const router = useRouter();
   const { plan, isPaid, loading: planLoading } = useClientPlan();
@@ -647,6 +678,7 @@ export default function ClientCardsPage() {
       setAdminTemplates(nextTemplates);
 
       let userId = "";
+      let currentUser: User | null = null;
 
       try {
         const user = await getCurrentUser();
@@ -655,6 +687,7 @@ export default function ClientCardsPage() {
           throw new ClientAuthRequiredError();
         }
         userId = user.id;
+        currentUser = user;
       } catch (error) {
         if (ignore) return;
 
@@ -687,9 +720,42 @@ export default function ClientCardsPage() {
         return;
       }
 
+      let cardRows = data || [];
+
+      if (
+        isPaid &&
+        cardRows.length === 0 &&
+        nextDefaultTemplate?.id &&
+        isPaidTemplate(nextDefaultTemplate)
+      ) {
+        const profile = await getCurrentProfile(currentUser);
+
+        if (ignore) return;
+
+        const provisionedCard = createProDraftCardFromProfile(
+          profile,
+          currentUser?.email || "",
+          nextDefaultTemplate
+        );
+        const provisionResult = await saveClientCard({
+          card: provisionedCard,
+          userId,
+          mode: "create",
+        });
+
+        if (ignore) return;
+
+        if (provisionResult.error) {
+          console.error("Pro draft card provisioning failed", provisionResult.error);
+          setSaveError(describeCardsDatabaseError(provisionResult.error));
+        } else if (provisionResult.data) {
+          cardRows = [provisionResult.data];
+        }
+      }
+
       setDatabaseReady(true);
       setDatabaseNotice("");
-      const savedCards = (data || []).map((row) =>
+      const savedCards = cardRows.map((row) =>
         mapSupabaseCard(row, nextTemplates, nextDefaultTemplate, currentPlan)
       );
       console.log("[DMI auth] loaded cards", savedCards);
@@ -704,7 +770,7 @@ export default function ClientCardsPage() {
     return () => {
       ignore = true;
     };
-  }, [currentPlan, planLoading, router]);
+  }, [currentPlan, isPaid, planLoading, router]);
 
   function openCreatePanel(cardSlot?: 1 | 2 | 3) {
     if (!currentDefaultTemplate) return;
