@@ -24,10 +24,37 @@ export type SharedTemplate = CardRendererTemplate & {
   allowed_actions?: TemplateAllowedActions | null;
 };
 
+export type TemplateFieldConfig = {
+  version: 1;
+  allowed_fields: string[];
+  sections: Record<string, string[]>;
+  default_visibility: Record<string, boolean>;
+  required_fields: string[];
+};
+
+export type TemplateRendererOptions = {
+  version: 1;
+  [key: string]: unknown;
+};
+
 type TemplatePayload = Partial<SharedTemplate> & {
   name: string;
   slug?: string | null;
 };
+
+const templateContractFields = [
+  "profile_image_allowed",
+  "profile_image_default_enabled",
+  "logo_allowed",
+  "logo_default_enabled",
+  "banner_allowed",
+  "banner_default_enabled",
+  "custom_colour_allowed",
+  "custom_text_colour_allowed",
+  "field_config",
+  "renderer_options",
+  "template_contract_version",
+] as const;
 
 export async function getAdminTemplates() {
   const response = await fetch(`/api/admin/templates?ts=${Date.now()}`, {
@@ -112,14 +139,15 @@ export async function saveAdminTemplate(
     is_published: payload.is_published ?? payload.status === "published",
     status: payload.status || (payload.is_published ? "published" : "draft"),
   });
+  const requestPayload = templateWritePayload(normalizedPayload, payload);
   const result = editingTemplateId
     ? await requestAdminTemplate(`/api/admin/templates/${editingTemplateId}`, {
         method: "PATCH",
-        body: JSON.stringify(normalizedPayload),
+        body: JSON.stringify(requestPayload),
       })
     : await requestAdminTemplate("/api/admin/templates", {
         method: "POST",
-        body: JSON.stringify(normalizedPayload),
+        body: JSON.stringify(requestPayload),
       });
 
   return {
@@ -137,9 +165,13 @@ export async function publishAdminTemplate(
       is_published: published,
       status: published ? "published" : "draft",
     });
+  const requestPayload = templateWritePayload(normalizedPayload, {
+    is_published: published,
+    status: published ? "published" : "draft",
+  });
   const result = await requestAdminTemplate(`/api/admin/templates/${template.id}`, {
     method: "PATCH",
-    body: JSON.stringify(normalizedPayload),
+    body: JSON.stringify(requestPayload),
   });
 
   return {
@@ -158,6 +190,21 @@ export async function deleteAdminTemplate(templateId: string) {
 
 export function normalizeTemplates(templates: SharedTemplate[]) {
   return templates.map(normalizeTemplate);
+}
+
+function templateWritePayload(
+  normalizedPayload: SharedTemplate,
+  explicitPayload: Partial<SharedTemplate>
+) {
+  const requestPayload = { ...normalizedPayload } as Record<string, unknown>;
+
+  for (const field of templateContractFields) {
+    if (!(field in explicitPayload)) {
+      delete requestPayload[field];
+    }
+  }
+
+  return requestPayload;
 }
 
 async function requestAdminTemplate(
@@ -195,6 +242,17 @@ export function normalizeTemplate(template: SharedTemplate | TemplatePayload): S
     template.gradient_enabled ?? template.supports_gradient ?? false;
   const defaultFont = template.default_font || template.font_family || null;
   const accessLevel = template.access_level === "paid" ? "paid" : "free";
+  const requiresProfileImage = template.requires_profile_image ?? true;
+  const requiresLogo = template.requires_logo ?? false;
+  const profileImageAllowed = template.profile_image_allowed ?? true;
+  const logoAllowed = template.logo_allowed ?? requiresLogo;
+  const bannerAllowed = template.banner_allowed ?? requiresBanner;
+  const customColourAllowed =
+    template.custom_colour_allowed ?? accessLevel === "paid";
+  const customTextColourAllowed =
+    template.custom_text_colour_allowed ?? accessLevel === "paid";
+  const customFields = normalizeTemplateCustomFields(template.custom_fields);
+  const allowedFields = template.allowed_fields || [];
 
   return {
     ...template,
@@ -207,7 +265,18 @@ export function normalizeTemplate(template: SharedTemplate | TemplatePayload): S
       (accessLevel === "free" ? "classic_free" : "premium_classic"),
     status: isPublished ? "published" : "draft",
     is_published: isPublished,
+    requires_profile_image: requiresProfileImage,
     requires_banner: requiresBanner,
+    requires_logo: requiresLogo,
+    profile_image_allowed: profileImageAllowed,
+    profile_image_default_enabled:
+      template.profile_image_default_enabled ?? profileImageAllowed,
+    logo_allowed: logoAllowed,
+    logo_default_enabled: template.logo_default_enabled ?? logoAllowed,
+    banner_allowed: bannerAllowed,
+    banner_default_enabled: template.banner_default_enabled ?? bannerAllowed,
+    custom_colour_allowed: customColourAllowed,
+    custom_text_colour_allowed: customTextColourAllowed,
     gradient_enabled: gradientEnabled,
     supports_company_banner: requiresBanner,
     supports_gradient: gradientEnabled,
@@ -216,9 +285,15 @@ export function normalizeTemplate(template: SharedTemplate | TemplatePayload): S
     colour_palette: sanitizedPalette,
     free_colour_palette: sanitizedPalette,
     text_colours: textColours,
-    allowed_fields: template.allowed_fields || [],
+    allowed_fields: allowedFields,
     allowed_actions: normalizeTemplateAllowedActions(template.allowed_actions),
-    custom_fields: normalizeTemplateCustomFields(template.custom_fields),
+    custom_fields: customFields,
+    field_config: normalizeTemplateFieldConfig(
+      template.field_config,
+      allowedFields,
+      customFields
+    ),
+    renderer_options: normalizeTemplateRendererOptions(template.renderer_options),
     show_personal_section: template.show_personal_section ?? true,
     show_company_section: template.show_company_section ?? true,
     show_contact_section: template.show_contact_section ?? true,
@@ -246,6 +321,72 @@ function normalizeTemplateCustomFields(value: SharedTemplate["custom_fields"]) {
       ? value.contact.filter((field) => field !== "website")
       : value.contact,
   };
+}
+
+function normalizeTemplateFieldConfig(
+  value: SharedTemplate["field_config"],
+  allowedFields: string[],
+  customFields: SharedTemplate["custom_fields"]
+): TemplateFieldConfig {
+  if (isRecord(value)) {
+    return {
+      version: 1,
+      allowed_fields: stringArrayValue(value.allowed_fields, allowedFields),
+      sections: sectionArrayValue(value.sections, customFields),
+      default_visibility: booleanMapValue(value.default_visibility),
+      required_fields: stringArrayValue(value.required_fields, []),
+    };
+  }
+
+  return {
+    version: 1,
+    allowed_fields: allowedFields,
+    sections: sectionArrayValue(customFields, customFields),
+    default_visibility: {},
+    required_fields: [],
+  };
+}
+
+function normalizeTemplateRendererOptions(
+  value: SharedTemplate["renderer_options"]
+): TemplateRendererOptions {
+  return isRecord(value) ? { version: 1, ...value } : { version: 1 };
+}
+
+function sectionArrayValue(
+  value: unknown,
+  fallback: SharedTemplate["custom_fields"]
+) {
+  const source = isRecord(value) ? value : fallback;
+  const sections: Record<string, string[]> = {};
+
+  if (!isRecord(source)) return sections;
+
+  for (const [key, fields] of Object.entries(source)) {
+    sections[key] = stringArrayValue(fields, []);
+  }
+
+  return sections;
+}
+
+function stringArrayValue(value: unknown, fallback: string[]) {
+  if (!Array.isArray(value)) return fallback;
+
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function booleanMapValue(value: unknown) {
+  if (!isRecord(value)) return {};
+
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, boolean] => {
+      const [key, enabled] = entry;
+      return typeof key === "string" && typeof enabled === "boolean";
+    })
+  );
 }
 
 function isPublishedTemplate(template: Partial<SharedTemplate> | TemplatePayload) {
@@ -316,4 +457,8 @@ function slugify(value: string) {
     .trim()
     .replaceAll(" ", "-")
     .replace(/[^a-z0-9-]/g, "");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

@@ -1,13 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
-import CardRenderer from "@/components/CardRenderer";
+import CardRenderer, {
+  type CardRendererData,
+  type CardRendererTemplate,
+} from "@/components/CardRenderer";
+import ColourPicker from "@/components/ColourPicker";
+import CardEditorModalShell from "@/components/card-builder/CardEditorModalShell";
 import {
-  deleteAdminTemplate,
+  EditorPanel,
+  EditorStepNavigation,
+  PreviewPanelContent,
+  filterDeviceGroups,
+  findDevice,
+  previewFrameDimensions,
+} from "@/components/card-builder/ClientCardEditor";
+import {
   getAdminTemplates,
   normalizeColourPalette,
-  publishAdminTemplate,
   saveAdminTemplate,
   type SharedTemplate,
 } from "@/lib/templates";
@@ -15,11 +26,19 @@ import {
   actionLabelIsConfigurable,
   cardActionDefinitions,
   defaultLabelForActionType,
+  effectiveCardActionConfig,
   isStepThreeOwnedTemplateField,
   normalizeTemplateAllowedActions,
+  type CardActionConfig,
   type CardActionType,
   type TemplateAllowedActions,
 } from "@/lib/card-actions";
+import {
+  defaultLeadCaptureSettings,
+  normalizeLeadCaptureSettings,
+  type LeadCaptureSettings,
+  type SharedClientCard,
+} from "@/lib/services/card-payload";
 
 type Template = {
   id: string;
@@ -32,6 +51,17 @@ type Template = {
   requires_profile_image: boolean | null;
   requires_logo: boolean | null;
   requires_banner?: boolean | null;
+  profile_image_allowed?: boolean | null;
+  profile_image_default_enabled?: boolean | null;
+  logo_allowed?: boolean | null;
+  logo_default_enabled?: boolean | null;
+  banner_allowed?: boolean | null;
+  banner_default_enabled?: boolean | null;
+  custom_colour_allowed?: boolean | null;
+  custom_text_colour_allowed?: boolean | null;
+  field_config?: TemplateFieldConfig | null;
+  renderer_options?: Record<string, unknown> | null;
+  template_contract_version?: number | null;
   gradient_enabled?: boolean | null;
   colour_palette?: string[] | null;
   free_colour_palette?: string[] | null;
@@ -62,7 +92,15 @@ type CustomFields = Partial<Record<SectionKey, string[]>>;
 type DraggedField = { section: SectionKey; field: string } | null;
 type TemplatePayload = Record<
   string,
-  string | boolean | number | null | string[] | CustomFields | TemplateAllowedActions
+  | string
+  | boolean
+  | number
+  | null
+  | string[]
+  | CustomFields
+  | TemplateAllowedActions
+  | TemplateFieldConfig
+  | Record<string, unknown>
 >;
 
 type ActionPermissionDraft = {
@@ -70,6 +108,18 @@ type ActionPermissionDraft = {
   enabled: boolean;
   default_visible: boolean;
   default_label: string;
+};
+
+type TemplateBuilderStep = "setup" | "design" | "content" | "actions" | "review";
+type ClientPreviewStep = 0 | 1 | 2 | 3;
+type TemplateExampleValues = Partial<Record<string, string>>;
+
+type TemplateFieldConfig = {
+  version: 1;
+  allowed_fields: string[];
+  sections: Record<string, string[]>;
+  default_visibility: Record<string, boolean>;
+  required_fields: string[];
 };
 
 const cardHeaderFields = ["title", "first_name", "last_name"];
@@ -147,6 +197,7 @@ const freeLayouts = [
 
 const paidLayouts = [
   { value: "premium_classic", label: "Premium Classic" },
+  { value: "modern_minimal", label: "Modern Minimal" },
   { value: "glassmorphism", label: "Glassmorphism" },
   { value: "banner_card", label: "Banner Card" },
   { value: "split_card", label: "Split Card" },
@@ -162,6 +213,30 @@ const defaultFreeColourPalette = [
   "#0F172A",
 ];
 const defaultTextColourPalette = ["#FFFFFF", "#0F172A"];
+const modernMinimalColourPalette = [
+  "#FFFFFF",
+  "#F8FAFC",
+  "#EEF2FF",
+  "#FDF2F8",
+  "#ECFEFF",
+  "#101935",
+];
+const modernMinimalTextColours = ["#101935", "#334155", "#FFFFFF"];
+const modernMinimalFonts = ["Inter", "DM Sans", "Poppins", "Montserrat"];
+const defaultTemplateExampleValues: TemplateExampleValues = {
+  title: "",
+  first_name: "Alex",
+  last_name: "Carter",
+  job_title: "Creative Director",
+  department: "Creative Department",
+  bio:
+    "I help brands create meaningful digital experiences through design, strategy and technology.",
+  company_name: "DevMaster Inc",
+  website: "https://www.devmasterinc.com",
+  address: "London, United Kingdom",
+  email: "alex@devmasterinc.com",
+  phone: "+44 7000 000000",
+};
 const defaultTemplateActionPermissions: ActionPermissionDraft[] =
   cardActionDefinitions.map((definition) => ({
     type: definition.type,
@@ -184,6 +259,18 @@ const fontChoices = [
   "Syne",
 ] as const;
 
+const templateBuilderSteps: {
+  key: TemplateBuilderStep;
+  label: string;
+  title: string;
+}[] = [
+  { key: "setup", label: "Setup", title: "Template setup" },
+  { key: "design", label: "Design", title: "Design system" },
+  { key: "content", label: "Content", title: "Content structure" },
+  { key: "actions", label: "Actions", title: "Action buttons" },
+  { key: "review", label: "Review", title: "Review template" },
+];
+
 const defaultAllowedFonts = ["Inter"];
 
 function sanitizeAllowedFonts(fonts: unknown): string[] {
@@ -198,22 +285,53 @@ function sanitizeAllowedFonts(fonts: unknown): string[] {
 
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [templateSearch, setTemplateSearch] = useState("");
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(
     null
   );
+  const appliedEditTemplateIdRef = useRef<string | null>(null);
+  const editTemplateRef = useRef<(template: Template) => void>(() => undefined);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateMessage, setTemplateMessage] = useState("");
   const [templateError, setTemplateError] = useState("");
+  const [activeBuilderStep, setActiveBuilderStep] =
+    useState<TemplateBuilderStep>("setup");
+  const [clientPreviewOpen, setClientPreviewOpen] = useState(false);
+  const [clientPreviewStep, setClientPreviewStep] = useState<ClientPreviewStep>(0);
+  const [previewSelectedColour, setPreviewSelectedColour] = useState(
+    defaultFreeColourPalette[0]
+  );
+  const [previewSelectedTextColour, setPreviewSelectedTextColour] = useState(
+    defaultTextColourPalette[0]
+  );
+  const [previewSelectedFont, setPreviewSelectedFont] = useState("");
+  const [previewFieldOrder, setPreviewFieldOrder] =
+    useState<Required<CustomFields>>(defaultCustomFields);
+  const [previewActionConfig, setPreviewActionConfig] =
+    useState<CardActionConfig | null>(null);
+  const [previewCardOverrides, setPreviewCardOverrides] = useState<
+    Partial<SharedClientCard>
+  >({});
+  const [previewEditedFields, setPreviewEditedFields] = useState<string[]>([]);
+  const [previewLeadSettings, setPreviewLeadSettings] =
+    useState<LeadCaptureSettings>(defaultLeadCaptureSettings);
 
   const [name, setName] = useState("");
   const [accessLevel, setAccessLevel] = useState("free");
   const [layoutType, setLayoutType] = useState("classic_free");
 
+  const [profileImageAllowed, setProfileImageAllowed] = useState(true);
+  const [profileImageDefaultEnabled, setProfileImageDefaultEnabled] =
+    useState(true);
   const [requiresProfileImage, setRequiresProfileImage] = useState(true);
+  const [logoAllowed, setLogoAllowed] = useState(false);
+  const [logoDefaultEnabled, setLogoDefaultEnabled] = useState(false);
   const [requiresLogo, setRequiresLogo] = useState(false);
+  const [bannerAllowed, setBannerAllowed] = useState(false);
+  const [bannerDefaultEnabled, setBannerDefaultEnabled] = useState(false);
   const [requiresBanner, setRequiresBanner] = useState(false);
   const [gradientEnabled, setGradientEnabled] = useState(true);
+  const [customColourAllowed, setCustomColourAllowed] = useState(false);
+  const [customTextColourAllowed, setCustomTextColourAllowed] = useState(false);
   const [freeColourPalette, setFreeColourPalette] = useState<string[]>(
     defaultFreeColourPalette
   );
@@ -229,6 +347,9 @@ export default function TemplatesPage() {
   >(defaultTemplateActionPermissions);
   const [customFields, setCustomFields] =
     useState<CustomFields>(defaultCustomFields);
+  const [exampleValues, setExampleValues] = useState<TemplateExampleValues>(
+    defaultTemplateExampleValues
+  );
 
   const [primaryColor, setPrimaryColor] = useState("#AC00FF");
   const [secondaryColor, setSecondaryColor] = useState("#101935");
@@ -241,15 +362,33 @@ export default function TemplatesPage() {
   const [showSocialSection, setShowSocialSection] = useState(false);
   const [draggedField, setDraggedField] = useState<DraggedField>(null);
 
-  const filteredTemplates = templates.filter((template) =>
-    template.name.toLowerCase().includes(templateSearch.trim().toLowerCase())
-  );
   const layoutOptions = accessLevel === "free" ? freeLayouts : paidLayouts;
+
+  const hydrateTemplateFromUrl = useCallback((loadedTemplates: Template[]) => {
+    if (typeof window === "undefined") return;
+
+    const editTemplateId = new URLSearchParams(window.location.search).get("edit");
+
+    if (!editTemplateId || appliedEditTemplateIdRef.current === editTemplateId) {
+      return;
+    }
+
+    const templateToEdit = loadedTemplates.find(
+      (template) => template.id === editTemplateId
+    );
+
+    if (!templateToEdit) return;
+
+    editTemplateRef.current(templateToEdit);
+    appliedEditTemplateIdRef.current = editTemplateId;
+  }, []);
 
   async function fetchTemplates() {
     try {
       const loadedTemplates = await getAdminTemplates();
-      setTemplates(loadedTemplates as Template[]);
+      const normalizedTemplates = loadedTemplates as Template[];
+      setTemplates(normalizedTemplates);
+      hydrateTemplateFromUrl(normalizedTemplates);
       setTemplateError("");
     } catch (error) {
       console.error("Template load failed", error);
@@ -271,7 +410,9 @@ export default function TemplatesPage() {
 
         if (ignore) return;
 
-        setTemplates(loadedTemplates as Template[]);
+        const normalizedTemplates = loadedTemplates as Template[];
+        setTemplates(normalizedTemplates);
+        hydrateTemplateFromUrl(normalizedTemplates);
         setTemplateError("");
       } catch (error) {
         if (ignore) return;
@@ -290,17 +431,26 @@ export default function TemplatesPage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [hydrateTemplateFromUrl]);
 
   function resetBuilder() {
     setEditingTemplateId(null);
+    setActiveBuilderStep("setup");
     setName("");
     setAccessLevel("free");
     setLayoutType("classic_free");
+    setProfileImageAllowed(true);
+    setProfileImageDefaultEnabled(true);
     setRequiresProfileImage(true);
+    setLogoAllowed(false);
+    setLogoDefaultEnabled(false);
     setRequiresLogo(false);
+    setBannerAllowed(false);
+    setBannerDefaultEnabled(false);
     setRequiresBanner(false);
     setGradientEnabled(true);
+    setCustomColourAllowed(false);
+    setCustomTextColourAllowed(false);
     setFreeColourPalette(defaultFreeColourPalette);
     setTextColourPalette(defaultTextColourPalette);
     setAllowedFonts(defaultAllowedFonts);
@@ -317,6 +467,15 @@ export default function TemplatesPage() {
     setShowCompanySection(true);
     setShowContactSection(true);
     setShowSocialSection(false);
+    setPreviewSelectedColour(defaultFreeColourPalette[0]);
+    setPreviewSelectedTextColour(defaultTextColourPalette[0]);
+    setPreviewSelectedFont("");
+    setPreviewFieldOrder(defaultCustomFields);
+    setPreviewActionConfig(null);
+    setPreviewCardOverrides({});
+    setPreviewEditedFields([]);
+    setPreviewLeadSettings(defaultLeadCaptureSettings);
+    setExampleValues(defaultTemplateExampleValues);
   }
 
   function applyAccessLevel(value: string) {
@@ -324,10 +483,18 @@ export default function TemplatesPage() {
 
     if (value === "free") {
       setLayoutType("classic_free");
+      setProfileImageAllowed(true);
+      setProfileImageDefaultEnabled(true);
       setRequiresProfileImage(true);
+      setLogoAllowed(false);
+      setLogoDefaultEnabled(false);
       setRequiresLogo(false);
+      setBannerAllowed(false);
+      setBannerDefaultEnabled(false);
       setRequiresBanner(false);
       setGradientEnabled(false);
+      setCustomColourAllowed(false);
+      setCustomTextColourAllowed(false);
       setFreeColourPalette(defaultFreeColourPalette);
       setTextColourPalette(defaultTextColourPalette);
       setAllowedFonts(defaultAllowedFonts);
@@ -339,14 +506,31 @@ export default function TemplatesPage() {
       setShowCompanySection(true);
       setShowContactSection(true);
       setShowSocialSection(false);
+      setPreviewSelectedColour(defaultFreeColourPalette[0]);
+      setPreviewSelectedTextColour(defaultTextColourPalette[0]);
+      setPreviewSelectedFont("");
+      setPreviewFieldOrder(defaultCustomFields);
+      setPreviewActionConfig(null);
+      setPreviewCardOverrides({});
+      setPreviewEditedFields([]);
+      setPreviewLeadSettings(defaultLeadCaptureSettings);
+      setExampleValues(defaultTemplateExampleValues);
     }
 
     if (value === "paid") {
       setLayoutType("premium_classic");
+      setProfileImageAllowed(true);
+      setProfileImageDefaultEnabled(true);
       setRequiresProfileImage(true);
+      setLogoAllowed(true);
+      setLogoDefaultEnabled(true);
       setRequiresLogo(true);
+      setBannerAllowed(true);
+      setBannerDefaultEnabled(true);
       setRequiresBanner(true);
       setGradientEnabled(true);
+      setCustomColourAllowed(true);
+      setCustomTextColourAllowed(true);
       setAllowedFonts([...fontChoices]);
       setDefaultFont("");
       setAllowedFields(paidFields);
@@ -356,7 +540,76 @@ export default function TemplatesPage() {
       setShowCompanySection(true);
       setShowContactSection(true);
       setShowSocialSection(false);
+      setPreviewSelectedColour(defaultFreeColourPalette[0]);
+      setPreviewSelectedTextColour(defaultTextColourPalette[0]);
+      setPreviewSelectedFont("");
+      setPreviewFieldOrder(defaultCustomFields);
+      setPreviewActionConfig(null);
+      setPreviewCardOverrides({});
+      setPreviewEditedFields([]);
+      setPreviewLeadSettings(defaultLeadCaptureSettings);
+      setExampleValues(defaultTemplateExampleValues);
     }
+  }
+
+  function actionPermissionsForTypes(
+    allowedTypes: CardActionType[],
+    defaultTypes: CardActionType[]
+  ): ActionPermissionDraft[] {
+    return cardActionDefinitions.map((definition) => {
+      const enabled = allowedTypes.includes(definition.type);
+
+      return {
+        type: definition.type,
+        enabled,
+        default_visible: enabled && defaultTypes.includes(definition.type),
+        default_label: definition.label,
+      };
+    });
+  }
+
+  function applyPaidLayoutDefaults(nextLayoutType: string) {
+    setLayoutType(nextLayoutType);
+
+    if (nextLayoutType !== "modern_minimal") return;
+
+    setProfileImageAllowed(false);
+    setProfileImageDefaultEnabled(false);
+    setRequiresProfileImage(false);
+    setLogoAllowed(true);
+    setLogoDefaultEnabled(true);
+    setRequiresLogo(false);
+    setBannerAllowed(false);
+    setBannerDefaultEnabled(false);
+    setRequiresBanner(false);
+    setGradientEnabled(false);
+    setCustomColourAllowed(true);
+    setCustomTextColourAllowed(true);
+    setFreeColourPalette(modernMinimalColourPalette);
+    setTextColourPalette(modernMinimalTextColours);
+    setAllowedFonts(modernMinimalFonts);
+    setDefaultFont("DM Sans");
+    setPrimaryColor("#FFFFFF");
+    setSecondaryColor("#F8FAFC");
+    setTextColor("#101935");
+    setButtonColor("#F8FAFC");
+    setButtonTextColor("#101935");
+    setAllowedFields(paidFields);
+    setCustomFields(defaultCustomFields);
+    setPreviewFieldOrder(defaultCustomFields);
+    setPreviewSelectedColour(modernMinimalColourPalette[0]);
+    setPreviewSelectedTextColour(modernMinimalTextColours[0]);
+    setPreviewSelectedFont("DM Sans");
+    setActionPermissions(
+      actionPermissionsForTypes(
+        ["save_contact", "email", "linkedin", "custom_link", "call"],
+        ["save_contact", "email", "linkedin"]
+      )
+    );
+    setPreviewActionConfig(null);
+    setPreviewCardOverrides({});
+    setPreviewEditedFields([]);
+    setExampleValues(defaultTemplateExampleValues);
   }
 
   function toggleAllowedField(field: string) {
@@ -370,6 +623,7 @@ export default function TemplatesPage() {
   }
 
   function toggleActionPermission(type: CardActionType) {
+    setPreviewActionConfig(null);
     setActionPermissions((current) =>
       current.map((action) =>
         action.type === type
@@ -384,6 +638,7 @@ export default function TemplatesPage() {
   }
 
   function toggleActionDefault(type: CardActionType) {
+    setPreviewActionConfig(null);
     setActionPermissions((current) =>
       current.map((action) =>
         action.type === type && action.enabled
@@ -394,6 +649,7 @@ export default function TemplatesPage() {
   }
 
   function updateActionDefaultLabel(type: CardActionType, label: string) {
+    setPreviewActionConfig(null);
     setActionPermissions((current) =>
       current.map((action) =>
         action.type === type ? { ...action, default_label: label } : action
@@ -473,6 +729,15 @@ export default function TemplatesPage() {
     setAllowedFields((current) => current.filter((item) => item !== field));
   }
 
+  function updateExampleValue(field: string, value: string) {
+    setExampleValues((current) => ({
+      ...current,
+      [field]: value,
+    }));
+    setPreviewCardOverrides({});
+    setPreviewEditedFields([]);
+  }
+
   function updateFreePaletteColour(index: number, value: string) {
     setFreeColourPalette((current) =>
       sanitizeFreeColourPalette(current).map((colour, colourIndex) =>
@@ -487,6 +752,22 @@ export default function TemplatesPage() {
         colourIndex === index ? value : colour
       )
     );
+  }
+
+  function updateDefaultSolidColour(value: string) {
+    setPrimaryColor(value);
+
+    if (accessLevel === "paid") {
+      setPreviewSelectedColour(value);
+    }
+  }
+
+  function updateDefaultTextColour(value: string) {
+    setTextColor(value);
+
+    if (accessLevel === "paid") {
+      setPreviewSelectedTextColour(value);
+    }
   }
 
   function addFreePaletteColour() {
@@ -587,14 +868,42 @@ export default function TemplatesPage() {
     setLayoutType(
       normalizeTemplateLayout(template.layout_type, normalizedAccessLevel)
     );
+    setActiveBuilderStep("setup");
+    setProfileImageAllowed(template.profile_image_allowed ?? true);
+    setProfileImageDefaultEnabled(
+      template.profile_image_default_enabled ??
+        (template.requires_profile_image ?? true)
+    );
     setRequiresProfileImage(template.requires_profile_image ?? true);
+    setLogoAllowed(
+      normalizedAccessLevel === "paid" &&
+        (template.logo_allowed ?? template.requires_logo ?? false)
+    );
+    setLogoDefaultEnabled(
+      normalizedAccessLevel === "paid" &&
+        (template.logo_default_enabled ?? template.requires_logo ?? false)
+    );
     setRequiresLogo(
       normalizedAccessLevel === "paid" && (template.requires_logo ?? false)
+    );
+    setBannerAllowed(
+      normalizedAccessLevel === "paid" &&
+        (template.banner_allowed ?? template.requires_banner ?? false)
+    );
+    setBannerDefaultEnabled(
+      normalizedAccessLevel === "paid" &&
+        (template.banner_default_enabled ?? template.requires_banner ?? false)
     );
     setRequiresBanner(
       normalizedAccessLevel === "paid" && (template.requires_banner ?? false)
     );
     setGradientEnabled(template.gradient_enabled ?? normalizedAccessLevel === "paid");
+    setCustomColourAllowed(
+      template.custom_colour_allowed ?? normalizedAccessLevel === "paid"
+    );
+    setCustomTextColourAllowed(
+      template.custom_text_colour_allowed ?? normalizedAccessLevel === "paid"
+    );
     setFreeColourPalette(
       sanitizeFreeColourPalette(template.free_colour_palette)
     );
@@ -612,7 +921,9 @@ export default function TemplatesPage() {
     );
     setAllowedFields(sanitizeAllowedFields(template.allowed_fields || freeFields));
     setActionPermissions(actionPermissionsFromTemplate(template));
-    setCustomFields(normalizeCustomFields(template.custom_fields));
+    const normalizedCustomFields = normalizeCustomFields(template.custom_fields);
+    setCustomFields(normalizedCustomFields);
+    setPreviewFieldOrder(normalizedCustomFields);
     setPrimaryColor(template.primary_color || "#AC00FF");
     setSecondaryColor(template.secondary_color || "#101935");
     setTextColor(template.text_color || "#FFFFFF");
@@ -622,9 +933,36 @@ export default function TemplatesPage() {
     setShowCompanySection(template.show_company_section ?? true);
     setShowContactSection(template.show_contact_section ?? true);
     setShowSocialSection(template.show_social_section ?? false);
+    setPreviewSelectedColour(
+      normalizedAccessLevel === "paid"
+        ? template.primary_color || "#AC00FF"
+        : sanitizeFreeColourPalette(template.free_colour_palette)[0] || "#AC00FF"
+    );
+    setPreviewSelectedTextColour(
+      normalizedAccessLevel === "paid"
+        ? template.text_color || "#FFFFFF"
+        : sanitizeTextColourPalette(template.text_colours, template.text_color)[0] ||
+            "#FFFFFF"
+    );
+    setPreviewSelectedFont(
+      template.default_font && normalizedAllowedFonts.includes(template.default_font)
+        ? template.default_font
+        : ""
+    );
+    setExampleValues(
+      readTemplateExampleValues(template.renderer_options, defaultTemplateExampleValues)
+    );
+    setPreviewActionConfig(null);
+    setPreviewCardOverrides({});
+    setPreviewEditedFields([]);
+    setPreviewLeadSettings(defaultLeadCaptureSettings);
 
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+
+  useEffect(() => {
+    editTemplateRef.current = editTemplate;
+  });
 
   async function saveTemplate() {
     if (savingTemplate) return;
@@ -654,6 +992,14 @@ export default function TemplatesPage() {
       requires_profile_image: requiresProfileImage,
       requires_logo: accessLevel === "paid" && requiresLogo,
       requires_banner: accessLevel === "paid" && requiresBanner,
+      profile_image_allowed: profileImageAllowed,
+      profile_image_default_enabled: profileImageDefaultEnabled,
+      logo_allowed: accessLevel === "paid" && logoAllowed,
+      logo_default_enabled: accessLevel === "paid" && logoDefaultEnabled,
+      banner_allowed: accessLevel === "paid" && bannerAllowed,
+      banner_default_enabled: accessLevel === "paid" && bannerDefaultEnabled,
+      custom_colour_allowed: customColourAllowed,
+      custom_text_colour_allowed: customTextColourAllowed,
       gradient_enabled: accessLevel === "paid" && gradientEnabled,
       free_colour_palette: sanitizeFreeColourPalette(freeColourPalette),
       allowed_fonts:
@@ -662,6 +1008,13 @@ export default function TemplatesPage() {
       allowed_fields: allowedFields,
       allowed_actions: buildTemplateAllowedActions(actionPermissions),
       custom_fields: customFields,
+      field_config: buildTemplateFieldConfig(allowedFields, customFields),
+      renderer_options: buildTemplateRendererOptions(
+        layoutType,
+        exampleValues,
+        primaryColor,
+        secondaryColor
+      ),
       show_personal_section: showPersonalSection,
       show_company_section: showCompanySection,
       show_contact_section: showContactSection,
@@ -691,7 +1044,6 @@ export default function TemplatesPage() {
         const withoutSaved = current.filter((template) => template.id !== savedTemplate.id);
         return [savedTemplate, ...withoutSaved];
       });
-      setTemplateSearch("");
 
       resetBuilder();
       await fetchTemplates();
@@ -708,134 +1060,696 @@ export default function TemplatesPage() {
     }
   }
 
-  async function duplicateTemplate(template: Template) {
-    const newName = `${template.name} Copy`;
-
-    const newSlug = `${template.slug}-copy-${Date.now()}`;
-
-    const duplicatePayload = buildTemplatePayload({
-      name: newName,
-      slug: newSlug,
-      layout_type: normalizeTemplateLayout(
-        template.layout_type,
-        template.access_level === "free" ? "free" : "paid"
-      ),
-      access_level: template.access_level === "free" ? "free" : "paid",
-      primary_color: template.primary_color || "#AC00FF",
-      secondary_color: template.secondary_color || "#101935",
-      text_color: template.text_color || "#FFFFFF",
-      button_color: template.button_color || "#FFFFFF",
-      button_text_color: template.button_text_color || "#0F0E38",
-      text_colours: sanitizeTextColourPalette(
-        template.text_colours,
-        template.text_color
-      ),
-      requires_profile_image: template.requires_profile_image ?? true,
-      requires_logo:
-        template.access_level !== "free" && (template.requires_logo ?? false),
-      requires_banner:
-        template.access_level !== "free" && (template.requires_banner ?? false),
-      gradient_enabled:
-        template.access_level !== "free" && (template.gradient_enabled ?? true),
-      free_colour_palette: sanitizeFreeColourPalette(template.free_colour_palette),
-      allowed_fonts:
-        template.access_level === "free"
-          ? defaultAllowedFonts
-          : sanitizeTemplateFonts(template.allowed_fonts || defaultAllowedFonts),
-      default_font:
-        template.access_level === "free"
-          ? "Inter"
-          : sanitizeDefaultFont(template.default_font, template.allowed_fonts),
-      allowed_fields: sanitizeAllowedFields(template.allowed_fields || freeFields),
-      allowed_actions:
-        normalizeTemplateAllowedActions(template.allowed_actions) ??
-        buildTemplateAllowedActions(
-          actionPermissionsFromTemplate(template)
-        ),
-      custom_fields: normalizeCustomFields(template.custom_fields),
-      show_personal_section: template.show_personal_section ?? true,
-      show_company_section: template.show_company_section ?? true,
-      show_contact_section: template.show_contact_section ?? true,
-      show_social_section: template.show_social_section ?? false,
-    });
-
-    const insertPayload = {
-      ...duplicatePayload,
+  const activeStepIndex = Math.max(
+    0,
+    templateBuilderSteps.findIndex((step) => step.key === activeBuilderStep)
+  );
+  const currentEditingTemplate = templates.find(
+    (template) => template.id === editingTemplateId
+  );
+  const currentPublicationStatus = currentEditingTemplate?.is_published
+    ? "Published"
+    : "Draft";
+  const enabledSections = sectionFieldGroups
+    .filter((section) => sectionState(section.key).enabled)
+    .map((section) => section.title);
+  const allowedActionCount = actionPermissions.filter((action) => action.enabled).length;
+  const defaultActionCount = actionPermissions.filter(
+    (action) => action.enabled && action.default_visible
+  ).length;
+  const availablePreviewColours = sanitizeFreeColourPalette(freeColourPalette);
+  const availablePreviewTextColours = sanitizeTextColourPalette(
+    textColourPalette,
+    textColor
+  );
+  const effectivePreviewSelectedColour =
+    accessLevel === "paid"
+      ? previewSelectedColour || primaryColor
+      : availablePreviewColours.includes(previewSelectedColour)
+      ? previewSelectedColour
+      : availablePreviewColours[0] || "#AC00FF";
+  const effectivePreviewSelectedTextColour =
+    accessLevel === "paid"
+      ? previewSelectedTextColour || textColor
+      : availablePreviewTextColours.includes(previewSelectedTextColour)
+      ? previewSelectedTextColour
+      : availablePreviewTextColours[0] || "#FFFFFF";
+  const availablePreviewFonts =
+    accessLevel === "paid"
+      ? sanitizeTemplateFonts(allowedFonts)
+      : defaultAllowedFonts;
+  const effectivePreviewSelectedFont = availablePreviewFonts.includes(
+    previewSelectedFont
+  )
+    ? previewSelectedFont
+    : defaultFont || availablePreviewFonts[0] || "Inter";
+  const previewProfileImageEnabled =
+    profileImageAllowed && (requiresProfileImage || profileImageDefaultEnabled);
+  const previewLogoEnabled =
+    accessLevel === "paid" && logoAllowed && (requiresLogo || logoDefaultEnabled);
+  const previewBannerEnabled =
+    accessLevel === "paid" &&
+    bannerAllowed &&
+    (requiresBanner || bannerDefaultEnabled);
+  const effectiveExampleValues = useMemo(
+    () => sanitizeTemplateExampleValues(exampleValues),
+    [exampleValues]
+  );
+  const previewTemplate = useMemo(
+    () => ({
+      id: editingTemplateId || "admin-preview-template",
+      name: name || "Admin Preview Template",
+      slug: "admin-preview-template",
+      status: "draft" as const,
       is_published: false,
-      status: "draft",
-      usage_count: 0,
-      allowed_actions:
-        normalizeTemplateAllowedActions(template.allowed_actions) ??
-        buildTemplateAllowedActions(actionPermissionsFromTemplate(template)),
-    };
+      layout_type: layoutType,
+      logo_size: "standard",
+      access_level: accessLevel,
+      requires_profile_image: previewProfileImageEnabled,
+      requires_logo: previewLogoEnabled,
+      requires_banner: previewBannerEnabled,
+      profile_image_allowed: profileImageAllowed,
+      profile_image_default_enabled: profileImageDefaultEnabled,
+      logo_allowed: accessLevel === "paid" && logoAllowed,
+      logo_default_enabled: accessLevel === "paid" && logoDefaultEnabled,
+      banner_allowed: accessLevel === "paid" && bannerAllowed,
+      banner_default_enabled: accessLevel === "paid" && bannerDefaultEnabled,
+      custom_colour_allowed: customColourAllowed,
+      custom_text_colour_allowed: customTextColourAllowed,
+      gradient_enabled: accessLevel === "paid" && gradientEnabled,
+      free_colour_palette: sanitizeFreeColourPalette(freeColourPalette),
+      text_colours: sanitizeTextColourPalette(textColourPalette, textColor),
+      allowed_fonts:
+        accessLevel === "paid"
+          ? sanitizeTemplateFonts(allowedFonts)
+          : defaultAllowedFonts,
+      default_font: accessLevel === "paid" ? defaultFont || null : "Inter",
+      supports_bio: true,
+      supports_save_contact: actionPermissionEnabled(
+        actionPermissions,
+        "save_contact"
+      ),
+      allowed_fields: allowedFields,
+      allowed_actions: buildTemplateAllowedActions(actionPermissions),
+      custom_fields: customFields,
+      primary_color: primaryColor,
+      secondary_color: secondaryColor,
+      text_color: textColor,
+      button_color: buttonColor,
+      button_text_color: buttonTextColor,
+      renderer_options: buildTemplateRendererOptions(
+        layoutType,
+        effectiveExampleValues,
+        primaryColor,
+        secondaryColor
+      ),
+      show_personal_section: showPersonalSection,
+      show_company_section: showCompanySection,
+      show_contact_section: showContactSection,
+      show_social_section: showSocialSection,
+    }),
+    [
+      accessLevel,
+      actionPermissions,
+      allowedFields,
+      allowedFonts,
+      buttonColor,
+      buttonTextColor,
+      bannerAllowed,
+      bannerDefaultEnabled,
+      customFields,
+      customColourAllowed,
+      customTextColourAllowed,
+      defaultFont,
+      editingTemplateId,
+      effectiveExampleValues,
+      freeColourPalette,
+      gradientEnabled,
+      layoutType,
+      logoAllowed,
+      logoDefaultEnabled,
+      name,
+      primaryColor,
+      profileImageAllowed,
+      profileImageDefaultEnabled,
+      previewBannerEnabled,
+      previewLogoEnabled,
+      previewProfileImageEnabled,
+      secondaryColor,
+      showCompanySection,
+      showContactSection,
+      showPersonalSection,
+      showSocialSection,
+      textColor,
+      textColourPalette,
+    ]
+  );
+  const previewClientTemplate = {
+    ...previewTemplate,
+    default_font:
+      accessLevel === "paid"
+        ? effectivePreviewSelectedFont || defaultFont || null
+        : effectivePreviewSelectedFont || "Inter",
+  };
+  const previewCardData = {
+    title: effectiveExampleValues.title || "",
+    first_name: effectiveExampleValues.first_name || "Alex",
+    last_name: effectiveExampleValues.last_name || "Carter",
+    full_name:
+      [effectiveExampleValues.title, effectiveExampleValues.first_name, effectiveExampleValues.last_name]
+        .filter(Boolean)
+        .join(" ") || "Alex Carter",
+    job_title: effectiveExampleValues.job_title || "Creative Director",
+    bio: effectiveExampleValues.bio || defaultTemplateExampleValues.bio,
+    company_name: effectiveExampleValues.company_name || "DevMaster Inc",
+    company_logo_url: previewLogoEnabled ? "/logo.png" : null,
+    company_banner_url: previewBannerEnabled ? "" : null,
+    department: effectiveExampleValues.department || "Creative Department",
+    email: effectiveExampleValues.email || "alex@devmasterinc.com",
+    phone: effectiveExampleValues.phone || "+44 7000 000000",
+    website: effectiveExampleValues.website || "https://www.devmasterinc.com",
+    address: effectiveExampleValues.address || "London, United Kingdom",
+    whatsapp: "+44 7000 000000",
+    linkedin: "linkedin.com/company/devmasterinc",
+    instagram: "@devmasterinc",
+    facebook: "facebook.com/devmasterinc",
+    youtube: "youtube.com/@devmasterinc",
+    booking_link: "devmasterinc.com/book",
+    custom_url: "devmasterinc.com",
+    selected_colour: effectivePreviewSelectedColour,
+    selected_text_colour: effectivePreviewSelectedTextColour,
+    selected_background_mode:
+      accessLevel === "paid" && gradientEnabled ? "gradient" : "solid",
+    selected_gradient_start: primaryColor,
+    selected_gradient_end: secondaryColor,
+    action_config: effectiveCardActionConfig(
+      { action_config: null, field_visibility: {}, hidden_fields: [] },
+      previewTemplate
+    ),
+    hidden_fields: [],
+    field_visibility: {},
+    custom_fields: previewCustomFieldValues(customFields),
+  };
+  const clientExampleFields = Object.keys(effectiveExampleValues).filter(
+    (field) => !previewEditedFields.includes(field)
+  );
+  const clientExperienceCardData: SharedClientCard = {
+    id: "admin-client-preview-card",
+    card_name: previewCardOverrides.card_name || "Primary Digital Card",
+    template_id: previewClientTemplate.id,
+    template_name: previewClientTemplate.name,
+    status: "unpublished",
+    public_url: "/u/admin-client-preview",
+    last_updated: "Preview only",
+    card_slot: 1,
+    ...previewCardData,
+    ...previewCardOverrides,
+    selected_colour: effectivePreviewSelectedColour,
+    selected_text_colour: effectivePreviewSelectedTextColour,
+    selected_background_mode:
+      previewCardOverrides.selected_background_mode ||
+      previewCardData.selected_background_mode,
+    selected_gradient_start:
+      previewCardOverrides.selected_gradient_start ||
+      previewCardData.selected_gradient_start,
+    selected_gradient_end:
+      previewCardOverrides.selected_gradient_end ||
+      previewCardData.selected_gradient_end,
+    example_fields: clientExampleFields,
+    action_config:
+      previewActionConfig ||
+      effectiveCardActionConfig(
+        { action_config: null, field_visibility: {}, hidden_fields: [] },
+        previewTemplate
+      ),
+    custom_fields: previewCustomFieldValues(previewFieldOrder),
+    field_order: previewFieldOrder,
+    lead_capture_settings: previewLeadSettings,
+  };
 
-    try {
-      await saveAdminTemplate(insertPayload as unknown as SharedTemplate);
-      setTemplateMessage("Template duplicated successfully.");
-      setTemplateError("");
-      await fetchTemplates();
-    } catch (error) {
-      console.error("Template duplicate failed", error);
-      setTemplateError(
-        error instanceof Error
-          ? error.message
-          : "Template could not be duplicated. Please try again."
+  function updatePreviewCard(field: keyof SharedClientCard, value: string) {
+    if (field === "selected_colour") {
+      setPreviewSelectedColour(value);
+    }
+
+    if (field === "selected_text_colour") {
+      setPreviewSelectedTextColour(value);
+    }
+
+    if (field in defaultTemplateExampleValues) {
+      setPreviewEditedFields((current) =>
+        current.includes(field) ? current : [...current, String(field)]
       );
     }
+
+    setPreviewCardOverrides((current) => ({
+      ...current,
+      [field]: value,
+    }));
   }
 
-  async function togglePublished(template: Template) {
-    try {
-      const result = await publishAdminTemplate(
-        template as unknown as SharedTemplate,
-        !template.is_published
-      );
-      setTemplates((current) =>
-        current.map((item) =>
-          item.id === template.id ? (result.template as Template) : item
-        )
-      );
-      setTemplateMessage(
-        `Template ${result.template.is_published ? "published" : "unpublished"}.`
-      );
-      setTemplateError("");
-    } catch (error) {
-      console.error("Template publish failed", error);
-      setTemplateError(
-        error instanceof Error
-          ? error.message
-          : "Template publish state could not be updated. Please try again."
+  function updatePreviewCustomField(field: string, value: string) {
+    setPreviewCardOverrides((current) => ({
+      ...current,
+      custom_fields: {
+        ...(current.custom_fields || clientExperienceCardData.custom_fields || {}),
+        [field]: value,
+      },
+    }));
+  }
+
+  function togglePreviewFieldVisibility(field: string) {
+    const visibilityKey = field;
+    setPreviewCardOverrides((current) => {
+      const hiddenFields = new Set(current.hidden_fields || []);
+      const isHidden = hiddenFields.has(visibilityKey);
+
+      if (isHidden) {
+        hiddenFields.delete(visibilityKey);
+      } else {
+        hiddenFields.add(visibilityKey);
+      }
+
+      return {
+        ...current,
+        hidden_fields: Array.from(hiddenFields),
+        field_visibility: {
+          ...(current.field_visibility || {}),
+          [visibilityKey]: isHidden,
+        },
+      };
+    });
+  }
+
+  function movePreviewField(
+    section: SectionKey,
+    draggedField: string,
+    targetField: string,
+    position: "before" | "after" = "before"
+  ) {
+    setPreviewFieldOrder((current) => {
+      const fields = [...current[section]];
+      const fromIndex = fields.indexOf(draggedField);
+      const toIndex = fields.indexOf(targetField);
+
+      if (fromIndex < 0 || toIndex < 0 || draggedField === targetField) {
+        return current;
+      }
+
+      const [moved] = fields.splice(fromIndex, 1);
+      const adjustedIndex =
+        position === "after"
+          ? fields.indexOf(targetField) + 1
+          : fields.indexOf(targetField);
+      fields.splice(Math.max(0, adjustedIndex), 0, moved);
+
+      return { ...current, [section]: fields };
+    });
+  }
+
+  function goToBuilderStep(index: number) {
+    const step = templateBuilderSteps[index];
+    if (!step) return;
+
+    setActiveBuilderStep(step.key);
+  }
+
+  function renderBuilderStep() {
+    if (activeBuilderStep === "setup") {
+      return (
+        <StepPanel
+          title="Setup"
+          description="Name the template, choose who can use it, and define media capabilities."
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Field label="Template Name">
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Classic"
+                className="inputStyle"
+              />
+            </Field>
+
+            <Field label="Access Level">
+              <select
+                value={accessLevel}
+                onChange={(e) => applyAccessLevel(e.target.value)}
+                className="inputStyle"
+              >
+                <option value="free">Free</option>
+                <option value="paid">Paid</option>
+              </select>
+            </Field>
+
+            <Field label="Layout Style">
+              <select
+                value={layoutType}
+                onChange={(e) => applyPaidLayoutDefaults(e.target.value)}
+                className="inputStyle"
+              >
+                {layoutOptions.map((layout) => (
+                  <option key={layout.value} value={layout.value}>
+                    {layout.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <span className="mb-2 block text-sm font-medium text-white/55">
+                Publication
+              </span>
+              <p className="text-sm font-semibold text-white">
+                {currentPublicationStatus}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-white/45">
+                Save changes from Review. Publishing controls remain explicit
+                on saved templates.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-3xl border border-white/10 bg-[#101935]/50 p-5 shadow-[0_22px_70px_rgba(0,0,0,0.24)]">
+            <div>
+              <h3 className="text-lg font-semibold">Images &amp; Branding</h3>
+              <p className="mt-1 text-sm text-white/45">
+                Choose which media elements are available for clients to use.
+              </p>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <MediaCapabilityRow
+                title="Profile Picture"
+                description="Allow clients to upload a profile photo. Clients can choose to show or hide it."
+                enabled={profileImageAllowed}
+                disabled={false}
+                onEnabledChange={(value) => {
+                  setProfileImageAllowed(value);
+                  setRequiresProfileImage(false);
+                  setProfileImageDefaultEnabled(value);
+                }}
+              />
+              <MediaCapabilityRow
+                title="Company Logo"
+                description="Allow clients to upload a company logo. Modern Minimal displays it as a watermark."
+                disabled={accessLevel !== "paid"}
+                enabled={accessLevel === "paid" && logoAllowed}
+                onEnabledChange={(value) => {
+                  setLogoAllowed(value);
+                  setRequiresLogo(false);
+                  setLogoDefaultEnabled(value);
+                }}
+              />
+              <MediaCapabilityRow
+                title="Banner Image"
+                description="Allow clients to upload a banner image. Clients can choose to show or hide it."
+                disabled={accessLevel !== "paid"}
+                enabled={accessLevel === "paid" && bannerAllowed}
+                onEnabledChange={(value) => {
+                  setBannerAllowed(value);
+                  setRequiresBanner(false);
+                  setBannerDefaultEnabled(value);
+                }}
+              />
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-[#AC00FF]/15 bg-[#AC00FF]/10 px-4 py-3 text-xs leading-5 text-purple-100/80">
+              These settings only control whether media options are available.
+              Clients control visibility for enabled media on each card they create.
+            </div>
+          </div>
+        </StepPanel>
       );
     }
-  }
 
-  async function deleteTemplate(template: Template) {
-    const confirmed = window.confirm(
-      `Delete template "${template.name}"? This cannot be undone.`
+    if (activeBuilderStep === "design") {
+      return (
+        <StepPanel
+          title="Design"
+          description={
+            accessLevel === "paid"
+              ? "Set paid template startup colours and typography. Clients can choose any branding colours later."
+              : "Configure approved colour choices and typography for this free template."
+          }
+        >
+          {accessLevel === "free" ? (
+            <>
+              <div className="grid gap-4 md:grid-cols-2">
+                <ContractToggle
+                  label="Custom card colours"
+                  description="Free templates remain restricted unless this legacy flag is enabled."
+                  enabled={customColourAllowed}
+                  onToggle={setCustomColourAllowed}
+                />
+                <ContractToggle
+                  label="Custom text colours"
+                  description="Free templates remain restricted unless this legacy flag is enabled."
+                  enabled={customTextColourAllowed}
+                  onToggle={setCustomTextColourAllowed}
+                />
+              </div>
+
+              <ColourPalette
+                title="Predefined Colour Choices"
+                description="Approved card colour choices. The first colour remains the default background."
+                colours={freeColourPalette}
+                addLabel="Add Colour"
+                itemLabel="Colour"
+                onChange={updateFreePaletteColour}
+                onAdd={addFreePaletteColour}
+                onRemove={removeFreePaletteColour}
+              />
+              <ColourPalette
+                title="Text Colour Options"
+                description="Approved text colours for card name and main card text."
+                colours={textColourPalette}
+                addLabel="Add Text Colour"
+                itemLabel="Text"
+                onChange={updateTextPaletteColour}
+                onAdd={addTextPaletteColour}
+                onRemove={removeTextPaletteColour}
+              />
+            </>
+          ) : (
+            <>
+              <div className="rounded-3xl border border-white/10 bg-white/[0.045] p-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold">Paid Colour Defaults</h3>
+                    <p className="mt-1 text-sm text-white/45">
+                      These values seed new cards only. Paid clients can choose any
+                      solid, gradient and text colours in the Client Builder.
+                    </p>
+                  </div>
+                  <select
+                    value={gradientEnabled ? "gradient" : "solid"}
+                    onChange={(event) =>
+                      setGradientEnabled(event.target.value === "gradient")
+                    }
+                    className="inputStyle min-w-[12rem]"
+                    aria-label="Default background mode"
+                  >
+                    <option value="solid">Default solid</option>
+                    <option value="gradient">Default gradient</option>
+                  </select>
+                </div>
+
+                <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                  <ColourPicker
+                    label="Default solid colour"
+                    value={primaryColor}
+                    onChange={updateDefaultSolidColour}
+                    helperText="Also used as gradient colour 1."
+                    className="[--dmi-surface-soft:rgba(255,255,255,0.05)] [--dmi-surface:rgba(255,255,255,0.08)] [--dmi-border:rgba(255,255,255,0.12)] [--input-bg:#101935] [--input-border:rgba(255,255,255,0.12)] [--input-text:#FFFFFF] [--text-primary:#FFFFFF] [--text-secondary:rgba(255,255,255,0.55)]"
+                  />
+                  <ColourPicker
+                    label="Default gradient colour 2"
+                    value={secondaryColor}
+                    onChange={setSecondaryColor}
+                    className="[--dmi-surface-soft:rgba(255,255,255,0.05)] [--dmi-surface:rgba(255,255,255,0.08)] [--dmi-border:rgba(255,255,255,0.12)] [--input-bg:#101935] [--input-border:rgba(255,255,255,0.12)] [--input-text:#FFFFFF] [--text-primary:#FFFFFF] [--text-secondary:rgba(255,255,255,0.55)]"
+                  />
+                  <ColourPicker
+                    label="Default text colour"
+                    value={textColor}
+                    onChange={updateDefaultTextColour}
+                    className="[--dmi-surface-soft:rgba(255,255,255,0.05)] [--dmi-surface:rgba(255,255,255,0.08)] [--dmi-border:rgba(255,255,255,0.12)] [--input-bg:#101935] [--input-border:rgba(255,255,255,0.12)] [--input-text:#FFFFFF] [--text-primary:#FFFFFF] [--text-secondary:rgba(255,255,255,0.55)]"
+                  />
+                </div>
+              </div>
+
+              <TypographyControls
+                allowedFonts={allowedFonts}
+                defaultFont={defaultFont}
+                onToggleFont={toggleAllowedFont}
+                onSelectDefaultFont={selectDefaultFont}
+              />
+            </>
+          )}
+        </StepPanel>
+      );
+    }
+
+    if (activeBuilderStep === "content") {
+      return (
+        <StepPanel
+          title="Content"
+          description="Configure the profile header and the card sections that clients can fill in."
+        >
+          <div className="space-y-4">
+            <CardHeaderControl
+              fields={cardHeaderFields}
+              allowedFields={allowedFields}
+              exampleValues={effectiveExampleValues}
+              onToggleField={toggleAllowedField}
+              onUpdateExampleValue={updateExampleValue}
+            />
+
+            {sectionFieldGroups.map((section) => {
+              const { enabled, onChange } = sectionState(section.key);
+
+              return (
+                <SectionControl
+                  key={section.key}
+                  section={section.key}
+                  title={section.title}
+                  description={section.description}
+                  fields={orderedSectionFields(section.key, customFields)}
+                  builtInFields={section.fields}
+                  enabled={enabled}
+                  allowedFields={allowedFields}
+                  exampleValues={effectiveExampleValues}
+                  onToggleSection={() => onChange(!enabled)}
+                  onToggleField={toggleAllowedField}
+                  onUpdateExampleValue={updateExampleValue}
+                  onAddField={() => addCustomField(section.key)}
+                  onDeleteField={(field) => deleteCustomField(section.key, field)}
+                  draggedField={draggedField}
+                  onDragStart={(field) =>
+                    setDraggedField({ section: section.key, field })
+                  }
+                  onDragEnd={() => setDraggedField(null)}
+                  onDropField={(field) => dropField(section.key, field)}
+                />
+              );
+            })}
+          </div>
+        </StepPanel>
+      );
+    }
+
+    if (activeBuilderStep === "actions") {
+      return (
+        <StepPanel
+          title="Actions"
+          description="Choose the action buttons available to clients and the defaults for new cards."
+        >
+          <ActionButtonsControl
+            actions={actionPermissions}
+            onToggleAction={toggleActionPermission}
+            onToggleDefault={toggleActionDefault}
+            onUpdateDefaultLabel={updateActionDefaultLabel}
+          />
+        </StepPanel>
+      );
+    }
+
+    return (
+      <StepPanel
+        title="Review"
+        description="Check the template contract and visual preview before saving."
+      >
+        <div className="grid gap-4 xl:grid-cols-2">
+          <ReviewCard
+            title="Setup"
+            items={[
+              ["Template", name || "Untitled template"],
+              ["Access", accessLevel === "free" ? "Free" : "Paid"],
+              [
+                "Layout",
+                layoutOptions.find((layout) => layout.value === layoutType)?.label ||
+                  layoutType,
+              ],
+              ["Status", currentPublicationStatus],
+            ]}
+          />
+          <ReviewCard
+            title="Media"
+            items={[
+              [
+                "Profile picture",
+                mediaSummary(
+                  profileImageAllowed,
+                  requiresProfileImage,
+                  profileImageDefaultEnabled
+                ),
+              ],
+              [
+                "Company logo",
+                mediaSummary(
+                  accessLevel === "paid" && logoAllowed,
+                  accessLevel === "paid" && requiresLogo,
+                  accessLevel === "paid" && logoDefaultEnabled
+                ),
+              ],
+              [
+                "Company banner",
+                mediaSummary(
+                  accessLevel === "paid" && bannerAllowed,
+                  accessLevel === "paid" && requiresBanner,
+                  accessLevel === "paid" && bannerDefaultEnabled
+                ),
+              ],
+            ]}
+          />
+          <ReviewCard
+            title="Design"
+            items={[
+              accessLevel === "paid"
+                ? ["Default background", gradientEnabled ? "Gradient" : "Solid"]
+                : ["Colours", `${sanitizeFreeColourPalette(freeColourPalette).length} predefined`],
+              accessLevel === "paid"
+                ? ["Default solid", primaryColor]
+                : [
+                    "Text colours",
+                    `${sanitizeTextColourPalette(textColourPalette, textColor).length} options`,
+                  ],
+              accessLevel === "paid"
+                ? ["Default text", textColor]
+                : ["Custom colours", customColourAllowed ? "Allowed" : "Not allowed"],
+              accessLevel === "paid"
+                ? ["Paid client colours", "Unrestricted"]
+                : [
+                    "Custom text colours",
+                    customTextColourAllowed ? "Allowed" : "Not allowed",
+                  ],
+              [
+                "Typography",
+                `${sanitizeTemplateFonts(allowedFonts).length} fonts · ${
+                  defaultFont || "No custom default"
+                }`,
+              ],
+            ]}
+          />
+          <ReviewCard
+            title="Content"
+            items={[
+              ["Sections", enabledSections.length ? enabledSections.join(", ") : "None"],
+              ["Fields", `${sanitizeAllowedFields(allowedFields).length} allowed`],
+              ["Field defaults", "Stored in contract metadata; client behavior unchanged"],
+            ]}
+          />
+          <ReviewCard
+            title="Actions"
+            items={[
+              ["Allowed actions", String(allowedActionCount)],
+              ["Default visible", String(defaultActionCount)],
+              ["Download PDF", "Catalogue only; upload/storage not enabled yet"],
+            ]}
+          />
+        </div>
+      </StepPanel>
     );
-
-    if (!confirmed) return;
-
-    try {
-      await deleteAdminTemplate(template.id);
-      setTemplates((current) =>
-        current.filter((currentTemplate) => currentTemplate.id !== template.id)
-      );
-      setTemplateMessage("Template deleted successfully.");
-      setTemplateError("");
-    } catch (error) {
-      console.error("Template delete failed", error);
-      setTemplateError(
-        error instanceof Error
-          ? error.message
-          : "Template could not be deleted. Please try again."
-      );
-      return;
-    }
-
-    if (editingTemplateId === template.id) {
-      resetBuilder();
-    }
   }
 
   return (
@@ -844,7 +1758,7 @@ export default function TemplatesPage() {
 
       <section className="flex-1 p-10">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold">Templates</h1>
+          <h1 className="text-4xl font-bold">Template Builder</h1>
           <p className="mt-2 text-white/50">
             Create and edit reusable card layouts. Clients will customise
             colours and content later.
@@ -888,413 +1802,100 @@ export default function TemplatesPage() {
               )}
             </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-4">
-              <Field label="Template Name">
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Classic"
-                  className="inputStyle"
-                />
-              </Field>
+            <TemplateStepNavigation
+              steps={templateBuilderSteps}
+              activeStep={activeBuilderStep}
+              onStepChange={setActiveBuilderStep}
+            />
 
-              <Field label="Access Level">
-                <select
-                  value={accessLevel}
-                  onChange={(e) => applyAccessLevel(e.target.value)}
-                  className="inputStyle"
-                >
-                  <option value="free">Free</option>
-                  <option value="paid">Paid</option>
-                </select>
-              </Field>
+            {renderBuilderStep()}
 
-              <Field label="Layout Style">
-                <select
-                  value={layoutType}
-                  onChange={(e) => setLayoutType(e.target.value)}
-                  className="inputStyle"
-                >
-                  {layoutOptions.map((layout) => (
-                    <option key={layout.value} value={layout.value}>
-                      {layout.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+            <div className="mt-8 flex flex-col gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                type="button"
+                onClick={() => goToBuilderStep(activeStepIndex - 1)}
+                disabled={activeStepIndex === 0}
+                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-medium transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Back
+              </button>
 
-              <Field label="Profile Picture">
-                <select
-                  value={requiresProfileImage ? "yes" : "no"}
-                  onChange={(e) =>
-                    setRequiresProfileImage(e.target.value === "yes")
-                  }
-                  className="inputStyle"
-                >
-                  <option value="yes">Enabled</option>
-                  <option value="no">Disabled</option>
-                </select>
-              </Field>
-
-              {accessLevel === "paid" && (
-                <Field label="Company Logo">
-                  <select
-                    value={requiresLogo ? "yes" : "no"}
-                    onChange={(e) => setRequiresLogo(e.target.value === "yes")}
-                    className="inputStyle"
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                {activeBuilderStep !== "review" && (
+                  <button
+                    type="button"
+                    onClick={() => goToBuilderStep(activeStepIndex + 1)}
+                    className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-medium transition hover:bg-white/15"
                   >
-                    <option value="yes">Enabled</option>
-                    <option value="no">Disabled</option>
-                  </select>
-                </Field>
-              )}
+                    Next
+                  </button>
+                )}
 
-              {accessLevel === "paid" && (
-                <Field label="Company Banner">
-                  <select
-                    value={requiresBanner ? "yes" : "no"}
-                    onChange={(e) => setRequiresBanner(e.target.value === "yes")}
-                    className="inputStyle"
-                  >
-                    <option value="yes">Enabled</option>
-                    <option value="no">Disabled</option>
-                  </select>
-                </Field>
-              )}
-
-              {accessLevel === "paid" && (
-                <Field label="Gradient Background">
-                  <select
-                    value={gradientEnabled ? "yes" : "no"}
-                    onChange={(e) => setGradientEnabled(e.target.value === "yes")}
-                    className="inputStyle"
-                  >
-                    <option value="yes">Enabled</option>
-                    <option value="no">Disabled</option>
-                  </select>
-                </Field>
-              )}
+                <button
+                  type="button"
+                  onClick={() => void saveTemplate()}
+                  disabled={savingTemplate}
+                  className="rounded-2xl bg-[#AC00FF] px-6 py-3 font-medium transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingTemplate
+                    ? "Saving..."
+                    : editingTemplateId
+                    ? "Save Changes"
+                    : "Create Template"}
+                </button>
+              </div>
             </div>
+          </div>
 
-            {accessLevel === "free" ? (
-              <>
-                <ColourPalette
-                  title="Template Colours"
-                  description="Free templates use admin-approved solid colours only. The first colour becomes the default card background."
-                  colours={freeColourPalette}
-                  addLabel="Add Colour"
-                  itemLabel="Colour"
-                  onChange={updateFreePaletteColour}
-                  onAdd={addFreePaletteColour}
-                  onRemove={removeFreePaletteColour}
-                />
-                <ColourPalette
-                  title="Text Colours"
-                  description="Clients can choose from these text colours for the card name and main card text."
-                  colours={textColourPalette}
-                  addLabel="Add Text Colour"
-                  itemLabel="Text"
-                  onChange={updateTextPaletteColour}
-                  onAdd={addTextPaletteColour}
-                  onRemove={removeTextPaletteColour}
-                />
-              </>
-            ) : (
-              <>
-                <div className="mt-8">
-                  <h3 className="text-lg font-semibold">Paid Branding Colours</h3>
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_28px_90px_rgba(0,0,0,0.24)] lg:sticky lg:top-6 lg:self-start">
+            <div className="mb-6">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div>
+                  <h2 className="text-2xl font-semibold">Live Preview</h2>
                   <p className="mt-1 text-sm text-white/45">
-                    Paid templates unlock full branding defaults for company cards.
+                    Current Admin draft rendered by the existing CardRenderer.
                   </p>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
-                    <ColorField
-                      label="Primary Colour"
-                      value={primaryColor}
-                      onChange={setPrimaryColor}
-                    />
-                    <ColorField
-                      label="Secondary Colour"
-                      value={secondaryColor}
-                      onChange={setSecondaryColor}
-                    />
-                    <ColorField
-                      label="Text Colour"
-                      value={textColor}
-                      onChange={setTextColor}
-                    />
-                    <ColorField
-                      label="Button Colour"
-                      value={buttonColor}
-                      onChange={setButtonColor}
-                    />
-                    <ColorField
-                      label="Button Text Colour"
-                      value={buttonTextColor}
-                      onChange={setButtonTextColor}
-                    />
-                  </div>
                 </div>
-
-                <TypographyControls
-                  allowedFonts={allowedFonts}
-                  defaultFont={defaultFont}
-                  onToggleFont={toggleAllowedFont}
-                  onSelectDefaultFont={selectDefaultFont}
-                />
-              </>
-            )}
-
-            <div className="mt-8">
-              <h3 className="text-lg font-semibold">Classic Sections</h3>
-              <p className="mt-1 text-sm text-white/45">
-                Toggle each card section, then choose which fields are allowed
-                inside it. The profile image and name header always stay
-                visible on Classic cards.
-              </p>
-
-              <div className="mt-4 space-y-4">
-                <CardHeaderControl
-                  fields={cardHeaderFields}
-                  allowedFields={allowedFields}
-                  onToggleField={toggleAllowedField}
-                />
-
-                {sectionFieldGroups.map((section) => {
-                  const { enabled, onChange } = sectionState(section.key);
-
-                  return (
-                    <SectionControl
-                      key={section.key}
-                      section={section.key}
-                      title={section.title}
-                      description={section.description}
-                      fields={orderedSectionFields(section.key, customFields)}
-                      builtInFields={section.fields}
-                      enabled={enabled}
-                      allowedFields={allowedFields}
-                      onToggleSection={() => onChange(!enabled)}
-                      onToggleField={toggleAllowedField}
-                      onAddField={() => addCustomField(section.key)}
-                      onDeleteField={(field) => deleteCustomField(section.key, field)}
-                      draggedField={draggedField}
-                      onDragStart={(field) =>
-                        setDraggedField({ section: section.key, field })
-                      }
-                      onDragEnd={() => setDraggedField(null)}
-                      onDropField={(field) => dropField(section.key, field)}
-                    />
-                  );
-                })}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewFieldOrder(normalizeCustomFields(customFields));
+                    setPreviewActionConfig(null);
+                    setClientPreviewOpen(true);
+                  }}
+                  className="rounded-2xl border border-[#AC00FF]/35 bg-[#AC00FF]/15 px-4 py-2.5 text-sm font-semibold text-purple-100 transition hover:border-[#AC00FF]/60 hover:bg-[#AC00FF]/25 focus:outline-none focus:ring-2 focus:ring-[#AC00FF]/60"
+                >
+                  Preview Client Experience
+                </button>
               </div>
             </div>
 
-            <ActionButtonsControl
-              actions={actionPermissions}
-              onToggleAction={toggleActionPermission}
-              onToggleDefault={toggleActionDefault}
-              onUpdateDefaultLabel={updateActionDefaultLabel}
+            <AdminLivePhonePreview
+              template={previewTemplate}
+              cardData={previewCardData}
             />
 
-            <button
-              type="button"
-              onClick={() => void saveTemplate()}
-              disabled={savingTemplate}
-              className="mt-8 rounded-2xl bg-[#AC00FF] px-6 py-3 font-medium hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {savingTemplate
-                ? "Saving..."
-                : editingTemplateId
-                ? "Save Changes"
-                : "Create Template"}
-            </button>
-          </div>
-
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 lg:sticky lg:top-6 lg:self-start">
-            <h2 className="mb-6 text-2xl font-semibold">Live Preview</h2>
-
-            <div className="max-w-full overflow-hidden">
-              <CardRenderer
-                mode="preview"
-                template={{
-                  layout_type: layoutType,
-                  logo_size: "standard",
-                  access_level: accessLevel,
-                  requires_profile_image: requiresProfileImage,
-                  requires_logo: accessLevel === "paid" && requiresLogo,
-                  requires_banner: accessLevel === "paid" && requiresBanner,
-                  gradient_enabled: accessLevel === "paid" && gradientEnabled,
-                  free_colour_palette: sanitizeFreeColourPalette(freeColourPalette),
-                  text_colours: sanitizeTextColourPalette(textColourPalette, textColor),
-                  allowed_fonts:
-                    accessLevel === "paid"
-                      ? sanitizeTemplateFonts(allowedFonts)
-                      : defaultAllowedFonts,
-                  default_font: accessLevel === "paid" ? defaultFont || null : "Inter",
-                  supports_bio: true,
-                  supports_save_contact: actionPermissionEnabled(
-                    actionPermissions,
-                    "save_contact"
-                  ),
-                  allowed_fields: allowedFields,
-                  allowed_actions: buildTemplateAllowedActions(actionPermissions),
-                  custom_fields: customFields,
-                  primary_color: primaryColor,
-                  secondary_color: secondaryColor,
-                  text_color: textColor,
-                  button_color: buttonColor,
-                  button_text_color: buttonTextColor,
-                  show_personal_section: showPersonalSection,
-                  show_company_section: showCompanySection,
-                  show_contact_section: showContactSection,
-                  show_social_section: showSocialSection,
-                }}
-                cardData={{
-                  title: "Dr",
-                  first_name: "First Name",
-                  last_name: "Last Name",
-                  full_name: "Full Name",
-                  job_title: "Creative Director",
-                  bio:
-                    "A short professional bio can describe experience, services, or the best way to connect.",
-                  company_name: "DevMaster Inc",
-                  company_logo_url:
-                    accessLevel === "paid" && requiresLogo ? "" : null,
-                  company_banner_url:
-                    accessLevel === "paid" && requiresBanner ? "" : null,
-                  department: "Creative Department",
-                  email: "hello@devmasterinc.com",
-                  phone: "+44 7000 000000",
-                  website: "https://www.devmasterinc.com",
-                  address: "London, United Kingdom",
-                  whatsapp: "+44 7000 000000",
-                  linkedin: "linkedin.com/company/devmasterinc",
-                  instagram: "@devmasterinc",
-                  facebook: "facebook.com/devmasterinc",
-                  youtube: "youtube.com/@devmasterinc",
-                  booking_link: "devmasterinc.com/book",
-                  custom_url: "devmasterinc.com",
-                  custom_fields: previewCustomFieldValues(customFields),
-                }}
+            {clientPreviewOpen && (
+              <ClientExperiencePreview
+                step={clientPreviewStep}
+                onStepChange={setClientPreviewStep}
+                onClose={() => setClientPreviewOpen(false)}
+                template={previewClientTemplate}
+                cardData={clientExperienceCardData}
+                fieldOrder={previewFieldOrder}
+                onActionConfigChange={setPreviewActionConfig}
+                onUpdateCard={updatePreviewCard}
+                onUpdateCustomField={updatePreviewCustomField}
+                onToggleFieldVisibility={togglePreviewFieldVisibility}
+                onMoveField={movePreviewField}
+                leadSettings={previewLeadSettings}
+                onLeadSettingsChange={setPreviewLeadSettings}
+                onSelectFont={setPreviewSelectedFont}
               />
-            </div>
+            )}
           </div>
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-white/5">
-          <div className="flex flex-col gap-4 border-b border-white/10 p-6 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-semibold">Current Templates</h2>
-              <span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/15 px-3 py-1 text-xs font-medium text-purple-100">
-                {templates.length} total
-              </span>
-            </div>
-
-            <div className="w-full md:max-w-sm">
-              <label htmlFor="template-search" className="sr-only">
-                Search templates by name
-              </label>
-              <input
-                id="template-search"
-                value={templateSearch}
-                onChange={(e) => setTemplateSearch(e.target.value)}
-                placeholder="Search templates..."
-                className="inputStyle"
-              />
-            </div>
-          </div>
-
-          <div className="max-h-[760px] overflow-y-auto p-6">
-            <div className="flex flex-wrap justify-center gap-6">
-              {filteredTemplates.map((template) => (
-                <div
-                  key={template.id}
-                  className="w-[260px] shrink-0 rounded-2xl border border-white/10 bg-white/5 p-3 transition hover:border-[#AC00FF]/35 hover:bg-white/[0.07]"
-                >
-                  <div className="mb-3 flex h-36 items-start justify-center overflow-hidden rounded-xl bg-[#070B1A]/60">
-                    <div className="mx-auto origin-top scale-[0.28]">
-                      <div className="mx-auto w-[560px]">
-                        <CardRenderer
-                          mode="compact"
-                          template={template}
-                          cardData={{
-                            title: "Dr",
-                            first_name: "First Name",
-                            last_name: "Last Name",
-                            full_name: "Full Name",
-                            job_title: "Creative Director",
-                            bio: "Professional bio",
-                            company_name: "DevMaster Inc",
-                            department: "Creative Department",
-                            email: "hello@devmasterinc.com",
-                            phone: "+44 7000 000000",
-                            website: "devmasterinc.com",
-                            address: "London, United Kingdom",
-                            custom_fields: previewCustomFieldValues(
-                              template.custom_fields || {}
-                            ),
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h2 className="truncate text-base font-semibold">
-                        {template.name}
-                      </h2>
-                    </div>
-
-                    <AccessBadge level={template.access_level || "free"} />
-                  </div>
-
-                  <div className="mt-3 border-t border-white/10 pt-3">
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-xs ${
-                        template.is_published
-                          ? "bg-green-500/20 text-green-300"
-                          : "bg-white/10 text-white/50"
-                      }`}
-                    >
-                      {template.is_published ? "Published" : "Draft"}
-                    </span>
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => editTemplate(template)}
-                      className="rounded-lg bg-white/10 py-2 text-xs hover:bg-white/15"
-                    >
-                      Edit
-                    </button>
-
-                    <button
-                      onClick={() => duplicateTemplate(template)}
-                      className="rounded-lg bg-white/10 py-2 text-xs hover:bg-white/15"
-                    >
-                      Duplicate
-                    </button>
-
-                    <button
-                      onClick={() => togglePublished(template)}
-                      className="rounded-lg bg-[#AC00FF] py-2 text-xs hover:opacity-90"
-                    >
-                      {template.is_published ? "Unpublish" : "Publish"}
-                    </button>
-
-                    <button
-                      onClick={() => deleteTemplate(template)}
-                      className="rounded-lg bg-white/10 py-2 text-xs hover:bg-red-500/20"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
       </section>
     </main>
   );
@@ -1317,34 +1918,352 @@ function Field({
   );
 }
 
-function ColorField({
-  label,
-  value,
-  onChange,
+function ClientExperiencePreview({
+  step,
+  onStepChange,
+  onClose,
+  template,
+  cardData,
+  fieldOrder,
+  onActionConfigChange,
+  onUpdateCard,
+  onUpdateCustomField,
+  onToggleFieldVisibility,
+  onMoveField,
+  leadSettings,
+  onLeadSettingsChange,
+  onSelectFont,
 }: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
+  step: ClientPreviewStep;
+  onStepChange: (step: ClientPreviewStep) => void;
+  onClose: () => void;
+  template: SharedTemplate;
+  cardData: SharedClientCard;
+  fieldOrder: Required<CustomFields>;
+  onActionConfigChange: (config: CardActionConfig) => void;
+  onUpdateCard: (field: keyof SharedClientCard, value: string) => void;
+  onUpdateCustomField: (field: string, value: string) => void;
+  onToggleFieldVisibility: (field: string) => void;
+  onMoveField: (
+    section: SectionKey,
+    draggedField: string,
+    targetField: string,
+    position?: "before" | "after"
+  ) => void;
+  leadSettings: LeadCaptureSettings;
+  onLeadSettingsChange: (settings: LeadCaptureSettings) => void;
+  onSelectFont: (font: string) => void;
+}) {
+  const [devicePreview, setDevicePreview] = useState("iphone_15");
+  const [deviceSearch, setDeviceSearch] = useState("");
+  const [devicePickerOpen, setDevicePickerOpen] = useState(false);
+  const [stepFourPreviewMode, setStepFourPreviewMode] =
+    useState<"card" | "lead_form">("card");
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  const selectedDevice = findDevice(devicePreview as Parameters<typeof findDevice>[0]);
+  const filteredDeviceGroups = filterDeviceGroups(deviceSearch);
+  const previewDimensions = previewFrameDimensions(selectedDevice);
+  const previewTemplate = {
+    ...template,
+    custom_fields: fieldOrder,
+  };
+
+  return (
+    <CardEditorModalShell
+      title="Client Experience Preview"
+      description={`Previewing ${template.name || "current Admin draft"} with local sample data.`}
+      ariaLabel="Client experience preview"
+      actionBar={
+        <EditorStepNavigation
+          activeStep={step}
+          saveStatus="idle"
+          onBack={() => onStepChange(Math.max(0, step - 1) as ClientPreviewStep)}
+          onNext={() => onStepChange(Math.min(3, step + 1) as ClientPreviewStep)}
+          onPublish={onClose}
+          publishLabel="Preview Complete"
+        />
+      }
+      onClose={onClose}
+    >
+      <div className="grid gap-5 min-[1180px]:grid-cols-[minmax(0,1fr)_minmax(340px,420px)] min-[1500px]:grid-cols-[minmax(0,1fr)_minmax(380px,460px)]">
+        <EditorPanel
+          key={step}
+          activeStep={step}
+          draftCard={cardData}
+          fieldOrder={fieldOrder}
+          template={template}
+          templates={[template]}
+          currentPlan={template.access_level === "paid" ? "pro" : "free"}
+          isPaid={template.access_level === "paid"}
+          onStepChange={onStepChange}
+          onUpdate={onUpdateCard}
+          onSelectTemplate={() => undefined}
+          onUpdateCustomField={onUpdateCustomField}
+          onUpdateLeadSettings={onLeadSettingsChange}
+          onActionConfigChange={onActionConfigChange}
+          onToggleFieldVisibility={onToggleFieldVisibility}
+          onMoveField={onMoveField}
+          onSelectFont={onSelectFont}
+          showTemplateContractControls
+          saveStatus="idle"
+          saveMessage=""
+          saveError=""
+        />
+
+        <aside className="min-w-0">
+          <div className="client-portal-panel sticky top-0 p-5">
+            <PreviewPanelContent
+              title="Live Edit Preview"
+              previewCard={cardData}
+              previewTemplate={previewTemplate}
+              selectedDevice={selectedDevice}
+              selectedKey={devicePreview as Parameters<typeof findDevice>[0]}
+              search={deviceSearch}
+              open={devicePickerOpen}
+              filteredGroups={filteredDeviceGroups}
+              dimensions={previewDimensions}
+              leadSettings={step === 3 ? normalizeLeadCaptureSettings(leadSettings) : undefined}
+              previewMode={step === 3 ? stepFourPreviewMode : "card"}
+              onSearchChange={setDeviceSearch}
+              onOpenChange={setDevicePickerOpen}
+              onSelect={(key) => {
+                setDevicePreview(key);
+                setDevicePickerOpen(false);
+              }}
+              onPreviewModeChange={setStepFourPreviewMode}
+            />
+          </div>
+        </aside>
+      </div>
+    </CardEditorModalShell>
+  );
+}
+
+function AdminLivePhonePreview({
+  template,
+  cardData,
+}: {
+  template: CardRendererTemplate;
+  cardData: CardRendererData;
 }) {
   return (
-    <label className="block rounded-2xl border border-white/10 bg-white/5 p-3">
-      <span className="mb-2 block text-xs font-medium text-white/45">
-        {label}
-      </span>
-      <div className="flex items-center gap-3">
-        <input
-          type="color"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="h-11 w-12 shrink-0 rounded-xl border border-white/10 bg-transparent"
-        />
-        <input
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="min-w-[96px] flex-1 rounded-xl border border-white/10 bg-[#101935] px-3 py-2 text-sm font-semibold uppercase tracking-[0.04em] outline-none transition focus:border-[#AC00FF]"
+    <div className="flex min-h-[620px] items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-black/20 p-5">
+      <div className="relative w-full max-w-[360px] rounded-[2.7rem] bg-gradient-to-br from-black via-[#101016] to-[#1B1230] p-2.5 shadow-2xl shadow-[#AC00FF]/20">
+        <div className="pointer-events-none absolute left-1/2 top-[18px] z-20 h-7 w-24 -translate-x-1/2 rounded-full bg-black shadow-inner shadow-white/10" />
+        <div className="h-[560px] overflow-y-auto overflow-x-hidden rounded-[2rem] bg-[#070B1A] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <CardRenderer mode="preview" template={template} cardData={cardData} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TemplateStepNavigation({
+  steps,
+  activeStep,
+  onStepChange,
+}: {
+  steps: typeof templateBuilderSteps;
+  activeStep: TemplateBuilderStep;
+  onStepChange: (step: TemplateBuilderStep) => void;
+}) {
+  return (
+    <div className="mt-6 rounded-3xl border border-white/10 bg-[#101935]/45 p-3">
+      <ol className="grid gap-2 md:grid-cols-5">
+        {steps.map((step, index) => {
+          const selected = step.key === activeStep;
+
+          return (
+            <li key={step.key}>
+              <button
+                type="button"
+                onClick={() => onStepChange(step.key)}
+                className={`flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-left text-sm transition ${
+                  selected
+                    ? "bg-[#AC00FF] text-white shadow-[0_0_22px_rgba(172,0,255,0.24)]"
+                    : "bg-white/5 text-white/55 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                <span
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                    selected ? "bg-white text-[#101935]" : "bg-white/10 text-white/60"
+                  }`}
+                >
+                  {index + 1}
+                </span>
+                <span className="font-medium">{step.label}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+function StepPanel({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mt-6">
+      <div className="mb-5">
+        <h3 className="text-xl font-semibold">{title}</h3>
+        <p className="mt-1 text-sm leading-6 text-white/45">{description}</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function MediaCapabilityRow({
+  title,
+  description,
+  enabled,
+  disabled = false,
+  onEnabledChange,
+}: {
+  title: string;
+  description: string;
+  enabled: boolean;
+  disabled?: boolean;
+  onEnabledChange: (value: boolean) => void;
+}) {
+  return (
+    <div
+      className={`grid gap-4 rounded-2xl border border-white/10 bg-white/[0.045] p-4 transition md:grid-cols-[minmax(0,1fr)_auto] md:items-center ${
+        disabled ? "opacity-55" : ""
+      }`}
+    >
+      <div className="flex gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/10 text-white/65">
+          <span className="text-[10px] font-bold uppercase tracking-[0.14em]">
+            IMG
+          </span>
+        </div>
+        <div>
+          <p className="font-semibold">{title}</p>
+          <p className="mt-1 text-xs leading-relaxed text-white/55">
+            {description}
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <TogglePill
+          label={enabled ? "Enabled" : "Disabled"}
+          enabled={enabled}
+          disabled={disabled}
+          onToggle={() => onEnabledChange(!enabled)}
         />
       </div>
-    </label>
+    </div>
+  );
+}
+
+function ContractToggle({
+  label,
+  description,
+  enabled,
+  onToggle,
+}: {
+  label: string;
+  description: string;
+  enabled: boolean;
+  onToggle: (value: boolean) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="font-semibold">{label}</p>
+          <p className="mt-1 text-xs leading-relaxed text-white/45">
+            {description}
+          </p>
+        </div>
+        <TogglePill
+          label={enabled ? "Allowed" : "Not allowed"}
+          enabled={enabled}
+          onToggle={() => onToggle(!enabled)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TogglePill({
+  label,
+  enabled,
+  disabled = false,
+  onToggle,
+}: {
+  label: string;
+  enabled: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  const enabledStyle = label === "Required"
+    ? "border-amber-300/50 bg-amber-400/20 text-amber-100 shadow-[0_0_0_2px_rgba(251,191,36,0.12)]"
+    : label === "Default enabled"
+    ? "border-sky-300/50 bg-sky-400/20 text-sky-100 shadow-[0_0_0_2px_rgba(56,189,248,0.12)]"
+    : "border-[#AC00FF]/55 bg-[#AC00FF]/25 text-white shadow-[0_0_0_2px_rgba(172,0,255,0.14)]";
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onToggle}
+      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+        enabled
+          ? enabledStyle
+          : "border-white/10 bg-white/5 text-white/55 hover:border-white/20 hover:bg-white/10 hover:text-white/75"
+      } disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-white/10 disabled:hover:bg-white/5`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ReviewCard({
+  title,
+  items,
+}: {
+  title: string;
+  items: [string, string][];
+}) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-[#101935]/50 p-5">
+      <h3 className="text-lg font-semibold">{title}</h3>
+      <dl className="mt-4 space-y-3">
+        {items.map(([label, value]) => (
+          <div key={`${title}-${label}`} className="flex gap-4 text-sm">
+            <dt className="w-32 shrink-0 text-white/45">{label}</dt>
+            <dd className="min-w-0 flex-1 text-white">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }
 
@@ -1503,6 +2422,7 @@ function ColourPalette({
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs font-medium text-white/50">
                 {itemLabel} {index + 1}
+                {index === 0 ? " · Default" : ""}
               </span>
               {palette.length > 1 && (
                 <button
@@ -1620,8 +2540,10 @@ function SectionControl({
   builtInFields,
   enabled,
   allowedFields,
+  exampleValues,
   onToggleSection,
   onToggleField,
+  onUpdateExampleValue,
   onAddField,
   onDeleteField,
   draggedField,
@@ -1636,8 +2558,10 @@ function SectionControl({
   builtInFields: string[];
   enabled: boolean;
   allowedFields: string[];
+  exampleValues: TemplateExampleValues;
   onToggleSection: () => void;
   onToggleField: (field: string) => void;
+  onUpdateExampleValue: (field: string, value: string) => void;
   onAddField: () => void;
   onDeleteField: (field: string) => void;
   draggedField: DraggedField;
@@ -1701,7 +2625,7 @@ function SectionControl({
                     event.preventDefault();
                     onDropField(field);
                   }}
-                  className={`flex cursor-grab items-center gap-3 rounded-2xl border px-4 py-3 transition active:cursor-grabbing ${
+                  className={`grid cursor-grab gap-3 rounded-2xl border px-4 py-3 transition active:cursor-grabbing sm:grid-cols-[auto_minmax(0,1fr)_minmax(180px,260px)_auto_auto] sm:items-center ${
                     dragging
                       ? "border-[#AC00FF] bg-[#AC00FF]/20 shadow-lg shadow-[#AC00FF]/10"
                       : "border-white/10 bg-white/5 hover:border-[#AC00FF]/30 hover:bg-white/[0.07]"
@@ -1713,6 +2637,22 @@ function SectionControl({
                   <span className="min-w-0 flex-1 text-sm font-medium capitalize">
                     {formatFieldLabel(field)}
                   </span>
+                  {field in defaultTemplateExampleValues ? (
+                    <input
+                      type="text"
+                      value={exampleValues[field] || ""}
+                      onDragStart={(event) => event.preventDefault()}
+                      onChange={(event) =>
+                        onUpdateExampleValue(field, event.target.value)
+                      }
+                      placeholder="Example value"
+                      className="min-w-0 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60 focus:ring-2 focus:ring-[#AC00FF]/20"
+                    />
+                  ) : (
+                    <span className="hidden text-xs text-white/30 sm:block">
+                      Custom field
+                    </span>
+                  )}
                   <button
                     type="button"
                     onDragStart={(event) => event.preventDefault()}
@@ -1755,11 +2695,15 @@ function SectionControl({
 function CardHeaderControl({
   fields,
   allowedFields,
+  exampleValues,
   onToggleField,
+  onUpdateExampleValue,
 }: {
   fields: string[];
   allowedFields: string[];
+  exampleValues: TemplateExampleValues;
   onToggleField: (field: string) => void;
+  onUpdateExampleValue: (field: string, value: string) => void;
 }) {
   return (
     <div className="rounded-3xl border border-[#AC00FF]/35 bg-[#AC00FF]/10 p-5">
@@ -1782,11 +2726,20 @@ function CardHeaderControl({
           return (
             <div
               key={`header-${field}`}
-              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 transition hover:border-[#AC00FF]/30 hover:bg-white/[0.07]"
+              className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 transition hover:border-[#AC00FF]/30 hover:bg-white/[0.07] sm:grid-cols-[minmax(0,1fr)_minmax(180px,260px)_auto] sm:items-center"
             >
               <span className="min-w-0 flex-1 text-sm font-medium capitalize">
                 {formatFieldLabel(field)}
               </span>
+              <input
+                type="text"
+                value={exampleValues[field] || ""}
+                onChange={(event) =>
+                  onUpdateExampleValue(field, event.target.value)
+                }
+                placeholder="Example value"
+                className="min-w-0 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60 focus:ring-2 focus:ring-[#AC00FF]/20"
+              />
               <button
                 type="button"
                 onClick={() => onToggleField(field)}
@@ -1896,6 +2849,14 @@ function buildTemplatePayload({
   requires_profile_image,
   requires_logo,
   requires_banner,
+  profile_image_allowed,
+  profile_image_default_enabled,
+  logo_allowed,
+  logo_default_enabled,
+  banner_allowed,
+  banner_default_enabled,
+  custom_colour_allowed,
+  custom_text_colour_allowed,
   gradient_enabled,
   free_colour_palette,
   allowed_fonts,
@@ -1903,6 +2864,8 @@ function buildTemplatePayload({
   allowed_fields,
   allowed_actions,
   custom_fields,
+  field_config,
+  renderer_options,
   show_personal_section,
   show_company_section,
   show_contact_section,
@@ -1921,6 +2884,14 @@ function buildTemplatePayload({
   requires_profile_image: boolean;
   requires_logo: boolean;
   requires_banner: boolean;
+  profile_image_allowed: boolean;
+  profile_image_default_enabled: boolean;
+  logo_allowed: boolean;
+  logo_default_enabled: boolean;
+  banner_allowed: boolean;
+  banner_default_enabled: boolean;
+  custom_colour_allowed: boolean;
+  custom_text_colour_allowed: boolean;
   gradient_enabled: boolean;
   free_colour_palette: string[];
   allowed_fonts: string[];
@@ -1928,6 +2899,8 @@ function buildTemplatePayload({
   allowed_fields: string[];
   allowed_actions: TemplateAllowedActions;
   custom_fields: CustomFields;
+  field_config: TemplateFieldConfig;
+  renderer_options: Record<string, unknown>;
   show_personal_section: boolean;
   show_company_section: boolean;
   show_contact_section: boolean;
@@ -1949,6 +2922,14 @@ function buildTemplatePayload({
     requires_profile_image,
     requires_logo,
     requires_banner,
+    profile_image_allowed,
+    profile_image_default_enabled,
+    logo_allowed,
+    logo_default_enabled,
+    banner_allowed,
+    banner_default_enabled,
+    custom_colour_allowed,
+    custom_text_colour_allowed,
     gradient_enabled,
     free_colour_palette: sanitizeFreeColourPalette(free_colour_palette),
     colour_palette: sanitizeFreeColourPalette(free_colour_palette),
@@ -1962,6 +2943,9 @@ function buildTemplatePayload({
     allowed_fields: sanitizeAllowedFields(allowed_fields),
     allowed_actions: sanitizeTemplateAllowedActions(allowed_actions),
     custom_fields: sanitizeCustomFields(custom_fields),
+    field_config,
+    renderer_options,
+    template_contract_version: 1,
     logo_size: "standard",
     show_personal_section,
     show_company_section,
@@ -2025,6 +3009,93 @@ function buildTemplateAllowedActions(
           : undefined,
       })),
   };
+}
+
+function buildTemplateFieldConfig(
+  allowedFields: string[],
+  customFields: CustomFields
+): TemplateFieldConfig {
+  const sections = normalizeCustomFields(customFields);
+
+  return {
+    version: 1,
+    allowed_fields: sanitizeAllowedFields(allowedFields),
+    sections,
+    default_visibility: {},
+    required_fields: [],
+  };
+}
+
+function buildTemplateRendererOptions(
+  layoutType: string,
+  exampleValues: TemplateExampleValues,
+  gradientStart: string,
+  gradientEnd: string
+): Record<string, unknown> {
+  return {
+    version: 1,
+    layout_type: layoutType,
+    example_values: sanitizeTemplateExampleValues(exampleValues),
+    gradient_defaults: {
+      start: gradientStart,
+      end: gradientEnd,
+    },
+  };
+}
+
+function sanitizeTemplateExampleValues(
+  values?: TemplateExampleValues | null
+): TemplateExampleValues {
+  const source = values || {};
+
+  return Object.keys(defaultTemplateExampleValues).reduce<TemplateExampleValues>(
+    (sanitized, field) => {
+      const value = source[field];
+
+      sanitized[field] =
+        typeof value === "string"
+          ? value.trim().slice(0, field === "bio" ? 500 : 160)
+          : defaultTemplateExampleValues[field] || "";
+
+      return sanitized;
+    },
+    {}
+  );
+}
+
+function readTemplateExampleValues(
+  rendererOptions: Record<string, unknown> | null | undefined,
+  fallback: TemplateExampleValues
+): TemplateExampleValues {
+  if (!rendererOptions || typeof rendererOptions !== "object") {
+    return sanitizeTemplateExampleValues(fallback);
+  }
+
+  const rawExamples = rendererOptions.example_values;
+
+  if (!rawExamples || typeof rawExamples !== "object" || Array.isArray(rawExamples)) {
+    return sanitizeTemplateExampleValues(fallback);
+  }
+
+  return sanitizeTemplateExampleValues({
+    ...fallback,
+    ...(rawExamples as TemplateExampleValues),
+  });
+}
+
+function mediaSummary(
+  allowed: boolean,
+  required: boolean,
+  defaultEnabled: boolean
+) {
+  if (!allowed) return "Not allowed";
+
+  const parts = ["Allowed"];
+
+  if (required) parts.push("Required");
+  if (defaultEnabled) parts.push("Default enabled");
+
+  return parts.join(" · ");
 }
 
 function sanitizeTemplateAllowedActions(
@@ -2111,18 +3182,4 @@ function sanitizeCustomFields(customFields: CustomFields): CustomFields {
     ),
     social: sanitizeAllowedFields(normalized.social),
   };
-}
-
-function AccessBadge({ level }: { level: string }) {
-  const displayLevel = level === "free" ? "Free" : "Paid";
-  const styles =
-    displayLevel === "Free"
-      ? "bg-white/10 text-white/55"
-      : "bg-yellow-500/20 text-yellow-300";
-
-  return (
-    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${styles}`}>
-      {displayLevel}
-    </span>
-  );
 }

@@ -16,6 +16,7 @@ import {
   mergeFieldOrderWithTemplate,
   normalizeFieldVisibility,
   readableTextForColour,
+  readBackgroundMeta,
   normalizeLeadCaptureSettings,
   type CardFieldOrder,
   type CardFieldVisibility,
@@ -49,6 +50,9 @@ type PublicCardRow = CardRendererData & {
   updated_at?: string | null;
   selected_colour?: string | null;
   selected_text_colour?: string | null;
+  selected_background_mode?: string | null;
+  selected_gradient_start?: string | null;
+  selected_gradient_end?: string | null;
   hidden_fields?: string[] | null;
   field_visibility?: CardFieldVisibility | null;
   field_order?: Partial<CardFieldOrder> | null;
@@ -181,6 +185,10 @@ function selectedTextColourForPublicTemplate(
   selectedTextColour: string | null | undefined,
   backgroundColour: string
 ) {
+  if (template.access_level !== "free" && selectedTextColour) {
+    return selectedTextColour;
+  }
+
   const palette = normalizeColourPalette(template.text_colours);
 
   if (selectedTextColour && palette.includes(selectedTextColour)) {
@@ -238,6 +246,8 @@ function isPublicCardPublished(card: PublicCardRow) {
 }
 
 function toPublicCardData(card: PublicCardRow): PublicCardData {
+  const backgroundMeta = readBackgroundMeta(card);
+
   return {
     id: card.id || "",
     slug: card.slug || "",
@@ -261,6 +271,10 @@ function toPublicCardData(card: PublicCardRow): PublicCardData {
     booking_link: card.booking_link || null,
     custom_url: card.custom_url || null,
     action_config: normalizeCardActionConfig(card.action_config),
+    selected_colour: card.selected_colour || null,
+    selected_background_mode: backgroundMeta.mode,
+    selected_gradient_start: backgroundMeta.start,
+    selected_gradient_end: backgroundMeta.end,
     selected_text_colour: card.selected_text_colour || null,
     profile_image_url: card.profile_image_url || null,
     company_logo_url: card.company_logo_url || null,

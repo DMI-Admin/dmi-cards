@@ -152,6 +152,18 @@ function stripLocalOnlyFields(payload: TemplatePayload) {
     );
   }
 
+  if ("field_config" in databasePayload) {
+    databasePayload.field_config = isRecord(databasePayload.field_config)
+      ? databasePayload.field_config
+      : {};
+  }
+
+  if ("renderer_options" in databasePayload) {
+    databasePayload.renderer_options = isRecord(databasePayload.renderer_options)
+      ? databasePayload.renderer_options
+      : {};
+  }
+
   return databasePayload;
 }
 
@@ -197,4 +209,8 @@ function missingColumnFromError(error: { message: string } | null) {
   const qualifiedColumnMatch = message.match(/column templates\.([a-zA-Z0-9_]+) does not exist/);
 
   return quotedColumnMatch?.[1] || qualifiedColumnMatch?.[1] || null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

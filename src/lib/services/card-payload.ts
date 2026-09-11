@@ -37,6 +37,9 @@ export type LeadCaptureSettings = {
   marketing_opt_in_label?: string;
   marketing_opt_in_version?: string;
 };
+const backgroundModeKey = "__dmi_background_mode";
+const gradientStartKey = "__dmi_gradient_start";
+const gradientEndKey = "__dmi_gradient_end";
 export type SharedClientCard = CardRendererData & {
   id: string;
   card_name: string;
@@ -49,6 +52,9 @@ export type SharedClientCard = CardRendererData & {
   created_at?: string | null;
   updated_at?: string | null;
   selected_colour?: string;
+  selected_background_mode?: "solid" | "gradient" | string | null;
+  selected_gradient_start?: string | null;
+  selected_gradient_end?: string | null;
   hidden_fields?: string[];
   field_visibility?: CardFieldVisibility;
   slug?: string;
@@ -69,6 +75,9 @@ export type SupabaseCardRow = CardRendererData & {
   company_banner_url?: string | null;
   selected_colour?: string | null;
   selected_text_colour?: string | null;
+  selected_background_mode?: string | null;
+  selected_gradient_start?: string | null;
+  selected_gradient_end?: string | null;
   hidden_fields?: string[] | null;
   field_visibility?: CardFieldVisibility | null;
   field_order?: CardFieldOrder | null;
@@ -213,6 +222,10 @@ export function selectedTextColourForTemplate(
   selectedTextColour: string | null | undefined,
   backgroundColour?: string | null
 ) {
+  if (template?.access_level !== "free" && selectedTextColour) {
+    return selectedTextColour;
+  }
+
   const palette = templateTextColourPalette(
     template,
     backgroundColour || firstTemplateColour(template)
@@ -404,6 +417,7 @@ export function mapSupabaseCard(
     row.hidden_fields,
     fieldOrder
   );
+  const backgroundMeta = readBackgroundMeta(row);
 
   return {
     id: row.id,
@@ -441,6 +455,9 @@ export function mapSupabaseCard(
     company_banner_url: row.company_banner_url || "",
     custom_fields: row.custom_fields || {},
     selected_colour: selectedColourForTemplate(rowTemplate, row.selected_colour),
+    selected_background_mode: backgroundMeta.mode,
+    selected_gradient_start: backgroundMeta.start,
+    selected_gradient_end: backgroundMeta.end,
     selected_text_colour: selectedTextColourForTemplate(
       rowTemplate,
       row.selected_text_colour,
@@ -571,7 +588,45 @@ export function buildPersistedCustomFields(card: SharedClientCard) {
     values[customFieldStorageKey(field)] = textValue;
   });
 
+  const mode = card.selected_background_mode === "gradient" ? "gradient" : "solid";
+  values[backgroundModeKey] = mode;
+
+  if (card.selected_gradient_start) {
+    values[gradientStartKey] = card.selected_gradient_start;
+  }
+
+  if (card.selected_gradient_end) {
+    values[gradientEndKey] = card.selected_gradient_end;
+  }
+
   return values;
+}
+
+export function readBackgroundMeta(card: {
+  custom_fields?: SharedClientCard["custom_fields"] | null;
+  selected_background_mode?: string | null;
+  selected_gradient_start?: string | null;
+  selected_gradient_end?: string | null;
+}) {
+  const customFields = card.custom_fields || {};
+  const rawMode =
+    card.selected_background_mode ||
+    (typeof customFields[backgroundModeKey] === "string"
+      ? customFields[backgroundModeKey]
+      : null);
+  const mode = rawMode === "gradient" ? "gradient" : "solid";
+  const start =
+    card.selected_gradient_start ||
+    (typeof customFields[gradientStartKey] === "string"
+      ? customFields[gradientStartKey]
+      : null);
+  const end =
+    card.selected_gradient_end ||
+    (typeof customFields[gradientEndKey] === "string"
+      ? customFields[gradientEndKey]
+      : null);
+
+  return { mode, start, end };
 }
 
 export function customFieldStorageKey(field: string) {

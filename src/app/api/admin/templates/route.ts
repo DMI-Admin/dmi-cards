@@ -171,6 +171,18 @@ function stripLocalOnlyFields(payload: TemplatePayload) {
     );
   }
 
+  if ("field_config" in databasePayload) {
+    databasePayload.field_config = isRecord(databasePayload.field_config)
+      ? databasePayload.field_config
+      : {};
+  }
+
+  if ("renderer_options" in databasePayload) {
+    databasePayload.renderer_options = isRecord(databasePayload.renderer_options)
+      ? databasePayload.renderer_options
+      : {};
+  }
+
   return databasePayload;
 }
 
@@ -220,4 +232,8 @@ function missingColumnFromError(error: { message: string } | null) {
 
 function isDuplicateSlugError(error: { message: string } | null) {
   return /templates_slug_key|duplicate key value/i.test(error?.message || "");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

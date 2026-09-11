@@ -41,7 +41,8 @@ export default function Sidebar() {
       title: "Management",
       items: [
         { name: "Client Onboarding", href: "/clients", icon: UsersRound },
-        { name: "Templates", href: "/templates", icon: FileText },
+        { name: "Template Builder", href: "/templates", icon: FileText },
+        { name: "Current Templates", href: "/templates/current", icon: ScrollText },
         { name: "Cards", href: "/cards", icon: CreditCard },
         { name: "Public Pages", href: "/public-pages", icon: WalletCards },
         { name: "QR Codes", href: "/qr-codes", icon: QrCode },
@@ -112,7 +113,8 @@ export default function Sidebar() {
                 const Icon = item.icon;
                 const isActive =
                   pathname === item.href ||
-                  pathname.startsWith(`${item.href}/`);
+                  (item.href !== "/templates" &&
+                    pathname.startsWith(`${item.href}/`));
 
                 return (
                   <Link

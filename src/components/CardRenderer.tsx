@@ -37,6 +37,7 @@ import {
   vCardDataHref,
   vCardFilename,
 } from "@/lib/card-action-routing";
+import { modernMinimalMediaSlots } from "@/lib/media-slots";
 
 type CardRendererMode = "preview" | "public" | "compact";
 type LogoSize = "compact" | "standard" | "large" | "banner";
@@ -52,6 +53,7 @@ type DisplayRow = {
   value?: string | null;
   icon?: LucideIcon;
   href?: string | null;
+  example?: boolean;
 };
 
 type TemplateActionIcon = LucideIcon | IconType;
@@ -103,6 +105,14 @@ export type CardRendererTemplate = {
   requires_profile_image?: boolean | null;
   requires_logo?: boolean | null;
   requires_banner?: boolean | null;
+  profile_image_allowed?: boolean | null;
+  profile_image_default_enabled?: boolean | null;
+  logo_allowed?: boolean | null;
+  logo_default_enabled?: boolean | null;
+  banner_allowed?: boolean | null;
+  banner_default_enabled?: boolean | null;
+  custom_colour_allowed?: boolean | null;
+  custom_text_colour_allowed?: boolean | null;
   gradient_enabled?: boolean | null;
   colour_palette?: string[] | null;
   free_colour_palette?: string[] | null;
@@ -118,6 +128,9 @@ export type CardRendererTemplate = {
   show_company_section?: boolean | null;
   show_contact_section?: boolean | null;
   show_social_section?: boolean | null;
+  field_config?: Record<string, unknown> | null;
+  renderer_options?: Record<string, unknown> | null;
+  template_contract_version?: number | null;
 };
 
 export type CardRendererData = {
@@ -141,11 +154,18 @@ export type CardRendererData = {
   booking_link?: string | null;
   custom_url?: string | null;
   action_config?: CardActionConfig | null;
+  selected_colour?: string | null;
   selected_text_colour?: string | null;
+  selected_background_mode?: "solid" | "gradient" | string | null;
+  selected_gradient_start?: string | null;
+  selected_gradient_end?: string | null;
   profile_image_url?: string | null;
   company_logo_url?: string | null;
   company_banner_url?: string | null;
   custom_fields?: CustomFieldValues | null;
+  hidden_fields?: string[] | null;
+  field_visibility?: Record<string, boolean> | null;
+  example_fields?: string[] | null;
 };
 
 type CardRendererProps = {
@@ -171,6 +191,31 @@ const defaultText = "#FFFFFF";
 const defaultButton = "#0F0E38";
 const defaultButtonText = "#FFFFFF";
 
+function isRendererMediaVisible(cardData: CardRendererData, keys: string[]) {
+  const visibility = cardData.field_visibility || {};
+  const hidden = new Set(cardData.hidden_fields || []);
+
+  for (const key of keys) {
+    if (visibility[key] === false) return false;
+    if (visibility[key] === true) return true;
+  }
+
+  return !keys.some((key) => hidden.has(key));
+}
+
+function isRendererExampleField(cardData: CardRendererData, field?: string) {
+  if (!field) return false;
+
+  return new Set(cardData.example_fields || []).has(field);
+}
+
+function markExampleRows(rows: DisplayRow[], cardData: CardRendererData) {
+  return rows.map((row) => ({
+    ...row,
+    example: row.example || isRendererExampleField(cardData, row.field),
+  }));
+}
+
 type SectionSettings = {
   personal: boolean;
   company: boolean;
@@ -181,6 +226,7 @@ type SectionSettings = {
 type RendererTheme = {
   primary: string;
   secondary: string;
+  background: string;
   text: string;
   buttonColor: string;
   buttonTextColor: string;
@@ -247,10 +293,31 @@ export default function CardRenderer({
   const compact = mode === "compact";
   const isPaid = template.access_level === "paid";
   const requiresProfileImage = template.requires_profile_image ?? true;
+  const profileImageVisible = isRendererMediaVisible(cardData, [
+    "profile_image_url",
+    "profile_image",
+  ]);
+  const logoVisible = isRendererMediaVisible(cardData, [
+    "company_logo_url",
+    "company_logo",
+    "logo",
+  ]);
+  const bannerVisible = isRendererMediaVisible(cardData, [
+    "company_banner_url",
+    "company_banner",
+    "banner",
+  ]);
   const requiresLogo =
-    template.access_level === "paid" && (template.requires_logo ?? false);
+    template.access_level === "paid" &&
+    logoVisible &&
+    (template.requires_logo === true ||
+      (layout === "modern_minimal" &&
+        (template.logo_allowed === true ||
+          template.logo_default_enabled === true)));
   const requiresBanner =
-    template.access_level === "paid" && (template.requires_banner ?? false);
+    template.access_level === "paid" &&
+    bannerVisible &&
+    (template.requires_banner ?? false);
   const supportsBio = template.supports_bio ?? true;
   const sectionSettings = {
     personal: template.show_personal_section ?? true,
@@ -258,9 +325,24 @@ export default function CardRenderer({
     contact: template.show_contact_section ?? true,
     social: template.show_social_section ?? false,
   };
-  const primary = template.primary_color || defaultPrimary;
-  const secondary = template.secondary_color || defaultSecondary;
-  const freeColour = sanitizeColourPalette(template.free_colour_palette)[0];
+  const selectedColour = cardData.selected_colour
+    ? sanitizeColourPalette([cardData.selected_colour])[0]
+    : null;
+  const selectedGradientStart = cardData.selected_gradient_start
+    ? sanitizeColourPalette([cardData.selected_gradient_start])[0]
+    : null;
+  const selectedGradientEnd = cardData.selected_gradient_end
+    ? sanitizeColourPalette([cardData.selected_gradient_end])[0]
+    : null;
+  const selectedBackgroundMode =
+    template.access_level === "paid"
+      ? cardData.selected_background_mode ||
+        (template.gradient_enabled ? "gradient" : "solid")
+      : "solid";
+  const primary = selectedColour || template.primary_color || defaultPrimary;
+  const secondary = selectedGradientEnd || template.secondary_color || defaultSecondary;
+  const freeColour =
+    selectedColour || sanitizeColourPalette(template.free_colour_palette)[0];
   const selectedTextColour = cardData.selected_text_colour
     ? sanitizeColourPalette([cardData.selected_text_colour])[0]
     : null;
@@ -275,14 +357,6 @@ export default function CardRenderer({
   const fontFamily = isPaid
     ? getTemplateFont(layout, template.default_font)
     : getFontFamily(template.default_font);
-  const theme = {
-    primary,
-    secondary,
-    text,
-    buttonColor,
-    buttonTextColor,
-    fontFamily,
-  };
   const saveContactHref = mode === "public" ? vCardDataHref(cardData) : null;
   const saveContactFilename = mode === "public" ? vCardFilename(cardData) : undefined;
   const previewSaveContactContrastClass =
@@ -305,16 +379,25 @@ export default function CardRenderer({
   const background =
     template.access_level === "free"
       ? freeColour
-      : template.gradient_enabled === false
-      ? primary
-      : `linear-gradient(135deg, ${primary}, ${secondary})`;
+      : selectedBackgroundMode === "gradient"
+      ? `linear-gradient(135deg, ${selectedGradientStart || primary}, ${secondary})`
+      : primary;
+  const theme = {
+    primary,
+    secondary,
+    background,
+    text,
+    buttonColor,
+    buttonTextColor,
+    fontFamily,
+  };
 
   const content = {
     classic_free: (
       <ClassicLayout
         cardData={cardData}
         allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
+        requiresProfileImage={requiresProfileImage && profileImageVisible}
         requiresLogo={requiresLogo}
         requiresBanner={requiresBanner}
         logoSize={logoSize}
@@ -332,7 +415,25 @@ export default function CardRenderer({
       <ClassicLayout
         cardData={cardData}
         allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
+        requiresProfileImage={requiresProfileImage && profileImageVisible}
+        requiresLogo={requiresLogo}
+        requiresBanner={requiresBanner}
+        logoSize={logoSize}
+        supportsBio={supportsBio}
+        templateCustomFields={template.custom_fields || {}}
+        mode={mode}
+        sectionSettings={sectionSettings}
+        compact={compact}
+        isPaid
+        theme={theme}
+        actionConfig={actionConfig}
+      />
+    ),
+    modern_minimal: (
+      <ModernMinimalLayout
+        cardData={cardData}
+        allowedFields={allowedFields}
+        requiresProfileImage={requiresProfileImage && profileImageVisible}
         requiresLogo={requiresLogo}
         requiresBanner={requiresBanner}
         logoSize={logoSize}
@@ -350,7 +451,7 @@ export default function CardRenderer({
       <GlassmorphismLayout
         cardData={cardData}
         allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
+        requiresProfileImage={requiresProfileImage && profileImageVisible}
         requiresLogo={requiresLogo}
         requiresBanner={requiresBanner}
         logoSize={logoSize}
@@ -368,7 +469,7 @@ export default function CardRenderer({
       <BannerCardLayout
         cardData={cardData}
         allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
+        requiresProfileImage={requiresProfileImage && profileImageVisible}
         requiresLogo={requiresLogo}
         requiresBanner={requiresBanner}
         logoSize={logoSize}
@@ -386,7 +487,7 @@ export default function CardRenderer({
       <SplitCardLayout
         cardData={cardData}
         allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
+        requiresProfileImage={requiresProfileImage && profileImageVisible}
         requiresLogo={requiresLogo}
         requiresBanner={requiresBanner}
         logoSize={logoSize}
@@ -404,7 +505,7 @@ export default function CardRenderer({
       <MonogramCardLayout
         cardData={cardData}
         allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
+        requiresProfileImage={requiresProfileImage && profileImageVisible}
         requiresLogo={requiresLogo}
         requiresBanner={requiresBanner}
         logoSize={logoSize}
@@ -422,7 +523,7 @@ export default function CardRenderer({
       <ModernLayout
         cardData={cardData}
         allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
+        requiresProfileImage={requiresProfileImage && profileImageVisible}
         requiresLogo={requiresLogo}
         logoSize={logoSize}
         supportsBio={supportsBio}
@@ -433,7 +534,7 @@ export default function CardRenderer({
       <CenteredLayout
         cardData={cardData}
         allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
+        requiresProfileImage={requiresProfileImage && profileImageVisible}
         requiresLogo={requiresLogo}
         logoSize={logoSize}
         supportsBio={supportsBio}
@@ -444,7 +545,7 @@ export default function CardRenderer({
       <SplitLayout
         cardData={cardData}
         allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
+        requiresProfileImage={requiresProfileImage && profileImageVisible}
         requiresLogo={requiresLogo}
         logoSize={logoSize}
         supportsBio={supportsBio}
@@ -455,7 +556,7 @@ export default function CardRenderer({
       <BannerLayout
         cardData={cardData}
         allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
+        requiresProfileImage={requiresProfileImage && profileImageVisible}
         requiresLogo={requiresLogo}
         logoSize={logoSize}
         supportsBio={supportsBio}
@@ -466,7 +567,7 @@ export default function CardRenderer({
       <CompactLayout
         cardData={cardData}
         allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
+        requiresProfileImage={requiresProfileImage && profileImageVisible}
         requiresLogo={requiresLogo}
         logoSize={logoSize}
         supportsBio={supportsBio}
@@ -476,7 +577,7 @@ export default function CardRenderer({
       <MinimalLayout
         cardData={cardData}
         allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage}
+        requiresProfileImage={requiresProfileImage && profileImageVisible}
         requiresLogo={requiresLogo}
         logoSize={logoSize}
         supportsBio={supportsBio}
@@ -956,6 +1057,258 @@ function ClassicSectionContent({
         );
       })}
     </div>
+  );
+}
+
+function ModernMinimalLayout(props: LayoutProps) {
+  const {
+    cardData,
+    allowedFields,
+    templateCustomFields = {},
+    mode = "preview",
+    sectionSettings = {
+      personal: true,
+      company: true,
+      contact: true,
+      social: false,
+    },
+    compact,
+    requiresProfileImage,
+    requiresLogo,
+    requiresBanner,
+    theme,
+    actionConfig,
+  } = props;
+  const rendererTheme = getRendererTheme(theme);
+  const publicMode = mode === "public";
+  const previewMode = mode === "preview" || mode === "compact";
+  const allowed = new Set(allowedFields);
+  const muted = colorAlpha(rendererTheme.text, 0.58);
+  const fineBorder = colorAlpha(rendererTheme.text, 0.12);
+  const rows = {
+    personal: markExampleRows(
+      addPublicRowActions(
+        classicRows("personal", templateCustomFields, cardData, allowed, previewMode),
+        publicMode
+      ),
+      cardData
+    ),
+    company: markExampleRows(
+      addPublicRowActions(
+        classicRows("company", templateCustomFields, cardData, allowed, previewMode),
+        publicMode
+      ),
+      cardData
+    ),
+    contact: markExampleRows(
+      addPublicRowActions(
+        classicRows("contact", templateCustomFields, cardData, allowed, previewMode),
+        publicMode
+      ),
+      cardData
+    ),
+    social: markExampleRows(
+      addPublicRowActions(
+        classicRows("social", templateCustomFields, cardData, allowed, previewMode)
+          .filter((row) => !actionConfig || !row.field || !actionOwnedDetailFields.has(row.field)),
+        publicMode
+      ),
+      cardData
+    ),
+  };
+  const headline = displayName(cardData);
+  const headlineIsExample = ["title", "first_name", "last_name", "full_name"].some(
+    (field) => isRendererExampleField(cardData, field)
+  );
+  const initialsText = initials(headline);
+  const contactLine = [toDisplayValue(cardData.email), toDisplayValue(cardData.phone)]
+    .filter(Boolean)
+    .join("  /  ");
+
+  return (
+    <div
+      className={`relative min-h-full overflow-visible text-[#101935] ${
+        compact ? "p-5 pt-9" : "p-7 pt-12"
+      }`}
+      style={{
+        background: rendererTheme.background,
+        color: rendererTheme.text,
+        fontFamily: rendererTheme.fontFamily,
+      }}
+    >
+      {requiresLogo && cardData.company_logo_url && (
+        <div className="pointer-events-none sticky top-1/2 z-0 flex h-0 -translate-y-1/2 justify-center overflow-visible">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={cardData.company_logo_url}
+            alt=""
+            aria-hidden="true"
+            className={`object-contain opacity-[0.065] ${
+              compact ? "h-40 w-40" : "h-64 w-64"
+            }`}
+          />
+        </div>
+      )}
+
+      <div className="relative z-10">
+        {requiresBanner && (
+          <div
+            className="mb-5 overflow-hidden rounded-3xl border"
+            style={{
+              aspectRatio: `${modernMinimalMediaSlots.banner.aspectRatio} / 1`,
+              borderColor: fineBorder,
+              background:
+                cardData.company_banner_url
+                  ? `url(${cardData.company_banner_url}) center/cover no-repeat`
+                  : `linear-gradient(135deg, ${colorAlpha(rendererTheme.primary, 0.14)}, ${colorAlpha(rendererTheme.secondary, 0.08)})`,
+            }}
+          />
+        )}
+
+      <div className="text-center">
+        {requiresProfileImage && (
+          <div
+            className={`mx-auto mb-5 flex shrink-0 items-center justify-center overflow-hidden rounded-full border font-semibold ${
+              compact ? "h-20 w-20 text-xl" : "h-28 w-28 text-3xl"
+            }`}
+            style={{
+              borderColor: fineBorder,
+              background: colorAlpha(rendererTheme.primary, 0.08),
+              color: rendererTheme.primary,
+            }}
+          >
+            {cardData.profile_image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={cardData.profile_image_url}
+                alt={headline}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              initialsText
+            )}
+          </div>
+        )}
+
+        <div className="min-w-0">
+          <h3
+            className={`max-w-full break-words font-semibold leading-[1.04] ${
+              compact ? "text-xl" : "text-[22px]"
+            }`}
+            style={{
+              color: headlineIsExample ? muted : rendererTheme.text,
+              lineHeight: 1.2,
+              fontWeight: 700,
+            }}
+          >
+            {headline}
+          </h3>
+        </div>
+      </div>
+
+      {contactLine && (
+        <p
+          className="mt-6 break-words border-t pt-5 text-sm font-medium"
+          style={{ borderColor: fineBorder, color: muted }}
+        >
+          {contactLine}
+        </p>
+      )}
+
+      <ModernMinimalSection
+        title="Profile"
+        rows={sectionSettings.personal ? rows.personal : []}
+        theme={rendererTheme}
+      />
+      <ModernMinimalSection
+        title="Company"
+        rows={sectionSettings.company ? rows.company : []}
+        theme={rendererTheme}
+      />
+      <ModernMinimalSection
+        title="Contact"
+        rows={sectionSettings.contact ? rows.contact : []}
+        theme={rendererTheme}
+      />
+      <ModernMinimalSection
+        title="Social"
+        rows={sectionSettings.social ? rows.social : []}
+        theme={rendererTheme}
+      />
+
+      {actionConfig && (
+        <TemplateActionList
+          compact={compact}
+          theme={{
+            ...rendererTheme,
+            buttonColor: colorAlpha(rendererTheme.primary, 0.1),
+            buttonTextColor: rendererTheme.text,
+          }}
+          cardData={cardData}
+          mode={mode}
+          actionConfig={actionConfig}
+          className="mt-7"
+          itemClassName="!rounded-full !border !border-black/10 !bg-white/70 !px-4 !py-3 !text-xs !shadow-sm"
+        />
+      )}
+
+      <div
+        className="mt-8 h-1 w-16 rounded-full"
+        style={{ backgroundColor: rendererTheme.primary }}
+      />
+      </div>
+    </div>
+  );
+}
+
+function ModernMinimalSection({
+  title,
+  rows,
+  theme,
+}: {
+  title: string;
+  rows: DisplayRow[];
+  theme: RendererTheme;
+}) {
+  if (rows.length === 0) return null;
+
+  const muted = colorAlpha(theme.text, 0.58);
+  const border = colorAlpha(theme.text, 0.12);
+
+  return (
+    <section className="mt-7">
+      <h4
+        className="text-[10px] font-bold uppercase tracking-[0.22em]"
+        style={{ color: muted }}
+      >
+        {title}
+      </h4>
+      <div className="mt-3 divide-y" style={{ borderColor: border }}>
+        {rows.map((row) => {
+          const RowTag = row.href ? "a" : "div";
+
+          return (
+            <RowTag
+              key={`${title}-${row.label}`}
+              href={row.href || undefined}
+              target={row.href?.startsWith("http") ? "_blank" : undefined}
+              rel={row.href?.startsWith("http") ? "noopener noreferrer" : undefined}
+              className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] gap-4 py-3 text-sm"
+            >
+              <span className="min-w-0 break-words text-xs" style={{ color: muted }}>
+                {row.label}
+              </span>
+              <span
+                className="min-w-0 whitespace-pre-wrap break-words font-medium"
+                style={{ color: row.example ? muted : theme.text }}
+              >
+                {row.value}
+              </span>
+            </RowTag>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -2255,6 +2608,7 @@ function actionButtonStyleForType(type: CardActionType, theme: RendererTheme) {
 function isTemplateShelllessPaidLayout(layout: string) {
   return (
     layout === "glassmorphism" ||
+    layout === "modern_minimal" ||
     layout === "banner_card" ||
     layout === "split_card" ||
     layout === "monogram_card"
@@ -2270,6 +2624,7 @@ function getRendererTheme(theme?: RendererTheme): RendererTheme {
   return {
     primary: theme?.primary || defaultPrimary,
     secondary: theme?.secondary || defaultSecondary,
+    background: theme?.background || theme?.primary || defaultPrimary,
     text: theme?.text || defaultText,
     buttonColor,
     buttonTextColor,
@@ -2686,6 +3041,7 @@ function normalizeLayoutType(
 
   const paidLayouts = [
     "premium_classic",
+    "modern_minimal",
     "glassmorphism",
     "banner_card",
     "split_card",
@@ -2726,6 +3082,7 @@ function getTemplateFont(layoutType: string, selectedFont?: string | null) {
   if (selectedFont) return getFontFamily(selectedFont);
 
   const defaults: Record<string, string> = {
+    modern_minimal: "DM Sans",
     glassmorphism: "Outfit",
     banner_card: "Inter",
     split_card: "Poppins",
@@ -2739,22 +3096,25 @@ function getFontFamily(font?: string | null) {
   const normalized = font || "Inter";
   const fontStacks: Record<string, string> = {
     Inter:
-      '"Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      'var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     Poppins:
-      '"Poppins", "Avenir Next", "Trebuchet MS", ui-sans-serif, system-ui, sans-serif',
+      'var(--font-poppins), "Avenir Next", "Trebuchet MS", ui-sans-serif, system-ui, sans-serif',
     Montserrat:
-      '"Montserrat", "Avenir Next", "Trebuchet MS", ui-sans-serif, system-ui, sans-serif',
-    Lato: '"Lato", Arial, Helvetica, ui-sans-serif, system-ui, sans-serif',
-    Roboto: '"Roboto", Arial, Helvetica, ui-sans-serif, system-ui, sans-serif',
-    "Playfair Display": '"Playfair Display", Georgia, Cambria, "Times New Roman", serif',
+      'var(--font-montserrat), "Avenir Next", "Trebuchet MS", ui-sans-serif, system-ui, sans-serif',
+    Lato: 'var(--font-lato), Arial, Helvetica, ui-sans-serif, system-ui, sans-serif',
+    Roboto: 'var(--font-roboto), Arial, Helvetica, ui-sans-serif, system-ui, sans-serif',
+    "Playfair Display":
+      'var(--font-playfair-display), Georgia, Cambria, "Times New Roman", serif',
     "DM Sans":
-      '"DM Sans", "Avenir Next", ui-sans-serif, system-ui, -apple-system, sans-serif',
+      'var(--font-dm-sans), "Avenir Next", ui-sans-serif, system-ui, -apple-system, sans-serif',
     Outfit:
-      '"Outfit", "Avenir Next", "Trebuchet MS", ui-sans-serif, system-ui, sans-serif',
-    Nunito: '"Nunito", "Trebuchet MS", Verdana, ui-sans-serif, system-ui, sans-serif',
+      'var(--font-outfit), "Avenir Next", "Trebuchet MS", ui-sans-serif, system-ui, sans-serif',
+    Nunito:
+      'var(--font-nunito), "Trebuchet MS", Verdana, ui-sans-serif, system-ui, sans-serif',
     "Space Mono":
-      '"Space Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-    Syne: '"Syne", "Arial Black", Impact, ui-sans-serif, system-ui, sans-serif',
+      'var(--font-space-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+    Syne:
+      'var(--font-syne), "Arial Black", Impact, ui-sans-serif, system-ui, sans-serif',
   };
 
   return fontStacks[normalized] || fontStacks.Inter;
