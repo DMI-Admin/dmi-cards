@@ -7,7 +7,7 @@ function load(path, deps) {
   const exports = {};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(path, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
-  }).outputText, { process: { env: diagnosticEnvironment }, exports, require(name) { if (["@/lib/card-typography", "@/lib/card-section-label", "@/lib/client-media-intent", "@/lib/card-media"].includes(name)) return load(name.replace("@/", "src/") + ".ts", {}); assert.ok(name in deps, name); return deps[name]; } });
+  }).outputText, { URL, process: { env: diagnosticEnvironment }, exports, require(name) { if (["@/lib/card-typography", "@/lib/card-section-label", "@/lib/client-media-intent", "@/lib/card-media"].includes(name)) return load(name.replace("@/", "src/") + ".ts", {}); assert.ok(name in deps, name); return deps[name]; } });
   return exports;
 }
 class ApiRouteError extends Error { constructor(status, code, message) { super(message); this.status = status; } }
@@ -198,6 +198,67 @@ for (const layout_type of ['classic_free', 'profile_free', 'modern_minimal', 'ex
     assert.equal(nodes.includes('Banner'), visible && Boolean(t.banner_allowed), layout_type + ' banner placeholder');
   }
 }
+// Missing/invalid resolved media never reserves Client/public image slots.
+for (const layout_type of ['classic_free', 'profile_free', 'modern_minimal', 'executive_paid', 'brand_paid']) {
+  const t = { ...template, layout_type, access_level: 'paid', requires_profile_image: true,
+    profile_image_allowed:true, requires_logo:true, logo_allowed:true, requires_banner:true, banner_allowed:true };
+  for (const mode of ['preview','public']) for (const value of ['',null,undefined,'invalid']) {
+    const data = { ...card, action_config:{actions:[]}, profile_image_url:value, company_logo_url:value, company_banner_url:value };
+    const tree = renderer.default({template:t,cardData:data,mode,showMediaPlaceholders:false});
+    assert.equal(tree.props.requiresProfileImage,false);
+    assert.equal(tree.props.requiresLogo,false);
+    assert.equal(Boolean(tree.props.requiresBanner),false);
+    const nodes = flatten(tree);
+    assert.equal(nodes.some(n => n?.type === 'img' || n?.type === 'UserRound'),false,layout_type+' missing media collapsed');
+  }
+}
+const { incompleteVisibleMedia } = load('src/lib/client-media-visibility.ts', {'@/lib/services/card-payload':payload});
+const mediaCapabilities = {profile_image_url:true,company_logo_url:true,company_banner_url:true};
+for (const field of Object.keys(mediaCapabilities)) {
+  const c = {...card, profile_image_url:'',company_logo_url:'',company_banner_url:'',custom_fields:{},
+    field_visibility:Object.fromEntries(Object.keys(mediaCapabilities).map(k=>[k,k===field])),hidden_fields:[]};
+  assert.equal(incompleteVisibleMedia(c,mediaCapabilities)[0].key,field);
+  assert.equal(incompleteVisibleMedia({...c,field_visibility:{...c.field_visibility,[field]:false}},mediaCapabilities).length,0);
+  for (const value of ['data:image/png;base64,YQ==','https://example.invalid/photo.png','card-media:11111111-1111-4111-8111-111111111111']) {
+    assert.equal(incompleteVisibleMedia({...c,[field]:value},mediaCapabilities).length,0);
+    assert.equal(incompleteVisibleMedia({...c,[field]:value,media_edits:{[field]:'remove'}},mediaCapabilities).length,1);
+  }
+}
+// Execute the page's actual shared Continue/Publish guard (not a duplicate).
+const pageSource = fs.readFileSync('src/app/client/cards/page.tsx','utf8');
+const transitionSource = pageSource.slice(pageSource.indexOf('  function validateEditorStepTransition('),pageSource.indexOf('  function continueAfterValidation('));
+for (const field of Object.keys(mediaCapabilities)) {
+  const editorCard = {...card,profile_image_url:'',company_logo_url:'',company_banner_url:'',custom_fields:{},hidden_fields:[],
+    field_visibility:Object.fromEntries(Object.keys(mediaCapabilities).map(k=>[k,k===field]))};
+  let pending;
+  const context = {currentPlan:'pro',draftTemplateRecord:template,editorCard,activeStep:1,
+    incompleteVisibleMedia,clientTemplateView:()=>({media:mediaCapabilities}),setPendingValidation:v=>{pending=v;},
+    incompleteBuildFields:()=>[],incompleteActions:()=>[],incompleteLeadCaptureSettings:()=>[]};
+  vm.createContext(context);
+  vm.runInContext(ts.transpileModule(transitionSource,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
+  assert.equal(context.validateEditorStepTransition(2),false);
+  assert.equal(pending.kind,'media');assert.equal(pending.issues[0].key,field);
+  assert.equal(context.validateEditorStepTransition(undefined,'published'),false);
+  editorCard.field_visibility[field]=false;
+  assert.equal(context.validateEditorStepTransition(2),true);
+  assert.equal(context.validateEditorStepTransition(undefined,'published'),true);
+}
+// Decode failures hide the image and mark its slot for collapse; a new source
+// is independent of an earlier failure (no kind/card-level failure cache).
+let imageSlots=[], imageCursor=0;
+const imageComponent=load('src/components/CardMediaImage.tsx',{
+  react:{useState(initial){const i=imageCursor++;if(!(i in imageSlots))imageSlots[i]=initial;return [imageSlots[i],v=>{imageSlots[i]=v;}];},useEffect(){}},
+  'react/jsx-runtime':{jsx,jsxs:jsx},'@/lib/supabase':{supabase:{}}
+}).default;
+function imageRender(src){imageCursor=0;return imageComponent({src,alt:'Logo'});}
+const failedImage=imageRender('https://example.invalid/old.webp');
+failedImage.props.onError({});
+assert.equal(imageRender('https://example.invalid/old.webp').props['data-media-unavailable'],true);
+assert.equal(imageRender('https://example.invalid/old.webp').props.style.display,'none');
+assert.equal(imageRender('https://example.invalid/new.webp').props['data-media-unavailable'],undefined);
+assert.equal(imageRender('').props['data-media-unavailable'],true);
+console.log('PASS: all three visible empty media blocked; hiding permits progression; retain/upload accepted; remove still visible blocked; empty legacy Client/public slots collapsed.');
+
 console.log('PASS: gradient capability/default separation; all media save/reopen/replace/remove paths; hidden actions unchanged; shared renderer placeholders honor visibility in all five layouts.');
 
 // Exercise the actual Admin hydration/save expressions: default mode must not

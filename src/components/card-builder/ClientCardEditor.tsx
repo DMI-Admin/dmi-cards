@@ -836,6 +836,7 @@ export function PreviewPanelContent({
 
 export function EditorPanel({
   activeStep,
+  mediaUploadTarget,
   nameValidationAttempted = false,
   draftCard,
   fieldOrder,
@@ -859,6 +860,7 @@ export function EditorPanel({
   saveError,
 }: {
   activeStep: BuilderStep;
+  mediaUploadTarget?: string | null;
   nameValidationAttempted?: boolean;
   draftCard: ClientCard;
   fieldOrder: FieldOrder;
@@ -886,7 +888,12 @@ export function EditorPanel({
   saveMessage: string;
   saveError: string;
 }) {
-  const [mainProfileExpanded, setMainProfileExpanded] = useState(false);
+  const [mainProfileExpanded, setMainProfileExpanded] = useState(Boolean(mediaUploadTarget));
+  const [previousUploadTarget, setPreviousUploadTarget] = useState(mediaUploadTarget);
+  if (mediaUploadTarget !== previousUploadTarget) {
+    setPreviousUploadTarget(mediaUploadTarget);
+    if (mediaUploadTarget) setMainProfileExpanded(true);
+  }
   const [expandedSections, setExpandedSections] = useState<ExpandedBuilderSections>({
     personal: false,
     company: false,
@@ -955,7 +962,7 @@ export function EditorPanel({
             template={template}
             draftCard={draftCard}
             fieldOrder={fieldOrder}
-            mainProfileExpanded={mainProfileExpanded}
+            mainProfileExpanded={mainProfileExpanded || Boolean(mediaUploadTarget)}
             expandedSections={expandedSections}
             showTemplateContractControls={showTemplateContractControls}
             onUpdate={onUpdate}
@@ -1675,6 +1682,7 @@ function MediaImageControl({
           >
             <input
               type="file"
+              data-media-upload={aspect === "banner" ? "company_banner_url" : "company_logo_url"}
               accept="image/*"
               disabled={inputDisabled}
               onChange={handleFileChange}
@@ -1796,6 +1804,7 @@ function ProfilePictureUpload({
           >
             <input
               type="file"
+              data-media-upload="profile_image_url"
               accept="image/*"
               disabled={disabled}
               onChange={handleFileChange}

@@ -1,5 +1,7 @@
 "use client";
 
+import { flushSync } from "react-dom";
+import { incompleteVisibleMedia } from "@/lib/client-media-visibility";
 import { loadEditableCard } from "@/lib/client-card-media";
 import { cardFontKey } from "@/lib/card-typography";
 import { clientTemplateView, clientFieldOrder, reconcileClientCard } from "@/lib/client-template-view";
@@ -191,7 +193,7 @@ type SectionConfig = {
   enabled: boolean;
   fields: string[];
 };
-type ValidationIssueKind = "fields" | "actions" | "lead_capture";
+type ValidationIssueKind = "fields" | "actions" | "lead_capture" | "media";
 type ValidationIssue = {
   key: string;
   label: string;
@@ -436,6 +438,7 @@ export default function ClientCardsPage() {
   const [showBuilder, setShowBuilder] = useState(false);
   const [panelMode, setPanelMode] = useState<PanelMode>("create");
   const [activeStep, setActiveStep] = useState<BuilderStep>(0);
+  const [mediaUploadTarget, setMediaUploadTarget] = useState<string | null>(null);
   const [nameValidationAttempted, setNameValidationAttempted] = useState(false);
   const [hasVisitedActionsStep, setHasVisitedActionsStep] = useState(false);
   const [draftCard, setDraftCard] = useState<ClientCard>(blankCard);
@@ -986,6 +989,13 @@ export default function ClientCardsPage() {
   }
 
   function validateEditorStepTransition(nextStep?: BuilderStep, publishStatus?: CardStatus) {
+    if (currentPlan !== "enterprise" && draftTemplateRecord) {
+      const issues = incompleteVisibleMedia(editorCard, clientTemplateView(draftTemplateRecord, currentPlan).media);
+      if (issues.length) {
+        setPendingValidation({ kind: "media", issues, nextStep, publishStatus });
+        return false;
+      }
+    }
     const shouldValidateBuild =
       activeStep === 1 ||
       Boolean(publishStatus) ||
@@ -1041,6 +1051,14 @@ export default function ClientCardsPage() {
   }
 
   function continueAfterValidation(validation: PendingValidation) {
+    if (validation.kind === "media") {
+      // Resolve one item at a time. Continuing again re-runs every existing guard.
+      setDraftCard(forceHideFieldsOnCard(draftCard, [validation.issues[0].key]));
+      setPendingValidation(validation.issues.length > 1
+        ? { ...validation, issues: validation.issues.slice(1) }
+        : null);
+      return;
+    }
     if (validation.kind === "lead_capture") {
       setPendingValidation(null);
       return;
@@ -1515,6 +1533,7 @@ export default function ClientCardsPage() {
                   <EditorPanel
                     key={activeStep}
                     activeStep={activeStep}
+                    mediaUploadTarget={mediaUploadTarget}
                     nameValidationAttempted={nameValidationAttempted}
                     enforceClientContract={currentPlan !== "enterprise"}
                     draftCard={editorCard}
@@ -1540,7 +1559,7 @@ export default function ClientCardsPage() {
                   <aside className="min-w-0">
                     <div className="client-portal-panel p-5">
                       <PreviewPanelContent
-                        showMediaPlaceholders={currentPlan !== "enterprise"}
+                        showMediaPlaceholders={false}
                         title={previewTitle}
                         previewCard={previewCard}
                         previewTemplate={previewTemplate}
@@ -1582,6 +1601,18 @@ export default function ClientCardsPage() {
                   <CompletionValidationModal
                     validation={pendingValidation}
                     onGoBack={() => setPendingValidation(null)}
+                    onUpload={() => {
+                      const field = pendingValidation.issues[0].key;
+                      flushSync(() => {
+                        setPendingValidation(null);
+                        setMediaUploadTarget(field);
+                        setActiveStep(1);
+                      });
+                      const input = document.querySelector<HTMLInputElement>(`input[data-media-upload="${field}"]`);
+                      input?.closest("label")?.scrollIntoView({ block: "center" });
+                      input?.click();
+                      setMediaUploadTarget(null);
+                    }}
                     onHideAndContinue={() =>
                       continueAfterValidation(pendingValidation)
                     }
@@ -1599,24 +1630,27 @@ function CompletionValidationModal({
   validation,
   onGoBack,
   onHideAndContinue,
+  onUpload,
 }: {
   validation: PendingValidation;
+  onUpload: () => void;
   onGoBack: () => void;
   onHideAndContinue: () => void;
 }) {
+  const isMediaValidation = validation.kind === "media";
   const isActionValidation = validation.kind === "actions";
   const isLeadValidation = validation.kind === "lead_capture";
-  const title = isActionValidation
+  const title = isMediaValidation ? "Visible media needs an upload" : isActionValidation
     ? "Some visible actions need setup"
     : isLeadValidation
     ? "Lead capture needs a field"
     : "Some visible fields are incomplete";
-  const message = isActionValidation
+  const message = isMediaValidation ? validation.issues[0].detail : isActionValidation
     ? "These actions are visible, but do not have the details needed to work yet."
     : isLeadValidation
     ? "Collect First needs at least one selected field before this card can be published."
     : "These fields are visible, but do not have content yet.";
-  const continueLabel = isActionValidation
+  const continueLabel = isMediaValidation ? "Set to hidden" : isActionValidation
     ? "Hide incomplete actions and continue"
     : "Hide incomplete fields and continue";
 
@@ -1654,7 +1688,7 @@ function CompletionValidationModal({
           </div>
 
           <ul className="mt-4 space-y-2">
-            {validation.issues.map((issue) => (
+            {(isMediaValidation ? validation.issues.slice(0, 1) : validation.issues).map((issue) => (
               <li
                 key={issue.key}
                 className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-4 py-3"
@@ -1672,10 +1706,10 @@ function CompletionValidationModal({
           <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <button
               type="button"
-              onClick={onGoBack}
+              onClick={isMediaValidation ? onUpload : onGoBack}
               className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-semibold text-[var(--button-secondary-text)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)]"
             >
-              Go back
+              {isMediaValidation ? `Upload ${validation.issues[0].key === "profile_image_url" ? "photo" : validation.issues[0].key === "company_logo_url" ? "logo" : "banner"}` : "Go back"}
             </button>
             <button
               type="button"

@@ -1,3 +1,4 @@
+import { resolveCardMedia } from "@/lib/card-media";
 
 import CardMediaImage from "@/components/CardMediaImage";
 import { cardFontOverride } from "@/lib/card-typography";
@@ -368,16 +369,16 @@ export default function CardRenderer({
     layout === "modern_minimal" || layout === "profile_free"
       ? true
       : template.requires_profile_image ?? true);
-  const profileImageVisible = isRendererMediaVisible(cardData, [
+  const profileImageVisible = (showMediaPlaceholders || Boolean(resolveCardMedia(cardData.profile_image_url))) && isRendererMediaVisible(cardData, [
     "profile_image_url",
     "profile_image",
   ]);
-  const logoVisible = isRendererMediaVisible(cardData, [
+  const logoVisible = (showMediaPlaceholders || Boolean(resolveCardMedia(cardData.company_logo_url))) && isRendererMediaVisible(cardData, [
     "company_logo_url",
     "company_logo",
     "logo",
   ]);
-  const bannerVisible = isRendererMediaVisible(cardData, [
+  const bannerVisible = (showMediaPlaceholders || Boolean(resolveCardMedia(cardData.company_banner_url))) && isRendererMediaVisible(cardData, [
     "company_banner_url",
     "company_banner",
     "banner",
@@ -772,7 +773,7 @@ function ClassicLayout({
   const showProfilePlaceholder = showMediaPlaceholders && !cardData.profile_image_url;
   const profileCircle = (
     <div
-      className={`flex ${
+      className={`has-[>img[data-media-unavailable]]:hidden flex ${
         compact ? "h-24 w-24 text-2xl" : "h-32 w-32 text-4xl"
       } shrink-0 items-center justify-center overflow-hidden rounded-full border-4 ${
         showProfilePlaceholder
@@ -1019,7 +1020,7 @@ function ProfileFreeLayout({
       <div className="flex min-w-0 flex-col items-center">
         {showProfileSlot && (
           <div
-            className={`flex ${
+            className={`has-[>img[data-media-unavailable]]:hidden flex ${
               compact ? "h-28 w-28 text-2xl" : "h-36 w-36 text-4xl"
             } shrink-0 items-center justify-center overflow-hidden rounded-full border font-bold`}
             style={
@@ -1349,7 +1350,7 @@ function ExecutiveLayout({
     >
       <header className={`flex flex-col ${compact ? "gap-5" : "gap-7"}`}>
         {showLogo && (
-          <div className="flex h-14 w-36 items-center justify-start">
+          <div className="has-[>img[data-media-unavailable]]:hidden flex h-14 w-36 items-center justify-start">
             {cardData.company_logo_url ? (
               <CardMediaImage
                 src={cardData.company_logo_url}
@@ -1370,7 +1371,7 @@ function ExecutiveLayout({
         <div className="flex min-w-0 items-center gap-4">
           {showProfile && (
             <div
-              className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border ${
+              className={`has-[>img[data-media-unavailable]]:hidden flex shrink-0 items-center justify-center overflow-hidden rounded-full border ${
                 compact ? "h-16 w-16" : "h-20 w-20"
               } ${cardData.profile_image_url ? "" : "border-dashed"}`}
               style={
@@ -1556,7 +1557,7 @@ function BrandLayout({
     >
       {showBanner && (
         <div
-          className="relative w-full overflow-hidden"
+          className="has-[>img[data-media-unavailable]]:hidden relative w-full overflow-hidden"
           style={{ aspectRatio: "3 / 1" }}
         >
           {cardData.company_banner_url ? (
@@ -1584,7 +1585,7 @@ function BrandLayout({
       >
         {showLogo && (
           <div
-            className={`relative mx-auto flex h-16 w-32 items-center justify-center overflow-hidden rounded-xl border ${
+            className={`has-[>img[data-media-unavailable]]:hidden relative mx-auto flex h-16 w-32 items-center justify-center overflow-hidden rounded-xl border ${
               showBanner ? "-mt-5" : ""
             } ${cardData.company_logo_url ? "" : "border-dashed"}`}
             style={
@@ -1614,7 +1615,7 @@ function BrandLayout({
         >
           {showProfile && (
             <div
-              className={`mb-4 flex shrink-0 items-center justify-center overflow-hidden rounded-full border ${
+              className={`has-[>img[data-media-unavailable]]:hidden mb-4 flex shrink-0 items-center justify-center overflow-hidden rounded-full border ${
                 compact ? "h-20 w-20" : "h-24 w-24"
               } ${cardData.profile_image_url ? "" : "border-dashed"}`}
               style={cardData.profile_image_url ? { borderColor: divider } : placeholderStyle}
@@ -1801,7 +1802,7 @@ function ModernMinimalLayout(props: LayoutProps) {
       }}
     >
       {showLogoWatermark && (
-        <div className="pointer-events-none sticky top-1/2 z-0 flex h-0 justify-center overflow-visible">
+        <div className="has-[>img[data-media-unavailable]]:hidden pointer-events-none sticky top-1/2 z-0 flex h-0 justify-center overflow-visible">
           {cardData.company_logo_url ? (
             <CardMediaImage
               src={cardData.company_logo_url}
@@ -1851,7 +1852,7 @@ function ModernMinimalLayout(props: LayoutProps) {
       <div className="text-center">
         {requiresProfileImage && (
           <div
-            className={`mx-auto mb-5 flex shrink-0 items-center justify-center overflow-hidden rounded-full border font-semibold ${
+            className={`has-[>img[data-media-unavailable]]:hidden mx-auto mb-5 flex shrink-0 items-center justify-center overflow-hidden rounded-full border font-semibold ${
               compact ? "h-20 w-20 text-xl" : "h-28 w-28 text-3xl"
             }`}
             style={
@@ -2073,7 +2074,7 @@ function CompanyLogoBlock({
 }) {
   return (
     <div
-      className={`${className} flex h-9 min-w-24 max-w-[180px] items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/20 px-3 text-center text-[11px] font-semibold text-white/90 shadow-lg shadow-black/10`}
+      className={`has-[>img[data-media-unavailable]]:hidden ${className} flex h-9 min-w-24 max-w-[180px] items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/20 px-3 text-center text-[11px] font-semibold text-white/90 shadow-lg shadow-black/10`}
     >
       {cardData.company_logo_url ? (
         <CardMediaImage
@@ -2098,7 +2099,7 @@ function PremiumCompanyBanner({
   showLogo: boolean;
 }) {
   return (
-    <div className="relative z-0 h-[135px] overflow-hidden rounded-t-[1.75rem] border border-white/10 border-b-white/5 bg-[#080D22] shadow-lg shadow-black/10">
+    <div className="has-[>img[data-media-unavailable]]:hidden relative z-0 h-[135px] overflow-hidden rounded-t-[1.75rem] border border-white/10 border-b-white/5 bg-[#080D22] shadow-lg shadow-black/10">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_14%,rgba(172,0,255,0.48),transparent_28%),radial-gradient(circle_at_82%_12%,rgba(99,102,241,0.34),transparent_25%),linear-gradient(135deg,rgba(7,11,26,0.98),rgba(41,11,78,0.96)_48%,rgba(7,11,26,0.98))]" />
       <div className="absolute inset-0 opacity-45 [background-image:radial-gradient(circle,rgba(255,255,255,0.42)_1px,transparent_1.8px)] [background-size:13px_13px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_78%)]" />
       <div className="absolute -left-10 right-[-10%] bottom-[-38px] h-24 rotate-[-6deg] rounded-[50%] border-t-2 border-white/55 bg-[#A000E8]" />
@@ -2124,7 +2125,7 @@ function PremiumCompanyBanner({
 
 function PremiumCompanyLogo({ cardData }: { cardData: CardRendererData }) {
   return (
-    <div className="flex min-h-9 min-w-20 max-w-[180px] items-center justify-center overflow-hidden px-2 text-center text-xs font-bold text-white drop-shadow">
+    <div className="has-[>img[data-media-unavailable]]:hidden flex min-h-9 min-w-20 max-w-[180px] items-center justify-center overflow-hidden px-2 text-center text-xs font-bold text-white drop-shadow">
       {cardData.company_logo_url ? (
         <CardMediaImage
           src={cardData.company_logo_url}
