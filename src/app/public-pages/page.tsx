@@ -2,7 +2,9 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
-import { supabase } from "@/lib/supabase";
+import { mutateAdminCard } from "@/lib/admin-card-mutations";
+import { getAdminInventory } from "@/lib/admin-inventory";
+import { getAdminTemplates } from "@/lib/templates";
 import { buildPublicCardUrl } from "@/lib/public-url";
 
 type Client = {
@@ -58,25 +60,13 @@ export default function PublicPagesPage() {
 
   async function fetchPublicPages() {
     setLoading(true);
-
-    const [cardsResult, templatesResult, clientsResult] = await Promise.all([
-      supabase
-        .from("cards")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase.from("templates").select("id, name"),
-      supabase.from("clients").select("id, full_name, company_name, email, account_type"),
-    ]);
-
-    if (cardsResult.error) alert(cardsResult.error.message);
-    if (templatesResult.error) console.error(templatesResult.error.message);
-    if (clientsResult.error) console.error(clientsResult.error.message);
-
-    if (cardsResult.data) setCards(cardsResult.data);
-    if (templatesResult.data) setTemplates(templatesResult.data);
-    if (clientsResult.data) setClients(clientsResult.data);
-
-    setLoading(false);
+    try {
+      const [nextCards, nextTemplates, nextClients] = await Promise.all([
+        getAdminInventory<Card>("cards"), getAdminTemplates(), getAdminInventory<Client>("clients"),
+      ]);
+      setCards(nextCards); setTemplates(nextTemplates); setClients(nextClients);
+    } catch (error) { alert(error instanceof Error ? error.message : "Public page inventory failed to load. Please retry."); }
+    finally { setLoading(false); }
   }
 
   useEffect(() => {
@@ -177,15 +167,8 @@ export default function PublicPagesPage() {
 
     if (!confirmed) return;
 
-    const { error } = await supabase
-      .from("cards")
-      .update({ is_published: false, status: "draft" })
-      .eq("id", card.id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    try { await mutateAdminCard(`/api/admin/cards/${card.id}`, "PATCH", { operation: "unpublish" }); }
+    catch (error) { alert(error instanceof Error ? error.message : "Publication failed."); return; }
 
     await fetchPublicPages();
   }

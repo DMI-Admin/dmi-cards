@@ -30,6 +30,8 @@ export type TemplateFieldConfig = {
   sections: Record<string, string[]>;
   default_visibility: Record<string, boolean>;
   required_fields: string[];
+  section_order?: string[];
+  section_labels?: Record<string, string>;
 };
 
 export type TemplateRendererOptions = {
@@ -262,7 +264,7 @@ export function normalizeTemplate(template: SharedTemplate | TemplatePayload): S
     access_level: accessLevel,
     layout_type:
       template.layout_type ||
-      (accessLevel === "free" ? "classic_free" : "premium_classic"),
+      (accessLevel === "free" ? "classic_free" : "modern_minimal"),
     status: isPublished ? "published" : "draft",
     is_published: isPublished,
     requires_profile_image: requiresProfileImage,
@@ -279,7 +281,7 @@ export function normalizeTemplate(template: SharedTemplate | TemplatePayload): S
     custom_text_colour_allowed: customTextColourAllowed,
     gradient_enabled: gradientEnabled,
     supports_company_banner: requiresBanner,
-    supports_gradient: gradientEnabled,
+    supports_gradient: template.supports_gradient ?? gradientEnabled,
     default_font: defaultFont,
     font_family: defaultFont,
     colour_palette: sanitizedPalette,
@@ -335,6 +337,18 @@ function normalizeTemplateFieldConfig(
       sections: sectionArrayValue(value.sections, customFields),
       default_visibility: booleanMapValue(value.default_visibility),
       required_fields: stringArrayValue(value.required_fields, []),
+      ...(Array.isArray(value.section_order)
+        ? { section_order: stringArrayValue(value.section_order, []) }
+        : {}),
+      ...(isRecord(value.section_labels)
+        ? {
+            section_labels: Object.fromEntries(
+              Object.entries(value.section_labels).filter(
+                (entry): entry is [string, string] => typeof entry[1] === "string"
+              )
+            ),
+          }
+        : {}),
     };
   }
 

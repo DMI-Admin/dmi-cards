@@ -63,6 +63,7 @@ type Template = {
   renderer_options?: Record<string, unknown> | null;
   template_contract_version?: number | null;
   gradient_enabled?: boolean | null;
+  supports_gradient?: boolean | null;
   colour_palette?: string[] | null;
   free_colour_palette?: string[] | null;
   text_colours?: string[] | null;
@@ -330,6 +331,7 @@ export default function TemplatesPage() {
   const [bannerDefaultEnabled, setBannerDefaultEnabled] = useState(false);
   const [requiresBanner, setRequiresBanner] = useState(false);
   const [gradientEnabled, setGradientEnabled] = useState(true);
+  const [supportsGradient, setSupportsGradient] = useState(true);
   const [customColourAllowed, setCustomColourAllowed] = useState(false);
   const [customTextColourAllowed, setCustomTextColourAllowed] = useState(false);
   const [freeColourPalette, setFreeColourPalette] = useState<string[]>(
@@ -449,6 +451,7 @@ export default function TemplatesPage() {
     setBannerDefaultEnabled(false);
     setRequiresBanner(false);
     setGradientEnabled(true);
+    setSupportsGradient(true);
     setCustomColourAllowed(false);
     setCustomTextColourAllowed(false);
     setFreeColourPalette(defaultFreeColourPalette);
@@ -493,6 +496,7 @@ export default function TemplatesPage() {
       setBannerDefaultEnabled(false);
       setRequiresBanner(false);
       setGradientEnabled(false);
+      setSupportsGradient(false);
       setCustomColourAllowed(false);
       setCustomTextColourAllowed(false);
       setFreeColourPalette(defaultFreeColourPalette);
@@ -529,6 +533,7 @@ export default function TemplatesPage() {
       setBannerDefaultEnabled(true);
       setRequiresBanner(true);
       setGradientEnabled(true);
+      setSupportsGradient(true);
       setCustomColourAllowed(true);
       setCustomTextColourAllowed(true);
       setAllowedFonts([...fontChoices]);
@@ -583,6 +588,7 @@ export default function TemplatesPage() {
     setBannerDefaultEnabled(false);
     setRequiresBanner(false);
     setGradientEnabled(false);
+    setSupportsGradient(false);
     setCustomColourAllowed(true);
     setCustomTextColourAllowed(true);
     setFreeColourPalette(modernMinimalColourPalette);
@@ -897,6 +903,7 @@ export default function TemplatesPage() {
     setRequiresBanner(
       normalizedAccessLevel === "paid" && (template.requires_banner ?? false)
     );
+    setSupportsGradient(normalizedAccessLevel === "paid" && (template.supports_gradient ?? template.gradient_enabled ?? true));
     setGradientEnabled(template.gradient_enabled ?? normalizedAccessLevel === "paid");
     setCustomColourAllowed(
       template.custom_colour_allowed ?? normalizedAccessLevel === "paid"
@@ -1000,6 +1007,7 @@ export default function TemplatesPage() {
       banner_default_enabled: accessLevel === "paid" && bannerDefaultEnabled,
       custom_colour_allowed: customColourAllowed,
       custom_text_colour_allowed: customTextColourAllowed,
+      supports_gradient: accessLevel === "paid" && supportsGradient,
       gradient_enabled: accessLevel === "paid" && gradientEnabled,
       free_colour_palette: sanitizeFreeColourPalette(freeColourPalette),
       allowed_fonts:
@@ -1136,6 +1144,7 @@ export default function TemplatesPage() {
       banner_default_enabled: accessLevel === "paid" && bannerDefaultEnabled,
       custom_colour_allowed: customColourAllowed,
       custom_text_colour_allowed: customTextColourAllowed,
+      supports_gradient: accessLevel === "paid" && supportsGradient,
       gradient_enabled: accessLevel === "paid" && gradientEnabled,
       free_colour_palette: sanitizeFreeColourPalette(freeColourPalette),
       text_colours: sanitizeTextColourPalette(textColourPalette, textColor),
@@ -1185,6 +1194,7 @@ export default function TemplatesPage() {
       effectiveExampleValues,
       freeColourPalette,
       gradientEnabled,
+      supportsGradient,
       layoutType,
       logoAllowed,
       logoDefaultEnabled,
@@ -2857,6 +2867,7 @@ function buildTemplatePayload({
   banner_default_enabled,
   custom_colour_allowed,
   custom_text_colour_allowed,
+  supports_gradient,
   gradient_enabled,
   free_colour_palette,
   allowed_fonts,
@@ -2892,6 +2903,7 @@ function buildTemplatePayload({
   banner_default_enabled: boolean;
   custom_colour_allowed: boolean;
   custom_text_colour_allowed: boolean;
+  supports_gradient: boolean;
   gradient_enabled: boolean;
   free_colour_palette: string[];
   allowed_fonts: string[];
@@ -2930,6 +2942,7 @@ function buildTemplatePayload({
     banner_default_enabled,
     custom_colour_allowed,
     custom_text_colour_allowed,
+    supports_gradient,
     gradient_enabled,
     free_colour_palette: sanitizeFreeColourPalette(free_colour_palette),
     colour_palette: sanitizeFreeColourPalette(free_colour_palette),

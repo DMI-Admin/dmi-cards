@@ -1,3 +1,7 @@
+
+import CardMediaImage from "@/components/CardMediaImage";
+import { cardFontOverride } from "@/lib/card-typography";
+import { cardSectionLabel } from "@/lib/card-section-label";
 import {
   Briefcase,
   Building2,
@@ -46,7 +50,7 @@ type CustomFieldValues = Record<
   string,
   string | null | undefined | Record<string, string | null | undefined>
 >;
-type ClassicSectionKey = "personal" | "company" | "contact" | "social";
+type ClassicSectionKey = string;
 type DisplayRow = {
   field?: string;
   label: string;
@@ -62,14 +66,39 @@ const templateActionIcons: Record<CardActionType, TemplateActionIcon> = {
   save_contact: UserRound,
   call: Phone,
   email: Mail,
+  sms: Phone,
   whatsapp: FaWhatsapp,
+  website: Globe,
   book_meeting: Calendar,
+  maps_directions: MapPin,
   custom_link: LinkIcon,
   download_pdf: FileText,
   linkedin: FaLinkedinIn,
   instagram: FaInstagram,
   facebook: FaFacebookF,
+  x_twitter: LinkIcon,
+  tiktok: LinkIcon,
+  threads: LinkIcon,
+  snapchat: LinkIcon,
+  pinterest: LinkIcon,
+  telegram: LinkIcon,
+  signal: LinkIcon,
   youtube: FaYoutube,
+  vimeo: LinkIcon,
+  twitch: LinkIcon,
+  spotify: LinkIcon,
+  apple_music: LinkIcon,
+  soundcloud: LinkIcon,
+  discord: LinkIcon,
+  steam: LinkIcon,
+  xbox: LinkIcon,
+  playstation: LinkIcon,
+  epic_games: LinkIcon,
+  battle_net: LinkIcon,
+  slack: LinkIcon,
+  microsoft_teams: LinkIcon,
+  github: LinkIcon,
+  gitlab: LinkIcon,
 };
 
 function toDisplayValue(value: unknown): string | null {
@@ -173,6 +202,8 @@ type CardRendererProps = {
   cardData: CardRendererData;
   mode: CardRendererMode;
   showActions?: boolean;
+  showMediaPlaceholders?: boolean;
+  previewActionDestinations?: boolean;
 };
 
 const defaultFields = [
@@ -185,11 +216,37 @@ const defaultFields = [
   "email",
   "phone",
 ];
-const defaultPrimary = "#AC00FF";
-const defaultSecondary = "#101935";
+const defaultPrimary = "#000000";
+const defaultSecondary = "#FFFFFF";
 const defaultText = "#FFFFFF";
 const defaultButton = "#0F0E38";
 const defaultButtonText = "#FFFFFF";
+const rendererGradientDirections: Record<string, string> = {
+  to_bottom: "to bottom",
+  to_top: "to top",
+  to_right: "to right",
+  to_left: "to left",
+  to_bottom_right: "to bottom right",
+  to_bottom_left: "to bottom left",
+};
+
+function rendererGradientDirection(template: CardRendererTemplate) {
+  const gradientDefaults = template.renderer_options?.gradient_defaults;
+
+  if (
+    !gradientDefaults ||
+    typeof gradientDefaults !== "object" ||
+    Array.isArray(gradientDefaults)
+  ) {
+    return "to bottom right";
+  }
+
+  const direction = (gradientDefaults as Record<string, unknown>).direction;
+
+  return typeof direction === "string" && rendererGradientDirections[direction]
+    ? rendererGradientDirections[direction]
+    : "to bottom right";
+}
 
 function isRendererMediaVisible(cardData: CardRendererData, keys: string[]) {
   const visibility = cardData.field_visibility || {};
@@ -250,6 +307,13 @@ const classicSectionDefaults: Record<ClassicSectionKey, string[]> = {
   ],
 };
 
+const classicSectionLabels: Record<string, string> = {
+  personal: "Personal Details",
+  company: "Company Details",
+  contact: "Contact",
+  social: "Social Links",
+};
+
 const actionOwnedDetailFields = new Set([
   "whatsapp",
   "linkedin",
@@ -284,6 +348,8 @@ export default function CardRenderer({
   template,
   cardData,
   mode,
+  showMediaPlaceholders = false,
+  previewActionDestinations = false,
 }: CardRendererProps) {
   const layout = normalizeLayoutType(template.layout_type, template.access_level);
   const logoSize = normalizeLogoSize(template.logo_size);
@@ -292,7 +358,16 @@ export default function CardRenderer({
     : defaultFields;
   const compact = mode === "compact";
   const isPaid = template.access_level === "paid";
-  const requiresProfileImage = template.requires_profile_image ?? true;
+  const profileImageAllowed =
+    template.profile_image_allowed ?? template.requires_profile_image ?? true;
+  const logoAllowed =
+    isPaid && (template.logo_allowed ?? template.requires_logo ?? false);
+  const bannerAllowed =
+    isPaid && (template.banner_allowed ?? template.requires_banner ?? false);
+  const requiresProfileImage = profileImageAllowed && (
+    layout === "modern_minimal" || layout === "profile_free"
+      ? true
+      : template.requires_profile_image ?? true);
   const profileImageVisible = isRendererMediaVisible(cardData, [
     "profile_image_url",
     "profile_image",
@@ -308,16 +383,15 @@ export default function CardRenderer({
     "banner",
   ]);
   const requiresLogo =
-    template.access_level === "paid" &&
+    isPaid &&
     logoVisible &&
     (template.requires_logo === true ||
-      (layout === "modern_minimal" &&
-        (template.logo_allowed === true ||
-          template.logo_default_enabled === true)));
+      (layout === "modern_minimal" && logoAllowed));
   const requiresBanner =
-    template.access_level === "paid" &&
+    isPaid &&
     bannerVisible &&
-    (template.requires_banner ?? false);
+    (template.requires_banner === true ||
+      (layout === "modern_minimal" && bannerAllowed));
   const supportsBio = template.supports_bio ?? true;
   const sectionSettings = {
     personal: template.show_personal_section ?? true,
@@ -339,22 +413,28 @@ export default function CardRenderer({
       ? cardData.selected_background_mode ||
         (template.gradient_enabled ? "gradient" : "solid")
       : "solid";
+  const templateFreeColour =
+    template.primary_color ||
+    sanitizeColourPalette(template.free_colour_palette)[0] ||
+    defaultPrimary;
+  const templateTextColour =
+    template.text_color || sanitizeColourPalette(template.text_colours)[0] || null;
   const primary = selectedColour || template.primary_color || defaultPrimary;
   const secondary = selectedGradientEnd || template.secondary_color || defaultSecondary;
-  const freeColour =
-    selectedColour || sanitizeColourPalette(template.free_colour_palette)[0];
+  const freeColour = selectedColour || templateFreeColour;
   const selectedTextColour = cardData.selected_text_colour
     ? sanitizeColourPalette([cardData.selected_text_colour])[0]
     : null;
   const text =
     selectedTextColour ||
-    template.text_color ||
+    templateTextColour ||
     (freeColour ? readableTextForBackground(freeColour) : defaultText);
   const { buttonColor, buttonTextColor } = resolveButtonColours(
     template.button_color,
     template.button_text_color
   );
-  const fontFamily = isPaid
+  const selectedFont = cardFontOverride(template, cardData.custom_fields);
+  const fontFamily = selectedFont ? getFontFamily(selectedFont) : isPaid
     ? getTemplateFont(layout, template.default_font)
     : getFontFamily(template.default_font);
   const saveContactHref = mode === "public" ? vCardDataHref(cardData) : null;
@@ -376,11 +456,14 @@ export default function CardRenderer({
   const shellClass = compact
     ? "min-h-[420px] rounded-3xl p-4"
     : "min-h-[650px] rounded-[2rem] p-6";
+  const isClassicFree = layout === "classic_free" && template.access_level === "free";
   const background =
     template.access_level === "free"
       ? freeColour
       : selectedBackgroundMode === "gradient"
-      ? `linear-gradient(135deg, ${selectedGradientStart || primary}, ${secondary})`
+      ? `linear-gradient(${rendererGradientDirection(template)}, ${
+          selectedGradientStart || primary
+        }, ${secondary})`
       : primary;
   const theme = {
     primary,
@@ -391,6 +474,16 @@ export default function CardRenderer({
     buttonTextColor,
     fontFamily,
   };
+  const classicFreeSaveContactStyle = {
+    "--card-save-contact-bg": colorAlpha(text, 0.08),
+    "--card-save-contact-text": text,
+    backgroundColor: colorAlpha(text, 0.08),
+    border: `1px solid ${colorAlpha(text, 0.28)}`,
+    color: text,
+  } as React.CSSProperties;
+  const resolvedSaveContactStyle = isClassicFree
+    ? classicFreeSaveContactStyle
+    : saveContactStyle;
 
   const content = {
     classic_free: (
@@ -403,16 +496,19 @@ export default function CardRenderer({
         logoSize={logoSize}
         supportsBio={supportsBio}
         templateCustomFields={template.custom_fields || {}}
+        fieldConfig={template.field_config}
         mode={mode}
         sectionSettings={sectionSettings}
         compact={compact}
         isPaid={isPaid}
         theme={theme}
         actionConfig={actionConfig}
+        showMediaPlaceholders={showMediaPlaceholders}
+        previewActionDestinations={previewActionDestinations}
       />
     ),
-    premium_classic: (
-      <ClassicLayout
+    profile_free: (
+      <ProfileFreeLayout
         cardData={cardData}
         allowedFields={allowedFields}
         requiresProfileImage={requiresProfileImage && profileImageVisible}
@@ -421,12 +517,15 @@ export default function CardRenderer({
         logoSize={logoSize}
         supportsBio={supportsBio}
         templateCustomFields={template.custom_fields || {}}
+        fieldConfig={template.field_config}
         mode={mode}
         sectionSettings={sectionSettings}
         compact={compact}
-        isPaid
+        isPaid={isPaid}
         theme={theme}
         actionConfig={actionConfig}
+        showMediaPlaceholders={showMediaPlaceholders}
+        previewActionDestinations={previewActionDestinations}
       />
     ),
     modern_minimal: (
@@ -439,149 +538,55 @@ export default function CardRenderer({
         logoSize={logoSize}
         supportsBio={supportsBio}
         templateCustomFields={template.custom_fields || {}}
+        fieldConfig={template.field_config}
         mode={mode}
         sectionSettings={sectionSettings}
         compact={compact}
         isPaid
         theme={theme}
         actionConfig={actionConfig}
+        showMediaPlaceholders={showMediaPlaceholders}
       />
     ),
-    glassmorphism: (
-      <GlassmorphismLayout
+    executive_paid: (
+      <ExecutiveLayout
         cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage && profileImageVisible}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
+        allowedFields={template.allowed_fields ?? defaultFields}
+        requiresProfileImage={profileImageAllowed && profileImageVisible}
+        requiresLogo={logoAllowed && logoVisible}
         logoSize={logoSize}
         supportsBio={supportsBio}
         templateCustomFields={template.custom_fields || {}}
+        fieldConfig={template.field_config}
         mode={mode}
         sectionSettings={sectionSettings}
         compact={compact}
         isPaid
         theme={theme}
-        actionConfig={actionConfig}
+        actionConfig={actionConfig || effectiveCardActionConfig(cardData, template)}
+        showMediaPlaceholders={showMediaPlaceholders}
+        previewActionDestinations={previewActionDestinations}
       />
     ),
-    banner_card: (
-      <BannerCardLayout
+    brand_paid: (
+      <BrandLayout
         cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage && profileImageVisible}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
+        allowedFields={template.allowed_fields ?? defaultFields}
+        requiresProfileImage={profileImageAllowed && profileImageVisible}
+        requiresLogo={logoAllowed && logoVisible}
+        requiresBanner={bannerAllowed && bannerVisible}
         logoSize={logoSize}
         supportsBio={supportsBio}
         templateCustomFields={template.custom_fields || {}}
+        fieldConfig={template.field_config}
         mode={mode}
         sectionSettings={sectionSettings}
         compact={compact}
         isPaid
         theme={theme}
-        actionConfig={actionConfig}
-      />
-    ),
-    split_card: (
-      <SplitCardLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage && profileImageVisible}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        templateCustomFields={template.custom_fields || {}}
-        mode={mode}
-        sectionSettings={sectionSettings}
-        compact={compact}
-        isPaid
-        theme={theme}
-        actionConfig={actionConfig}
-      />
-    ),
-    monogram_card: (
-      <MonogramCardLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage && profileImageVisible}
-        requiresLogo={requiresLogo}
-        requiresBanner={requiresBanner}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        templateCustomFields={template.custom_fields || {}}
-        mode={mode}
-        sectionSettings={sectionSettings}
-        compact={compact}
-        isPaid
-        theme={theme}
-        actionConfig={actionConfig}
-      />
-    ),
-    modern: (
-      <ModernLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage && profileImageVisible}
-        requiresLogo={requiresLogo}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        compact={compact}
-      />
-    ),
-    centered: (
-      <CenteredLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage && profileImageVisible}
-        requiresLogo={requiresLogo}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        compact={compact}
-      />
-    ),
-    split: (
-      <SplitLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage && profileImageVisible}
-        requiresLogo={requiresLogo}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        compact={compact}
-      />
-    ),
-    banner: (
-      <BannerLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage && profileImageVisible}
-        requiresLogo={requiresLogo}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        compact={compact}
-      />
-    ),
-    compact: (
-      <CompactLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage && profileImageVisible}
-        requiresLogo={requiresLogo}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-      />
-    ),
-    minimal: (
-      <MinimalLayout
-        cardData={cardData}
-        allowedFields={allowedFields}
-        requiresProfileImage={requiresProfileImage && profileImageVisible}
-        requiresLogo={requiresLogo}
-        logoSize={logoSize}
-        supportsBio={supportsBio}
-        compact={compact}
+        actionConfig={actionConfig || effectiveCardActionConfig(cardData, template)}
+        showMediaPlaceholders={showMediaPlaceholders}
+        previewActionDestinations={previewActionDestinations}
       />
     ),
   }[layout] || null;
@@ -597,6 +602,10 @@ export default function CardRenderer({
         background,
         color: text,
         fontFamily,
+        // Phone previews provide their chrome inset; public cards use the native safe area.
+        paddingTop: layout === "profile_free"
+          ? `calc(max(var(--card-viewport-safe-top, 0px), env(safe-area-inset-top, 0px)) + ${compact ? "1rem" : "1.5rem"})`
+          : undefined,
       }}
     >
       {content}
@@ -610,11 +619,13 @@ export default function CardRenderer({
           actionConfig={actionConfig}
           className="mt-8"
           itemClassName="w-full"
+          classicFreeSaveContactOutline={isClassicFree}
+          previewActionDestinations={previewActionDestinations}
         />
       ) : compact ? (
         <div
           className={`mt-8 w-full rounded-2xl py-4 text-center font-bold transition hover:opacity-90 ${previewSaveContactContrastClass}`}
-          style={saveContactStyle}
+          style={resolvedSaveContactStyle}
         >
           Save Contact
         </div>
@@ -623,7 +634,7 @@ export default function CardRenderer({
           href={saveContactHref}
           download={saveContactFilename}
           className="mt-8 block w-full rounded-2xl py-4 text-center font-bold transition hover:opacity-90"
-          style={saveContactStyle}
+          style={resolvedSaveContactStyle}
         >
           Save Contact
         </a>
@@ -631,13 +642,13 @@ export default function CardRenderer({
         <button
           type="button"
           className={`mt-8 w-full rounded-2xl py-4 font-bold transition hover:opacity-90 ${previewSaveContactContrastClass}`}
-          style={saveContactStyle}
+          style={resolvedSaveContactStyle}
         >
           Save Contact
         </button>
       )}
 
-      {template.access_level === "free" && <DmiFooter />}
+      {template.access_level === "free" && <DmiFooter textColour={text} />}
     </div>
   );
 }
@@ -646,6 +657,7 @@ function ClassicLayout({
   cardData,
   allowedFields,
   templateCustomFields = {},
+  fieldConfig,
   mode = "preview",
   sectionSettings = {
     personal: true,
@@ -654,11 +666,13 @@ function ClassicLayout({
     social: false,
   },
   compact,
+  requiresProfileImage,
   requiresLogo,
   requiresBanner,
   isPaid,
   theme,
   actionConfig,
+  showMediaPlaceholders = false,
 }: LayoutProps) {
   const rendererTheme = getRendererTheme(theme);
   const mutedText = colorAlpha(rendererTheme.text, 0.62);
@@ -732,30 +746,55 @@ function ClassicLayout({
     publicMode
   );
   const socialActionRows = addPublicRowActions(displayedSocialRows, publicMode);
+  const contentSections = rendererContentSections(
+    fieldConfig,
+    templateCustomFields,
+    sectionSettings
+  );
+  const sectionRows = (sectionKey: string) => {
+    if (sectionKey === "personal") return paidPersonalRows;
+    if (sectionKey === "company") return companyActionRows;
+    if (sectionKey === "contact") return paidContactRows;
+    if (sectionKey === "social") return socialActionRows;
 
-  const hasPersonalDetails =
-    sectionSettings.personal && paidPersonalRows.length > 0;
-  const hasCompanyDetails = sectionSettings.company && companyActionRows.length > 0;
-  const hasContactDetails =
-    sectionSettings.contact && paidContactRows.length > 0;
-  const hasSocialDetails = sectionSettings.social && socialActionRows.length > 0;
+    return addPublicRowActions(
+      classicRows(sectionKey, templateCustomFields, cardData, allowed, previewMode),
+      publicMode
+    );
+  };
+  const renderedSections = contentSections
+    .map((section) => ({
+      ...section,
+      rows: sectionRows(section.key),
+    }))
+    .filter((section) => section.enabled && section.rows.length > 0);
+
+  const showProfilePlaceholder = showMediaPlaceholders && !cardData.profile_image_url;
   const profileCircle = (
     <div
       className={`flex ${
         compact ? "h-24 w-24 text-2xl" : "h-32 w-32 text-4xl"
       } shrink-0 items-center justify-center overflow-hidden rounded-full border-4 ${
-        isPaid
+        showProfilePlaceholder
+          ? "border-dashed bg-transparent"
+          : isPaid
           ? "border-[#E7D7FF] bg-[#8E38D6] text-white shadow-2xl shadow-[#AC00FF]/30 ring-2 ring-[#AC00FF]/35"
           : "border-white/55 bg-white/20 shadow-2xl shadow-black/25"
       } font-bold`}
+      style={
+        showProfilePlaceholder
+          ? adminMediaPlaceholderStyle(rendererTheme.text)
+          : undefined
+      }
     >
       {cardData.profile_image_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <CardMediaImage
           src={cardData.profile_image_url}
           alt={displayName(cardData, "Profile")}
           className="h-full w-full object-cover"
         />
+      ) : showProfilePlaceholder ? (
+        <UserRound size={compact ? 28 : 38} strokeWidth={1.5} />
       ) : (
         initials(displayName(cardData))
       )}
@@ -778,7 +817,7 @@ function ClassicLayout({
             requiresBanner ? "-mt-10" : "mt-2"
           }`}
         >
-          {profileCircle}
+          {requiresProfileImage && profileCircle}
         </div>
 
         <div className="mt-4 min-w-0 px-2 text-center">
@@ -801,21 +840,15 @@ function ClassicLayout({
           )}
         </div>
 
-        {hasPersonalDetails && (
-          <ClassicSection title="Personal Details" rows={paidPersonalRows} premium />
-        )}
-
-        {hasCompanyDetails && (
-          <ClassicSection title="Company Details" rows={companyActionRows} premium />
-        )}
-
-        {hasContactDetails && (
-          <ClassicSection title="Contact" rows={paidContactRows} premium />
-        )}
-
-        {hasSocialDetails && (
-          <ClassicSection title="Social Links" rows={socialActionRows} premium />
-        )}
+        {renderedSections.map((section) => (
+          <ClassicSection
+            key={section.key}
+            title={section.title}
+            rows={section.rows}
+            premium
+            theme={rendererTheme}
+          />
+        ))}
       </div>
     );
   }
@@ -835,7 +868,7 @@ function ClassicLayout({
           requiresBanner && isPaid ? "-mt-14" : "mt-2"
         }`}
       >
-        {profileCircle}
+        {requiresProfileImage && profileCircle}
 
         <h3
           className={`mt-3 max-w-full break-words text-center font-bold leading-tight ${
@@ -856,82 +889,247 @@ function ClassicLayout({
         )}
       </div>
 
-      {hasPersonalDetails && (
-        <ClassicSection
-          title="Personal Details"
-          rows={paidPersonalRows}
-          premium={isPaid}
-          theme={rendererTheme}
-        />
-      )}
-
-      {hasCompanyDetails && (
-        <ClassicSection
-          title="Company Details"
-          rows={companyActionRows}
-          premium={isPaid}
-          theme={rendererTheme}
-        />
-      )}
-
-      {hasContactDetails && (
-        <div
-          className="mt-6 max-w-full overflow-hidden rounded-3xl border p-4 text-left shadow-xl shadow-black/10"
-          style={{ backgroundColor: panelBackground, borderColor: panelBorder }}
-        >
-          <h4
-            className="text-xs font-semibold uppercase tracking-[0.18em]"
-            style={{ color: mutedText }}
+      {renderedSections.map((section) =>
+        section.key === "contact" ? (
+          <div
+            key={section.key}
+            className="mt-6 max-w-full overflow-hidden rounded-3xl border p-4 text-left"
+            style={{ backgroundColor: panelBackground, borderColor: panelBorder }}
           >
-            Contact
-          </h4>
-          <div className="mt-4 space-y-3">
-            {paidContactRows.map((item) => {
-              const Icon = isPaid ? item.icon : null;
-              const RowTag = item.href ? "a" : "div";
+            <h4
+              className="text-xs font-semibold uppercase tracking-[0.18em]"
+              style={{ color: mutedText }}
+            >
+              {section.title}
+            </h4>
+            <div className="mt-4 space-y-3">
+              {section.rows.map((item) => {
+                const RowTag = item.href ? "a" : "div";
 
-              return (
-                <RowTag
-                  key={item.label}
-                  href={item.href || undefined}
-                  target={item.href?.startsWith("http") ? "_blank" : undefined}
-                  rel={item.href?.startsWith("http") ? "noopener noreferrer" : undefined}
-                  className="grid min-w-0 grid-cols-[86px_minmax(0,1fr)] items-center gap-3 rounded-2xl px-3 py-3 text-sm"
-                  style={{ backgroundColor: rowBackground }}
-                >
-                  <span
-                    className="flex min-w-0 items-center gap-2"
-                    style={{ color: mutedText }}
+                return (
+                  <RowTag
+                    key={item.label}
+                    href={item.href || undefined}
+                    target={item.href?.startsWith("http") ? "_blank" : undefined}
+                    rel={item.href?.startsWith("http") ? "noopener noreferrer" : undefined}
+                    className="grid min-w-0 grid-cols-[86px_minmax(0,1fr)] items-center gap-3 rounded-2xl px-3 py-3 text-sm"
+                    style={{ backgroundColor: rowBackground }}
                   >
-                    {Icon && (
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-[#101935] shadow-lg shadow-black/15">
-                        <Icon size={14} />
-                      </span>
-                    )}
-                    <span className="truncate text-xs">{item.label}</span>
-                  </span>
-                  <span
-                    className="min-w-0 max-w-full break-words font-medium"
-                    style={{ color: rendererTheme.text }}
-                  >
-                    {item.value}
-                  </span>
-                </RowTag>
-              );
-            })}
+                    <span
+                      className="flex min-w-0 items-center gap-2"
+                      style={{ color: mutedText }}
+                    >
+                      <span className="truncate text-xs">{item.label}</span>
+                    </span>
+                    <span
+                      className="min-w-0 max-w-full break-words font-medium"
+                      style={{ color: rendererTheme.text }}
+                    >
+                      {item.value}
+                    </span>
+                  </RowTag>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
-
-      {hasSocialDetails && (
-        <ClassicSection
-          title="Social Links"
-          rows={socialActionRows}
-          premium={isPaid}
-          theme={rendererTheme}
-        />
+        ) : (
+          <ClassicSection
+            key={section.key}
+            title={section.title}
+            rows={section.rows}
+            premium={isPaid}
+            theme={rendererTheme}
+          />
+        )
       )}
     </div>
+  );
+}
+
+function ProfileFreeLayout({
+  cardData,
+  allowedFields,
+  templateCustomFields = {},
+  fieldConfig,
+  mode = "preview",
+  sectionSettings = {
+    personal: true,
+    company: true,
+    contact: true,
+    social: false,
+  },
+  compact,
+  requiresProfileImage,
+  theme,
+  showMediaPlaceholders = false,
+}: LayoutProps) {
+  const rendererTheme = getRendererTheme(theme);
+  const allowed = new Set(allowedFields);
+  const previewMode = mode === "preview" || mode === "compact";
+  const publicMode = mode === "public";
+  const mutedText = colorAlpha(rendererTheme.text, 0.62);
+  const dividerColour = colorAlpha(rendererTheme.text, 0.18);
+  const headline = displayName(cardData);
+  const headlineIsExample = ["title", "first_name", "last_name", "full_name"].some(
+    (field) => isRendererExampleField(cardData, field)
+  );
+  const showProfileImage = requiresProfileImage && Boolean(cardData.profile_image_url);
+  const showProfilePlaceholder =
+    requiresProfileImage && showMediaPlaceholders && !cardData.profile_image_url;
+  const showProfileSlot = showProfileImage || showProfilePlaceholder;
+  const headerJobTitle =
+    sectionSettings.personal && allowed.has("job_title")
+      ? toDisplayValue(cardData.job_title) || (previewMode ? "Job Title" : null)
+      : null;
+  const headerJobTitleIsExample = isRendererExampleField(cardData, "job_title");
+  const contentSections = rendererContentSections(
+    fieldConfig,
+    templateCustomFields,
+    sectionSettings
+  );
+  const renderedSections = contentSections
+    .map((section) => {
+      const sectionRows = markExampleRows(
+        addPublicRowActions(
+          classicRows(
+            section.key,
+            templateCustomFields,
+            cardData,
+            allowed,
+            previewMode
+          ).filter((row) => !(section.key === "personal" && row.field === "job_title")),
+          publicMode
+        ),
+        cardData
+      );
+
+      return {
+        ...section,
+        rows: sectionRows,
+      };
+    })
+    .filter((section) => section.enabled && section.rows.length > 0);
+
+  return (
+    <div
+      className={`flex min-h-full min-w-0 max-w-full flex-col ${
+        compact ? "gap-5" : "gap-7"
+      } text-center`}
+    >
+      <div className="flex min-w-0 flex-col items-center">
+        {showProfileSlot && (
+          <div
+            className={`flex ${
+              compact ? "h-28 w-28 text-2xl" : "h-36 w-36 text-4xl"
+            } shrink-0 items-center justify-center overflow-hidden rounded-full border font-bold`}
+            style={
+              showProfilePlaceholder
+                ? adminMediaPlaceholderStyle(rendererTheme.text)
+                : {
+                    borderColor: colorAlpha(rendererTheme.text, 0.24),
+                    color: rendererTheme.text,
+                    backgroundColor: colorAlpha(rendererTheme.text, 0.08),
+                  }
+            }
+          >
+            {cardData.profile_image_url ? (
+              <CardMediaImage
+                src={cardData.profile_image_url}
+                alt={displayName(cardData, "Profile")}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <UserRound size={compact ? 30 : 40} strokeWidth={1.5} />
+            )}
+          </div>
+        )}
+
+        <h3
+          className={`${
+            showProfileSlot ? "mt-4" : "mt-1"
+          } max-w-full break-words text-center font-bold leading-tight ${
+            compact ? "text-2xl" : "text-3xl"
+          }`}
+          style={{ color: headlineIsExample ? mutedText : rendererTheme.text }}
+        >
+          {headline}
+        </h3>
+
+        {headerJobTitle && (
+          <p
+            className="mt-2 max-w-full break-words text-center text-sm font-medium"
+            style={{ color: headerJobTitleIsExample ? mutedText : rendererTheme.text }}
+          >
+            {headerJobTitle}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-5 text-left">
+        {renderedSections.map((section) => (
+          <ProfileFreeSection
+            key={section.key}
+            title={section.title}
+            rows={section.rows}
+            dividerColour={dividerColour}
+            theme={rendererTheme}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProfileFreeSection({
+  title,
+  rows,
+  dividerColour,
+  theme,
+}: {
+  title: string;
+  rows: DisplayRow[];
+  dividerColour: string;
+  theme: RendererTheme;
+}) {
+  const mutedText = colorAlpha(theme.text, 0.62);
+
+  return (
+    <section className="border-t pt-4" style={{ borderColor: dividerColour }}>
+      <h4
+        className="text-xs font-semibold uppercase tracking-[0.18em]"
+        style={{ color: mutedText }}
+      >
+        {title}
+      </h4>
+      <div className="mt-3 divide-y" style={{ borderColor: dividerColour }}>
+        {rows.map(({ label, value, href, example }) => {
+          const RowTag = href ? "a" : "div";
+
+          return (
+            <RowTag
+              key={label}
+              href={href || undefined}
+              target={href?.startsWith("http") ? "_blank" : undefined}
+              rel={href?.startsWith("http") ? "noopener noreferrer" : undefined}
+              className="grid min-w-0 grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-4 py-3 text-sm"
+            >
+              <span
+                className="min-w-0 max-w-full break-words text-xs font-medium"
+                style={{ color: mutedText }}
+              >
+                {label}
+              </span>
+              <span
+                className="min-w-0 max-w-full whitespace-pre-wrap break-words text-right font-semibold"
+                style={{ color: example ? mutedText : theme.text }}
+              >
+                {value}
+              </span>
+            </RowTag>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -959,7 +1157,9 @@ function ClassicSection({
 
   return (
     <div
-      className={`mt-6 max-w-full overflow-hidden rounded-3xl border p-4 text-left shadow-xl shadow-black/10 ${className}`}
+      className={`mt-6 max-w-full overflow-hidden rounded-3xl border p-4 text-left ${
+        premium ? "shadow-xl shadow-black/10" : ""
+      } ${className}`}
       style={{ backgroundColor: panelBackground, borderColor: panelBorder }}
     >
       <h4
@@ -1060,11 +1260,431 @@ function ClassicSectionContent({
   );
 }
 
+function ExecutiveLayout({
+  cardData,
+  allowedFields,
+  templateCustomFields = {},
+  fieldConfig,
+  mode = "preview",
+  sectionSettings = { personal: true, company: true, contact: true, social: false },
+  compact,
+  requiresProfileImage,
+  requiresLogo,
+  theme,
+  actionConfig,
+  showMediaPlaceholders = false,
+  previewActionDestinations = false,
+}: LayoutProps) {
+  const rendererTheme = getRendererTheme(theme);
+  const muted = colorAlpha(rendererTheme.text, 0.62);
+  const divider = colorAlpha(rendererTheme.text, 0.18);
+  const placeholderStyle = adminMediaPlaceholderStyle(rendererTheme.text);
+  const showPlaceholders = showMediaPlaceholders && mode === "preview";
+  const showProfile =
+    requiresProfileImage && (cardData.profile_image_url || showPlaceholders);
+  const showLogo = requiresLogo && (cardData.company_logo_url || showPlaceholders);
+  const configuredSections = readRendererSections(fieldConfig, templateCustomFields);
+  const visibility = (fieldConfig?.default_visibility || {}) as Record<string, boolean>;
+  const allowed = new Set(allowedFields);
+  const sections = rendererContentSections(
+    fieldConfig,
+    templateCustomFields,
+    sectionSettings
+  )
+    .filter(
+      (section) =>
+        section.enabled &&
+        visibility[`section:${section.key}`] !== false &&
+        isRendererMediaVisible(cardData, [`section:${section.key}`]) &&
+        (!fieldConfig?.sections || Object.hasOwn(configuredSections, section.key))
+    )
+    .map((section) => {
+      const fields =
+        configuredSections[section.key] ?? classicSectionDefaults[section.key] ?? [];
+      const visibleFields = fields.filter((field) => {
+        const storageKey = isCustomFieldKey(field)
+          ? field.split(":").at(-1)?.trim().toLowerCase() || field
+          : field;
+        return (
+          allowed.has(field) &&
+          visibility[field] !== false &&
+          visibility[storageKey] !== false &&
+          isRendererMediaVisible(cardData, [field, storageKey])
+        );
+      });
+
+      return {
+        ...section,
+        rows: markExampleRows(
+          addPublicRowActions(
+            classicRows(
+              section.key,
+              configuredSections,
+              cardData,
+              new Set(visibleFields),
+              mode !== "public"
+            ),
+            mode === "public"
+          ),
+          cardData
+        ),
+      };
+    })
+    .filter((section) => section.rows.length > 0);
+  const jobTitle = sections
+    .flatMap((section) => section.rows)
+    .find((row) => row.field === "job_title");
+  const headlineIsExample = ["title", "first_name", "last_name", "full_name"].some(
+    (field) => isRendererExampleField(cardData, field)
+  );
+
+  return (
+    <div
+      className={`min-h-full min-w-0 ${compact ? "p-5 pt-9" : "p-7 pt-12"}`}
+      style={{
+        background: rendererTheme.background,
+        color: rendererTheme.text,
+        fontFamily: rendererTheme.fontFamily,
+      }}
+    >
+      <header className={`flex flex-col ${compact ? "gap-5" : "gap-7"}`}>
+        {showLogo && (
+          <div className="flex h-14 w-36 items-center justify-start">
+            {cardData.company_logo_url ? (
+              <CardMediaImage
+                src={cardData.company_logo_url}
+                alt={cardData.company_name || "Company logo"}
+                className="max-h-full max-w-full object-contain object-left"
+              />
+            ) : (
+              <div
+                aria-hidden="true"
+                className="flex h-full w-full items-center justify-center rounded-lg border border-dashed text-xs font-semibold tracking-widest"
+                style={placeholderStyle}
+              >
+                Logo
+              </div>
+            )}
+          </div>
+        )}
+        <div className="flex min-w-0 items-center gap-4">
+          {showProfile && (
+            <div
+              className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border ${
+                compact ? "h-16 w-16" : "h-20 w-20"
+              } ${cardData.profile_image_url ? "" : "border-dashed"}`}
+              style={
+                cardData.profile_image_url ? { borderColor: divider } : placeholderStyle
+              }
+            >
+              {cardData.profile_image_url ? (
+                <CardMediaImage
+                  src={cardData.profile_image_url}
+                  alt={displayName(cardData, "Profile")}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <UserRound size={compact ? 24 : 30} strokeWidth={1.5} />
+              )}
+            </div>
+          )}
+          <div className="min-w-0">
+            <h3
+              className={`break-words font-semibold leading-tight ${compact ? "text-xl" : "text-2xl"}`}
+              style={{ color: headlineIsExample ? muted : rendererTheme.text }}
+            >
+              {displayName(cardData)}
+            </h3>
+            {jobTitle && (
+              <p className="mt-2 break-words text-sm" style={{ color: muted }}>
+                {jobTitle.value}
+              </p>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {sections.map((section) => (
+        <section
+          key={section.key}
+          className="mt-7 border-t pt-5"
+          style={{ borderColor: divider }}
+        >
+          <h4
+            className="text-[10px] font-bold uppercase tracking-[0.2em]"
+            style={{ color: muted }}
+          >
+            {section.title}
+          </h4>
+          <div className="mt-3 space-y-3">
+            {section.rows.map((row) => {
+              const RowTag = row.href ? "a" : "div";
+              return (
+                <RowTag
+                  key={row.field || row.label}
+                  href={row.href || undefined}
+                  target={row.href?.startsWith("http") ? "_blank" : undefined}
+                  rel={row.href?.startsWith("http") ? "noopener noreferrer" : undefined}
+                  className="grid min-w-0 grid-cols-[minmax(0,0.8fr)_minmax(0,1.4fr)] gap-4 text-sm"
+                >
+                  <span className="break-words text-xs" style={{ color: muted }}>
+                    {row.label}
+                  </span>
+                  <span
+                    className="min-w-0 whitespace-pre-wrap break-words font-medium"
+                    style={{ color: row.example ? muted : rendererTheme.text }}
+                  >
+                    {row.value}
+                  </span>
+                </RowTag>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+
+      {actionConfig && (
+        <TemplateActionList
+          compact={compact}
+          theme={rendererTheme}
+          cardData={cardData}
+          mode={mode}
+          actionConfig={actionConfig}
+          className="mt-7"
+          itemClassName="w-full"
+          previewActionDestinations={previewActionDestinations}
+        />
+      )}
+    </div>
+  );
+}
+
+function BrandLayout({
+  cardData,
+  allowedFields,
+  templateCustomFields = {},
+  fieldConfig,
+  mode = "preview",
+  sectionSettings = { personal: true, company: true, contact: true, social: false },
+  compact,
+  requiresProfileImage,
+  requiresLogo,
+  requiresBanner,
+  theme,
+  actionConfig,
+  showMediaPlaceholders = false,
+  previewActionDestinations = false,
+}: LayoutProps) {
+  const rendererTheme = getRendererTheme(theme);
+  const muted = colorAlpha(rendererTheme.text, 0.62);
+  const divider = colorAlpha(rendererTheme.text, 0.18);
+  const placeholderStyle = adminMediaPlaceholderStyle(rendererTheme.text);
+  const showPlaceholders = showMediaPlaceholders && mode === "preview";
+  const showBanner = requiresBanner && (cardData.company_banner_url || showPlaceholders);
+  const showLogo = requiresLogo && (cardData.company_logo_url || showPlaceholders);
+  const showProfile =
+    requiresProfileImage && (cardData.profile_image_url || showPlaceholders);
+  const configuredSections = readRendererSections(fieldConfig, templateCustomFields);
+  const visibility = (fieldConfig?.default_visibility || {}) as Record<string, boolean>;
+  const allowed = new Set(allowedFields);
+  const sections = rendererContentSections(
+    fieldConfig,
+    templateCustomFields,
+    sectionSettings
+  )
+    .filter(
+      (section) =>
+        section.enabled &&
+        visibility[`section:${section.key}`] !== false &&
+        isRendererMediaVisible(cardData, [`section:${section.key}`]) &&
+        (!fieldConfig?.sections || Object.hasOwn(configuredSections, section.key))
+    )
+    .map((section) => {
+      const fields =
+        configuredSections[section.key] ?? classicSectionDefaults[section.key] ?? [];
+      const visibleFields = fields.filter((field) => {
+        const storageKey = isCustomFieldKey(field)
+          ? field.split(":").at(-1)?.trim().toLowerCase() || field
+          : field;
+        return (
+          allowed.has(field) &&
+          visibility[field] !== false &&
+          visibility[storageKey] !== false &&
+          isRendererMediaVisible(cardData, [field, storageKey])
+        );
+      });
+
+      return {
+        ...section,
+        rows: markExampleRows(
+          addPublicRowActions(
+            classicRows(
+              section.key,
+              configuredSections,
+              cardData,
+              new Set(visibleFields),
+              mode !== "public"
+            ),
+            mode === "public"
+          ),
+          cardData
+        ),
+      };
+    });
+  const identityRows = sections.flatMap((section) => section.rows);
+  const jobTitle = identityRows.find((row) => row.field === "job_title");
+  const company = identityRows.find((row) => row.field === "company_name");
+  // These configured fields appear once, in the identity area rather than again below it.
+  const contentSections = sections
+    .map((section) => ({
+      ...section,
+      rows: section.rows.filter((row) => !["job_title", "company_name"].includes(row.field || "")),
+    }))
+    .filter((section) => section.rows.length > 0);
+  const headlineIsExample = ["title", "first_name", "last_name", "full_name"].some(
+    (field) => isRendererExampleField(cardData, field)
+  );
+
+  return (
+    <div
+      className="min-h-full min-w-0 overflow-hidden"
+      style={{
+        background: rendererTheme.background,
+        color: rendererTheme.text,
+        fontFamily: rendererTheme.fontFamily,
+      }}
+    >
+      {showBanner && (
+        <div
+          className="relative w-full overflow-hidden"
+          style={{ aspectRatio: "3 / 1" }}
+        >
+          {cardData.company_banner_url ? (
+            <CardMediaImage
+              src={cardData.company_banner_url}
+              alt="Company banner"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          ) : (
+            <div
+              aria-hidden="true"
+              className="flex h-full w-full items-center justify-center border border-dashed text-xs font-semibold uppercase tracking-[0.28em]"
+              style={placeholderStyle}
+            >
+              Banner
+            </div>
+          )}
+        </div>
+      )}
+
+      <div
+        className={`${compact ? "px-5 pb-5" : "px-7 pb-7"} ${
+          showBanner ? "" : compact ? "pt-9" : "pt-12"
+        }`}
+      >
+        {showLogo && (
+          <div
+            className={`relative mx-auto flex h-16 w-32 items-center justify-center overflow-hidden rounded-xl border ${
+              showBanner ? "-mt-5" : ""
+            } ${cardData.company_logo_url ? "" : "border-dashed"}`}
+            style={
+              cardData.company_logo_url
+                ? { borderColor: divider, background: rendererTheme.background }
+                : { ...placeholderStyle, background: rendererTheme.background }
+            }
+          >
+            {cardData.company_logo_url ? (
+              <CardMediaImage
+                src={cardData.company_logo_url}
+                alt={company?.value ? `${company.value} logo` : "Company logo"}
+                className="h-full w-full object-contain p-2"
+              />
+            ) : (
+              <span aria-hidden="true" className="text-xs font-semibold tracking-widest">
+                Logo
+              </span>
+            )}
+          </div>
+        )}
+
+        <header
+          className={`flex min-w-0 flex-col items-center text-center ${
+            showBanner || showLogo ? "mt-6" : ""
+          }`}
+        >
+          {showProfile && (
+            <div
+              className={`mb-4 flex shrink-0 items-center justify-center overflow-hidden rounded-full border ${
+                compact ? "h-20 w-20" : "h-24 w-24"
+              } ${cardData.profile_image_url ? "" : "border-dashed"}`}
+              style={cardData.profile_image_url ? { borderColor: divider } : placeholderStyle}
+            >
+              {cardData.profile_image_url ? (
+                <CardMediaImage
+                  src={cardData.profile_image_url}
+                  alt={displayName(cardData, "Profile")}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <UserRound size={compact ? 28 : 34} strokeWidth={1.5} />
+              )}
+            </div>
+          )}
+          <h3
+            className={`w-full min-w-0 break-words font-semibold leading-tight ${
+              compact ? "text-xl" : "text-2xl"
+            }`}
+            style={{ color: headlineIsExample ? muted : rendererTheme.text }}
+          >
+            {displayName(cardData)}
+          </h3>
+          {jobTitle && (
+            <p className="mt-2 w-full min-w-0 break-words text-sm" style={{ color: muted }}>
+              {jobTitle.value}
+            </p>
+          )}
+          {company && (
+            <p
+              className="mt-2 w-full min-w-0 break-words text-xs font-medium"
+              style={{ color: company.example ? muted : rendererTheme.text }}
+            >
+              {company.value}
+            </p>
+          )}
+        </header>
+
+        {contentSections.map((section) => (
+          <ModernMinimalSection
+            key={section.key}
+            title={section.title}
+            rows={section.rows}
+            theme={rendererTheme}
+          />
+        ))}
+
+        {actionConfig && (
+          <TemplateActionList
+            compact={compact}
+            theme={rendererTheme}
+            cardData={cardData}
+            mode={mode}
+            actionConfig={actionConfig}
+            className="mt-7"
+            itemClassName="w-full"
+            previewActionDestinations={previewActionDestinations}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ModernMinimalLayout(props: LayoutProps) {
   const {
     cardData,
     allowedFields,
     templateCustomFields = {},
+    fieldConfig,
     mode = "preview",
     sectionSettings = {
       personal: true,
@@ -1078,6 +1698,8 @@ function ModernMinimalLayout(props: LayoutProps) {
     requiresBanner,
     theme,
     actionConfig,
+    showMediaPlaceholders = false,
+    previewActionDestinations = false,
   } = props;
   const rendererTheme = getRendererTheme(theme);
   const publicMode = mode === "public";
@@ -1116,19 +1738,61 @@ function ModernMinimalLayout(props: LayoutProps) {
       cardData
     ),
   };
+  const contentSections = rendererContentSections(
+    fieldConfig,
+    templateCustomFields,
+    sectionSettings
+  );
+  const renderedSections = contentSections
+    .map((section) => {
+      const sectionRows =
+        section.key === "personal"
+          ? rows.personal
+          : section.key === "company"
+          ? rows.company
+          : section.key === "contact"
+          ? rows.contact
+          : section.key === "social"
+          ? rows.social
+          : markExampleRows(
+              addPublicRowActions(
+                classicRows(
+                  section.key,
+                  templateCustomFields,
+                  cardData,
+                  allowed,
+                  previewMode
+                ),
+                publicMode
+              ),
+              cardData
+            );
+
+      return {
+        ...section,
+        rows: sectionRows,
+      };
+    })
+    .filter((section) => section.enabled && section.rows.length > 0);
   const headline = displayName(cardData);
   const headlineIsExample = ["title", "first_name", "last_name", "full_name"].some(
     (field) => isRendererExampleField(cardData, field)
   );
   const initialsText = initials(headline);
-  const contactLine = [toDisplayValue(cardData.email), toDisplayValue(cardData.phone)]
-    .filter(Boolean)
-    .join("  /  ");
+  const showBanner = requiresBanner && Boolean(cardData.company_banner_url);
+  const showBannerPlaceholder =
+    requiresBanner && showMediaPlaceholders && !cardData.company_banner_url;
+  const showBannerSlot = showBanner || showBannerPlaceholder;
+  const showLogoWatermark =
+    requiresLogo && (Boolean(cardData.company_logo_url) || showMediaPlaceholders);
+  const showProfilePlaceholder =
+    requiresProfileImage && showMediaPlaceholders && !cardData.profile_image_url;
+  const mediaPlaceholderStyle = adminMediaPlaceholderStyle(rendererTheme.text);
 
   return (
     <div
       className={`relative min-h-full overflow-visible text-[#101935] ${
-        compact ? "p-5 pt-9" : "p-7 pt-12"
+        showBannerSlot ? "" : compact ? "p-5 pt-9" : "p-7 pt-12"
       }`}
       style={{
         background: rendererTheme.background,
@@ -1136,54 +1800,78 @@ function ModernMinimalLayout(props: LayoutProps) {
         fontFamily: rendererTheme.fontFamily,
       }}
     >
-      {requiresLogo && cardData.company_logo_url && (
-        <div className="pointer-events-none sticky top-1/2 z-0 flex h-0 -translate-y-1/2 justify-center overflow-visible">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={cardData.company_logo_url}
-            alt=""
-            aria-hidden="true"
-            className={`object-contain opacity-[0.065] ${
-              compact ? "h-40 w-40" : "h-64 w-64"
-            }`}
-          />
+      {showLogoWatermark && (
+        <div className="pointer-events-none sticky top-1/2 z-0 flex h-0 justify-center overflow-visible">
+          {cardData.company_logo_url ? (
+            <CardMediaImage
+              src={cardData.company_logo_url}
+              alt=""
+              aria-hidden="true"
+              className={`-translate-y-1/2 object-contain opacity-[0.065] ${
+                compact ? "h-40 w-40" : "h-64 w-64"
+              }`}
+            />
+          ) : (
+            <div
+              aria-hidden="true"
+              className={`flex -translate-y-1/2 items-center justify-center rounded-[2rem] border border-dashed text-sm font-semibold tracking-[0.28em] ${
+                compact ? "h-36 w-36" : "h-56 w-56"
+              }`}
+              style={mediaPlaceholderStyle}
+            >
+              Logo
+            </div>
+          )}
         </div>
       )}
 
       <div className="relative z-10">
-        {requiresBanner && (
-          <div
-            className="mb-5 overflow-hidden rounded-3xl border"
-            style={{
-              aspectRatio: `${modernMinimalMediaSlots.banner.aspectRatio} / 1`,
-              borderColor: fineBorder,
-              background:
-                cardData.company_banner_url
-                  ? `url(${cardData.company_banner_url}) center/cover no-repeat`
-                  : `linear-gradient(135deg, ${colorAlpha(rendererTheme.primary, 0.14)}, ${colorAlpha(rendererTheme.secondary, 0.08)})`,
-            }}
+        {showBanner && (
+          <CardMediaImage
+            src={cardData.company_banner_url || ""}
+            alt="Company banner"
+            className="w-full object-cover"
+            style={{ aspectRatio: `${modernMinimalMediaSlots.banner.aspectRatio} / 1` }}
           />
         )}
+        {showBannerPlaceholder && (
+          <div
+            aria-hidden="true"
+            className="flex w-full items-center justify-center border border-dashed text-xs font-semibold uppercase tracking-[0.28em]"
+            style={{
+              ...mediaPlaceholderStyle,
+              aspectRatio: `${modernMinimalMediaSlots.banner.aspectRatio} / 1`,
+            }}
+          >
+            Banner
+          </div>
+        )}
 
+      <div className={showBannerSlot ? (compact ? "p-5 pt-5" : "p-7 pt-6") : ""}>
       <div className="text-center">
         {requiresProfileImage && (
           <div
             className={`mx-auto mb-5 flex shrink-0 items-center justify-center overflow-hidden rounded-full border font-semibold ${
               compact ? "h-20 w-20 text-xl" : "h-28 w-28 text-3xl"
             }`}
-            style={{
-              borderColor: fineBorder,
-              background: colorAlpha(rendererTheme.primary, 0.08),
-              color: rendererTheme.primary,
-            }}
+            style={
+              showProfilePlaceholder
+                ? mediaPlaceholderStyle
+                : {
+                    borderColor: fineBorder,
+                    background: colorAlpha(rendererTheme.primary, 0.08),
+                    color: rendererTheme.primary,
+                  }
+            }
           >
             {cardData.profile_image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <CardMediaImage
                 src={cardData.profile_image_url}
                 alt={headline}
                 className="h-full w-full object-cover"
               />
+            ) : showProfilePlaceholder ? (
+              <UserRound size={compact ? 24 : 32} strokeWidth={1.5} />
             ) : (
               initialsText
             )}
@@ -1206,35 +1894,14 @@ function ModernMinimalLayout(props: LayoutProps) {
         </div>
       </div>
 
-      {contactLine && (
-        <p
-          className="mt-6 break-words border-t pt-5 text-sm font-medium"
-          style={{ borderColor: fineBorder, color: muted }}
-        >
-          {contactLine}
-        </p>
-      )}
-
-      <ModernMinimalSection
-        title="Profile"
-        rows={sectionSettings.personal ? rows.personal : []}
-        theme={rendererTheme}
-      />
-      <ModernMinimalSection
-        title="Company"
-        rows={sectionSettings.company ? rows.company : []}
-        theme={rendererTheme}
-      />
-      <ModernMinimalSection
-        title="Contact"
-        rows={sectionSettings.contact ? rows.contact : []}
-        theme={rendererTheme}
-      />
-      <ModernMinimalSection
-        title="Social"
-        rows={sectionSettings.social ? rows.social : []}
-        theme={rendererTheme}
-      />
+      {renderedSections.map((section) => (
+        <ModernMinimalSection
+          key={section.key}
+          title={section.key === "personal" ? "Profile" : section.title}
+          rows={section.rows}
+          theme={rendererTheme}
+        />
+      ))}
 
       {actionConfig && (
         <TemplateActionList
@@ -1248,7 +1915,9 @@ function ModernMinimalLayout(props: LayoutProps) {
           mode={mode}
           actionConfig={actionConfig}
           className="mt-7"
-          itemClassName="!rounded-full !border !border-black/10 !bg-white/70 !px-4 !py-3 !text-xs !shadow-sm"
+          itemClassName="!rounded-full !border !border-current/15 !px-4 !py-3 !text-xs !shadow-sm"
+          uniformStyle
+          previewActionDestinations={previewActionDestinations}
         />
       )}
 
@@ -1256,6 +1925,7 @@ function ModernMinimalLayout(props: LayoutProps) {
         className="mt-8 h-1 w-16 rounded-full"
         style={{ backgroundColor: rendererTheme.primary }}
       />
+      </div>
       </div>
     </div>
   );
@@ -1366,738 +2036,6 @@ function buildPaidPersonalRows({
   return rows;
 }
 
-type ImportedTemplateRow = DisplayRow & {
-  key: string;
-  section: string;
-};
-
-function importedTemplateRows(props: LayoutProps): ImportedTemplateRow[] {
-  return layoutRows(props).flatMap((section) =>
-    section.rows.map((row) => ({
-      ...row,
-      key: `${section.title}:${row.label}`,
-      section: section.title,
-    }))
-  );
-}
-
-function layoutRows({
-  cardData,
-  allowedFields,
-  templateCustomFields = {},
-  sectionSettings = {
-    personal: true,
-    company: true,
-    contact: true,
-    social: false,
-  },
-  mode = "preview",
-  actionConfig,
-}: LayoutProps) {
-  const allowed = new Set(allowedFields);
-  const previewMode = mode === "preview" || mode === "compact";
-  const sections = [
-    ["Personal Details", "personal", sectionSettings.personal],
-    ["Company Details", "company", sectionSettings.company],
-    ["Contact", "contact", sectionSettings.contact],
-    ["Social Links", "social", sectionSettings.social],
-  ] as const;
-
-  return sections
-    .map(([title, key, enabled]) => ({
-      title,
-      rows: enabled
-        ? addPublicRowActions(
-            classicRows(key, templateCustomFields, cardData, allowed, previewMode)
-              .filter((row) =>
-                actionConfig && key === "social" && row.field
-                  ? !actionOwnedDetailFields.has(row.field)
-                  : true
-              ),
-            mode === "public"
-          )
-        : [],
-    }))
-    .filter((section) => section.rows.length > 0);
-}
-
-function GlassmorphismLayout(props: LayoutProps) {
-  const rows = importedTemplateRows(props);
-  const { cardData, compact, requiresLogo } = props;
-  const showCompanyName =
-    props.sectionSettings?.company && props.allowedFields.includes("company_name");
-  const theme = getRendererTheme(props.theme);
-  const cardBackground = cardBackgroundFromTheme(theme);
-  const glassTint = colorAlpha(theme.secondary, 0.46);
-  const accentBorder = colorAlpha(theme.text, 0.26);
-  const mutedText = colorAlpha(theme.text, 0.58);
-  const labelText = colorAlpha(theme.text, 0.72);
-  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
-
-  return (
-    <div
-      className={`w-full min-w-0 overflow-hidden rounded-[1.7rem] p-0.5 shadow-2xl shadow-black/50 ${minHeightClass}`}
-      style={{
-        background: cardBackground,
-        fontFamily: theme.fontFamily,
-      }}
-    >
-      <div
-        className="flex min-h-full flex-col overflow-hidden rounded-[1.55rem] border shadow-inner shadow-white/5 backdrop-blur-xl"
-        style={{
-          backgroundColor: glassTint,
-          borderColor: accentBorder,
-          color: theme.text,
-        }}
-      >
-        <div
-          className="flex min-w-0 items-center gap-4 border-b px-5 py-5"
-          style={{ borderColor: accentBorder }}
-        >
-          <PaidAvatar cardData={cardData} theme={theme} size={compact ? 56 : 64} />
-
-          <div className="min-w-0 flex-1">
-            <h3 className="max-w-full break-words text-xl font-black leading-tight tracking-tight">
-              {displayName(cardData)}
-            </h3>
-            {props.sectionSettings?.personal &&
-              props.allowedFields.includes("job_title") && (
-                <p
-                  className="mt-1 max-w-full break-words text-sm"
-                  style={{ color: mutedText }}
-                >
-                  {cardData.job_title || "Job Title"}
-                </p>
-              )}
-            {!requiresLogo && showCompanyName && (
-              <p
-                className="mt-2 max-w-full truncate text-[10px] font-semibold uppercase tracking-[0.16em]"
-                style={{ color: labelText }}
-              >
-                {cardData.company_name || "Company Name"}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <PaidRowList
-          rows={rows}
-          theme={theme}
-          className="px-5 py-4"
-          emptyPanelColor={colorAlpha(theme.secondary, 0.2)}
-        />
-
-        {(requiresLogo || showCompanyName) && (
-          <div className="flex justify-end px-5 pb-5">
-            {requiresLogo ? (
-              <PaidLogoMark cardData={cardData} theme={theme} size="large" />
-            ) : (
-              <span className="max-w-32 truncate text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: labelText }}>
-                {cardData.company_name || "Company Name"}
-              </span>
-            )}
-          </div>
-        )}
-
-        {props.actionConfig ? (
-          <TemplateActionList
-            compact={compact}
-            theme={theme}
-            cardData={cardData}
-            mode={props.mode || "preview"}
-            actionConfig={props.actionConfig}
-            className="mx-5 mb-5 mt-auto"
-          />
-        ) : (
-          <TemplateSaveButton
-            compact={compact}
-            theme={theme}
-            cardData={cardData}
-            mode={props.mode || "preview"}
-            className="mx-5 mb-5 mt-auto"
-          />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function BannerCardLayout(props: LayoutProps) {
-  const theme = getRendererTheme(props.theme);
-  const rows = importedTemplateRows(props);
-  const detailRows = rows.filter((row) => row.key !== "Personal Details:Job Title");
-  const { cardData, compact, requiresLogo } = props;
-  const showCompanyName =
-    props.sectionSettings?.company && props.allowedFields.includes("company_name");
-  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
-  const borderColor = colorAlpha(theme.text, 0.22);
-  const mutedText = colorAlpha(theme.text, 0.74);
-  const softPanel = colorAlpha(theme.text, 0.08);
-  const bannerBackground = cardData.company_banner_url
-    ? `linear-gradient(180deg, ${colorAlpha(theme.secondary, 0.06)}, ${colorAlpha(theme.secondary, 0.62)}), url(${cardData.company_banner_url}) center/cover no-repeat`
-    : cardBackgroundFromTheme(theme);
-
-  return (
-    <div
-      className={`flex w-full min-w-0 flex-col overflow-hidden rounded-[1.6rem] border shadow-2xl shadow-black/35 ${minHeightClass}`}
-      style={{
-        background: cardBackgroundFromTheme(theme),
-        borderColor,
-        color: theme.text,
-        fontFamily: theme.fontFamily,
-      }}
-    >
-      <div className={compact ? "relative h-36" : "relative h-48"} style={{ background: bannerBackground }}>
-        <div
-          className="absolute inset-0"
-          style={{
-            background: `linear-gradient(180deg, transparent 30%, ${colorAlpha(theme.secondary, 0.58)})`,
-          }}
-        />
-
-        {requiresLogo && (
-          <div
-            className="absolute right-4 top-4 flex max-w-[180px] items-center gap-2 rounded-full border px-3 py-2 backdrop-blur-md"
-            style={{
-              backgroundColor: colorAlpha(theme.secondary, 0.54),
-              borderColor,
-              color: theme.text,
-            }}
-          >
-            <PaidLogoMark cardData={cardData} theme={theme} size="small" />
-            {showCompanyName && (
-              <span className="min-w-0 truncate text-xs font-bold">
-                {cardData.company_name || "Company Name"}
-              </span>
-            )}
-          </div>
-        )}
-
-        {props.requiresProfileImage && (
-          <div className="absolute bottom-0 left-5 translate-y-1/2">
-            <PaidAvatar cardData={cardData} theme={theme} size={compact ? 74 : 88} />
-          </div>
-        )}
-      </div>
-
-      <div className={`px-5 ${props.requiresProfileImage ? (compact ? "pt-12" : "pt-14") : "pt-5"}`}>
-        <h3 className="max-w-full break-words text-2xl font-black leading-tight">
-          {displayName(cardData)}
-        </h3>
-        {props.sectionSettings?.personal && props.allowedFields.includes("job_title") && (
-          <p className="mt-1 max-w-full break-words text-sm font-semibold" style={{ color: mutedText }}>
-            {cardData.job_title || "Job Title"}
-          </p>
-        )}
-      </div>
-
-      <PaidRowList rows={detailRows} theme={theme} className="px-5 py-5" emptyPanelColor={softPanel} />
-
-      {props.actionConfig ? (
-        <TemplateActionList
-          compact={compact}
-          theme={theme}
-          cardData={cardData}
-          mode={props.mode || "preview"}
-          actionConfig={props.actionConfig}
-          className="mx-5 mb-5 mt-auto"
-        />
-      ) : (
-        <TemplateSaveButton
-          compact={compact}
-          theme={theme}
-          cardData={cardData}
-          mode={props.mode || "preview"}
-          className="mx-5 mb-5 mt-auto"
-        />
-      )}
-    </div>
-  );
-}
-
-function SplitCardLayout(props: LayoutProps) {
-  const theme = getRendererTheme(props.theme);
-  const rows = importedTemplateRows(props);
-  const detailRows = rows.filter(
-    (row) =>
-      row.key !== "Personal Details:Job Title" &&
-      row.key !== "Company Details:Company Name"
-  );
-  const { cardData, compact, requiresLogo } = props;
-  const showCompanyName =
-    props.sectionSettings?.company && props.allowedFields.includes("company_name");
-  const borderColor = colorAlpha(theme.text, 0.2);
-  const mutedText = colorAlpha(theme.text, 0.74);
-  const panelColor = colorAlpha(theme.secondary, 0.5);
-
-  return (
-    <div
-      className={`grid w-full min-w-0 overflow-hidden rounded-[1.6rem] border shadow-2xl shadow-black/35 ${
-        compact ? "min-h-[420px] grid-cols-1" : "min-h-[650px] grid-cols-[42%_58%]"
-      }`}
-      style={{
-        background: cardBackgroundFromTheme(theme),
-        borderColor,
-        color: theme.text,
-        fontFamily: theme.fontFamily,
-      }}
-    >
-      <div
-        className={`flex min-w-0 flex-col items-center justify-center p-5 text-center ${
-          compact ? "min-h-48" : ""
-        }`}
-        style={{
-          backgroundColor: panelColor,
-          borderColor,
-          borderRightWidth: compact ? 0 : 1,
-          borderBottomWidth: compact ? 1 : 0,
-        }}
-      >
-        {props.requiresProfileImage && (
-          <PaidAvatar cardData={cardData} theme={theme} size={compact ? 82 : 104} />
-        )}
-        <h3 className="mt-4 max-w-full break-words text-2xl font-black leading-tight">
-          {displayName(cardData)}
-        </h3>
-        {props.sectionSettings?.personal && props.allowedFields.includes("job_title") && (
-          <p className="mt-2 max-w-full break-words text-sm font-semibold" style={{ color: mutedText }}>
-            {cardData.job_title || "Job Title"}
-          </p>
-        )}
-      </div>
-
-      <div className="flex min-w-0 flex-col p-5">
-        {(requiresLogo || showCompanyName) && (
-          <div className="mb-5 flex min-w-0 items-center gap-3">
-            {requiresLogo && <PaidLogoMark cardData={cardData} theme={theme} size="large" />}
-            {showCompanyName && (
-              <span className="min-w-0 max-w-full break-words text-sm font-bold">
-                {cardData.company_name || "Company Name"}
-              </span>
-            )}
-          </div>
-        )}
-
-        <PaidRowList rows={detailRows} theme={theme} className="flex-1" />
-
-        {props.actionConfig ? (
-          <TemplateActionList
-            compact={compact}
-            theme={theme}
-            cardData={cardData}
-            mode={props.mode || "preview"}
-            actionConfig={props.actionConfig}
-            className="mt-auto"
-          />
-        ) : (
-          <TemplateSaveButton
-            compact={compact}
-            theme={theme}
-            cardData={cardData}
-            mode={props.mode || "preview"}
-            className="mt-auto"
-          />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function MonogramCardLayout(props: LayoutProps) {
-  const theme = getRendererTheme(props.theme);
-  const rows = importedTemplateRows(props);
-  const detailRows = rows.filter(
-    (row) =>
-      row.key !== "Personal Details:Job Title" &&
-      row.key !== "Company Details:Company Name"
-  );
-  const { cardData, compact, requiresLogo } = props;
-  const showCompanyName =
-    props.sectionSettings?.company && props.allowedFields.includes("company_name");
-  const minHeightClass = compact ? "min-h-[420px]" : "min-h-[650px]";
-  const borderColor = colorAlpha(theme.text, 0.18);
-  const mutedText = colorAlpha(theme.text, 0.76);
-  const panelColor = colorAlpha(theme.secondary, 0.44);
-
-  return (
-    <div
-      className={`flex w-full min-w-0 flex-col overflow-hidden rounded-[1.35rem] border shadow-2xl shadow-black/30 ${minHeightClass}`}
-      style={{
-        background: cardBackgroundFromTheme(theme),
-        borderColor,
-        color: theme.text,
-        fontFamily: theme.fontFamily,
-      }}
-    >
-      <div className="flex min-w-0 items-center gap-4 border-b p-5" style={{ borderColor, backgroundColor: panelColor }}>
-        <div
-          className="flex h-[76px] w-[76px] shrink-0 items-center justify-center rounded-2xl border text-3xl font-black tracking-normal"
-          style={{
-            backgroundColor: colorAlpha(theme.text, 0.12),
-            borderColor,
-            color: theme.text,
-          }}
-        >
-          {initials(displayName(cardData))}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <h3 className="max-w-full break-words text-2xl font-black leading-tight">
-            {displayName(cardData)}
-          </h3>
-          {props.sectionSettings?.personal && props.allowedFields.includes("job_title") && (
-            <p className="mt-1 max-w-full break-words text-sm font-semibold" style={{ color: mutedText }}>
-              {cardData.job_title || "Job Title"}
-            </p>
-          )}
-          {showCompanyName && (
-            <p className="mt-1 max-w-full break-words text-xs font-semibold" style={{ color: mutedText }}>
-              {cardData.company_name || "Company Name"}
-            </p>
-          )}
-        </div>
-
-        {requiresLogo && <PaidLogoMark cardData={cardData} theme={theme} size="large" />}
-      </div>
-
-      <PaidRowList rows={detailRows} theme={theme} className="px-5 py-5" />
-
-      {props.actionConfig ? (
-        <TemplateActionList
-          compact={compact}
-          theme={theme}
-          cardData={cardData}
-          mode={props.mode || "preview"}
-          actionConfig={props.actionConfig}
-          className="mx-5 mb-5 mt-auto"
-        />
-      ) : (
-        <TemplateSaveButton
-          compact={compact}
-          theme={theme}
-          cardData={cardData}
-          mode={props.mode || "preview"}
-          className="mx-5 mb-5 mt-auto"
-        />
-      )}
-    </div>
-  );
-}
-
-function PaidRowList({
-  rows,
-  theme,
-  className = "",
-  emptyPanelColor,
-}: {
-  rows: ImportedTemplateRow[];
-  theme: RendererTheme;
-  className?: string;
-  emptyPanelColor?: string;
-}) {
-  const line = colorAlpha(theme.text, 0.16);
-  const mutedText = colorAlpha(theme.text, 0.74);
-
-  if (rows.length === 0) {
-    return (
-      <p
-        className={`rounded-2xl border p-4 text-sm ${className}`}
-        style={{
-          backgroundColor: emptyPanelColor || colorAlpha(theme.text, 0.07),
-          borderColor: line,
-          color: mutedText,
-        }}
-      >
-        Add visible fields to show card details.
-      </p>
-    );
-  }
-
-  return (
-    <div className={`min-w-0 ${className}`}>
-      <div className="divide-y" style={{ borderColor: line } as React.CSSProperties}>
-        {rows.map((row) => {
-          const Icon = row.icon || iconForLabel(row.label);
-          const RowTag = row.href ? "a" : "div";
-
-          return (
-            <RowTag
-              key={row.key}
-              href={row.href || undefined}
-              target={row.href?.startsWith("http") ? "_blank" : undefined}
-              rel={row.href?.startsWith("http") ? "noopener noreferrer" : undefined}
-              className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-start gap-3 py-3 text-sm"
-              style={{ borderColor: line }}
-            >
-              <span className="flex min-w-0 items-center gap-2" style={{ color: theme.text }}>
-                <Icon className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-normal">
-                  {row.label}
-                </span>
-              </span>
-              <span className="min-w-0 max-w-full whitespace-pre-wrap break-words text-right text-sm font-semibold" style={{ color: theme.text }}>
-                {row.value}
-              </span>
-            </RowTag>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function PaidAvatar({
-  cardData,
-  theme,
-  size,
-}: {
-  cardData: CardRendererData;
-  theme: RendererTheme;
-  size: number;
-}) {
-  return (
-    <div
-      className="flex shrink-0 items-center justify-center overflow-hidden rounded-full border-4 text-2xl font-black shadow-xl"
-      style={{
-        width: size,
-        height: size,
-        backgroundColor: colorAlpha(theme.text, 0.12),
-        borderColor: theme.text,
-        color: theme.text,
-      }}
-    >
-      {cardData.profile_image_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={cardData.profile_image_url}
-          alt={displayName(cardData, "Profile")}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        initials(displayName(cardData))
-      )}
-    </div>
-  );
-}
-
-function PaidLogoMark({
-  cardData,
-  theme,
-  size,
-}: {
-  cardData: CardRendererData;
-  theme: RendererTheme;
-  size: "small" | "large";
-}) {
-  const dimension = size === "large" ? 44 : 24;
-
-  return (
-    <div
-      className="flex shrink-0 items-center justify-center overflow-hidden rounded-lg border text-[10px] font-black"
-      style={{
-        width: dimension,
-        height: dimension,
-        backgroundColor: colorAlpha(theme.text, 0.1),
-        borderColor: colorAlpha(theme.text, 0.22),
-        color: theme.text,
-      }}
-    >
-      {cardData.company_logo_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={cardData.company_logo_url}
-          alt={cardData.company_name || "Company logo"}
-          className="h-full w-full object-contain p-1"
-        />
-      ) : (
-        initials(cardData.company_name)
-      )}
-    </div>
-  );
-}
-
-function ModernLayout({
-  cardData,
-  allowedFields,
-  requiresProfileImage,
-  requiresLogo,
-  logoSize,
-  supportsBio,
-  compact,
-  mode,
-}: LayoutProps) {
-  return (
-    <>
-      <div className="flex items-center justify-between gap-4">
-        <IdentityBlock cardData={cardData} compact={compact} />
-        {requiresProfileImage && <ProfileImage cardData={cardData} size="small" />}
-      </div>
-      {requiresLogo && <LogoBlock cardData={cardData} size={logoSize} />}
-      {supportsBio && <BioBlock cardData={cardData} />}
-      <FieldGrid cardData={cardData} fields={allowedFields} publicMode={mode === "public"} />
-    </>
-  );
-}
-
-function CenteredLayout({
-  cardData,
-  allowedFields,
-  requiresProfileImage,
-  requiresLogo,
-  logoSize,
-  supportsBio,
-  compact,
-  mode,
-}: LayoutProps) {
-  return (
-    <div className="text-center">
-      {requiresLogo && <LogoBlock cardData={cardData} size={logoSize} center />}
-      {requiresProfileImage && (
-        <ProfileImage cardData={cardData} size="large" center />
-      )}
-      <IdentityBlock cardData={cardData} className="mt-5" compact={compact} />
-      {supportsBio && <BioBlock cardData={cardData} />}
-      <FieldStack cardData={cardData} fields={allowedFields} center publicMode={mode === "public"} />
-    </div>
-  );
-}
-
-function SplitLayout({
-  cardData,
-  allowedFields,
-  requiresProfileImage,
-  requiresLogo,
-  logoSize,
-  supportsBio,
-  compact,
-  mode,
-}: LayoutProps) {
-  return (
-    <>
-      {requiresLogo && logoSize === "banner" && (
-        <LogoBlock cardData={cardData} size={logoSize} />
-      )}
-      <div className="grid grid-cols-[110px_1fr] gap-5">
-        <div>
-          {requiresProfileImage && <ProfileImage cardData={cardData} size="medium" />}
-          {requiresLogo && logoSize !== "banner" && (
-            <LogoBlock cardData={cardData} size={logoSize} compactColumn />
-          )}
-        </div>
-        <div>
-          <IdentityBlock cardData={cardData} compact={compact} />
-          {supportsBio && <BioText cardData={cardData} />}
-        </div>
-      </div>
-      <FieldStack cardData={cardData} fields={allowedFields} publicMode={mode === "public"} />
-    </>
-  );
-}
-
-function BannerLayout({
-  cardData,
-  allowedFields,
-  requiresProfileImage,
-  requiresLogo,
-  logoSize,
-  supportsBio,
-  compact,
-  mode,
-}: LayoutProps) {
-  return (
-    <>
-      <div className="mb-6 flex h-40 items-center justify-center overflow-hidden rounded-3xl bg-white/20">
-        {requiresProfileImage && cardData.profile_image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={cardData.profile_image_url}
-            alt={displayName(cardData, "Profile")}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <span className="text-xl font-bold">
-            {cardData.company_name || "Profile Banner"}
-          </span>
-        )}
-      </div>
-      {requiresLogo && <LogoBlock cardData={cardData} size={logoSize} />}
-      <IdentityBlock cardData={cardData} compact={compact} />
-      {supportsBio && <BioBlock cardData={cardData} />}
-      <FieldStack cardData={cardData} fields={allowedFields} publicMode={mode === "public"} />
-    </>
-  );
-}
-
-function CompactLayout({
-  cardData,
-  allowedFields,
-  requiresProfileImage,
-  requiresLogo,
-  logoSize,
-  supportsBio,
-  mode,
-}: Omit<LayoutProps, "compact">) {
-  return (
-    <>
-      <div className="flex items-center gap-4">
-        {requiresProfileImage && <ProfileImage cardData={cardData} size="small" />}
-        <IdentityBlock cardData={cardData} compact />
-      </div>
-      {requiresLogo && <LogoBlock cardData={cardData} size={logoSize} />}
-      {supportsBio && (
-        <p className="mt-4 rounded-2xl bg-white/10 p-3 text-xs opacity-90">
-          {bioText(cardData)}
-        </p>
-      )}
-      <FieldStack cardData={cardData} fields={allowedFields} compact publicMode={mode === "public"} />
-    </>
-  );
-}
-
-function MinimalLayout({
-  cardData,
-  allowedFields,
-  requiresProfileImage,
-  requiresLogo,
-  logoSize,
-  supportsBio,
-  compact,
-  mode,
-}: LayoutProps) {
-  return (
-    <>
-      {requiresProfileImage && (
-        <div className="mb-6 h-1 w-20 rounded-full bg-white/50" />
-      )}
-      <IdentityBlock cardData={cardData} compact={compact} minimal />
-      {requiresLogo && <LogoBlock cardData={cardData} size={logoSize} />}
-      {supportsBio && (
-        <p className="mt-6 border-l border-white/30 pl-4 text-sm opacity-85">
-          {bioText(cardData)}
-        </p>
-      )}
-      <div className="mt-6 space-y-3">
-        {fieldItems(cardData, allowedFields, mode === "public").map((item) => {
-          const ItemTag = item.href ? "a" : "div";
-
-          return (
-            <ItemTag
-              key={item.label}
-              href={item.href || undefined}
-              target={item.href?.startsWith("http") ? "_blank" : undefined}
-              rel={item.href?.startsWith("http") ? "noopener noreferrer" : undefined}
-              className="block border-b border-white/20 pb-3 text-sm"
-            >
-              <span className="block text-xs capitalize opacity-55">{item.label}</span>
-              <span className="mt-1 block break-words">{item.value}</span>
-            </ItemTag>
-          );
-        })}
-      </div>
-    </>
-  );
-}
-
 type LayoutProps = {
   cardData: CardRendererData;
   allowedFields: string[];
@@ -2109,116 +2047,21 @@ type LayoutProps = {
   compact: boolean;
   sectionSettings?: SectionSettings;
   templateCustomFields?: CustomFieldMap;
+  fieldConfig?: Record<string, unknown> | null;
   mode?: CardRendererMode;
   isPaid?: boolean;
   theme?: RendererTheme;
   actionConfig?: CardActionConfig | null;
+  showMediaPlaceholders?: boolean;
+  previewActionDestinations?: boolean;
 };
 
-function IdentityBlock({
-  cardData,
-  className = "",
-  compact = false,
-  minimal = false,
-}: {
-  cardData: CardRendererData;
-  className?: string;
-  compact?: boolean;
-  minimal?: boolean;
-}) {
-  return (
-    <div className={`${className} min-w-0 max-w-full`}>
-      <h3
-        className={`max-w-full break-words font-bold ${
-          compact ? "text-2xl" : "text-3xl"
-        } ${
-          minimal ? "font-semibold" : ""
-        }`}
-      >
-        {displayName(cardData)}
-      </h3>
-      <p className="mt-2 max-w-full break-words text-sm opacity-70">
-        {[cardData.job_title, cardData.company_name].filter(Boolean).join(" · ") ||
-          "Job title · Company"}
-      </p>
-    </div>
-  );
-}
-
-function ProfileImage({
-  cardData,
-  size,
-  center = false,
-}: {
-  cardData: CardRendererData;
-  size: "small" | "medium" | "large";
-  center?: boolean;
-}) {
-  const sizeClass =
-    size === "large"
-      ? "h-32 w-32 text-4xl"
-      : size === "medium"
-      ? "h-24 w-24 text-3xl"
-      : "h-16 w-16 text-xl";
-
-  return (
-    <div
-      className={`flex ${sizeClass} ${
-        center ? "mx-auto" : ""
-      } items-center justify-center overflow-hidden rounded-full bg-white/20 font-bold`}
-    >
-      {cardData.profile_image_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={cardData.profile_image_url}
-          alt={displayName(cardData, "Profile")}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        initials(displayName(cardData))
-      )}
-    </div>
-  );
-}
-
-function LogoBlock({
-  cardData,
-  size,
-  center = false,
-  compactColumn = false,
-}: {
-  cardData: CardRendererData;
-  size: LogoSize;
-  center?: boolean;
-  compactColumn?: boolean;
-}) {
-  const sizeClass =
-    size === "compact"
-      ? "inline-flex w-auto min-w-24 items-center justify-center px-4 py-2 text-xs"
-      : size === "large"
-      ? "flex h-20 w-full max-w-sm items-center justify-center px-5 text-base"
-      : size === "banner"
-      ? "flex h-16 w-full items-center justify-center rounded-3xl px-5 text-base uppercase tracking-wide"
-      : "flex h-14 w-44 items-center justify-center px-4 text-sm";
-
-  return (
-    <div
-      className={`mt-5 overflow-hidden rounded-2xl bg-white/15 text-center font-semibold text-white/85 ${sizeClass} ${
-        center ? "mx-auto" : ""
-      } ${compactColumn ? "max-w-full" : ""}`}
-    >
-      {cardData.company_logo_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={cardData.company_logo_url}
-          alt={cardData.company_name || "Company logo"}
-          className="max-h-full max-w-full object-contain"
-        />
-      ) : (
-        cardData.company_name || "Company Logo"
-      )}
-    </div>
-  );
+function adminMediaPlaceholderStyle(textColour: string): React.CSSProperties {
+  return {
+    borderColor: colorAlpha(textColour, 0.24),
+    color: colorAlpha(textColour, 0.26),
+    background: colorAlpha(textColour, 0.035),
+  };
 }
 
 function CompanyLogoBlock({
@@ -2233,8 +2076,7 @@ function CompanyLogoBlock({
       className={`${className} flex h-9 min-w-24 max-w-[180px] items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/20 px-3 text-center text-[11px] font-semibold text-white/90 shadow-lg shadow-black/10`}
     >
       {cardData.company_logo_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <CardMediaImage
           src={cardData.company_logo_url}
           alt={cardData.company_name || "Company logo"}
           className="max-h-7 max-w-full object-contain"
@@ -2263,8 +2105,7 @@ function PremiumCompanyBanner({
       <div className="absolute left-[-12%] right-[-6%] bottom-[-54px] h-24 rotate-[4deg] rounded-[50%] bg-[#8C00D8]/80" />
 
       {cardData.company_banner_url && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <CardMediaImage
           src={cardData.company_banner_url}
           alt={cardData.company_name || "Company banner"}
           className="absolute inset-0 h-full w-full object-cover opacity-75"
@@ -2285,8 +2126,7 @@ function PremiumCompanyLogo({ cardData }: { cardData: CardRendererData }) {
   return (
     <div className="flex min-h-9 min-w-20 max-w-[180px] items-center justify-center overflow-hidden px-2 text-center text-xs font-bold text-white drop-shadow">
       {cardData.company_logo_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <CardMediaImage
           src={cardData.company_logo_url}
           alt={cardData.company_name || "Company logo"}
           className="max-h-10 max-w-full object-contain"
@@ -2300,170 +2140,14 @@ function PremiumCompanyLogo({ cardData }: { cardData: CardRendererData }) {
   );
 }
 
-function BioBlock({ cardData }: { cardData: CardRendererData }) {
+function DmiFooter({ textColour }: { textColour: string }) {
   return (
-    <p className="mt-5 rounded-2xl bg-white/10 p-4 text-sm opacity-90">
-      {bioText(cardData)}
-    </p>
-  );
-}
-
-function BioText({ cardData }: { cardData: CardRendererData }) {
-  return <p className="mt-4 text-sm opacity-85">{bioText(cardData)}</p>;
-}
-
-function FieldStack({
-  cardData,
-  fields,
-  center = false,
-  compact = false,
-  publicMode = false,
-}: {
-  cardData: CardRendererData;
-  fields: string[];
-  center?: boolean;
-  compact?: boolean;
-  publicMode?: boolean;
-}) {
-  return (
-    <div className={`mt-6 min-w-0 space-y-3 ${center ? "text-center" : ""}`}>
-      {fieldItems(cardData, fields, publicMode).map((item) => (
-        <FieldBlock
-          key={item.label}
-          label={item.label}
-          value={item.value}
-          href={item.href}
-          compact={compact}
-        />
-      ))}
-    </div>
-  );
-}
-
-function FieldGrid({
-  cardData,
-  fields,
-  publicMode = false,
-}: {
-  cardData: CardRendererData;
-  fields: string[];
-  publicMode?: boolean;
-}) {
-  return (
-    <div className="mt-6 grid min-w-0 grid-cols-2 gap-3">
-      {fieldItems(cardData, fields, publicMode).map((item) => (
-        <FieldBlock
-          key={item.label}
-          label={item.label}
-          value={item.value}
-          href={item.href}
-          center
-        />
-      ))}
-    </div>
-  );
-}
-
-function FieldBlock({
-  label,
-  value,
-  href,
-  center = false,
-  compact = false,
-}: {
-  label: string;
-  value: string;
-  href?: string | null;
-  center?: boolean;
-  compact?: boolean;
-}) {
-  const BlockTag = href ? "a" : "div";
-
-  return (
-    <BlockTag
-      href={href || undefined}
-      target={href?.startsWith("http") ? "_blank" : undefined}
-      rel={href?.startsWith("http") ? "noopener noreferrer" : undefined}
-      className={`rounded-2xl bg-white/10 ${
-        compact ? "p-3 text-xs" : "p-4 text-sm"
-      } ${center ? "text-center" : ""}`}
-    >
-      <span className="block text-xs capitalize opacity-55">{label}</span>
-      <span className="mt-1 block min-w-0 max-w-full break-words">
-        {value}
+    <div className="mt-6 text-center" style={{ color: textColour }}>
+      <span className="block text-sm font-semibold">DMI Cards</span>
+      <span className="mt-1 block text-[11px] font-normal">
+        Powered by DevMaster Inc
       </span>
-    </BlockTag>
-  );
-}
-
-function DmiFooter() {
-  return (
-    <a
-      href="https://www.devmasterinc.com"
-      target="_blank"
-      rel="noopener noreferrer"
-      className="mt-6 block text-center text-[11px] text-white/45 transition hover:text-white/75"
-    >
-      Powered by DMI Cards
-      <br />
-      by DevMaster Inc
-    </a>
-  );
-}
-
-function TemplateSaveButton({
-  compact,
-  theme,
-  cardData,
-  mode,
-  className = "",
-}: {
-  compact: boolean;
-  theme: RendererTheme;
-  cardData: CardRendererData;
-  mode: CardRendererMode;
-  className?: string;
-}) {
-  const previewContrastClass =
-    mode === "public"
-      ? ""
-      : "![background-color:var(--card-save-contact-bg)] ![color:var(--card-save-contact-text)]";
-  const buttonClass = `${className} w-auto rounded-2xl py-4 text-center font-bold transition hover:opacity-90 ${previewContrastClass}`;
-  const buttonStyle = {
-    "--card-save-contact-bg": theme.buttonColor,
-    "--card-save-contact-text": theme.buttonTextColor,
-    backgroundColor: theme.buttonColor,
-    color: theme.buttonTextColor,
-    fontFamily: theme.fontFamily,
-  } as React.CSSProperties;
-  const href = mode === "public" ? vCardDataHref(cardData) : null;
-  const filename = mode === "public" ? vCardFilename(cardData) : undefined;
-
-  if (compact) {
-    return (
-      <div className={buttonClass} style={buttonStyle}>
-        Save Contact
-      </div>
-    );
-  }
-
-  if (!href) {
-    return (
-      <button type="button" className={buttonClass} style={buttonStyle}>
-        Save Contact
-      </button>
-    );
-  }
-
-  return (
-    <a
-      href={href}
-      download={filename}
-      className={`block ${buttonClass}`}
-      style={buttonStyle}
-    >
-      Save Contact
-    </a>
+    </div>
   );
 }
 
@@ -2475,6 +2159,9 @@ function TemplateActionList({
   actionConfig,
   className = "",
   itemClassName = "",
+  uniformStyle = false,
+  classicFreeSaveContactOutline = false,
+  previewActionDestinations = false,
 }: {
   compact: boolean;
   theme: RendererTheme;
@@ -2483,6 +2170,9 @@ function TemplateActionList({
   actionConfig: CardActionConfig;
   className?: string;
   itemClassName?: string;
+  uniformStyle?: boolean;
+  classicFreeSaveContactOutline?: boolean;
+  previewActionDestinations?: boolean;
 }) {
   const visibleActions = actionConfig.actions.filter((action) => action.visible);
 
@@ -2499,6 +2189,9 @@ function TemplateActionList({
           cardData={cardData}
           mode={mode}
           className={itemClassName}
+          uniformStyle={uniformStyle}
+          classicFreeSaveContactOutline={classicFreeSaveContactOutline}
+          previewActionDestinations={previewActionDestinations}
         />
       ))}
     </div>
@@ -2512,6 +2205,9 @@ function TemplateActionButton({
   cardData,
   mode,
   className = "",
+  uniformStyle = false,
+  classicFreeSaveContactOutline = false,
+  previewActionDestinations = false,
 }: {
   action: CardActionConfigItem;
   compact: boolean;
@@ -2519,6 +2215,9 @@ function TemplateActionButton({
   cardData: CardRendererData;
   mode: CardRendererMode;
   className?: string;
+  uniformStyle?: boolean;
+  classicFreeSaveContactOutline?: boolean;
+  previewActionDestinations?: boolean;
 }) {
   const label = action.label || defaultLabelForActionType(action.type);
   const href =
@@ -2527,17 +2226,30 @@ function TemplateActionButton({
     action.type === "save_contact" && mode === "public"
       ? vCardFilename(cardData)
       : undefined;
-  const incomplete = !actionIsComplete(action, cardData);
-  const actionStyle = actionButtonStyleForType(action.type, theme);
+  const incomplete =
+    !previewActionDestinations && !actionIsComplete(action, cardData);
+  const actionStyle = uniformStyle
+    ? uniformActionButtonStyle(theme)
+    : actionButtonStyleForType(action.type, theme);
+  const outlinedClassicSaveContact =
+    classicFreeSaveContactOutline && action.type === "save_contact";
+  const resolvedActionStyle = outlinedClassicSaveContact
+    ? {
+        background: colorAlpha(theme.text, 0.08),
+        color: theme.text,
+        border: `1px solid ${colorAlpha(theme.text, 0.28)}`,
+      }
+    : actionStyle;
   const contrastClass =
     "![color:var(--card-action-text)] [&_*]:![color:inherit] [&_svg]:![color:inherit]";
   const buttonClass = `${className} flex min-w-0 items-center justify-between gap-3 rounded-2xl px-4 text-left font-bold transition hover:opacity-90 ${compact ? "py-3 text-xs" : "py-4 text-sm"} ${contrastClass} ${
     incomplete ? "opacity-60" : ""
   }`;
   const buttonStyle = {
-    "--card-action-text": actionStyle.color,
-    background: actionStyle.background,
-    color: actionStyle.color,
+    "--card-action-text": resolvedActionStyle.color,
+    background: resolvedActionStyle.background,
+    border: "border" in resolvedActionStyle ? resolvedActionStyle.border : undefined,
+    color: resolvedActionStyle.color,
     fontFamily: theme.fontFamily,
   } as React.CSSProperties;
   const Icon = templateActionIcons[action.type];
@@ -2600,19 +2312,23 @@ function actionButtonStyleForType(type: CardActionType, theme: RendererTheme) {
       return { background: "#1877F2", color: "#FFFFFF" };
     case "youtube":
       return { background: "#FF0000", color: "#FFFFFF" };
+    case "x_twitter":
+      return { background: "#111111", color: "#FFFFFF" };
     default:
-      return { background: theme.buttonColor, color: theme.buttonTextColor };
+      return {
+        background: theme.buttonColor,
+        color: theme.buttonTextColor,
+        border: `1px solid ${colorAlpha(theme.text, 0.28)}`,
+      };
   }
 }
 
+function uniformActionButtonStyle(theme: RendererTheme) {
+  return { background: theme.buttonColor, color: theme.buttonTextColor };
+}
+
 function isTemplateShelllessPaidLayout(layout: string) {
-  return (
-    layout === "glassmorphism" ||
-    layout === "modern_minimal" ||
-    layout === "banner_card" ||
-    layout === "split_card" ||
-    layout === "monogram_card"
-  );
+  return layout === "modern_minimal" || layout === "executive_paid" || layout === "brand_paid";
 }
 
 function getRendererTheme(theme?: RendererTheme): RendererTheme {
@@ -2630,12 +2346,6 @@ function getRendererTheme(theme?: RendererTheme): RendererTheme {
     buttonTextColor,
     fontFamily: theme?.fontFamily || fontStack("Inter"),
   };
-}
-
-function cardBackgroundFromTheme(theme: RendererTheme) {
-  return theme.primary.toLowerCase() === theme.secondary.toLowerCase()
-    ? theme.primary
-    : `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})`;
 }
 
 function readableTextForBackground(colour: string) {
@@ -2713,37 +2423,6 @@ function colorAlpha(colour: string, alpha: number) {
   return fallback;
 }
 
-function fieldItems(cardData: CardRendererData, fields: string[], publicMode = false) {
-  const values: Record<string, string | null | undefined> = {
-    company_name: cardData.company_name,
-    department: cardData.department,
-    bio: cardData.bio,
-    phone: cardData.phone,
-    email: cardData.email,
-    website: displayUrl(cardData.website),
-    address: cardData.address,
-    whatsapp: cardData.whatsapp,
-    linkedin: displayUrl(cardData.linkedin),
-    instagram: cardData.instagram,
-    facebook: displayUrl(cardData.facebook),
-    youtube: displayUrl(cardData.youtube),
-    booking_link: displayUrl(cardData.booking_link),
-    custom_url: displayUrl(cardData.custom_url),
-  };
-
-  return fields
-    .map((field) => {
-      const value = values[field] || "";
-
-      return {
-        label: field.replace("_", " "),
-        value,
-        href: publicMode ? resolveCardFieldHref(field, value) : null,
-      };
-    })
-    .filter((item) => item.value);
-}
-
 function addPublicRowActions(rows: DisplayRow[], publicMode: boolean): DisplayRow[] {
   if (!publicMode) return rows;
 
@@ -2751,6 +2430,103 @@ function addPublicRowActions(rows: DisplayRow[], publicMode: boolean): DisplayRo
     ...row,
     href: row.field ? resolveCardFieldHref(row.field, row.value || "") : null,
   }));
+}
+
+function rendererContentSections(
+  fieldConfig: Record<string, unknown> | null | undefined,
+  customFields: CustomFieldMap,
+  sectionSettings: SectionSettings
+) {
+  const configuredSections = readRendererSections(fieldConfig, customFields);
+  const configuredKeys = new Set([
+    ...Object.keys(classicSectionDefaults),
+    ...Object.keys(configuredSections),
+  ]);
+  const order = readRendererSectionOrder(fieldConfig).filter((key) =>
+    configuredKeys.has(key)
+  );
+  const labels = readRendererSectionLabels(fieldConfig);
+  const orderedKeys = [
+    ...order,
+    ...Object.keys(classicSectionDefaults).filter((key) => !order.includes(key)),
+    ...Object.keys(configuredSections).filter((key) => !order.includes(key)),
+  ];
+
+  return orderedKeys
+    .filter((key, index, all) => all.indexOf(key) === index)
+    .map((key) => ({
+      key,
+      title: cardSectionLabel(key, labels[key] || classicSectionLabels[key]),
+      enabled: rendererSectionEnabled(key, fieldConfig, sectionSettings),
+    }));
+}
+
+function readRendererSections(
+  fieldConfig: Record<string, unknown> | null | undefined,
+  customFields: CustomFieldMap
+): CustomFieldMap {
+  const sections = fieldConfig?.sections;
+
+  if (!sections || typeof sections !== "object" || Array.isArray(sections)) {
+    return customFields || {};
+  }
+
+  return Object.entries(sections).reduce<CustomFieldMap>((mapped, [key, value]) => {
+    if (Array.isArray(value)) {
+      mapped[key] = value.filter((field): field is string => typeof field === "string");
+    }
+
+    return mapped;
+  }, {});
+}
+
+function readRendererSectionOrder(
+  fieldConfig: Record<string, unknown> | null | undefined
+) {
+  return Array.isArray(fieldConfig?.section_order)
+    ? fieldConfig.section_order.filter(
+        (key): key is string => typeof key === "string"
+      )
+    : [];
+}
+
+function readRendererSectionLabels(
+  fieldConfig: Record<string, unknown> | null | undefined
+) {
+  const labels = fieldConfig?.section_labels;
+
+  if (!labels || typeof labels !== "object" || Array.isArray(labels)) {
+    return {};
+  }
+
+  return Object.entries(labels).reduce<Record<string, string>>(
+    (mapped, [key, value]) => {
+      if (typeof value === "string" && value.trim()) {
+        mapped[key] = value.trim();
+      }
+
+      return mapped;
+    },
+    {}
+  );
+}
+
+function rendererSectionEnabled(
+  section: string,
+  fieldConfig: Record<string, unknown> | null | undefined,
+  sectionSettings: SectionSettings
+) {
+  if (section in sectionSettings) {
+    return sectionSettings[section as keyof SectionSettings];
+  }
+
+  const visibility = fieldConfig?.default_visibility;
+
+  if (!visibility || typeof visibility !== "object" || Array.isArray(visibility)) {
+    return true;
+  }
+
+  return (visibility as Record<string, unknown>)[`section:${section}`] !== false;
 }
 
 function classicRows(
@@ -2786,8 +2562,8 @@ function orderedClassicFields(
 ) {
   const fields = customFields[section]?.length
     ? customFields[section]
-    : classicSectionDefaults[section];
-  const fallbackFields = classicSectionDefaults[section];
+    : classicSectionDefaults[section] || [];
+  const fallbackFields = classicSectionDefaults[section] || [];
   const seen = new Set<string>();
 
   return [...fields, ...fallbackFields]
@@ -2804,7 +2580,10 @@ function orderedClassicFields(
 }
 
 function normalizeClassicField(section: ClassicSectionKey, field: string) {
-  if (classicSectionDefaults[section].includes(field) || isCustomFieldKey(field)) {
+  if (
+    (classicSectionDefaults[section] || []).includes(field) ||
+    isCustomFieldKey(field)
+  ) {
     return field;
   }
 
@@ -2812,7 +2591,9 @@ function normalizeClassicField(section: ClassicSectionKey, field: string) {
 }
 
 function isAllowedSectionField(section: ClassicSectionKey, field: string) {
-  return !(section === "contact" && field === "website");
+  if (section === "contact" && field === "website") return false;
+
+  return Boolean(classicSectionDefaults[section]?.includes(field) || isCustomFieldKey(field));
 }
 
 function builtInRow(field: string, cardData: CardRendererData): DisplayRow {
@@ -2994,20 +2775,6 @@ function displayUrl(value?: string | null) {
   return value.replace(/^https?:\/\//i, "").replace(/\/$/, "");
 }
 
-function bioText(cardData: CardRendererData) {
-  if (cardData.job_title && cardData.company_name) {
-    return `${cardData.job_title} at ${cardData.company_name}.`;
-  }
-
-  if (cardData.company_name) {
-    return `Connect with ${displayName(cardData, "this contact")} at ${
-      cardData.company_name
-    }.`;
-  }
-
-  return "Digital business card with contact details and social links.";
-}
-
 function initials(name?: string | null) {
   if (!name) return "D";
 
@@ -3037,22 +2804,19 @@ function normalizeLayoutType(
   layout?: string | null,
   accessLevel?: string | null
 ) {
-  if (accessLevel === "free") return "classic_free";
+  if (accessLevel === "free") {
+    const freeLayouts = ["classic_free", "profile_free"];
 
-  const paidLayouts = [
-    "premium_classic",
-    "modern_minimal",
-    "glassmorphism",
-    "banner_card",
-    "split_card",
-    "monogram_card",
-  ];
+    return layout && freeLayouts.includes(layout) ? layout : "classic_free";
+  }
+
+  const paidLayouts = ["modern_minimal", "executive_paid", "brand_paid"];
 
   if (layout && paidLayouts.includes(layout)) {
     return layout;
   }
 
-  return "premium_classic";
+  return "modern_minimal";
 }
 
 function sanitizeColourPalette(colours?: string[] | null) {
@@ -3083,10 +2847,8 @@ function getTemplateFont(layoutType: string, selectedFont?: string | null) {
 
   const defaults: Record<string, string> = {
     modern_minimal: "DM Sans",
-    glassmorphism: "Outfit",
-    banner_card: "Inter",
-    split_card: "Poppins",
-    monogram_card: "Playfair Display",
+    executive_paid: "DM Sans",
+    brand_paid: "DM Sans",
   };
 
   return getFontFamily(defaults[layoutType] || "Inter");

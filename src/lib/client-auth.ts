@@ -23,7 +23,7 @@ export type CurrentClient = {
   user: User;
   profile: ClientProfile;
   plan: DmiPlan;
-  planSource: "stripe_billing" | "profile" | "fallback";
+  planSource: "stripe_billing" | "temporary_free_cap";
 };
 
 export type ClientAccountStatus = {
@@ -84,7 +84,6 @@ export async function getCurrentProfile(user?: User | null) {
     metadata: {
       userId: authUser.id,
       profileId: profile.id,
-      plan: profile.plan || profile.subscription_plan,
     },
   });
   return profile;

@@ -1,0 +1,230 @@
+import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { buildPublicCardUrl } from "@/lib/public-url";
+import {
+  buildCardSlugBase,
+  buildSupabaseCardPayload,
+  cardSlugCandidate,
+  isCardSlotLimitError,
+  isDuplicateCardSlugError,
+  missingCardColumnFromError,
+  slugify,
+  type SharedClientCard,
+  type SupabaseCardRow,
+} from "@/lib/services/card-payload";
+
+export type CardWriteMode = "create" | "edit";
+export type CardWriteResult = {
+  data: SupabaseCardRow | null;
+  error: { code?: string; message?: string } | null;
+};
+
+const criticalEditorPersistenceColumns = new Set([
+  "field_visibility",
+  "field_order",
+  "hidden_fields",
+  "lead_capture_settings",
+  "action_config",
+]);
+type CardDatabaseClient = SupabaseClient;
+
+export async function saveClientCardRecord({
+  card,
+  userId,
+  mode,
+  database,
+}: {
+  card: SharedClientCard;
+  userId: string;
+  mode: CardWriteMode;
+  database: CardDatabaseClient;
+}): Promise<CardWriteResult> {
+  const shouldUpdate = mode === "edit" && !card.id.startsWith("card-");
+  const currentCardId = shouldUpdate ? card.id : null;
+  const slugBase = buildCardSlugBase(card);
+  const slug = await ensureUniqueCardSlug(slugBase, currentCardId, database);
+  const payload = buildSupabaseCardPayload(
+    {
+      ...card,
+      slug,
+      public_url: buildPublicCardUrl(slug),
+    },
+    userId
+  );
+
+  return writeCardPayload({
+    cardId: card.id,
+    userId,
+    payload,
+    shouldUpdate,
+    slugBase,
+    currentCardId,
+    database,
+  });
+}
+
+export async function writeCardPayload({
+  cardId,
+  userId,
+  payload,
+  shouldUpdate,
+  slugBase,
+  currentCardId,
+  database,
+}: {
+  cardId: string;
+  userId: string;
+  payload: Record<string, unknown>;
+  shouldUpdate: boolean;
+  slugBase: string;
+  currentCardId: string | null;
+  database: CardDatabaseClient;
+}): Promise<CardWriteResult> {
+  const timestamp = new Date().toISOString();
+  const { card_slot: _cardSlot, ...updatePayload } = payload;
+  void _cardSlot;
+  let nextPayload: Record<string, unknown> = shouldUpdate
+    ? { ...updatePayload, updated_at: timestamp }
+    : { ...payload, created_at: timestamp, updated_at: timestamp };
+  const attemptedSlugs = new Set<string>();
+  const writePayload = async () =>
+    shouldUpdate
+      ? await database
+          .from("cards")
+          .update(nextPayload)
+          .eq("id", cardId)
+          .eq("user_id", userId)
+          .select("*")
+          .single()
+      : await database.from("cards").insert([nextPayload]).select("*").single();
+
+  let result = await writePayload();
+  let cardSlotCollisionRetried = false;
+
+  while (result.error) {
+    if (!shouldUpdate && isCardSlotCollisionError(result.error) && !cardSlotCollisionRetried) {
+      cardSlotCollisionRetried = true;
+      result = await writePayload();
+      continue;
+    }
+
+    if (isDuplicateCardSlugError(result.error)) {
+      const attemptedSlug =
+        typeof nextPayload.slug === "string" ? nextPayload.slug : "";
+
+      if (attemptedSlug) {
+        attemptedSlugs.add(attemptedSlug);
+      }
+
+      const nextSlug = await nextUniqueCardSlugCandidate(
+        slugBase,
+        currentCardId,
+        attemptedSlugs,
+        database
+      );
+
+      if (!nextSlug) {
+        break;
+      }
+
+      nextPayload = {
+        ...nextPayload,
+        slug: nextSlug,
+      };
+      attemptedSlugs.add(nextSlug);
+      result = await writePayload();
+      continue;
+    }
+
+    const missingColumn = missingCardColumnFromError(result.error);
+
+    if (!missingColumn || !(missingColumn in nextPayload)) {
+      break;
+    }
+
+    if (criticalEditorPersistenceColumns.has(missingColumn)) {
+      break;
+    }
+
+    const { [missingColumn]: _removed, ...reducedPayload } = nextPayload;
+    void _removed;
+    nextPayload = reducedPayload;
+    result = await writePayload();
+  }
+
+  if (result.error) {
+    return { data: null, error: result.error };
+  }
+
+  return { data: result.data as SupabaseCardRow, error: null };
+}
+
+function isCardSlotCollisionError(error: { code?: string; message?: string } | null) {
+  return error?.code === "23505" && isCardSlotLimitError(error);
+}
+
+export async function ensureUniqueCardSlug(
+  baseSlug: string,
+  currentCardId: string | null,
+  database: CardDatabaseClient
+) {
+  const cleanBase = slugify(baseSlug) || "digital-card";
+  let suffix = 1;
+
+  while (suffix <= 100) {
+    const candidate = cardSlugCandidate(cleanBase, suffix);
+
+    if (!(await cardSlugExists(candidate, currentCardId, database))) {
+      return candidate;
+    }
+
+    suffix += 1;
+  }
+
+  return `${cleanBase}-${Date.now().toString(36)}`;
+}
+
+async function nextUniqueCardSlugCandidate(
+  baseSlug: string,
+  currentCardId: string | null,
+  attemptedSlugs: Set<string>,
+  database: CardDatabaseClient
+) {
+  const cleanBase = slugify(baseSlug) || "digital-card";
+
+  for (let suffix = 1; suffix <= 100; suffix += 1) {
+    const candidate = cardSlugCandidate(cleanBase, suffix);
+
+    if (attemptedSlugs.has(candidate)) {
+      continue;
+    }
+
+    if (!(await cardSlugExists(candidate, currentCardId, database))) {
+      return candidate;
+    }
+  }
+
+  const timestampedCandidate = `${cleanBase}-${Date.now().toString(36)}`;
+  return attemptedSlugs.has(timestampedCandidate) ? null : timestampedCandidate;
+}
+
+async function cardSlugExists(
+  slug: string,
+  currentCardId: string | null,
+  database: CardDatabaseClient
+) {
+  let query = database.from("cards").select("id").eq("slug", slug).limit(1);
+
+  if (currentCardId) {
+    query = query.neq("id", currentCardId);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    console.error("Slug uniqueness check failed", error);
+    return false;
+  }
+
+  return Boolean(data);
+}

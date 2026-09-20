@@ -1,3 +1,4 @@
+import { cardFontKey, cardFontOverride } from "@/lib/card-typography";
 import {
   displayName,
   type CardRendererData,
@@ -41,6 +42,8 @@ const backgroundModeKey = "__dmi_background_mode";
 const gradientStartKey = "__dmi_gradient_start";
 const gradientEndKey = "__dmi_gradient_end";
 export type SharedClientCard = CardRendererData & {
+  media_edits?: Partial<Record<"profile_image_url" | "company_logo_url" | "company_banner_url", "remove" | "replace">>;
+  edit_revision?: string;
   id: string;
   card_name: string;
   template_id: string;
@@ -63,6 +66,8 @@ export type SharedClientCard = CardRendererData & {
   action_config?: CardActionConfig | null;
 };
 export type SupabaseCardRow = CardRendererData & {
+  /** Transport-only edit snapshot revision; never a cards column. */
+  edit_revision?: string;
   id: string;
   card_name?: string | null;
   template_id?: string | null;
@@ -393,7 +398,7 @@ export function canSelectTemplate(
   plan: ClientCardPlan
 ) {
   if (!isPaidTemplate(template)) {
-    return template.layout_type === "classic_free" || template.layout_type === "classic";
+    return ["classic_free", "classic", "profile_free"].includes(template.layout_type || "");
   }
 
   return plan !== "free";
@@ -452,8 +457,9 @@ export function mapSupabaseCard(
     custom_url: row.custom_url || customFieldValue(row, "custom_url"),
     profile_image_url: row.profile_image_url || "",
     company_logo_url: row.company_logo_url || "",
-    company_banner_url: row.company_banner_url || "",
-    custom_fields: row.custom_fields || {},
+    company_banner_url: row.company_banner_url || customFieldValue(row, "company_banner_url"),
+    custom_fields: Object.fromEntries(Object.entries(row.custom_fields || {}).filter(([key]) =>
+      key !== cardFontKey || Boolean(rowTemplate && cardFontOverride(rowTemplate, row.custom_fields)))),
     selected_colour: selectedColourForTemplate(rowTemplate, row.selected_colour),
     selected_background_mode: backgroundMeta.mode,
     selected_gradient_start: backgroundMeta.start,

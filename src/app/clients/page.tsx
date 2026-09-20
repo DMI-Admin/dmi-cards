@@ -3,6 +3,9 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import CardRenderer from "@/components/CardRenderer";
+import { mutateAdminCard } from "@/lib/admin-card-mutations";
+import { getAdminInventory } from "@/lib/admin-inventory";
+import { getAdminTemplates } from "@/lib/templates";
 import { supabase } from "@/lib/supabase";
 import * as XLSX from "xlsx";
 import { Download, FileSpreadsheet, UploadCloud } from "lucide-react";
@@ -167,23 +170,15 @@ export default function ClientsPage() {
 
   async function fetchClientData() {
     setLoading(true);
-    const [clientsResult, usersResult, cardsResult, templatesResult] =
-      await Promise.all([
-        supabase.from("clients").select("*").order("created_at", { ascending: false }),
-        supabase.from("client_users").select("*"),
-        supabase.from("cards").select("*").order("created_at", { ascending: false }),
-        supabase.from("templates").select("*"),
+    try {
+      const [nextClients, nextUsers, nextCards, nextTemplates] = await Promise.all([
+        getAdminInventory<Client>("clients"), getAdminInventory<ClientUser>("client-users"),
+        getAdminInventory<Card>("cards"), getAdminTemplates(),
       ]);
-
-    if (clientsResult.error) console.error(clientsResult.error.message);
-    if (usersResult.error) setClientUsers([]);
-    else if (usersResult.data) setClientUsers(usersResult.data);
-    if (cardsResult.error) setCards([]);
-    else if (cardsResult.data) setCards(cardsResult.data);
-    if (templatesResult.error) setTemplates([]);
-    else if (templatesResult.data) setTemplates(templatesResult.data);
-    if (clientsResult.data) setClients(clientsResult.data);
-    setLoading(false);
+      setClients(nextClients); setClientUsers(nextUsers); setCards(nextCards);
+      setTemplates(nextTemplates as Template[]);
+    } catch (error) { alert(error instanceof Error ? error.message : "Admin inventory failed to load. Please retry."); }
+    finally { setLoading(false); }
   }
 
   useEffect(() => {
@@ -309,9 +304,8 @@ export default function ClientsPage() {
 
     if (!confirmed) return;
 
-    const { error } = await supabase.from("cards").delete().eq("id", card.id);
-
-    if (error) return alert(error.message);
+    try { await mutateAdminCard(`/api/admin/cards/${card.id}`, "DELETE"); }
+    catch (error) { alert(error instanceof Error ? error.message : "Card deletion failed."); return; }
 
     const remainingPreviewCards = previewCards.filter((item) => item.id !== card.id);
     setPreviewCards(remainingPreviewCards);

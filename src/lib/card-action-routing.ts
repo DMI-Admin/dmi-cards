@@ -56,14 +56,41 @@ export function resolveCardActionTypeHref(
       return phoneHref(value);
     case "email":
       return emailHref(value);
+    case "sms":
+      return smsHref(value);
     case "whatsapp":
       return whatsappHref(value);
+    case "maps_directions":
+      return mapsHref(value);
+    case "website":
     case "book_meeting":
     case "custom_link":
     case "linkedin":
     case "instagram":
     case "facebook":
+    case "x_twitter":
+    case "tiktok":
+    case "threads":
+    case "snapchat":
+    case "pinterest":
+    case "telegram":
+    case "signal":
     case "youtube":
+    case "vimeo":
+    case "twitch":
+    case "spotify":
+    case "apple_music":
+    case "soundcloud":
+    case "discord":
+    case "steam":
+    case "xbox":
+    case "playstation":
+    case "epic_games":
+    case "battle_net":
+    case "slack":
+    case "microsoft_teams":
+    case "github":
+    case "gitlab":
       return safeWebUrl(value);
     case "save_contact":
     case "download_pdf":
@@ -81,9 +108,7 @@ export function resolveCardFieldHref(field: string, value: string | null | undef
     case "website":
       return safeWebUrl(displayValue);
     case "address":
-      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        displayValue
-      )}`;
+      return mapsHref(displayValue);
     case "email":
       return emailHref(displayValue);
     case "phone":
@@ -93,13 +118,51 @@ export function resolveCardFieldHref(field: string, value: string | null | undef
     case "linkedin":
     case "instagram":
     case "facebook":
+    case "x_twitter":
+    case "tiktok":
+    case "threads":
+    case "snapchat":
+    case "pinterest":
+    case "telegram":
+    case "signal":
     case "youtube":
+    case "vimeo":
+    case "twitch":
+    case "spotify":
+    case "apple_music":
+    case "soundcloud":
+    case "discord":
+    case "steam":
+    case "xbox":
+    case "playstation":
+    case "epic_games":
+    case "battle_net":
+    case "slack":
+    case "microsoft_teams":
+    case "github":
+    case "gitlab":
     case "booking_link":
     case "custom_url":
       return safeWebUrl(displayValue);
     default:
       return null;
   }
+}
+
+export function smsHref(value: string | null | undefined) {
+  const normalized = normalizeInternationalPhoneNumber(value);
+
+  return normalized ? `sms:${normalized}` : null;
+}
+
+export function mapsHref(value: string | null | undefined) {
+  const displayValue = toDisplayValue(value);
+
+  return displayValue
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        displayValue
+      )}`
+    : null;
 }
 
 export function safeWebUrl(value: string | null | undefined) {

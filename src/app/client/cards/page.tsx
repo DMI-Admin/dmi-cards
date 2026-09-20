@@ -1,8 +1,12 @@
 "use client";
 
+import { loadEditableCard } from "@/lib/client-card-media";
+import { cardFontKey } from "@/lib/card-typography";
+import { clientTemplateView, clientFieldOrder, reconcileClientCard } from "@/lib/client-template-view";
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { User } from "@supabase/supabase-js";
@@ -424,7 +428,7 @@ const slotShellClass =
 
 export default function ClientCardsPage() {
   const router = useRouter();
-  const { plan, isPaid, loading: planLoading } = useClientPlan();
+  const { plan, isPaid, loading: planLoading, refreshVersion, error: planError, refreshPlan } = useClientPlan();
   const currentPlan = (plan || "free") as ClientCardPlan;
   const [adminTemplates, setAdminTemplates] = useState<AdminTemplate[]>([]);
   const [cards, setCards] = useState<ClientCard[]>(initialCards);
@@ -432,6 +436,7 @@ export default function ClientCardsPage() {
   const [showBuilder, setShowBuilder] = useState(false);
   const [panelMode, setPanelMode] = useState<PanelMode>("create");
   const [activeStep, setActiveStep] = useState<BuilderStep>(0);
+  const [nameValidationAttempted, setNameValidationAttempted] = useState(false);
   const [hasVisitedActionsStep, setHasVisitedActionsStep] = useState(false);
   const [draftCard, setDraftCard] = useState<ClientCard>(blankCard);
   const [fieldOrder, setFieldOrder] = useState<FieldOrder>(
@@ -454,6 +459,10 @@ export default function ClientCardsPage() {
   const [templateError, setTemplateError] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [loadingCards, setLoadingCards] = useState(true);
+  const [refreshingCards, setRefreshingCards] = useState(false);
+  const [inventoryError, setInventoryError] = useState("");
+  const inventoryLoaded = useRef(false);
+  const inventoryRefreshVersion = currentPlan === "enterprise" ? 0 : refreshVersion;
   const [databaseReady, setDatabaseReady] = useState(false);
 
   const defaultTemplate = useMemo(
@@ -469,8 +478,14 @@ export default function ClientCardsPage() {
     return templateForCard(draftCard, adminTemplates, currentPlan) || currentDefaultTemplate;
   }, [adminTemplates, draftCard, currentDefaultTemplate, currentPlan]);
   const draftFallbackColour = firstTemplateColour(draftTemplateRecord);
+  const reconciliation = useMemo(() => draftTemplateRecord
+    ? reconcileClientCard({ ...draftCard, field_order: fieldOrder }, draftTemplateRecord, currentPlan)
+    : { card: draftCard, changes: [] }, [draftCard, fieldOrder, draftTemplateRecord, currentPlan]);
+  const editorCard = reconciliation.card;
+
 
   const draftTemplate = useMemo(() => {
+    if (currentPlan !== "enterprise") return draftTemplateRecord || {};
     return buildTemplatePreview(
       draftTemplateRecord,
       selectedColourForTemplate(
@@ -485,18 +500,24 @@ export default function ClientCardsPage() {
     draftTemplateRecord,
     draftCard,
     draftFallbackColour,
+    currentPlan,
     fieldOrder,
   ]);
 
   const previewCard = useMemo(() => {
+    if (currentPlan !== "enterprise") return editorCard;
     if (activeStep !== 2 || draftCard.action_config) return draftCard;
 
     return {
       ...draftCard,
       action_config: effectiveCardActionConfig(draftCard, draftTemplateRecord),
     };
-  }, [activeStep, draftCard, draftTemplateRecord]);
-  const previewTemplate = draftTemplate;
+  }, [activeStep, draftCard, draftTemplateRecord, currentPlan, editorCard]);
+  const previewTemplate = currentPlan === "enterprise" || !draftTemplateRecord ? draftTemplate : {
+    ...draftTemplateRecord,
+    custom_fields: editorCard.field_order,
+    field_config: { ...draftTemplateRecord.field_config, sections: editorCard.field_order },
+  };
   const previewTitle = "Live Edit Preview";
   const selectedDevice = findDevice(devicePreview);
   const filteredDeviceGroups = filterDeviceGroups(deviceSearch);
@@ -527,87 +548,117 @@ export default function ClientCardsPage() {
     let ignore = false;
 
     async function loadSavedCards() {
-      if (planLoading) return;
+      if (planLoading || (!plan && currentPlan !== "enterprise")) {
+        if (planError) {
+          setLoadingCards(false);
+          setRefreshingCards(false);
+        }
+        return;
+      }
 
-      setLoadingCards(true);
-      setSaveError("");
-      setTemplateError("");
+      const background = currentPlan !== "enterprise" && inventoryLoaded.current;
+
+      setLoadingCards(!background);
+      setRefreshingCards(background);
+      if (currentPlan === "enterprise") {
+        setSaveError("");
+        setTemplateError("");
+      }
 
       let nextTemplates: AdminTemplate[] = [];
-
       try {
-        nextTemplates = await loadPublishedTemplates(currentPlan);
-      } catch (error) {
+        try {
+          nextTemplates = await loadPublishedTemplates(currentPlan);
+        } catch (error) {
+          if (ignore) return;
+
+          console.error("Client template load failed", error);
+          if (currentPlan === "enterprise") setTemplateError(
+            error instanceof Error
+              ? error.message
+              : "Could not load templates from Supabase."
+          );
+          if (currentPlan === "enterprise") {
+            setAdminTemplates([]);
+            setCards([]);
+            setSelectedCardId("");
+          } else {
+            setInventoryError(error instanceof Error ? error.message : "Could not refresh templates. Please retry.");
+          }
+          setLoadingCards(false);
+          return;
+        }
+
         if (ignore) return;
 
-        console.error("Client template load failed", error);
-        setTemplateError(
-          error instanceof Error
-            ? error.message
-            : "Could not load templates from Supabase."
+        if (currentPlan === "enterprise") setAdminTemplates(nextTemplates);
+
+        let userId = "";
+
+        try {
+          const user = await getCurrentUser();
+
+          if (!user) {
+            throw new ClientAuthRequiredError();
+          }
+          userId = user.id;
+        } catch (error) {
+          if (ignore) return;
+
+          if (error instanceof ClientAuthRequiredError) {
+            router.replace("/");
+          } else {
+            console.error("Client auth load failed", error);
+            if (currentPlan === "enterprise") setSaveError("Could not confirm your login session.");
+            else setInventoryError("Could not confirm your login session. Please retry.");
+          }
+
+          setLoadingCards(false);
+          return;
+        }
+
+        if (ignore) return;
+
+        const { data, error } = await listCardsForUser(userId);
+
+        if (ignore) return;
+
+        if (error) {
+          console.error("Client cards fetch failed", error);
+          const databaseError = describeCardsDatabaseError(error);
+          if (currentPlan === "enterprise") {
+            setDatabaseReady(false);
+            setDatabaseNotice(databaseError);
+            setSaveError(databaseError);
+            setCards([]);
+            setSelectedCardId("");
+          } else {
+            setInventoryError(databaseError);
+          }
+          setLoadingCards(false);
+          return;
+        }
+
+        setDatabaseReady(true);
+        setDatabaseNotice("");
+        const savedCards = (data || []).map((row) =>
+          mapSupabaseCard(row, nextTemplates, null, currentPlan)
         );
-        setAdminTemplates([]);
-        setCards([]);
-        setSelectedCardId("");
+        const orderedCards = sortCardsBySlotOrder(savedCards);
+        setAdminTemplates(nextTemplates);
+        setCards(orderedCards);
+        setSelectedCardId(current => currentPlan !== "enterprise" && orderedCards.some(card => card.id === current) ? current : orderedCards[0]?.id || "");
+        inventoryLoaded.current = true;
+        setInventoryError("");
         setLoadingCards(false);
-        return;
-      }
-
-      if (ignore) return;
-
-      setAdminTemplates(nextTemplates);
-
-      let userId = "";
-
-      try {
-        const user = await getCurrentUser();
-
-        if (!user) {
-          throw new ClientAuthRequiredError();
-        }
-        userId = user.id;
       } catch (error) {
-        if (ignore) return;
-
-        if (error instanceof ClientAuthRequiredError) {
-          router.replace("/");
-        } else {
-          console.error("Client auth load failed", error);
-          setSaveError("Could not confirm your login session.");
+        if (!ignore) setInventoryError(error instanceof Error ? error.message : "Could not refresh cards. Please retry.");
+      } finally {
+        if (!ignore) {
+          setLoadingCards(false);
+          setRefreshingCards(false);
         }
-
-        setLoadingCards(false);
-        return;
       }
-
-      if (ignore) return;
-
-      const { data, error } = await listCardsForUser(userId);
-
-      if (ignore) return;
-
-      if (error) {
-        console.error("Client cards fetch failed", error);
-        const databaseError = describeCardsDatabaseError(error);
-        setDatabaseReady(false);
-        setDatabaseNotice(databaseError);
-        setSaveError(databaseError);
-        setCards([]);
-        setSelectedCardId("");
-        setLoadingCards(false);
-        return;
-      }
-
-      setDatabaseReady(true);
-      setDatabaseNotice("");
-      const savedCards = (data || []).map((row) =>
-        mapSupabaseCard(row, nextTemplates, null, currentPlan)
-      );
-      console.log("[DMI auth] loaded cards", savedCards);
-      const orderedCards = sortCardsBySlotOrder(savedCards);
-      setCards(orderedCards);
-      setSelectedCardId(orderedCards[0]?.id || "");
-      setLoadingCards(false);
     }
 
     void loadSavedCards();
@@ -615,7 +666,7 @@ export default function ClientCardsPage() {
     return () => {
       ignore = true;
     };
-  }, [currentPlan, planLoading, router]);
+  }, [currentPlan, plan, planLoading, planError, inventoryRefreshVersion, router]);
 
   function openCreatePanel(cardSlot?: 1 | 2 | 3) {
     if (!currentDefaultTemplate) return;
@@ -635,8 +686,9 @@ export default function ClientCardsPage() {
     setStepFourPreviewMode("card");
     setPanelMode("create");
     setActiveStep(0);
+    setNameValidationAttempted(false);
     setHasVisitedActionsStep(false);
-    const initialFieldOrder = getInitialFieldOrder(currentDefaultTemplate);
+    const initialFieldOrder = currentPlan === "enterprise" ? getInitialFieldOrder(currentDefaultTemplate) : clientFieldOrder(currentDefaultTemplate, currentPlan);
     setFieldOrder(initialFieldOrder);
     const nextDraftCard = {
       ...blankCard,
@@ -667,7 +719,11 @@ export default function ClientCardsPage() {
     setShowBuilder(true);
   }
 
-  function openEditPanel(card: ClientCard) {
+  async function openEditPanel(card: ClientCard) {
+    if (currentPlan !== "enterprise") {
+      try { const snapshot = await loadEditableCard(card.id); card = { ...mapSupabaseCard(snapshot.card, adminTemplates, null, currentPlan), edit_revision: snapshot.revision }; }
+      catch (error) { setSaveError(error instanceof Error ? error.message : "Could not open card."); return; }
+    }
     setLimitMessage("");
     setSaveMessage("");
     setSaveError("");
@@ -676,6 +732,7 @@ export default function ClientCardsPage() {
     setStepFourPreviewMode("card");
     setPanelMode("edit");
     setActiveStep(0);
+    setNameValidationAttempted(false);
     setHasVisitedActionsStep(false);
     const cardTemplate = templateForCard(card, adminTemplates, currentPlan);
 
@@ -686,9 +743,9 @@ export default function ClientCardsPage() {
       return;
     }
 
-    const savedFieldOrder = mergeFieldOrderWithTemplate(card.field_order, cardTemplate);
+    const savedFieldOrder = currentPlan === "enterprise" ? mergeFieldOrderWithTemplate(card.field_order, cardTemplate) : clientFieldOrder(cardTemplate, currentPlan, card.field_order);
     setFieldOrder(savedFieldOrder);
-    setDraftCard({
+    setDraftCard(currentPlan !== "enterprise" ? { ...card, custom_fields: { ...(card.custom_fields || {}) } } : {
       ...card,
       selected_colour: selectedColourForTemplate(cardTemplate, card.selected_colour),
       selected_background_mode:
@@ -715,9 +772,14 @@ export default function ClientCardsPage() {
     setShowBuilder(true);
   }
 
-  function updateDraft(field: keyof ClientCard, value: string) {
+  function updateDraft(field: keyof ClientCard, value: string, mediaEdit?: "remove" | "replace") {
     setDraftCard((current) => {
       const next = { ...current, [field]: value };
+      if (mediaEdit && (field === "profile_image_url" || field === "company_logo_url" || field === "company_banner_url")) {
+        next.media_edits = { ...current.media_edits, [field]: mediaEdit };
+        // Keep the editor's banner representations consistent on explicit changes.
+        if (field === "company_banner_url") next.custom_fields = { ...current.custom_fields, company_banner_url: value };
+      }
 
       if (field === "title" || field === "first_name" || field === "last_name") {
         next.full_name = combineNameParts(next);
@@ -758,7 +820,7 @@ export default function ClientCardsPage() {
 
     console.log("[DMI cards] selectedTemplate.id", template.id || null);
 
-    const nextFieldOrder = getInitialFieldOrder(template);
+    const nextFieldOrder = currentPlan === "enterprise" ? getInitialFieldOrder(template) : clientFieldOrder(template, currentPlan);
     setLimitMessage("");
     setFieldOrder(nextFieldOrder);
     setDraftCard((current) => ({
@@ -822,6 +884,11 @@ export default function ClientCardsPage() {
     step: BuilderStep,
     options: { skipValidation?: boolean } = {}
   ) {
+    if (activeStep === 1 && step > 1 &&
+        (!draftCard.first_name?.trim() || !draftCard.last_name?.trim())) {
+      setNameValidationAttempted(true);
+      return;
+    }
     if (
       !options.skipValidation &&
       step > activeStep &&
@@ -839,7 +906,8 @@ export default function ClientCardsPage() {
 
   function toggleFieldVisibility(field: string) {
     setDraftCard((current) => {
-      const currentlyVisible = isFieldVisible(field, current);
+      const visibleCard = currentPlan !== "enterprise" && draftTemplateRecord ? reconcileClientCard(current, draftTemplateRecord, currentPlan).card : current;
+      const currentlyVisible = isFieldVisible(field, visibleCard);
       const nextVisible = !currentlyVisible;
       const fieldVisibility = normalizeFieldVisibility(current.field_visibility);
       const visibilityKey = customFieldStorageKey(field);
@@ -867,12 +935,12 @@ export default function ClientCardsPage() {
   function incompleteBuildFields(): ValidationIssue[] {
     if (!draftTemplateRecord) return [];
 
-    const sections = buildStepSections(draftTemplateRecord, fieldOrder);
+    const sections = currentPlan === "enterprise" ? buildStepSections(draftTemplateRecord, fieldOrder) : clientTemplateView(draftTemplateRecord, currentPlan).sections;
 
-    return sections.flatMap((section) =>
+    return sections.filter(section => currentPlan === "enterprise" || editorCard.field_visibility?.[`section:${section.key}`] !== false).flatMap((section) =>
       section.fields
-        .filter((field) => isFieldVisible(field, draftCard))
-        .filter((field) => !fieldHasDraftValue(draftCard, field))
+        .filter((field) => field !== "full_name" && isFieldVisible(field, editorCard))
+        .filter((field) => !fieldHasDraftValue(editorCard, field))
         .map((field) => ({
           key: field,
           label: fieldLabels[field] || friendlyFieldLabel(field),
@@ -884,11 +952,12 @@ export default function ClientCardsPage() {
   function incompleteActionsForCard(card: ClientCard): ValidationIssue[] {
     if (!draftTemplateRecord) return [];
 
-    const actionConfig = effectiveCardActionConfig(card, draftTemplateRecord);
+    const safeCard = currentPlan === "enterprise" ? card : reconcileClientCard(card, draftTemplateRecord, currentPlan).card;
+    const actionConfig = effectiveCardActionConfig(safeCard, draftTemplateRecord);
 
     return actionConfig.actions
       .filter((action) => action.visible)
-      .filter((action) => !actionIsComplete(action, card))
+      .filter((action) => !actionIsComplete(action, safeCard))
       .map((action) => ({
         key: action.type,
         label: action.label || defaultLabelForActionType(action.type),
@@ -1155,6 +1224,8 @@ export default function ClientCardsPage() {
         return sortCardsBySlotOrder(nextCards);
       });
 
+      setDraftCard(savedCard);
+      setPanelMode("edit");
       setSelectedCardId(savedCard.id);
       setSaveStatus(status === "published" ? "published" : "saved");
       setSaveMessage(
@@ -1206,11 +1277,20 @@ export default function ClientCardsPage() {
 
     const shouldUpdate = mode === "edit" && !card.id.startsWith("card-");
 
+    const selectedTemplate = templateForCard(card, adminTemplates, currentPlan);
+    if (!selectedTemplate) { setSaveError("The selected template is unavailable."); return null; }
+    const reconciled = reconcileClientCard(card, selectedTemplate, currentPlan);
+    if (!showBuilder && reconciled.changes.length > 0) {
+      setSaveError("This card needs template cleanup. Open the editor to review the changes before saving or publishing.");
+      return null;
+    }
+    const validCard = reconciled.card;
     const { data, error } = await saveClientCard({
-      card,
+      card: validCard,
       userId,
       mode: mode as CardWriteMode,
       isPublishing,
+      useMediaFinalization: currentPlan !== "enterprise",
     });
 
     if (error || !data) {
@@ -1231,6 +1311,10 @@ export default function ClientCardsPage() {
   }
 
   async function togglePublish(card: ClientCard) {
+    if (currentPlan !== "enterprise") {
+      try { const snapshot = await loadEditableCard(card.id, { resumeSave: true }); card = { ...mapSupabaseCard(snapshot.card, adminTemplates, null, currentPlan), edit_revision: snapshot.revision }; }
+      catch (error) { setSaveError(error instanceof Error ? error.message : "Could not load card."); return false; }
+    }
     const nextStatus: CardStatus =
       card.status === "published" ? "unpublished" : "published";
     const isPublishing = nextStatus === "published";
@@ -1340,6 +1424,15 @@ export default function ClientCardsPage() {
           description="Manage your live digital card, public URL, template fields, and lead capture setup."
         />
 
+        {currentPlan !== "enterprise" && (inventoryError || planError) && (
+          <div role="alert" className="mb-4 rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-4 text-sm text-[var(--text-primary)]">
+            {inventoryError || planError}
+            {!loadingCards && cards.length > 0 && <span> Previously loaded cards remain displayed.</span>}
+            <button type="button" className="ml-3 underline" onClick={() => void refreshPlan()}>Retry</button>
+          </div>
+        )}
+        {refreshingCards && <p role="status" className="sr-only">Refreshing cards…</p>}
+
         {loadingCards ? (
           <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white/50">
             Loading your templates and cards...
@@ -1412,12 +1505,20 @@ export default function ClientCardsPage() {
                   />
                 }
               >
+                {currentPlan !== "enterprise" && (
+                  <div role="status" className="mb-4 rounded-2xl border border-[var(--border-default)] p-4 text-sm text-[var(--text-secondary)]">
+                    Saves use the current published template rules. Original saved data is unchanged until you save.
+                    {reconciliation.changes.length > 0 && <p className="mt-2">Saving will remove or reset: {reconciliation.changes.join(", ")}.</p>}
+                  </div>
+                )}
                 <div className="grid gap-5 min-[1180px]:grid-cols-[minmax(0,1fr)_minmax(340px,420px)] min-[1500px]:grid-cols-[minmax(0,1fr)_minmax(380px,460px)]">
                   <EditorPanel
                     key={activeStep}
                     activeStep={activeStep}
-                    draftCard={draftCard}
-                    fieldOrder={fieldOrder}
+                    nameValidationAttempted={nameValidationAttempted}
+                    enforceClientContract={currentPlan !== "enterprise"}
+                    draftCard={editorCard}
+                    fieldOrder={editorCard.field_order || fieldOrder}
                     template={draftTemplateRecord || currentDefaultTemplate}
                     templates={visibleTemplates}
                     currentPlan={currentPlan}
@@ -1425,6 +1526,7 @@ export default function ClientCardsPage() {
                     onStepChange={changeEditorStep}
                     onUpdate={updateDraft}
                     onSelectTemplate={selectDraftTemplate}
+                    onSelectFont={currentPlan === "pro" ? font => updateCustomField(cardFontKey, font) : undefined}
                     onUpdateCustomField={updateCustomField}
                     onUpdateLeadSettings={updateLeadCaptureSettings}
                     onActionConfigChange={updateActionConfig}
@@ -1438,6 +1540,7 @@ export default function ClientCardsPage() {
                   <aside className="min-w-0">
                     <div className="client-portal-panel p-5">
                       <PreviewPanelContent
+                        showMediaPlaceholders={currentPlan !== "enterprise"}
                         title={previewTitle}
                         previewCard={previewCard}
                         previewTemplate={previewTemplate}
@@ -2132,16 +2235,16 @@ function buildTemplatePreview(
       text_color: selectedTextColour,
       show_personal_section:
         (template.show_personal_section ?? true) &&
-        rendererFieldOrder.personal.length > 0,
+        (rendererFieldOrder.personal || []).length > 0,
       show_company_section:
         (template.show_company_section ?? true) &&
-        rendererFieldOrder.company.length > 0,
+        (rendererFieldOrder.company || []).length > 0,
       show_contact_section:
         (template.show_contact_section ?? true) &&
-        rendererFieldOrder.contact.length > 0,
+        (rendererFieldOrder.contact || []).length > 0,
       show_social_section:
         (template.show_social_section ?? false) &&
-        rendererFieldOrder.social.length > 0,
+        (rendererFieldOrder.social || []).length > 0,
     };
   }
 
@@ -2152,16 +2255,16 @@ function buildTemplatePreview(
     text_color: selectedTextColour || template.text_color,
     show_personal_section:
       (template.show_personal_section ?? true) &&
-      rendererFieldOrder.personal.length > 0,
+      (rendererFieldOrder.personal || []).length > 0,
     show_company_section:
       (template.show_company_section ?? true) &&
-      rendererFieldOrder.company.length > 0,
+      (rendererFieldOrder.company || []).length > 0,
     show_contact_section:
       (template.show_contact_section ?? true) &&
-      rendererFieldOrder.contact.length > 0,
+      (rendererFieldOrder.contact || []).length > 0,
     show_social_section:
       (template.show_social_section ?? false) &&
-      rendererFieldOrder.social.length > 0,
+      (rendererFieldOrder.social || []).length > 0,
   };
 }
 
@@ -2198,7 +2301,14 @@ function mapSupabaseCard(
   defaultTemplate: ResolvedCardTemplate | null,
   plan: ClientCardPlan
 ): ClientCard {
-  return mapSupabaseCardForPlan(row, templates, plan, defaultTemplate);
+  const mapped = mapSupabaseCardForPlan(row, templates, plan, defaultTemplate);
+  const template = templates.find(t => t.id === row.template_id);
+  if (plan === "enterprise" || !template) return mapped;
+  return { ...mapped, edit_revision: row.edit_revision,
+    selected_colour: row.selected_colour || mapped.selected_colour,
+    selected_text_colour: row.selected_text_colour || mapped.selected_text_colour,
+    field_order: clientFieldOrder(template, plan, row.field_order as FieldOrder),
+  };
 }
 
 function sortCardsBySlotOrder(cards: ClientCard[]) {
@@ -2304,14 +2414,14 @@ function fieldOrderForRenderer(
   const hiddenFieldSet = new Set(hiddenFields);
 
   return {
-    personal: fieldOrder.personal.filter(
+    personal: (fieldOrder.personal || []).filter(
       (field) => field !== "full_name" && !isFieldHidden(field, hiddenFieldSet)
     ),
-    company: fieldOrder.company.filter((field) => !isFieldHidden(field, hiddenFieldSet)),
-    contact: fieldOrder.contact.filter(
+    company: (fieldOrder.company || []).filter((field) => !isFieldHidden(field, hiddenFieldSet)),
+    contact: (fieldOrder.contact || []).filter(
       (field) => field !== "website" && !isFieldHidden(field, hiddenFieldSet)
     ),
-    social: fieldOrder.social.filter((field) => !isFieldHidden(field, hiddenFieldSet)),
+    social: (fieldOrder.social || []).filter((field) => !isFieldHidden(field, hiddenFieldSet)),
   };
 }
 

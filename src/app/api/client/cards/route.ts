@@ -8,8 +8,10 @@ import { canSelectTemplate, type SharedClientCard } from "@/lib/services/card-pa
 import {
   saveClientCardRecord,
   type CardWriteMode,
-} from "@/lib/services/card-service";
+} from "@/lib/services/card-write-server";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
+import type { MediaSave } from "@/lib/card-media";
+import { writeValidatedClientCard } from "@/lib/client-card-write-server";
 import { normalizeTemplate, type SharedTemplate } from "@/lib/templates";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +20,7 @@ export const revalidate = 0;
 type CardSaveBody = {
   card?: SharedClientCard;
   mode?: CardWriteMode;
+  media?: MediaSave;
 };
 
 export async function POST(request: Request) {
@@ -42,6 +45,12 @@ export async function POST(request: Request) {
       client.plan
     );
 
+    if (client.plan === "free" || client.plan === "pro") {
+      const data = await writeValidatedClientCard({ database: supabaseAdmin, card, template, media: body?.media as MediaSave,
+        userId: client.userId, mode, plan: client.plan });
+      return apiSuccess({ card: data });
+    }
+    // Enterprise behavior remains outside this Free/Pro transition.
     const { data, error } = await saveClientCardRecord({
       card: {
         ...card,
@@ -72,7 +81,7 @@ async function loadSelectableTemplate(
   templateId: string | null | undefined,
   plan: Parameters<typeof canSelectTemplate>[1]
 ) {
-  const normalizedTemplateId = templateId?.trim() || "";
+  const normalizedTemplateId = typeof templateId === "string" ? templateId.trim() : "";
 
   if (!normalizedTemplateId) {
     throw new ApiRouteError(400, "INVALID_REQUEST", "Please select a template.");

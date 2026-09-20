@@ -9,7 +9,7 @@ import {
   RefreshCw,
   Sparkles,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ClientSidebar from "@/components/ClientSidebar";
 import UpgradeToProButton from "@/components/UpgradeToProButton";
 import type { DmiPlan } from "@/lib/entitlements";
@@ -65,7 +65,15 @@ const billingPillClass =
   "inline-flex min-h-8 items-center justify-center whitespace-nowrap rounded-full border px-3 py-0 text-xs font-semibold leading-none align-middle";
 
 export default function ClientBillingPage() {
-  const { plan, isPaid, loading: planLoading } = useClientPlan();
+  const { plan, isPaid, loading: planLoading, error: planError, refreshPlan } = useClientPlan();
+  const entitlementRetry = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshAfterBillingChange = useCallback(() => {
+    void refreshPlan();
+    if (entitlementRetry.current) clearTimeout(entitlementRetry.current);
+    // One bounded follow-up allows the billing webhook to reach the mirror.
+    entitlementRetry.current = setTimeout(() => { void refreshPlan(); }, 3000);
+  }, [refreshPlan]);
+  useEffect(() => () => { if (entitlementRetry.current) clearTimeout(entitlementRetry.current); }, []);
   const [billingState, setBillingState] = useState<BillingApiState>({
     status: "loading",
     data: null,
@@ -77,10 +85,10 @@ export default function ClientBillingPage() {
   const [subscriptionActionLoading, setSubscriptionActionLoading] = useState(false);
   const [subscriptionActionError, setSubscriptionActionError] = useState("");
   const billing = billingState.data;
-  const currentPlan = (billing?.plan || plan || "free") as DmiPlan;
+  const currentPlan = billing?.plan;
   const planName =
-    billingState.status === "loading" && !billing
-      ? "Loading"
+    !billing
+      ? billingState.status === "loading" ? "Loading" : "Unavailable"
       : currentPlan === "pro"
         ? "Individual Pro"
         : currentPlan === "enterprise"
@@ -132,8 +140,12 @@ export default function ClientBillingPage() {
       void loadBillingSummary();
     }, 0);
 
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("checkout") === "success" || params.get("portal") === "return") {
+      refreshAfterBillingChange();
+    }
     return () => window.clearTimeout(loadTimer);
-  }, [loadBillingSummary]);
+  }, [loadBillingSummary, refreshAfterBillingChange]);
 
   async function updateSubscriptionCancellation(cancelAtPeriodEnd: boolean) {
     if (subscriptionActionLoading) return;
@@ -173,6 +185,7 @@ export default function ClientBillingPage() {
 
       setBillingState({ status: "ready", data: payload.data, error: "" });
       setSubscriptionPanelOpen(false);
+      refreshAfterBillingChange();
     } catch (error) {
       setSubscriptionActionError(
         error instanceof Error
@@ -280,7 +293,7 @@ export default function ClientBillingPage() {
               <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
                 <div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <h2 className="text-2xl font-semibold">{planName} Plan</h2>
+                    <h2 className="text-2xl font-semibold">{planName} subscription product</h2>
                     <div className="flex flex-wrap gap-2 sm:justify-end">
                       <BillingBadge status={statusDisplay.title} />
                       {billing?.billingInterval && (
@@ -322,6 +335,10 @@ export default function ClientBillingPage() {
                   </div>
                   <p className="mt-2 text-sm leading-6 text-white/55">
                     {subscriptionDescription(billing)}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-white/75" role="status">
+                    Effective feature access: {planLoading ? "Checking…" : planError ? "Unavailable — refresh to retry" : plan === "pro" ? "Pro" : plan === "enterprise" ? "Enterprise" : plan === "free" ? "Free" : "Unavailable"}.
+                    {" "}Feature access is determined separately from the subscription product shown above.
                   </p>
 
                   <div className="mt-6 grid gap-4 rounded-2xl border border-white/10 bg-white/[0.035] p-4 sm:grid-cols-2 xl:grid-cols-4">

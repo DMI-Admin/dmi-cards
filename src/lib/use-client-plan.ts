@@ -1,18 +1,12 @@
 "use client";
 
-import {
-  createContext,
-  createElement,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, createElement, useContext, useMemo, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { isPaidPlan, type DmiPlan } from "@/lib/entitlements";
-import { requireClientUser } from "@/lib/client-auth";
+import { resolveEffectiveClientPlan, type EffectiveClientPlanResult } from "@/lib/entitlements/plan-resolver";
+import { supabase } from "@/lib/supabase";
 
-type ClientPlanSource = "stripe_billing" | "profile" | "fallback";
-
+type ClientPlanSource = EffectiveClientPlanResult["source"];
 export type ClientPlanState = {
   plan: DmiPlan | null;
   isPaid: boolean;
@@ -20,94 +14,95 @@ export type ClientPlanState = {
   error: string;
   status: "auth_loading" | "billing_loading" | "ready" | "error";
   source: ClientPlanSource | null;
+  billing?: EffectiveClientPlanResult["billing"];
 };
-
-export type InitialClientPlan = {
-  plan: DmiPlan;
-  source: ClientPlanSource;
-};
-
-type ClientPlanContextValue = ClientPlanState & {
-  refreshPlan: () => Promise<ClientPlanState>;
-};
-
+export type InitialClientPlan = { plan: DmiPlan; source: ClientPlanSource };
+type ClientPlanContextValue = ClientPlanState & { refreshVersion: number; refreshPlan: () => Promise<ClientPlanState> };
 const ClientPlanContext = createContext<ClientPlanContextValue | null>(null);
+const unavailable: ClientPlanState = { plan: null, isPaid: false, loading: false, error: "", status: "auth_loading", source: null };
 
-function stateFromPlan(
-  plan: DmiPlan | null,
-  source: ClientPlanSource | null,
-  loading = false,
-  error = ""
-): ClientPlanState {
-  return {
-    plan,
-    isPaid: plan ? isPaidPlan(plan) : false,
-    loading,
-    error,
-    status: loading ? "billing_loading" : error ? "error" : "ready",
-    source,
-  };
-}
-
-export function ClientPlanProvider({
-  children,
-  initialPlan,
-}: {
-  children: ReactNode;
-  initialPlan?: InitialClientPlan | null;
-}) {
-  const [state, setState] = useState<ClientPlanState>(() =>
-    initialPlan
-      ? stateFromPlan(initialPlan.plan, initialPlan.source)
-      : stateFromPlan(null, null, true)
-  );
-
-  const value = useMemo<ClientPlanContextValue>(() => {
-    async function refreshPlan() {
-      setState((current) => ({
-        ...current,
-        loading: true,
-        error: "",
-        status: "billing_loading",
-      }));
-
-      try {
-        const client = await requireClientUser();
-        const nextState = stateFromPlan(client.plan, client.planSource);
-        setState(nextState);
-        return nextState;
-      } catch (error) {
-        console.error("[DMI client] plan lookup failed", {
-          name: error instanceof Error ? error.name : "UnknownError",
-        });
-        const errorMessage =
-          error instanceof Error ? error.message : "Could not refresh your plan.";
-        const nextState: ClientPlanState = {
-          ...state,
-          loading: false,
-          error: errorMessage,
-          status: "error",
-        };
-        setState(nextState);
-        return nextState;
-      }
+export function ClientPlanProvider({ children, initialPlan }: { children: ReactNode; initialPlan?: InitialClientPlan | null }) {
+  const [state, setState] = useState<ClientPlanState>(() => initialPlan
+    ? { ...unavailable, ...initialPlan, isPaid: isPaidPlan(initialPlan.plan), status: "ready" }
+    : { ...unavailable, loading: true });
+  const request = useRef(0);
+  const identity = useRef<string | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const pathname = usePathname();
+  const refreshPlan = useCallback(async () => {
+    const version = ++request.current;
+    // A background refresh must not turn a resolved plan into a transient Free
+    // plan or unmount active editors when a native file picker returns focus.
+    // Failure and the next authoritative result still replace the cached state.
+    setState(current => current.status === "ready" && current.plan !== "enterprise"
+      ? current
+      : { ...unavailable, loading: true, status: "billing_loading" });
+    let next: ClientPlanState;
+    try {
+      const result = await resolveEffectiveClientPlan();
+      next = { ...unavailable, ...result, isPaid: isPaidPlan(result.plan), status: "ready" };
+    } catch (error) {
+      next = { ...unavailable, status: "error", error: error instanceof Error ? error.message : "Could not refresh feature access." };
     }
+    if (version === request.current) {
+      setState(next);
+      if (next.status === "ready") setRefreshVersion(current => current + 1);
+    }
+    return next;
+  }, []);
 
-    return {
-      ...state,
-      refreshPlan,
+  // Initial mount and navigation refresh from the protected endpoint.
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void refreshPlan(); }, 0);
+    return () => { window.clearTimeout(timer); request.current += 1; };
+  }, [pathname, refreshPlan]);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { void refreshPlan(); }, 100);
     };
-  }, [state]);
+    const visible = () => { if (document.visibilityState === "visible") schedule(); };
+    window.addEventListener("focus", schedule);
+    document.addEventListener("visibilitychange", visible);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const nextIdentity = session?.user.id ?? null;
+      const sameIdentity = nextIdentity !== null && identity.current === nextIdentity;
+      identity.current = nextIdentity;
+      if (event === "SIGNED_OUT" || event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        request.current += 1;
+        setState(current => sameIdentity && event !== "SIGNED_OUT" && current.status === "ready" && current.plan !== "enterprise"
+          ? current
+          : { ...unavailable });
+        if (event === "SIGNED_OUT") clearTimeout(timer);
+        else schedule(); // Never await Supabase calls inside its auth callback.
+      }
+    });
+    return () => {
+      clearTimeout(timer); subscription.unsubscribe(); request.current += 1;
+      window.removeEventListener("focus", schedule);
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, [refreshPlan]);
 
+  // One refresh at the known period boundary; no polling or local downgrade rule.
+  useEffect(() => {
+    const end = Date.parse(state.billing?.currentPeriodEnd || "");
+    const delay = end - Date.now() + 1500;
+    if (!Number.isFinite(delay) || delay <= 0 || delay > 2147483647) return;
+    const timer = window.setTimeout(() => { void refreshPlan(); }, delay);
+    return () => window.clearTimeout(timer);
+  }, [state.billing?.currentPeriodEnd, refreshPlan]);
+
+  const value = useMemo(() => ({ ...state, refreshVersion, refreshPlan }), [state, refreshVersion, refreshPlan]);
+  // refreshPlan reads the request ref only when invoked, never during render.
+  // eslint-disable-next-line react-hooks/refs
   return createElement(ClientPlanContext.Provider, { value }, children);
 }
 
 export function useClientPlan(): ClientPlanContextValue {
   const context = useContext(ClientPlanContext);
-
-  if (!context) {
-    throw new Error("useClientPlan must be used within ClientPlanProvider.");
-  }
-
+  if (!context) throw new Error("useClientPlan must be used within ClientPlanProvider.");
   return context;
 }

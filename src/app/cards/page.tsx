@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import CardRenderer from "@/components/CardRenderer";
-import { supabase } from "@/lib/supabase";
+import { cardSeedFields, mutateAdminCard, type CardCreationResult } from "@/lib/admin-card-mutations";
+import { getAdminInventory } from "@/lib/admin-inventory";
+import { getAdminTemplates } from "@/lib/templates";
 
 type Client = {
   id: string;
@@ -77,13 +79,24 @@ type StaffUser = {
 };
 
 export default function CardsPage() {
+  const selectedCompany = useRef("");
+  const cardsRequest = useRef(0);
+  const usersRequest = useRef(0);
+  const preparationRequest = useRef(0);
   const [clients, setClients] = useState<Client[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
   const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [readError, setReadError] = useState("");
+  const [cardsError, setCardsError] = useState("");
+  const [usersError, setUsersError] = useState("");
+  const [cardsLoading, setCardsLoading] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [mutationError, setMutationError] = useState("");
+  const [creationResults, setCreationResults] = useState<CardCreationResult[]>([]);
   const [reviewReady, setReviewReady] = useState(false);
   const [selectedPreparedUser, setSelectedPreparedUser] =
     useState<StaffUser | null>(null);
@@ -135,27 +148,22 @@ export default function CardsPage() {
     async function loadAdminData() {
       setLoading(true);
 
-      const [clientsResult, templatesResult] = await Promise.all([
-        supabase
-          .from("clients")
-          .select("*")
-          .order("full_name", { ascending: true }),
-        supabase
-          .from("templates")
-          .select("*")
-          .eq("is_published", true)
-          .order("name", { ascending: true }),
-      ]);
-
-      if (ignore) return;
-
-      if (clientsResult.error) alert(clientsResult.error.message);
-      if (templatesResult.error) alert(templatesResult.error.message);
-      if (clientsResult.data) setClients(clientsResult.data);
-      if (templatesResult.data) setTemplates(templatesResult.data);
-      setCards([]);
-
-      setLoading(false);
+      try {
+        const [nextClients, nextTemplates] = await Promise.all([
+          getAdminInventory<Client>("clients").catch(() => { throw new Error("Company inventory failed to load. Retry before preparing cards."); }),
+          getAdminTemplates().catch(() => { throw new Error("Template context failed to load. Retry before preparing cards."); }),
+        ]);
+        if (ignore) return;
+        setClients(nextClients.sort((a, b) => a.full_name.localeCompare(b.full_name)));
+        setTemplates(nextTemplates.filter((template) => template.is_published)
+          .map((template) => ({ ...template, layout_type: template.layout_type ?? null, access_level: template.access_level ?? null, is_published: Boolean(template.is_published), allowed_fields: template.allowed_fields ?? null }))
+          .sort((a, b) => a.name.localeCompare(b.name)));
+        setReadError("");
+      } catch (error) {
+        if (!ignore) setReadError(error instanceof Error ? error.message : "Admin inventory could not be loaded.");
+      } finally {
+        if (!ignore) setLoading(false);
+      }
     }
 
     void loadAdminData();
@@ -166,128 +174,124 @@ export default function CardsPage() {
   }, []);
 
   async function fetchCards(companyId = clientId) {
+    if (companyId !== selectedCompany.current) return false;
+    const request = ++cardsRequest.current;
+    const current = () => request === cardsRequest.current && companyId === selectedCompany.current;
+    setReviewReady(false);
     if (!companyId) {
       setCards([]);
-      return;
+      return false;
     }
+    setCardsLoading(true);
 
-    const { data, error } = await supabase
-      .from("cards")
-      .select("*")
-      .eq("client_id", companyId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      alert(error.message);
-      return;
+    try {
+      const data = await getAdminInventory<Card>("cards", companyId);
+      if (!current()) return false;
+      setCardsError("");
+      setCards(data);
+      return true;
+    } catch (error) {
+      if (!current()) return false;
+      setCardsError(error instanceof Error ? error.message : "Admin cards could not be loaded.");
+      return false;
+    } finally {
+      if (current()) setCardsLoading(false);
     }
-
-    if (data) setCards(data);
   }
 
   async function fetchCompanyUsers(companyId = clientId) {
+    if (companyId !== selectedCompany.current) return false;
+    const request = ++usersRequest.current;
+    const current = () => request === usersRequest.current && companyId === selectedCompany.current;
+    setReviewReady(false);
     if (!companyId) {
       setStaffUsers([]);
       setSelectedPreparedUserIds([]);
-      return;
+      return false;
     }
+    setUsersLoading(true);
 
-    const { data, error } = await supabase
-      .from("client_users")
-      .select("*")
-      .eq("client_id", companyId);
-
-    if (error) {
-      console.info("No linked client_users data available for card preparation.");
-      setStaffUsers([]);
-      setSelectedPreparedUserIds([]);
-      return;
-    }
-
-    if (data) {
+    try {
+      const data = await getAdminInventory<StaffUser>("client-users", companyId);
+      if (!current()) return false;
+      setUsersError("");
       setStaffUsers(data);
       setSelectedPreparedUserIds(data.map((user) => user.id));
+      return true;
+    } catch (error) {
+      if (!current()) return false;
+      setUsersError(error instanceof Error ? error.message : "Admin client users could not be loaded.");
+      return false;
+    } finally {
+      if (current()) setUsersLoading(false);
     }
   }
 
   function selectClient(value: string) {
+    selectedCompany.current = value;
+    cardsRequest.current++; usersRequest.current++; preparationRequest.current++;
+    setPreparing(false);
     setClientId(value);
+    setCreationResults([]);
+    setMutationError("");
+    setCards([]);
+    setCardsError("");
+    setUsersError("");
+    setCardsLoading(false);
+    setUsersLoading(false);
     setReviewReady(false);
     setStaffUsers([]);
     setSelectedPreparedUserIds([]);
     setPreviewActiveCard(null);
     void fetchCards(value);
+    void fetchCompanyUsers(value);
   }
 
   function selectTemplate(value: string) {
+    cardsRequest.current++; usersRequest.current++; preparationRequest.current++;
+    setPreparing(false); setCardsLoading(false); setUsersLoading(false);
     setTemplateId(value);
+    setCreationResults([]);
+    setMutationError("");
     setReviewReady(false);
     setStaffUsers([]);
     setSelectedPreparedUserIds([]);
   }
 
   async function prepareDigitalCards() {
-    if (!clientId || !templateId) return;
+    if (!clientId || !templateId || loading || readError || cardsLoading || usersLoading) return;
 
+    const request = ++preparationRequest.current;
+    setReviewReady(false);
     setPreparing(true);
-    await Promise.all([fetchCompanyUsers(clientId), fetchCards(clientId)]);
-    setReviewReady(true);
+    const results = await Promise.all([fetchCompanyUsers(clientId), fetchCards(clientId)]);
+    if (request !== preparationRequest.current) return;
+    setReviewReady(results.every(Boolean));
     setPreparing(false);
   }
 
   async function publishCardsForCompany() {
-    if (!selectedClient || !selectedTemplate || selectedPreparedUsers.length === 0) {
+    if (!reviewReady || loading || readError || cardsError || usersError || cardsLoading || usersLoading || preparing || !selectedClient || !selectedTemplate || selectedPreparedUsers.length === 0) {
       return;
     }
 
     setPublishing(true);
 
-    const timestamp = Date.now();
-    const companyName =
-      selectedClient.company_name || selectedClient.full_name || "company";
-    const showDmiBranding = selectedTemplate.access_level === "free";
-    const cardRows = selectedPreparedUsers.map((user, index) => {
-      const fullName = user.full_name || user.name || "Unnamed User";
-
-      return {
-        client_id: selectedClient.id,
-        template_id: selectedTemplate.id,
-        card_name: `${fullName} Digital Card`,
-        slug: `${slugify(companyName)}-${slugify(fullName)}-${timestamp}-${index + 1}`,
-        full_name: fullName,
-        job_title: user.job_title || "",
-        company_name: companyName,
-        email: user.email || "",
-        phone: user.phone || "",
-        website: user.website || "",
-        address: user.address || "",
-        whatsapp: user.whatsapp || "",
-        linkedin: user.linkedin || "",
-        instagram: user.instagram || "",
-        facebook: user.facebook || "",
-        youtube: user.youtube || "",
-        booking_link: user.booking_link || "",
-        custom_url: user.custom_url || "",
-        show_dmi_branding: showDmiBranding,
-        status: "active",
-        is_published: true,
-      };
-    });
-
-    const { error } = await supabase.from("cards").insert(cardRows);
-
-    setPublishing(false);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    alert(`Published ${cardRows.length} cards for ${companyName}.`);
-    await Promise.all([
-      fetchCards(selectedClient.id),
-      fetchCompanyUsers(selectedClient.id),
-    ]);
+    setMutationError("");
+    try {
+      const key = `admin-card-batch:${clientId}:${templateId}`;
+      let operationId = sessionStorage.getItem(key);
+      if (!operationId) { operationId = crypto.randomUUID(); sessionStorage.setItem(key, operationId); }
+      const result = await mutateAdminCard("/api/admin/cards", "POST", {
+        clientId, templateId, operationId,
+        staff: selectedPreparedUsers.map(user => ({ staffId: user.id,
+          seed: Object.fromEntries(cardSeedFields.map(field => [field, user[field] || (field === "full_name" ? user.name : "") || ""])) })),
+      });
+      setCreationResults(result.results || []);
+      await fetchCards(selectedClient.id);
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : "Card creation failed.");
+    } finally { setPublishing(false); }
   }
 
   function savePreparedUserEdits(updatedUser: StaffUser) {
@@ -314,18 +318,9 @@ export default function CardsPage() {
   async function togglePublished(card: Card) {
     const nextPublished = !card.is_published;
 
-    const { error } = await supabase
-      .from("cards")
-      .update({
-        is_published: nextPublished,
-        status: nextPublished ? "published" : "draft",
-      })
-      .eq("id", card.id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    try {
+      await mutateAdminCard(`/api/admin/cards/${card.id}`, "PATCH", { operation: nextPublished ? "publish" : "unpublish" });
+    } catch (error) { setMutationError(error instanceof Error ? error.message : "Publication failed."); return; }
 
     await fetchCards(card.client_id || clientId);
   }
@@ -337,12 +332,8 @@ export default function CardsPage() {
 
     if (!confirmed) return;
 
-    const { error } = await supabase.from("cards").delete().eq("id", card.id);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    try { await mutateAdminCard(`/api/admin/cards/${card.id}`, "DELETE"); }
+    catch (error) { setMutationError(error instanceof Error ? error.message : "Deletion failed."); return; }
 
     await fetchCards(card.client_id || clientId);
   }
@@ -360,6 +351,25 @@ export default function CardsPage() {
           </p>
         </div>
 
+        {mutationError && <p role="alert" className="mb-4 text-red-300">{mutationError}</p>}
+        {creationResults.length > 0 && <div role="status" className="mb-4 rounded-xl border border-white/20 p-4">
+          {creationResults.map(result => <p key={result.staffId} className="break-words">{staffUsers.find(user => user.id === result.staffId)?.full_name || result.staffId}: {result.status} — {result.message}</p>)}
+        </div>}
+        {loading ? <p role="status">Loading companies and published templates…</p> : readError ? (
+          <div role="alert" className="rounded-2xl border border-[var(--error)] bg-[var(--error-bg)] p-5 text-[var(--error)]">
+            {readError}
+            <button type="button" onClick={() => window.location.reload()} className="ml-4 rounded-xl border px-4 py-2">Retry</button>
+          </div>
+        ) : <>
+        {(cardsError || usersError) && (
+          <div role="alert" className="mb-6 rounded-2xl border border-[var(--error)] bg-[var(--error-bg)] p-5 text-[var(--error)]">
+            {[cardsError, usersError].filter(Boolean).join(" ")}
+            <button type="button" onClick={() => { void fetchCards(); void fetchCompanyUsers(); }} className="ml-4 rounded-xl border px-4 py-2">Retry</button>
+          </div>
+        )}
+        {businessClients.length === 0 && <p role="status" className="mb-4">No business or enterprise clients are available. Add a company in Client Onboarding before preparing cards.</p>}
+        {templates.length === 0 && <p role="status" className="mb-4">No published templates are available for card creation.</p>}
+        {(loading || usersLoading) && <p role="status" className="mb-4">Loading Admin inventory...</p>}
         <div className="mb-8 rounded-3xl border border-white/10 bg-white/5 p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -379,6 +389,7 @@ export default function CardsPage() {
             <Field label="Company / Client">
               <select
                 value={clientId}
+                disabled={publishing}
                 onChange={(event) => selectClient(event.target.value)}
                 className="inputStyle"
               >
@@ -439,6 +450,7 @@ export default function CardsPage() {
                 <button
                   key={template.id}
                   type="button"
+                  disabled={publishing}
                   onClick={() => selectTemplate(template.id)}
                   className={`w-[260px] shrink-0 rounded-2xl border p-3 text-left transition ${
                     selected
@@ -496,7 +508,7 @@ export default function CardsPage() {
 
             <button
               onClick={prepareDigitalCards}
-              disabled={!clientId || !templateId || preparing}
+              disabled={!clientId || !templateId || preparing || publishing || loading || cardsLoading || usersLoading}
               className="rounded-2xl bg-[#AC00FF] px-6 py-3 text-sm font-medium transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
             >
               {preparing ? "Preparing..." : "Prepare Digital Cards"}
@@ -538,7 +550,7 @@ export default function CardsPage() {
             </div>
 
             <div className="p-6">
-              {staffUsers.length === 0 ? (
+              {usersError ? <p role="alert">{usersError}</p> : usersLoading ? <p role="status">Loading client users...</p> : staffUsers.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-white/15 bg-[#101935]/50 p-8 text-center">
                   <h3 className="text-lg font-semibold">
                     No users found for this company.
@@ -632,18 +644,23 @@ export default function CardsPage() {
 
         {reviewReady && (
           <div className="mb-8 rounded-3xl border border-white/10 bg-white/5 p-6">
+            <button type="button" disabled={publishing} className="mb-4 text-sm underline" onClick={async () => {
+              if (window.confirm("Start a new creation batch? This permits additional cards for previously created staff. Only continue after confirming the previous results.")) {
+                sessionStorage.removeItem(`admin-card-batch:${clientId}:${templateId}`); setCreationResults([]); setMutationError("");
+              }
+            }}>Start a new batch</button>
             <div className="flex items-center justify-between gap-4">
               <div>
                 <StepLabel label="Step 5" />
                 <h2 className="mt-2 text-2xl font-semibold">Publish Cards</h2>
                 <p className="mt-1 text-sm text-white/45">
-                  Create and publish one digital card for every prepared user.
+                  Only staff with verified Client Portal accounts can receive cards. Unlinked staff are reported as not ready; no ownerless cards are created.
                 </p>
               </div>
 
                 <button
                 onClick={publishCardsForCompany}
-                disabled={selectedPreparedUsers.length === 0 || publishing}
+                disabled={selectedPreparedUsers.length === 0 || publishing || !reviewReady || cardsLoading || usersLoading || !!cardsError || !!usersError}
                 className="rounded-2xl bg-[#AC00FF] px-6 py-3 text-sm font-medium transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {publishing ? "Publishing..." : "Publish Cards For Company"}
@@ -679,7 +696,7 @@ export default function CardsPage() {
                   Active cards will appear here after you choose a company.
                 </p>
               </div>
-            ) : loading ? (
+            ) : cardsError ? <p role="alert">{cardsError}</p> : loading || cardsLoading ? (
               <p className="text-sm text-white/45">Loading cards...</p>
             ) : activeCards.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-white/15 bg-[#101935]/50 p-8 text-center">
@@ -760,6 +777,7 @@ export default function CardsPage() {
             )}
           </div>
         </div>
+        </>}
       </section>
 
       {selectedPreparedUser && (
@@ -1171,12 +1189,4 @@ function TemplateUnavailableModal({ onClose }: { onClose: () => void }) {
       </div>
     </div>
   );
-}
-
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
 }

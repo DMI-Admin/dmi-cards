@@ -20,6 +20,8 @@ export default function ClientPortalLayout({
 }) {
   const router = useRouter();
   const [checkingSession, setCheckingSession] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [retry, setRetry] = useState(0);
   const [initialClientPlan, setInitialClientPlan] =
     useState<InitialClientPlan | null>(null);
 
@@ -27,6 +29,8 @@ export default function ClientPortalLayout({
     let ignore = false;
 
     async function requireSession() {
+      setCheckingSession(true);
+      setLoadError("");
       try {
         const client: CurrentClient = await requireClientUser();
 
@@ -55,7 +59,7 @@ export default function ClientPortalLayout({
           return;
         }
 
-        console.error("Client auth/profile load failed", error);
+        setLoadError("Could not verify your current access. Please retry.");
       }
 
       if (ignore) return;
@@ -87,8 +91,16 @@ export default function ClientPortalLayout({
       ignore = true;
       subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, retry]);
 
+  if (loadError) {
+    return <main className="flex min-h-screen items-center justify-center bg-[#070B1A] px-6 text-white">
+      <div role="alert" className="rounded-3xl border border-white/10 bg-white/5 px-6 py-5">
+        <p>{loadError}</p>
+        <button className="mt-4 rounded-xl bg-[#AC00FF] px-4 py-2" onClick={() => setRetry(value => value + 1)}>Retry</button>
+      </div>
+    </main>;
+  }
   if (checkingSession || !initialClientPlan) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#070B1A] px-6 text-white">

@@ -27,6 +27,7 @@ export type ApiClientContext = {
   plan: DmiPlan;
   planSource: "stripe_billing" | "temporary_free_cap";
   entitlements: DmiEntitlementSet;
+  billing: { status: string | null; cancelAtPeriodEnd: boolean; currentPeriodEnd: string | null };
 };
 
 type ApiProfileRow = {
@@ -44,6 +45,8 @@ type ApiBillingSubscriptionRow = {
   stripe_subscription_status?: string | null;
   stripe_price_id?: string | null;
   updated_at?: string | null;
+  cancel_at_period_end?: boolean | null;
+  current_period_end?: string | null;
 };
 
 export async function requireApiClient(request: Request): Promise<ApiClientContext> {
@@ -104,6 +107,7 @@ export async function requireApiClient(request: Request): Promise<ApiClientConte
     plan: billingState.plan,
     planSource: billingState.source,
     entitlements: billingState.entitlements,
+    billing: { status: billingState.subscriptionStatus, cancelAtPeriodEnd: billingState.cancelAtPeriodEnd, currentPeriodEnd: billingState.currentPeriodEnd },
   };
 }
 
@@ -153,13 +157,13 @@ export function bearerTokenFromRequest(request: Request) {
   return match?.[1]?.trim() || "";
 }
 
-async function resolveTrustedApiBillingState(
+export async function resolveTrustedApiBillingState(
   supabase: ReturnType<typeof createApiSupabaseClient>,
   userId: string
 ) {
   const { data, error } = await supabase
     .from("billing_subscriptions")
-    .select("stripe_subscription_status, stripe_price_id, updated_at")
+    .select("stripe_subscription_status, stripe_price_id, updated_at, cancel_at_period_end, current_period_end")
     .eq("user_id", userId)
     .order("updated_at", { ascending: false })
     .limit(10);
@@ -178,22 +182,18 @@ async function resolveTrustedApiBillingState(
   }
 
   const rows = (data || []) as ApiBillingSubscriptionRow[];
-  const paidBillingState = rows
-    .map((row) =>
-      entitlementsForTrustedBillingState({
-        status: row.stripe_subscription_status,
-        priceId: row.stripe_price_id,
-      })
-    )
-    .find((state) => state.plan !== defaultClientPlan);
-
-  return (
-    paidBillingState ||
-    entitlementsForTrustedBillingState({
-      status: rows[0]?.stripe_subscription_status,
-      priceId: rows[0]?.stripe_price_id,
-    })
-  );
+  const states = rows.map((row) => entitlementsForTrustedBillingState({
+    status: row.stripe_subscription_status,
+    priceId: row.stripe_price_id,
+  }));
+  const paidIndex = states.findIndex((state) => state.plan !== defaultClientPlan);
+  const selectedIndex = paidIndex >= 0 ? paidIndex : 0;
+  return {
+    ...(states[selectedIndex] || entitlementsForTrustedBillingState({ status: null, priceId: null })),
+    subscriptionStatus: rows[selectedIndex]?.stripe_subscription_status || null,
+    cancelAtPeriodEnd: Boolean(rows[selectedIndex]?.cancel_at_period_end),
+    currentPeriodEnd: rows[selectedIndex]?.current_period_end || null,
+  };
 }
 
 function warnIfProfilePlanWouldGrantPaidAccess(

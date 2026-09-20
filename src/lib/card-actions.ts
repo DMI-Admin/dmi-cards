@@ -2,14 +2,39 @@ export const cardActionTypes = [
   "save_contact",
   "call",
   "email",
+  "sms",
   "whatsapp",
+  "website",
   "book_meeting",
+  "maps_directions",
   "custom_link",
   "download_pdf",
   "linkedin",
   "instagram",
   "facebook",
+  "x_twitter",
+  "tiktok",
+  "threads",
+  "snapchat",
+  "pinterest",
+  "telegram",
+  "signal",
   "youtube",
+  "vimeo",
+  "twitch",
+  "spotify",
+  "apple_music",
+  "soundcloud",
+  "discord",
+  "steam",
+  "xbox",
+  "playstation",
+  "epic_games",
+  "battle_net",
+  "slack",
+  "microsoft_teams",
+  "github",
+  "gitlab",
 ] as const;
 
 export type CardActionType = (typeof cardActionTypes)[number];
@@ -37,10 +62,15 @@ export type CardActionConfig = {
 };
 
 export type TemplateAllowedActionItem = {
+  id?: string;
   type: CardActionType;
   enabled: boolean;
   default_visible?: boolean;
   default_label?: string;
+  custom_action?: boolean;
+  action_name?: string;
+  destination_type?: "url" | "email" | "phone" | "card_field";
+  destination_field?: string;
 };
 
 export type TemplateAllowedActions = {
@@ -51,13 +81,37 @@ export type TemplateAllowedActions = {
 type ActionFieldKey =
   | "phone"
   | "email"
+  | "website"
+  | "address"
   | "whatsapp"
   | "booking_link"
   | "custom_url"
   | "linkedin"
   | "instagram"
   | "facebook"
-  | "youtube";
+  | "x_twitter"
+  | "tiktok"
+  | "threads"
+  | "snapchat"
+  | "pinterest"
+  | "telegram"
+  | "signal"
+  | "youtube"
+  | "vimeo"
+  | "twitch"
+  | "spotify"
+  | "apple_music"
+  | "soundcloud"
+  | "discord"
+  | "steam"
+  | "xbox"
+  | "playstation"
+  | "epic_games"
+  | "battle_net"
+  | "slack"
+  | "microsoft_teams"
+  | "github"
+  | "gitlab";
 
 export type CardActionDestinationField = ActionFieldKey;
 
@@ -74,25 +128,64 @@ type ActionTemplate = {
 };
 
 const supportedActionTypeSet = new Set<string>(cardActionTypes);
+const contentOwnedActionFieldKeys = new Set<string>([
+  "email",
+  "phone",
+  "website",
+  "address",
+]);
 
 export const cardActionDefinitions: {
   type: CardActionType;
   fieldKey?: CardActionDestinationField;
   label: string;
+  description: string;
+  group:
+    | "Contact"
+    | "Web & Meetings"
+    | "Social"
+    | "Video & Music"
+    | "Gaming & Community"
+    | "Work & Developer";
   destination: "none" | "scalar" | "file";
   labelConfigurable: boolean;
 }[] = [
-  { type: "save_contact", label: "Save Contact", destination: "none", labelConfigurable: false },
-  { type: "call", fieldKey: "phone", label: "Call", destination: "scalar", labelConfigurable: false },
-  { type: "email", fieldKey: "email", label: "Email", destination: "scalar", labelConfigurable: false },
-  { type: "whatsapp", fieldKey: "whatsapp", label: "WhatsApp", destination: "scalar", labelConfigurable: false },
-  { type: "book_meeting", fieldKey: "booking_link", label: "Book Meeting", destination: "scalar", labelConfigurable: false },
-  { type: "custom_link", fieldKey: "custom_url", label: "Custom Link", destination: "scalar", labelConfigurable: true },
-  { type: "download_pdf", label: "Download PDF", destination: "file", labelConfigurable: true },
-  { type: "linkedin", fieldKey: "linkedin", label: "LinkedIn", destination: "scalar", labelConfigurable: false },
-  { type: "instagram", fieldKey: "instagram", label: "Instagram", destination: "scalar", labelConfigurable: false },
-  { type: "facebook", fieldKey: "facebook", label: "Facebook", destination: "scalar", labelConfigurable: false },
-  { type: "youtube", fieldKey: "youtube", label: "YouTube", destination: "scalar", labelConfigurable: false },
+  { type: "save_contact", label: "Save Contact", description: "Download the cardholder as a contact.", group: "Contact", destination: "none", labelConfigurable: false },
+  { type: "call", fieldKey: "phone", label: "Call", description: "Call the cardholder's phone number.", group: "Contact", destination: "scalar", labelConfigurable: false },
+  { type: "email", fieldKey: "email", label: "Email", description: "Open a new email to the cardholder.", group: "Contact", destination: "scalar", labelConfigurable: false },
+  { type: "sms", fieldKey: "phone", label: "SMS", description: "Start a text message to the cardholder.", group: "Contact", destination: "scalar", labelConfigurable: false },
+  { type: "whatsapp", fieldKey: "whatsapp", label: "WhatsApp", description: "Open WhatsApp chat or link.", group: "Contact", destination: "scalar", labelConfigurable: false },
+  { type: "website", fieldKey: "website", label: "Website", description: "Open the cardholder or company website.", group: "Web & Meetings", destination: "scalar", labelConfigurable: false },
+  { type: "custom_link", fieldKey: "custom_url", label: "Custom Link", description: "Open a configurable web link.", group: "Web & Meetings", destination: "scalar", labelConfigurable: true },
+  { type: "book_meeting", fieldKey: "booking_link", label: "Book Meeting", description: "Open a scheduling or booking link.", group: "Web & Meetings", destination: "scalar", labelConfigurable: false },
+  { type: "maps_directions", fieldKey: "address", label: "Maps / Directions", description: "Open directions to the card address.", group: "Web & Meetings", destination: "scalar", labelConfigurable: false },
+  { type: "download_pdf", label: "Download PDF", description: "Download a PDF attached to the card.", group: "Web & Meetings", destination: "file", labelConfigurable: true },
+  { type: "linkedin", fieldKey: "linkedin", label: "LinkedIn", description: "Open a LinkedIn profile or page.", group: "Social", destination: "scalar", labelConfigurable: false },
+  { type: "instagram", fieldKey: "instagram", label: "Instagram", description: "Open an Instagram profile.", group: "Social", destination: "scalar", labelConfigurable: false },
+  { type: "facebook", fieldKey: "facebook", label: "Facebook", description: "Open a Facebook page or profile.", group: "Social", destination: "scalar", labelConfigurable: false },
+  { type: "x_twitter", fieldKey: "x_twitter", label: "X / Twitter", description: "Open an X or Twitter profile.", group: "Social", destination: "scalar", labelConfigurable: false },
+  { type: "tiktok", fieldKey: "tiktok", label: "TikTok", description: "Open a TikTok profile.", group: "Social", destination: "scalar", labelConfigurable: false },
+  { type: "threads", fieldKey: "threads", label: "Threads", description: "Open a Threads profile.", group: "Social", destination: "scalar", labelConfigurable: false },
+  { type: "snapchat", fieldKey: "snapchat", label: "Snapchat", description: "Open a Snapchat profile.", group: "Social", destination: "scalar", labelConfigurable: false },
+  { type: "pinterest", fieldKey: "pinterest", label: "Pinterest", description: "Open a Pinterest profile.", group: "Social", destination: "scalar", labelConfigurable: false },
+  { type: "telegram", fieldKey: "telegram", label: "Telegram", description: "Open a Telegram contact or channel.", group: "Social", destination: "scalar", labelConfigurable: false },
+  { type: "signal", fieldKey: "signal", label: "Signal", description: "Open a Signal contact link.", group: "Social", destination: "scalar", labelConfigurable: false },
+  { type: "youtube", fieldKey: "youtube", label: "YouTube", description: "Open a YouTube channel or video.", group: "Video & Music", destination: "scalar", labelConfigurable: false },
+  { type: "vimeo", fieldKey: "vimeo", label: "Vimeo", description: "Open a Vimeo profile or video.", group: "Video & Music", destination: "scalar", labelConfigurable: false },
+  { type: "twitch", fieldKey: "twitch", label: "Twitch", description: "Open a Twitch channel.", group: "Video & Music", destination: "scalar", labelConfigurable: false },
+  { type: "spotify", fieldKey: "spotify", label: "Spotify", description: "Open a Spotify profile, artist, or playlist.", group: "Video & Music", destination: "scalar", labelConfigurable: false },
+  { type: "apple_music", fieldKey: "apple_music", label: "Apple Music", description: "Open an Apple Music profile or playlist.", group: "Video & Music", destination: "scalar", labelConfigurable: false },
+  { type: "soundcloud", fieldKey: "soundcloud", label: "SoundCloud", description: "Open a SoundCloud profile or track.", group: "Video & Music", destination: "scalar", labelConfigurable: false },
+  { type: "discord", fieldKey: "discord", label: "Discord", description: "Open a Discord server or invite.", group: "Gaming & Community", destination: "scalar", labelConfigurable: false },
+  { type: "steam", fieldKey: "steam", label: "Steam", description: "Open a Steam profile.", group: "Gaming & Community", destination: "scalar", labelConfigurable: false },
+  { type: "xbox", fieldKey: "xbox", label: "Xbox", description: "Open an Xbox profile or link.", group: "Gaming & Community", destination: "scalar", labelConfigurable: false },
+  { type: "playstation", fieldKey: "playstation", label: "PlayStation", description: "Open a PlayStation profile or link.", group: "Gaming & Community", destination: "scalar", labelConfigurable: false },
+  { type: "epic_games", fieldKey: "epic_games", label: "Epic Games", description: "Open an Epic Games profile or link.", group: "Gaming & Community", destination: "scalar", labelConfigurable: false },
+  { type: "battle_net", fieldKey: "battle_net", label: "Battle.net", description: "Open a Battle.net profile or link.", group: "Gaming & Community", destination: "scalar", labelConfigurable: false },
+  { type: "slack", fieldKey: "slack", label: "Slack", description: "Open a Slack workspace or contact link.", group: "Work & Developer", destination: "scalar", labelConfigurable: false },
+  { type: "microsoft_teams", fieldKey: "microsoft_teams", label: "Microsoft Teams", description: "Open a Teams meeting or chat link.", group: "Work & Developer", destination: "scalar", labelConfigurable: false },
+  { type: "github", fieldKey: "github", label: "GitHub", description: "Open a GitHub profile or project.", group: "Work & Developer", destination: "scalar", labelConfigurable: false },
+  { type: "gitlab", fieldKey: "gitlab", label: "GitLab", description: "Open a GitLab profile or project.", group: "Work & Developer", destination: "scalar", labelConfigurable: false },
 ];
 
 const actionDefaults = cardActionDefinitions;
@@ -120,8 +213,7 @@ export function isStepThreeOwnedTemplateField(value: unknown) {
   return cardActionDefinitions.some(
     (definition) =>
       definition.fieldKey === field &&
-      definition.fieldKey !== "email" &&
-      definition.fieldKey !== "phone"
+      !contentOwnedActionFieldKeys.has(definition.fieldKey)
   );
 }
 
@@ -193,17 +285,21 @@ export function normalizeTemplateAllowedActions(
     ? value.actions
     : [];
 
-  const seenTypes = new Set<CardActionType>();
+  const seenActions = new Set<string>();
   const actions: TemplateAllowedActionItem[] = [];
   const normalizedItems = rawActions.map((item) => {
     const record = typeof item === "string" ? { type: item } : item;
     if (!isRecord(record) || !isCardActionType(record.type)) return null;
 
     const type = record.type;
-    if (seenTypes.has(type)) return null;
-    seenTypes.add(type);
+    const id = normalizeActionId(record.id, type);
+    const customAction = record.custom_action === true;
+    const duplicateKey = customAction ? id : type;
+    if (seenActions.has(duplicateKey)) return null;
+    seenActions.add(duplicateKey);
 
     return {
+      id,
       type,
       enabled: record.enabled !== false,
       default_visible:
@@ -211,6 +307,10 @@ export function normalizeTemplateAllowedActions(
           ? record.default_visible
           : undefined,
       default_label: normalizeActionLabel(record.default_label),
+      custom_action: customAction || undefined,
+      action_name: customAction ? normalizeActionLabel(record.action_name) : undefined,
+      destination_type: normalizeCustomActionDestinationType(record.destination_type),
+      destination_field: normalizeActionLabel(record.destination_field),
     };
   });
 
@@ -237,6 +337,7 @@ export function effectiveAllowedActions(template: ActionTemplate | null | undefi
       return Boolean(definition.fieldKey);
     })
     .map((definition) => ({
+      id: definition.type,
       type: definition.type,
       enabled: true,
       default_visible: true,
@@ -276,7 +377,7 @@ export function defaultCardActionConfigForTemplate(
   const actions = allowedActions.actions
     .filter((action) => action.default_visible === true)
     .map((action, index) => ({
-      id: action.type,
+      id: action.id || action.type,
       type: action.type,
       visible: true,
       order: index,
@@ -310,7 +411,7 @@ export function deriveLegacyActionConfig(
     }
 
     actions.push({
-      id: definition.type,
+      id: allowedAction.id || definition.type,
       type: definition.type,
       visible: allowedAction.default_visible ?? true,
       order: index,
@@ -331,18 +432,20 @@ export function isCardActionType(value: unknown): value is CardActionType {
 }
 
 function normalizeActionItems(actions: unknown[]) {
-  const seenTypes = new Set<CardActionType>();
+  const seenActions = new Set<string>();
   const normalizedActions: CardActionConfigItem[] = [];
 
   actions.forEach((item, index) => {
     if (!isRecord(item) || !isCardActionType(item.type)) return;
 
     const type = item.type;
-    if (seenTypes.has(type)) return;
-    seenTypes.add(type);
+    const id = normalizeActionId(item.id, type);
+    const duplicateKey = id || type;
+    if (seenActions.has(duplicateKey)) return;
+    seenActions.add(duplicateKey);
 
     normalizedActions.push({
-      id: normalizeActionId(item.id, type),
+      id,
       type,
       visible: item.visible !== false,
       order: normalizeOrder(item.order, index),
@@ -359,6 +462,17 @@ function normalizeActionItems(actions: unknown[]) {
   return normalizedActions
     .sort((first, second) => first.order - second.order)
     .map((item, index) => ({ ...item, order: index }));
+}
+
+function normalizeCustomActionDestinationType(
+  value: unknown
+): TemplateAllowedActionItem["destination_type"] {
+  return value === "url" ||
+    value === "email" ||
+    value === "phone" ||
+    value === "card_field"
+    ? value
+    : undefined;
 }
 
 function normalizeActionId(value: unknown, fallbackType: CardActionType) {

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { resolveCardMedia, mediaFields, mediaValue, type MediaKind } from "@/lib/card-media";
 import type {
   CardRendererData,
   CardRendererTemplate,
@@ -11,6 +12,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import {
   fallbackColour,
+  customFieldValue,
   fieldVisibilityValue,
   isFieldHidden,
   mergeFieldOrderWithTemplate,
@@ -87,9 +89,13 @@ export async function getPublishedPublicCardBySlug(
 
   const publicTemplate = buildPublicTemplate(template, publicCardRow);
 
+  const publicData = toPublicCardData(publicCardRow);
+  for (const kind of Object.keys(mediaFields) as MediaKind[]) {
+    publicData[mediaFields[kind]] = resolveCardMedia(mediaValue(card, kind), { id: card.id, kind });
+  }
   return {
     status: "ok",
-    card: toPublicCardData(publicCardRow),
+    card: publicData,
     template: publicTemplate,
     leadCaptureSettings: normalizeLeadCaptureSettings(
       publicCardRow.lead_capture_settings
@@ -255,21 +261,21 @@ function toPublicCardData(card: PublicCardRow): PublicCardData {
     first_name: card.first_name || null,
     last_name: card.last_name || null,
     full_name: card.full_name || null,
-    job_title: card.job_title || null,
-    department: card.department || null,
-    bio: card.bio || null,
-    company_name: card.company_name || null,
-    email: card.email || null,
-    phone: card.phone || null,
-    website: card.website || null,
-    address: card.address || null,
-    whatsapp: card.whatsapp || null,
-    linkedin: card.linkedin || null,
-    instagram: card.instagram || null,
-    facebook: card.facebook || null,
-    youtube: card.youtube || null,
-    booking_link: card.booking_link || null,
-    custom_url: card.custom_url || null,
+    job_title: card.job_title || customFieldValue(card, "job_title") || null,
+    department: card.department || customFieldValue(card, "department") || null,
+    bio: card.bio || customFieldValue(card, "bio") || null,
+    company_name: card.company_name || customFieldValue(card, "company_name") || null,
+    email: card.email || customFieldValue(card, "email") || null,
+    phone: card.phone || customFieldValue(card, "phone") || null,
+    website: card.website || customFieldValue(card, "website") || null,
+    address: card.address || customFieldValue(card, "address") || null,
+    whatsapp: card.whatsapp || customFieldValue(card, "whatsapp") || null,
+    linkedin: card.linkedin || customFieldValue(card, "linkedin") || null,
+    instagram: card.instagram || customFieldValue(card, "instagram") || null,
+    facebook: card.facebook || customFieldValue(card, "facebook") || null,
+    youtube: card.youtube || customFieldValue(card, "youtube") || null,
+    booking_link: card.booking_link || customFieldValue(card, "booking_link") || null,
+    custom_url: card.custom_url || customFieldValue(card, "custom_url") || null,
     action_config: normalizeCardActionConfig(card.action_config),
     selected_colour: card.selected_colour || null,
     selected_background_mode: backgroundMeta.mode,
@@ -278,7 +284,9 @@ function toPublicCardData(card: PublicCardRow): PublicCardData {
     selected_text_colour: card.selected_text_colour || null,
     profile_image_url: card.profile_image_url || null,
     company_logo_url: card.company_logo_url || null,
-    company_banner_url: card.company_banner_url || null,
+    company_banner_url: card.company_banner_url || customFieldValue(card, "company_banner_url") || null,
+    hidden_fields: Array.isArray(card.hidden_fields) ? card.hidden_fields : [],
+    field_visibility: normalizeFieldVisibility(card.field_visibility),
     custom_fields: card.custom_fields || {},
   };
 }
