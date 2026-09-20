@@ -9,6 +9,6 @@ export function incompleteVisibleMedia(card: SharedClientCard, capabilities: Rec
     const value = editableMediaValue(card, field);
     if (!capabilities[field] || !isFieldVisible(field, card) || resolveCardMedia(value)) return [];
     const upload = kind === "profile" ? "photo" : kind;
-    return [{ key: field, label: labels[kind], detail: `${labels[kind]} is set to visible, but no ${upload} has been uploaded.` }];
+    return [{ key: field, label: labels[kind], uploadLabel: `Upload ${upload}`, detail: `${labels[kind]} is set to visible, but no ${upload} has been uploaded.` }];
   });
 }

@@ -224,25 +224,68 @@ for (const field of Object.keys(mediaCapabilities)) {
     assert.equal(incompleteVisibleMedia({...c,[field]:value,media_edits:{[field]:'remove'}},mediaCapabilities).length,1);
   }
 }
-// Execute the page's actual shared Continue/Publish guard (not a duplicate).
+// Execute actual page functions, including the collection and hide handler.
 const pageSource = fs.readFileSync('src/app/client/cards/page.tsx','utf8');
-const transitionSource = pageSource.slice(pageSource.indexOf('  function validateEditorStepTransition('),pageSource.indexOf('  function continueAfterValidation('));
-for (const field of Object.keys(mediaCapabilities)) {
-  const editorCard = {...card,profile_image_url:'',company_logo_url:'',company_banner_url:'',custom_fields:{},hidden_fields:[],
-    field_visibility:Object.fromEntries(Object.keys(mediaCapabilities).map(k=>[k,k===field]))};
-  let pending;
-  const context = {currentPlan:'pro',draftTemplateRecord:template,editorCard,activeStep:1,
-    incompleteVisibleMedia,clientTemplateView:()=>({media:mediaCapabilities}),setPendingValidation:v=>{pending=v;},
-    incompleteBuildFields:()=>[],incompleteActions:()=>[],incompleteLeadCaptureSettings:()=>[]};
-  vm.createContext(context);
-  vm.runInContext(ts.transpileModule(transitionSource,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
-  assert.equal(context.validateEditorStepTransition(2),false);
-  assert.equal(pending.kind,'media');assert.equal(pending.issues[0].key,field);
-  assert.equal(context.validateEditorStepTransition(undefined,'published'),false);
-  editorCard.field_visibility[field]=false;
-  assert.equal(context.validateEditorStepTransition(2),true);
-  assert.equal(context.validateEditorStepTransition(undefined,'published'),true);
+function functionSource(source, names) {
+  const ast=ts.createSourceFile('test.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+  const found=[];
+  function visit(node){if(ts.isFunctionDeclaration(node)&&names.includes(node.name?.text)) found.push(node.getText(ast));ts.forEachChild(node,visit);}
+  visit(ast);assert.equal(found.length,names.length);return found.join('\n');
 }
+const stepSource=functionSource(pageSource,['incompleteBuildFields','validateEditorStepTransition','continueAfterValidation','fieldHasDraftValue','forceHideFieldsOnCard','CompletionValidationModal']);
+const stepTemplate={...template,access_level:'paid',layout_type:'modern_minimal',profile_image_allowed:true,logo_allowed:true,banner_allowed:true,
+  allowed_fields:['department','bio'],field_config:{sections:{company:['department'],personal:['bio']}}};
+const validLogo='https://example.invalid/logo.webp';
+for(const plan of ['pro','enterprise']) {
+  const draft={...card,department:'',bio:'',profile_image_url:'',company_logo_url:validLogo,company_banner_url:'',custom_fields:{},hidden_fields:[],
+    media_edits:{},field_visibility:{department:true,bio:true,profile_image_url:true,company_logo_url:true,company_banner_url:true}};
+  let pending,hidden,continued;
+  const context={exports:{},...payload,currentPlan:plan,draftTemplateRecord:stepTemplate,editorCard:draft,draftCard:draft,activeStep:1,fieldOrder:{},
+    fieldLabels:{department:'Department',bio:'Bio'},friendlyFieldLabel:x=>x,
+    incompleteVisibleMedia,clientTemplateView:capabilities,
+    buildStepSections:()=>capabilities(stepTemplate,'pro').sections,
+    setPendingValidation:v=>{pending=v;},setDraftCard:v=>{hidden=v;},changeEditorStep:step=>{continued=step;},
+    incompleteActions:()=>[],incompleteActionsForCard:()=>[],incompleteLeadCaptureSettings:()=>[],
+    clientButtonClass:{primary:'primary',secondary:'secondary'},X:'X',require:()=>({jsx,jsxs:jsx})};
+  vm.createContext(context);
+  vm.runInContext(ts.transpileModule(stepSource,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022}}).outputText,context);
+  for(const publish of [false,true]) {
+    assert.equal(publish ? context.validateEditorStepTransition(undefined,'published') : context.validateEditorStepTransition(2),false);
+    assert.equal(pending.kind,'fields');
+    assert.deepEqual(Array.from(pending.issues,i=>i.key).sort(),['department','bio','profile_image_url','company_banner_url'].sort());
+  }
+  context.validateEditorStepTransition(2);
+  const before=JSON.stringify(draft);
+  const modal=context.CompletionValidationModal({validation:pending,onGoBack:()=>{pending=null;},onHideAndContinue:()=>{},onUpload:()=>{}});
+  flatten(modal).find(n=>n?.type==='button'&&n.props.children==='Go back').props.onClick();
+  assert.equal(JSON.stringify(draft),before,'Go back changes no card state');
+  context.validateEditorStepTransition(2);
+  context.continueAfterValidation(pending);
+  assert.equal(continued,2);
+  for(const field of ['department','bio','profile_image_url','company_banner_url'])assert.equal(hidden.field_visibility[field],false);
+  assert.equal(hidden.field_visibility.company_logo_url,true);
+  assert.equal(hidden.company_logo_url,validLogo);
+  assert.equal(JSON.stringify(hidden.media_edits),'{}','hide does not remove/replace');
+  assert.equal(JSON.stringify(draft),before,'original draft is not mutated');
+  context.editorCard=hidden;
+  assert.equal(context.validateEditorStepTransition(2),true);
+}
+// Render the actual shared editor preview, then its actual CardRenderer/layout.
+const editorSource=fs.readFileSync('src/components/card-builder/ClientCardEditor.tsx','utf8');
+const previewContext={exports:{},CardRenderer:renderer.default,DevicePreviewPicker:'picker',DevicePreviewFrame:'frame',LeadCapturePreviewCard:'lead',require:()=>({jsx,jsxs:jsx})};
+vm.createContext(previewContext);
+vm.runInContext(ts.transpileModule(functionSource(editorSource,['PreviewPanelContent']).replace('export ',''),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022}}).outputText,previewContext);
+for(const mode of ['empty','uploaded']) {
+  const data={...card,action_config:{actions:[]},company_logo_url:validLogo,profile_image_url:mode==='empty'?'':'https://example.invalid/profile.webp',company_banner_url:mode==='empty'?'':'https://example.invalid/banner.webp'};
+  const tree=previewContext.PreviewPanelContent({title:'Live Edit Preview',previewCard:data,previewTemplate:stepTemplate,dimensions:{},filteredGroups:[],showMediaPlaceholders:true});
+  const all=flatten(tree);
+  const images=all.filter(n=>n?.type==='img');
+  assert.equal(images.length,mode==='empty'?1:3,'actual editor preview contains only uploaded media');
+  assert.ok(images.some(n=>n.props.src===validLogo),'valid logo always renders');
+  assert.equal(all.some(n=>n?.type==='UserRound'||n==='Banner'||n==='Logo'),false);
+  if(mode==='empty')assert.equal(all.some(n=>String(n?.props?.className||'').includes('rounded-full border font-semibold')),false,'no empty Modern Minimal profile circle');
+}
+console.log('PASS: actual Step 2 collection/modal/continue: Department+Bio+Profile+Banner together; Go back unchanged; bulk hide preserves logo/intents; actual editor preview collapses empty slots and restores uploaded layout.');
 // Decode failures hide the image and mark its slot for collapse; a new source
 // is independent of an earlier failure (no kind/card-level failure cache).
 let imageSlots=[], imageCursor=0;

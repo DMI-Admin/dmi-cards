@@ -729,7 +729,6 @@ export function PreviewPanelContent({
   actions,
   leadSettings,
   previewMode = "card",
-  showMediaPlaceholders = false,
   onSearchChange,
   onOpenChange,
   onSelect,
@@ -747,7 +746,6 @@ export function PreviewPanelContent({
   actions?: React.ReactNode;
   leadSettings?: LeadCaptureSettings;
   previewMode?: "card" | "lead_form";
-  showMediaPlaceholders?: boolean;
   onSearchChange: (value: string) => void;
   onOpenChange: (open: boolean) => void;
   onSelect: (key: DevicePreviewKey) => void;
@@ -820,7 +818,7 @@ export function PreviewPanelContent({
               template={previewTemplate}
               cardData={previewCard}
               mode="preview"
-              showMediaPlaceholders={showMediaPlaceholders}
+              showMediaPlaceholders={false}
             />
           )}
         </DevicePreviewFrame>

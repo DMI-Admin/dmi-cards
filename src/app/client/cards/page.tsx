@@ -193,11 +193,12 @@ type SectionConfig = {
   enabled: boolean;
   fields: string[];
 };
-type ValidationIssueKind = "fields" | "actions" | "lead_capture" | "media";
+type ValidationIssueKind = "fields" | "actions" | "lead_capture";
 type ValidationIssue = {
   key: string;
   label: string;
   detail: string;
+  uploadLabel?: string;
 };
 type PendingValidation = {
   kind: ValidationIssueKind;
@@ -940,7 +941,7 @@ export default function ClientCardsPage() {
 
     const sections = currentPlan === "enterprise" ? buildStepSections(draftTemplateRecord, fieldOrder) : clientTemplateView(draftTemplateRecord, currentPlan).sections;
 
-    return sections.filter(section => currentPlan === "enterprise" || editorCard.field_visibility?.[`section:${section.key}`] !== false).flatMap((section) =>
+    const fieldIssues = sections.filter(section => currentPlan === "enterprise" || editorCard.field_visibility?.[`section:${section.key}`] !== false).flatMap((section) =>
       section.fields
         .filter((field) => field !== "full_name" && isFieldVisible(field, editorCard))
         .filter((field) => !fieldHasDraftValue(editorCard, field))
@@ -950,6 +951,16 @@ export default function ClientCardsPage() {
           detail: section.label,
         }))
     );
+    // Use the same media availability as MainProfileSection, including its
+    // legacy-template fallback. Media belongs in this single Build issue list.
+    const mediaCapabilities = currentPlan === "enterprise" ? {
+      profile_image_url: draftTemplateRecord.profile_image_allowed ?? draftTemplateRecord.requires_profile_image ?? true,
+      company_logo_url: draftTemplateRecord.access_level === "paid" && (draftTemplateRecord.logo_allowed ?? draftTemplateRecord.requires_logo ?? false),
+      company_banner_url: draftTemplateRecord.access_level === "paid" && (draftTemplateRecord.banner_allowed ?? draftTemplateRecord.requires_banner ?? false),
+    } : clientTemplateView(draftTemplateRecord, currentPlan).media;
+    const mediaIssues = incompleteVisibleMedia(editorCard, mediaCapabilities);
+    const mediaKeys = new Set<string>(["profile_image_url", "company_logo_url", "company_banner_url"]);
+    return [...fieldIssues.filter(issue => !mediaKeys.has(issue.key)), ...mediaIssues];
   }
 
   function incompleteActionsForCard(card: ClientCard): ValidationIssue[] {
@@ -989,13 +1000,6 @@ export default function ClientCardsPage() {
   }
 
   function validateEditorStepTransition(nextStep?: BuilderStep, publishStatus?: CardStatus) {
-    if (currentPlan !== "enterprise" && draftTemplateRecord) {
-      const issues = incompleteVisibleMedia(editorCard, clientTemplateView(draftTemplateRecord, currentPlan).media);
-      if (issues.length) {
-        setPendingValidation({ kind: "media", issues, nextStep, publishStatus });
-        return false;
-      }
-    }
     const shouldValidateBuild =
       activeStep === 1 ||
       Boolean(publishStatus) ||
@@ -1051,14 +1055,6 @@ export default function ClientCardsPage() {
   }
 
   function continueAfterValidation(validation: PendingValidation) {
-    if (validation.kind === "media") {
-      // Resolve one item at a time. Continuing again re-runs every existing guard.
-      setDraftCard(forceHideFieldsOnCard(draftCard, [validation.issues[0].key]));
-      setPendingValidation(validation.issues.length > 1
-        ? { ...validation, issues: validation.issues.slice(1) }
-        : null);
-      return;
-    }
     if (validation.kind === "lead_capture") {
       setPendingValidation(null);
       return;
@@ -1559,7 +1555,6 @@ export default function ClientCardsPage() {
                   <aside className="min-w-0">
                     <div className="client-portal-panel p-5">
                       <PreviewPanelContent
-                        showMediaPlaceholders={false}
                         title={previewTitle}
                         previewCard={previewCard}
                         previewTemplate={previewTemplate}
@@ -1601,8 +1596,7 @@ export default function ClientCardsPage() {
                   <CompletionValidationModal
                     validation={pendingValidation}
                     onGoBack={() => setPendingValidation(null)}
-                    onUpload={() => {
-                      const field = pendingValidation.issues[0].key;
+                    onUpload={(field) => {
                       flushSync(() => {
                         setPendingValidation(null);
                         setMediaUploadTarget(field);
@@ -1633,24 +1627,23 @@ function CompletionValidationModal({
   onUpload,
 }: {
   validation: PendingValidation;
-  onUpload: () => void;
+  onUpload: (field: string) => void;
   onGoBack: () => void;
   onHideAndContinue: () => void;
 }) {
-  const isMediaValidation = validation.kind === "media";
   const isActionValidation = validation.kind === "actions";
   const isLeadValidation = validation.kind === "lead_capture";
-  const title = isMediaValidation ? "Visible media needs an upload" : isActionValidation
+  const title = isActionValidation
     ? "Some visible actions need setup"
     : isLeadValidation
     ? "Lead capture needs a field"
     : "Some visible fields are incomplete";
-  const message = isMediaValidation ? validation.issues[0].detail : isActionValidation
+  const message = isActionValidation
     ? "These actions are visible, but do not have the details needed to work yet."
     : isLeadValidation
     ? "Collect First needs at least one selected field before this card can be published."
-    : "These fields are visible, but do not have content yet.";
-  const continueLabel = isMediaValidation ? "Set to hidden" : isActionValidation
+    : "These visible fields and media need content. Add the missing content or hide the incomplete items.";
+  const continueLabel = isActionValidation
     ? "Hide incomplete actions and continue"
     : "Hide incomplete fields and continue";
 
@@ -1688,7 +1681,7 @@ function CompletionValidationModal({
           </div>
 
           <ul className="mt-4 space-y-2">
-            {(isMediaValidation ? validation.issues.slice(0, 1) : validation.issues).map((issue) => (
+            {validation.issues.map((issue) => (
               <li
                 key={issue.key}
                 className="rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-4 py-3"
@@ -1699,6 +1692,12 @@ function CompletionValidationModal({
                 <span className="mt-1 block text-xs text-[var(--text-secondary)]">
                   {issue.detail}
                 </span>
+                {issue.uploadLabel && (
+                  <button type="button" onClick={() => onUpload(issue.key)}
+                    className={`${clientButtonClass.secondary} mt-3`}>
+                    {issue.uploadLabel}
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -1706,10 +1705,10 @@ function CompletionValidationModal({
           <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <button
               type="button"
-              onClick={isMediaValidation ? onUpload : onGoBack}
+              onClick={onGoBack}
               className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-semibold text-[var(--button-secondary-text)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)]"
             >
-              {isMediaValidation ? `Upload ${validation.issues[0].key === "profile_image_url" ? "photo" : validation.issues[0].key === "company_logo_url" ? "logo" : "banner"}` : "Go back"}
+              Go back
             </button>
             <button
               type="button"
