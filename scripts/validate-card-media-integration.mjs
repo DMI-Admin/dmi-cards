@@ -301,3 +301,25 @@ assert.equal((editorSource.match(/onClick=\{\(\) => onChange\("", "remove"\)\}/g
 assert.equal((editorSource.match(/onChange\(image, "replace"\)/g)||[]).length,2);
 assert.doesNotMatch(editorSource,/onClick=\{\(\) => onChange\(""\)\}/);
 console.log('PASS: both media controls explicitly signal remove/replace; removal retries preserve intent.');
+
+// Repeated replacements and remove/re-add through the real browser coordinator.
+const cyclingSaved=await browser.saveCardWithMedia({...newCard,id:'card-cycle'},'create');
+let cycling={...cyclingSaved,edit_revision:cyclingSaved.edit_revision,company_banner_url:cyclingSaved.custom_fields.company_banner_url};
+for(const [kind,field] of Object.entries(media.mediaFields)) {
+  for(let cycle=0;cycle<2;cycle++) {
+    const previous={...cycling,custom_fields:{...cycling.custom_fields}};
+    const replacement=await browser.saveCardWithMedia({...cycling,[field]:'data:image/png;base64,YQ==',media_edits:{[field]:'replace'}},'edit');
+    assert.notEqual(media.mediaValue(replacement,kind),media.mediaValue(previous,kind));
+    for(const otherKind of Object.keys(media.mediaFields).filter(k=>k!==kind))assert.equal(media.mediaValue(replacement,otherKind),media.mediaValue(previous,otherKind));
+    const removedAgain=await browser.saveCardWithMedia({...replacement,company_banner_url:replacement.custom_fields.company_banner_url,[field]:'',media_edits:{[field]:'remove'}},'edit');
+    assert.equal(media.mediaValue(removedAgain,kind),'');
+    const addedAgain=await browser.saveCardWithMedia({...removedAgain,company_banner_url:removedAgain.custom_fields.company_banner_url,[field]:'data:image/png;base64,YQ==',media_edits:{[field]:'replace'}},'edit');
+    assert.notEqual(media.mediaValue(addedAgain,kind),media.mediaValue(replacement,kind));
+    const reopened=await browser.loadEditableCard(addedAgain.id);
+    cycling={...reopened.card,company_banner_url:reopened.card.custom_fields.company_banner_url,edit_revision:reopened.revision};
+    const retained=await browser.saveCardWithMedia({...cycling,card_name:'Text-only edit'},'edit');
+    for(const k of Object.keys(media.mediaFields))assert.equal(media.mediaValue(retained,k),media.mediaValue(addedAgain,k));
+    cycling={...retained,company_banner_url:retained.custom_fields.company_banner_url};
+  }
+}
+console.log('PASS: all three kinds repeatedly replace/remove/re-add/reopen/text-only publish without changing the other two references.');

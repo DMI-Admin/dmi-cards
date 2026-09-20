@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
+import type { requireApiClient } from "@/lib/api/client-context";
 import { ApiRouteError } from "@/lib/api/responses";
 import { prepareCardMediaAsset, cardMediaBucket } from "@/lib/card-media-staging-server";
 import { mediaUuid, type MediaKind } from "@/lib/card-media";
@@ -12,8 +13,8 @@ export async function cardEditSnapshot(owner: string, cardId: string, database =
   if (!data) throw new ApiRouteError(404, "NOT_FOUND", "Card not found.");
   return data;
 }
-export async function uploadCardMedia(request: Request, sessionId: string, kind: MediaKind, bytes: Buffer) {
-  const prepared = await prepareCardMediaAsset(request, sessionId, kind, bytes);
+export async function uploadCardMedia(request: Request, sessionId: string, kind: MediaKind, bytes: Buffer, verifiedClient?: Awaited<ReturnType<typeof requireApiClient>>) {
+  const prepared = await prepareCardMediaAsset(request, sessionId, kind, bytes, verifiedClient);
   const database = createSupabaseAdminClient();
   const path = prepared.reservation.object_path as string;
   const assetId = prepared.reservation.asset_id as string;

@@ -16,8 +16,10 @@ function invalid(message: string): never { throw new ApiRouteError(400, "INVALID
 function unavailable(): never { throw new ApiRouteError(404, "NOT_FOUND", "Media session or card unavailable."); }
 
 // Identity always comes from the protected Client boundary, never submitted fields.
-async function authorizedTemplate(request: Request, templateId: string) {
-  const client = await requireApiClient(request);
+type VerifiedClient = Awaited<ReturnType<typeof requireApiClient>>;
+
+async function authorizedTemplate(request: Request, templateId: string, verifiedClient?: VerifiedClient) {
+  const client = verifiedClient ?? await requireApiClient(request);
   if (client.plan !== "free" && client.plan !== "pro") throw new ApiRouteError(403, "FORBIDDEN", "Media staging is not enabled for this account.");
   if (!uuid.test(templateId)) invalid("Invalid template ID.");
   const database = createSupabaseAdminClient();
@@ -47,16 +49,16 @@ export async function beginCardMediaSession(request: Request, templateId: string
 
 // Takes bytes, not a trusted browser MIME/path. Re-encoding strips metadata and
 // rejects animations/SVG. No upload occurs here; only a retryable reservation.
-export async function prepareCardMediaAsset(request: Request, sessionId: string, kind: CardMediaKind, bytes: Buffer) {
+export async function prepareCardMediaAsset(request: Request, sessionId: string, kind: CardMediaKind, bytes: Buffer, verifiedClient?: VerifiedClient) {
   if (!uuid.test(sessionId) || !Object.hasOwn(capabilities, kind)) invalid("Invalid media selection.");
   if (!Buffer.isBuffer(bytes) || bytes.length === 0 || bytes.length > cardMediaUploadLimit) invalid("Image exceeds the upload limit.");
-  const client = await requireApiClient(request);
+  const client = verifiedClient ?? await requireApiClient(request);
   const database = createSupabaseAdminClient();
   const { data: session, error } = await database.from("card_media_sessions").select("template_id,card_id")
     .eq("id", sessionId).eq("owner_user_id", client.userId).eq("state", "pending").maybeSingle();
   if (error) throw new ApiRouteError(503, "INTERNAL_ERROR", "Could not check media session.");
   if (!session) unavailable();
-  const { template } = await authorizedTemplate(request, session.template_id);
+  const { template } = await authorizedTemplate(request, session.template_id, client);
   if (template[capabilities[kind]] !== true) throw new ApiRouteError(403, "FORBIDDEN", "Template does not support this media.");
   if (session.card_id) {
     const { data, error: cardError } = await database.from("cards").select("id").eq("id", session.card_id).eq("user_id", client.userId).maybeSingle();

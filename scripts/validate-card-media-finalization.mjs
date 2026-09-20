@@ -34,3 +34,18 @@ assert.doesNotMatch(sql, /unique\s*\(\s*owner_user_id/i);
 const declared = new Set([...sql.split(') returns jsonb')[0].matchAll(/\bp_\w+\b/g)].map(m => m[0]));
 for (const [parameter] of sql.matchAll(/\bp_\w+\b/g)) assert(declared.has(parameter), `Undeclared ${parameter}`);
 console.log('PASS: media finalization static contract/permissions/lock order/payload checks; runtime rollback/concurrency tests are maintained separately. SQL NOT executed.');
+
+// Cleanup safety uses the deployed owner-corrected claim function.
+const correction=fs.readFileSync('supabase/migrations/20260919110000_correct_card_media_owner_checks.sql','utf8');
+const claim=correction.slice(correction.indexOf('create or replace function public.claim_card_media_cleanup'));
+const retire=stage.slice(stage.indexOf('create function public.retire_card_media_asset'),stage.indexOf('-- Claims only'));
+for(const text of [claim,retire]) {
+  assert.match(text,/exists\(select 1 from public.cards where profile_image_url=ref or company_logo_url=ref\s+or custom_fields->>'company_banner_url'=ref\)/);
+  assert(text.indexOf("return 'referenced'")<text.indexOf('update public.card_media_assets'));
+  assert.doesNotMatch(text.split('exists(select 1 from public.cards')[1].split('then')[0],/user_id=/,'reference protection covers every card, not only one owner/card');
+}
+assert.match(retire,/cleanup_after=now\(\)\+interval '24 hours'/);
+assert.match(claim,/a.cleanup_after > now\(\) then return 'not_due'/);
+assert.match(claim,/if a.state='attached' then return 'attached'/);
+assert.match(claim,/not public.card_media_owner_exists\(s.owner_user_id\)/);
+console.log('PASS: static cleanup guards cover references across all cards, attachment exclusion, expiry and retirement grace. Physical worker remains a separate requirement.');

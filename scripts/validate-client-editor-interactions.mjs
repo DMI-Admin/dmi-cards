@@ -26,10 +26,8 @@ const actions = {};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/lib/card-actions.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports: actions });
 const mediaSlots = {};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/lib/media-slots.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports: mediaSlots });
-const readerInstances = [];
-class TestFileReader {
-  readAsDataURL(file) { this.file = file; readerInstances.push(this); }
-}
+const revoked=[], objectFiles=[];
+const localUrls={createObjectURL(file){objectFiles.push(file);return 'blob:local-'+objectFiles.length;},revokeObjectURL(url){revoked.push(url);}};
 const deps = {
   react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
   'react-dom': { createPortal: x => x },
@@ -43,10 +41,10 @@ const deps = {
     readableTextForColour: () => '#FFFFFF', isFieldVisible: () => true,
   },
 };
-vm.runInNewContext(ts.transpileModule(source + '\nexport { ActionsStep, ActionConfigRow, VisibilitySwitch, MediaImageControl, MediaCropEditor, BuilderSection, CustomiseStep, DesignControlPanel, TemplateColourSwatches };', {
+vm.runInNewContext(ts.transpileModule(source + '\nexport { ProfilePictureUpload, ActionsStep, ActionConfigRow, VisibilitySwitch, MediaImageControl, MediaCropEditor, BuilderSection, CustomiseStep, DesignControlPanel, TemplateColourSwatches };', {
   compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
 }).outputText, {
-  FileReader: TestFileReader,
+  URL: localUrls,
   window: { addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) },
   exports, require: key => deps[key] || new Proxy({}, { get: (_, name) => name === 'default' ? 'stub' : () => undefined }),
 });
@@ -108,30 +106,27 @@ assert.match(source, /contract \? contract.customTextColour/);
 console.log('PASS: real action handlers reorder duplicate-type IDs, toggle independently, open Add action, filter forbidden actions, preserve input; restored component/entitlement guards verified.');
 
 
-slots = []; cursor = 0;
-const mediaProps = { title: 'Company banner', value: '', disabled: false, visible: true, aspect: 'banner', buttonLabel: 'Add banner', onChange() {} };
-function renderMedia() { cursor = 0; return nodes(exports.MediaImageControl(mediaProps)); }
-const file = { name: 'Devmaster Inc F-03.png', type: 'image/png', size: 18459 };
-const input = { files: [file], value: 'selected.png' };
-let mediaTree = renderMedia();
-const selectFile = () => renderMedia().find(n => n.type === 'input' && n.props.type === 'file').props.onChange({ currentTarget: input, target: input });
-assert.equal(mediaTree.find(n => n.type === 'input').props.accept, 'image/*');
-let reading = selectFile();
-assert.equal(input.value, 'selected.png', 'selected file stays attached during FileReader');
-assert.equal(readerInstances.at(-1).file, file);
-readerInstances.at(-1).result = 'data:image/png;base64,fixture'; readerInstances.at(-1).onload(); await reading;
-assert.equal(input.value, '', 'reset only after completed read');
-mediaTree = renderMedia();
-const crop = mediaTree.find(n => n.type === exports.MediaCropEditor);
-assert.equal(crop.props.source, 'data:image/png;base64,fixture', 'read completion opens crop');
-crop.props.onCancel();
-input.value = 'selected.png'; reading = selectFile(); readerInstances.at(-1).onerror(); await reading;
-assert.equal(input.value, '');
-assert.ok(renderMedia().some(n => n.props.role === 'alert'), 'read error is visible');
-input.value = 'selected.png'; reading = selectFile(); readerInstances.at(-1).onabort(); await reading;
-assert.equal(input.value, '');
-assert.ok(renderMedia().some(n => n.props.role === 'alert'), 'aborted read is visible and retryable');
-console.log('PASS: banner file selection/read/open flow, deferred input reset, same-file retry, visible read/abort failures.');
+for (const kind of ['profile','logo','banner']) {
+ slots=[];cursor=0;effects=[];
+ const props={title:kind,value:'',disabled:false,visible:true,aspect:kind==='banner'?'banner':'square',buttonLabel:'Add '+kind,onChange(){}};
+ const component=kind==='profile'?exports.ProfilePictureUpload:exports.MediaImageControl;
+ const renderMedia=()=>{cursor=0;return nodes(component(props));};
+ const file={name:'synthetic.png',type:'image/png',size:18459};
+ const input={files:[file],value:'selected.png'};
+ const select=()=>renderMedia().find(n=>n.type==='input'&&n.props.type==='file').props.onChange({currentTarget:input,target:input});
+ renderMedia();const dispose=effects.at(-1)();
+ select();assert.equal(input.value,'');assert.equal(objectFiles.at(-1),file);
+ let crop=renderMedia().find(n=>n.type===exports.MediaCropEditor);
+ assert.ok(crop.props.source.startsWith('blob:'),'crop opens immediately without FileReader');
+ const first=crop.props.source;crop.props.onCancel();assert.ok(revoked.includes(first));
+ select();crop=renderMedia().find(n=>n.type===exports.MediaCropEditor);assert.notEqual(crop.props.source,first,'same file can be selected again');
+ const second=crop.props.source;crop.props.onSave('data:image/png;base64,YQ==');assert.ok(revoked.includes(second));
+ select();const third=renderMedia().find(n=>n.type===exports.MediaCropEditor).props.source;dispose();assert.ok(revoked.includes(third),'unmount releases URL');
+ input.files=[{...file,type:'image/svg+xml'}];select();assert.ok(renderMedia().some(n=>n.props.role==='alert'),'unsupported format visible');
+}
+assert.doesNotMatch(source,/readAsDataURL|new FileReader/);
+assert.match(source,/imageElement: cropImageRef.current/);
+console.log('PASS: all3 crop controls use immediate local URLs; cancel/save/unmount revoke; same-file retry; invalid-type feedback; decoded image reused.');
 
 
 slots = []; cursor = 0;

@@ -5,7 +5,7 @@ import { ApiRouteError, apiErrorFromUnknown, apiSuccess } from "@/lib/api/respon
 export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
-    await requireApiClient(request);
+    const client = await requireApiClient(request);
     // Bound the streamed multipart body before parsing or image decoding.
     const reader = request.body?.getReader();
     if (!reader) throw new ApiRouteError(400, "INVALID_REQUEST", "Image required.");
@@ -17,6 +17,6 @@ export async function POST(request: Request) {
     const form = await new Response(Buffer.concat(chunks), { headers: { "Content-Type": request.headers.get("content-type") || "" } }).formData();
     const file = form.get("file"); const sessionId = form.get("sessionId"); const kind = form.get("kind");
     if (!(file instanceof File) || typeof sessionId !== "string" || typeof kind !== "string" || !Object.hasOwn(mediaFields, kind)) throw new ApiRouteError(400, "INVALID_REQUEST", "Invalid image upload.");
-    return apiSuccess(await uploadCardMedia(request, sessionId, kind as MediaKind, Buffer.from(await file.arrayBuffer())));
+    return apiSuccess(await uploadCardMedia(request, sessionId, kind as MediaKind, Buffer.from(await file.arrayBuffer()), client));
   } catch (error) { return apiErrorFromUnknown(error); }
 }

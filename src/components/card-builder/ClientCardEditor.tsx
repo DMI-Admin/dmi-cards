@@ -1590,25 +1590,13 @@ function MediaImageControl({
   onChange: (value: string, intent: "remove" | "replace") => void;
 }) {
   const inputDisabled = disabled;
-  const [cropSource, setCropSource] = useState("");
-  const [fileError, setFileError] = useState("");
+  const { cropSource, fileError, openCrop, closeCrop } = useLocalCropImage();
 
-  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const input = event.currentTarget;
     const file = input.files?.[0];
-    if (!file || inputDisabled) return;
-
-    setFileError("");
-    try {
-      // Keep the selected file attached until the browser finishes reading it.
-      const imageDataUrl = await readFileAsDataUrl(file);
-      setCropSource(imageDataUrl);
-    } catch (error) {
-      setFileError(error instanceof Error ? error.message : "Could not read image file.");
-    } finally {
-      // Allow the same image to be selected again, including after a failed read.
-      input.value = "";
-    }
+    if (file && !inputDisabled) openCrop(file);
+    input.value = "";
   }
 
   const cropConfig =
@@ -1681,7 +1669,7 @@ function MediaImageControl({
             <input
               type="file"
               data-media-upload={aspect === "banner" ? "company_banner_url" : "company_logo_url"}
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp"
               disabled={inputDisabled}
               onChange={handleFileChange}
               className="sr-only"
@@ -1710,10 +1698,10 @@ function MediaImageControl({
           outputHeight={cropConfig.outputHeight}
           fitMode={cropConfig.fitMode}
           previewShape={cropConfig.previewShape}
-          onCancel={() => setCropSource("")}
+          onCancel={closeCrop}
           onSave={(image) => {
             onChange(image, "replace");
-            setCropSource("");
+            closeCrop();
           }}
         />
       )}
@@ -1742,16 +1730,13 @@ function ProfilePictureUpload({
   onToggleVisibility: () => void;
   onChange: (value: string, intent: "remove" | "replace") => void;
 }) {
-  const [cropSource, setCropSource] = useState("");
+  const { cropSource, fileError, openCrop, closeCrop } = useLocalCropImage();
 
-  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-
-    if (!file || disabled) return;
-
-    const imageDataUrl = await readFileAsDataUrl(file);
-    setCropSource(imageDataUrl);
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (file && !disabled) openCrop(file);
+    input.value = "";
   }
 
   return (
@@ -1803,7 +1788,7 @@ function ProfilePictureUpload({
             <input
               type="file"
               data-media-upload="profile_image_url"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp"
               disabled={disabled}
               onChange={handleFileChange}
               className="sr-only"
@@ -1821,6 +1806,7 @@ function ProfilePictureUpload({
           )}
         </div>
       </div>
+      {fileError && <p role="alert" className="mt-3 text-sm text-[var(--text-primary)]">{fileError}</p>}
       {cropSource && (
         <MediaCropEditor
           source={cropSource}
@@ -1831,10 +1817,10 @@ function ProfilePictureUpload({
           outputHeight={modernMinimalMediaSlots.profile.outputHeight}
           fitMode={modernMinimalMediaSlots.profile.fitMode}
           previewShape="circle"
-          onCancel={() => setCropSource("")}
+          onCancel={closeCrop}
           onSave={(image) => {
             onChange(image, "replace");
-            setCropSource("");
+            closeCrop();
           }}
         />
       )}
@@ -1897,7 +1883,9 @@ function MediaCropEditor({
 }) {
   const [cropPosition, setCropPosition] = useState({ x: 0, y: 0 });
   const [cropZoom, setCropZoom] = useState(1);
-  const [imageSize, setImageSize] = useState({ width: 1, height: 1 });
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const cropImageRef = useRef<HTMLImageElement | null>(null);
+  const [savingCrop, setSavingCrop] = useState(false);
   const dragStartRef = useRef<{
     pointerX: number;
     pointerY: number;
@@ -1908,8 +1896,8 @@ function MediaCropEditor({
   const previewHeight = Math.round(previewWidth / aspectRatio);
   const baseScale =
     fitMode === "contain"
-      ? Math.min(previewWidth / imageSize.width, previewHeight / imageSize.height)
-      : Math.max(previewWidth / imageSize.width, previewHeight / imageSize.height);
+      ? Math.min(previewWidth / (imageSize.width || 1), previewHeight / (imageSize.height || 1))
+      : Math.max(previewWidth / (imageSize.width || 1), previewHeight / (imageSize.height || 1));
   const displayWidth = imageSize.width * baseScale;
   const displayHeight = imageSize.height * baseScale;
 
@@ -1921,10 +1909,13 @@ function MediaCropEditor({
   const clientContract = useContext(ClientContractContext);
   const [cropError, setCropError] = useState("");
   async function saveCrop() {
+    if (!imageSize.width || !imageSize.height || savingCrop) return;
     setCropError("");
+    setSavingCrop(true);
     try {
     const croppedImage = await exportCroppedImage({
       source,
+      imageElement: cropImageRef.current || undefined,
       imageWidth: imageSize.width,
       imageHeight: imageSize.height,
       position: cropPosition,
@@ -1938,6 +1929,7 @@ function MediaCropEditor({
     });
     onSave(croppedImage);
     } catch (error) { setCropError(error instanceof Error ? error.message : "Could not prepare image."); }
+    finally { setSavingCrop(false); }
   }
 
   function startDrag(event: PointerEvent<HTMLDivElement>) {
@@ -1998,13 +1990,15 @@ function MediaCropEditor({
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
+              ref={cropImageRef}
               src={source}
               alt="Crop preview"
+              onError={() => { setImageSize({ width: 0, height: 0 }); setCropError("Could not decode this image. Choose another JPEG, PNG or WebP file."); }}
               draggable={false}
               onLoad={(event) =>
                 setImageSize({
-                  width: event.currentTarget.naturalWidth || 1,
-                  height: event.currentTarget.naturalHeight || 1,
+                  width: event.currentTarget.naturalWidth || 0,
+                  height: event.currentTarget.naturalHeight || 0,
                 })
               }
               className="absolute left-1/2 top-1/2 max-w-none select-none"
@@ -2056,6 +2050,7 @@ function MediaCropEditor({
           <button
             type="button"
             onClick={() => void saveCrop()}
+            disabled={!imageSize.width || !imageSize.height || savingCrop}
             className="dmi-solid-primary rounded-2xl px-5 py-2 text-sm font-semibold transition hover:opacity-90"
           >
             Save crop
@@ -3735,20 +3730,35 @@ function canSelectTemplate(
   return canSelectTemplateForPlan(template, plan);
 }
 
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onerror = () => reject(new Error("Could not read image file."));
-    reader.onabort = () => reject(new Error("Image reading was interrupted. Please select it again."));
-    reader.onload = () => resolve(String(reader.result || ""));
-
-    reader.readAsDataURL(file);
-  });
+function useLocalCropImage() {
+  const [cropSource, setCropSource] = useState("");
+  const [fileError, setFileError] = useState("");
+  const sourceRef = useRef("");
+  useEffect(() => () => { if (sourceRef.current) URL.revokeObjectURL(sourceRef.current); }, []);
+  function closeCrop() {
+    if (sourceRef.current) URL.revokeObjectURL(sourceRef.current);
+    sourceRef.current = "";
+    setCropSource("");
+  }
+  function openCrop(file: File) {
+    setFileError("");
+    try {
+      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+        throw new Error("Choose a JPEG, PNG or WebP image.");
+      }
+      if (!file.size) throw new Error("The selected image is empty.");
+      const next = URL.createObjectURL(file);
+      if (sourceRef.current) URL.revokeObjectURL(sourceRef.current);
+      sourceRef.current = next;
+      setCropSource(next);
+    } catch (error) { setFileError(error instanceof Error ? error.message : "Could not open image."); }
+  }
+  return { cropSource, fileError, openCrop, closeCrop };
 }
 
 function exportCroppedImage({
   source,
+  imageElement,
   imageWidth,
   imageHeight,
   position,
@@ -3761,6 +3771,7 @@ function exportCroppedImage({
   maxLength,
 }: {
   source: string;
+  imageElement?: HTMLImageElement;
   imageWidth: number;
   imageHeight: number;
   position: { x: number; y: number };
@@ -3773,10 +3784,10 @@ function exportCroppedImage({
   maxLength?: number;
 }) {
   return new Promise<string>((resolve, reject) => {
-    const image = new Image();
+    const image = imageElement || new Image();
 
-    image.onerror = () => reject(new Error("Could not load image file."));
-    image.onload = () => {
+    if (!imageElement) image.onerror = () => reject(new Error("Could not load image file."));
+    const draw = () => {
       const canvas = document.createElement("canvas");
       const context = canvas.getContext("2d");
 
@@ -3824,7 +3835,8 @@ function exportCroppedImage({
       resolve(encoded);
     };
 
-    image.src = source;
+    if (imageElement && imageElement.complete && imageElement.naturalWidth > 0) draw();
+    else { image.onload = draw; image.src = source; }
   });
 }
 
