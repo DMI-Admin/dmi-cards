@@ -13,9 +13,9 @@ export function legacyMediaUrl(value: unknown): string {
 }
 export function resolveCardMedia(value: unknown, publicCard?: { id: string; kind: MediaKind }): string {
   const asset = mediaAssetId(value);
-  if (asset) return publicCard ? `/api/public/cards/${encodeURIComponent(publicCard.id)}/media/${publicCard.kind}` : `/api/client/media/${asset}`;
+  if (asset) return publicCard ? `/api/public/cards/${encodeURIComponent(publicCard.id)}/media/${publicCard.kind}?v=${asset}` : `/api/client/media/${asset}`;
   // Only application-generated public delivery paths, never arbitrary relative input.
-  if (typeof value === "string" && /^\/api\/public\/cards\/[0-9a-f-]{36}\/media\/(profile|logo|banner)$/.test(value)) return value;
+  if (typeof value === "string" && /^\/api\/public\/cards\/[0-9a-f-]{36}\/media\/(profile|logo|banner)(?:\?v=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$/.test(value)) return value;
   return legacyMediaUrl(value);
 }
 export function mediaValue(card: { [key: string]: unknown }, kind: MediaKind): string {

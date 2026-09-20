@@ -158,15 +158,51 @@ for(const [key,value] of [['field_visibility',{profile_image_url:false}],['hidde
 tables.cards[0].status='draft';tables.cards[0].is_published=false;assert.equal((await publicGet()).status,404);tables.cards[0].is_published=true;assert.equal((await publicGet()).status,200,'preserve OR publication contract');
 tables.templates[0].profile_image_allowed=false;assert.equal((await publicGet()).status,404);
 assert.equal(media.resolveCardMedia('data:image/png;base64,YQ=='),'data:image/png;base64,YQ==');assert.equal(media.resolveCardMedia('https://example.invalid/image'),'https://example.invalid/image');assert.equal(media.resolveCardMedia('javascript:alert(1)'),'');
-assert.equal(media.resolveCardMedia(`card-media:${assetId}`),`/api/client/media/${assetId}`);assert.equal(media.resolveCardMedia(`card-media:${assetId}`,{id:cardId,kind:'profile'}),`/api/public/cards/${cardId}/media/profile`);
+assert.equal(media.resolveCardMedia(`card-media:${assetId}`),`/api/client/media/${assetId}`);assert.equal(media.resolveCardMedia(`card-media:${assetId}`,{id:cardId,kind:'profile'}),`/api/public/cards/${cardId}/media/profile?v=${assetId}`);
 // Exercise public-card mapping: Storage refs become checked public delivery paths.
 tables.templates[0].profile_image_allowed=true;tables.cards[0].slug='public-card';
 const publicService=loader({...overrides,'@/lib/supabase':{supabase:db}})('src/lib/services/public-card-service.ts');
 const resolved=await publicService.getPublishedPublicCardBySlug('public-card');
-assert.equal(resolved.status,'ok');assert.equal(resolved.card.profile_image_url,`/api/public/cards/${cardId}/media/profile`);
+assert.equal(resolved.status,'ok');assert.equal(resolved.card.profile_image_url,`/api/public/cards/${cardId}/media/profile?v=${assetId}`);
 tables.cards[0].profile_image_url='data:image/png;base64,YQ==';
 assert.equal((await publicService.getPublishedPublicCardBySlug('public-card')).card.profile_image_url,'data:image/png;base64,YQ==');
 console.log('PASS: private owner preview, anonymous publication OR contract, visibility/capability/card-binding denial; legacy/new references resolve without signed URL persistence.');
+
+// Model browser memory reuse by full rendered URL; execute the real public route
+// with in-memory database/Storage for each newly encountered image URL.
+const imageMemory = new Map();
+let mediaRequests = 0;
+for (const kind of Object.keys(media.mediaFields)) {
+  const urls = [];
+  for (let replacement = 0; replacement < 3; replacement++) {
+    const id = randomUUID();
+    const asset = { id, session_id: sessionId, kind, state: 'attached', mime_type: 'image/webp' };
+    tables.card_media_assets.push(asset);
+    const bytes = await sharp({create:{width:8,height:8,channels:4,background:{r:replacement*90,g:50,b:120,alpha:1}}}).webp().toBuffer();
+    objects.set(server.mediaObjectPath(tables.card_media_sessions[0],asset),new Blob([bytes],{type:'image/webp'}));
+    if (kind === 'banner') tables.cards[0].custom_fields = { company_banner_url: `card-media:${id}` };
+    else tables.cards[0][media.mediaFields[kind]] = `card-media:${id}`;
+    const mapped = await publicService.getPublishedPublicCardBySlug('public-card');
+    // CardMediaImage resolves the public-service output a second time.
+    const url = media.resolveCardMedia(mapped.card[media.mediaFields[kind]]);
+    assert.equal(url, `/api/public/cards/${cardId}/media/${kind}?v=${id}`);
+    assert.equal(media.resolveCardMedia(`card-media:${id}`, {id:cardId,kind}),url,'unchanged asset has stable URL');
+    urls.push(url);
+    if (!imageMemory.has(url)) {
+      mediaRequests++;
+      const response = await publicRoute.GET(new Request('http://local.invalid'+url),{params:Promise.resolve({slug:cardId,kind})});
+      assert.equal(response.status,200);
+      assert.equal(response.headers.get('cache-control'),'private, no-store');
+      imageMemory.set(url,Buffer.from(await response.arrayBuffer()));
+    }
+    assert.deepEqual(imageMemory.get(url),bytes,'rendered URL fetches current replacement bytes');
+  }
+  assert.equal(new Set(urls).size,3,'initial asset and two replacements have distinct rendered URLs');
+}
+assert.equal(mediaRequests,9);
+assert.equal(media.resolveCardMedia(`/api/public/cards/${cardId}/media/logo`),`/api/public/cards/${cardId}/media/logo`);
+assert.equal(media.resolveCardMedia(`/api/public/cards/${cardId}/media/logo?v=invalid`),'');
+console.log('PASS: profile/logo/banner consecutive replacements change rendered URL and fetch latest bytes; unchanged assets stable; cache headers unchanged.');
 
 // Real browser SHA-256 bundle, without Node globals or secure-context Web Crypto.
 const insecureBrowser={crypto:{},isSecureContext:false,setTimeout,clearTimeout};
