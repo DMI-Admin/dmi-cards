@@ -5,7 +5,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { ensureUniqueCardSlug } from "@/lib/services/card-write-server";
 import { buildCardSlugBase, type SharedClientCard } from "@/lib/services/card-payload";
 import { validateClientCard } from "@/lib/client-card-contract";
-import { mediaFields, mediaValue, mediaUuid, type MediaSave, type MediaKind } from "@/lib/card-media";
+import { mediaFields, mediaUuid, type MediaSave, type MediaKind } from "@/lib/card-media";
 import { cardEditSnapshot } from "@/lib/card-media-server";
 import type { SharedTemplate } from "@/lib/templates";
 
@@ -42,9 +42,10 @@ export async function writeValidatedClientCard({ database, card, userId, mode, p
     let value = "";
     if (intent.operation === "retain") {
       if (!original) throw new ApiRouteError(400, "INVALID_REQUEST", "New cards cannot retain media.");
-      // Validate capability by presence; never reserialize a large trusted legacy image.
-      // SQL retains the exact owned DB value after checking the OPENING revision.
-      value = mediaValue(original, kind) ? "retained-media" : "";
+      // Retention is card-owned, not a grant to upload unsupported media.
+      // SQL retains the exact owned value and checks revision/asset binding.
+      // Only replacements are subject to the selected template media capability.
+      value = "";
     } else if (intent.operation === "replace") {
       if (!mediaUuid.test(intent.asset_id)) throw new ApiRouteError(400, "INVALID_REQUEST", "Invalid image receipt.");
       const { data, error } = await database.from("card_media_assets").select("id,state,kind")

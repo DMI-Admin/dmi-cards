@@ -97,12 +97,14 @@ const original = JSON.stringify(stale);
 const reconciled = reconcile(stale, template, 'free');
 assert.equal(JSON.stringify(stale), original, 'Opening/projection must not mutate original card data');
 assert.ok(reconciled.changes.includes('unapproved actions'));
-assert.ok(reconciled.changes.includes('company_logo_url'));
+assert.ok(!reconciled.changes.includes('company_logo_url'));
+assert.equal(reconciled.card.company_logo_url,'stale-logo');
 assert.equal(reconciled.card.email, card.email);
 assert.equal(reconciled.card.company_name, undefined);
 assert.equal(reconciled.card.selected_background_mode, 'solid');
 assert.equal(reconciled.card.action_config.actions.length, 1);
-validate(reconciled.card, template, 'free');
+assert.throws(()=>validate(reconciled.card, template, 'free'),/unsupported/, 'untrusted direct media input remains denied');
+validate({...reconciled.card,company_logo_url:''}, template, 'free');
 for (const layout_type of ['classic_free', 'profile_free']) {
   const t = { ...template, layout_type, profile_image_default_enabled: true };
   const visible = reconcile({ ...card, profile_image_url: 'photo' }, t, 'free').card;
@@ -397,3 +399,26 @@ if (process.argv[2]) {
   }
 }
 console.log("PASS: local diagnostics identify field/reason/length only; production error and text bound unchanged.");
+
+const previousMedia={...card,profile_image_url:'profile',company_logo_url:'logo',company_banner_url:'banner',field_visibility:{profile_image_url:true,company_logo_url:false,company_banner_url:true}};
+const preservedVisibility=viewHelpers.retainedClientMediaVisibility(previousMedia,paidTemplate,'pro');
+assert.equal(preservedVisibility.field_visibility.company_logo_url,false);
+assert.equal(preservedVisibility.field_visibility.company_banner_url,true);
+assert.ok(preservedVisibility.hidden_fields.includes('company_logo_url'));
+const profileOnly=reconcile({...previousMedia,...preservedVisibility},{...paidTemplate,logo_allowed:false,banner_allowed:false},'pro').card;
+assert.equal(profileOnly.company_logo_url,'logo');assert.equal(profileOnly.company_banner_url,'banner');
+assert.equal(profileOnly.field_visibility.company_logo_url,false);assert.equal(profileOnly.field_visibility.company_banner_url,true);
+console.log('PASS: template switching preserves card media and user visibility separately from display capability.');
+
+for(const mode of ['preview','public']) {
+  const stored={...previousMedia,profile_image_url:'https://example.invalid/profile',company_logo_url:'https://example.invalid/logo',company_banner_url:'https://example.invalid/banner',action_config:{actions:[]},field_visibility:{profile_image_url:true,company_logo_url:true,company_banner_url:true}};
+  for(const layout_type of ['modern_minimal','executive_paid']) {
+    const target={...paidTemplate,layout_type,profile_image_allowed:true,logo_allowed:false,banner_allowed:false};
+    const suppressed=renderer.default({template:target,cardData:stored,mode});
+    assert.equal(suppressed.props.requiresProfileImage,true);
+    assert.equal(suppressed.props.requiresLogo,false);assert.equal(Boolean(suppressed.props.requiresBanner),false);
+  }
+  const restored=renderer.default({template:{...paidTemplate,layout_type:'modern_minimal',profile_image_allowed:true,logo_allowed:true,banner_allowed:true},cardData:stored,mode});
+  assert.equal(restored.props.requiresLogo,true);assert.equal(restored.props.requiresBanner,true);
+}
+console.log('PASS: real preview/public renderer suppresses unsupported retained media and restores it on supporting templates.');

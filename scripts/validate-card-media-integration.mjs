@@ -138,6 +138,18 @@ tables.cards=[existing];tables.card_media_sessions[0].card_id=cardId;
 const editMedia={sessionId,revision,intents:Object.fromEntries(Object.keys(media.mediaFields).map(k=>[k,{operation:'retain'}]))};
 const editCard={...card,id:cardId,field_visibility:{profile_image_url:false,company_logo_url:false,company_banner_url:false}};
 await save({card:editCard,mode:'edit',media:editMedia});
+// Real server validator permits only trusted retention of unsupported media.
+for (const layout_type of ['executive_paid','profile_free','modern_minimal']) {
+ const selected={...tables.templates[0],layout_type,logo_allowed:false,banner_allowed:false};
+ const result=await save({card:{...editCard,field_visibility:{profile_image_url:true,company_logo_url:true,company_banner_url:false}},mode:'edit',media:editMedia,template:selected});
+ assert.equal(result.id,cardId);
+ const applied=rpcCalls.filter(c=>c.name==='finalize_client_card_media').at(-1).args;
+ assert.equal(applied.p_validated_payload.field_visibility.company_logo_url,true);
+ assert.equal(applied.p_validated_payload.field_visibility.company_banner_url,false);
+ for(const receipt of Object.values(applied.p_asset_receipts)) assert.equal(receipt.operation,'retain');
+}
+
+await save({card:editCard,mode:'edit',media:editMedia});
 let call=rpcCalls.filter(c=>c.name==='finalize_client_card_media').at(-1);assert.equal(call.args.p_expected_card_revision,revision);assert.equal(call.args.p_operation,'edit');assert.ok(!('slug'in call.args.p_validated_payload));assert.equal(call.args.p_validated_payload.field_visibility.profile_image_url,false);
 for(const kind of Object.keys(media.mediaFields)) {
  const asset={id:randomUUID(),kind,session_id:sessionId,state:'ready'};tables.card_media_assets.push(asset);
@@ -297,14 +309,32 @@ const nestedOnly={...regressionCard,company_banner_url:''};
 const normalized=regressionView.reconcileClientCard(nestedOnly,template,'pro').card;
 assert.equal(normalized.company_banner_url,regressionCard.company_banner_url,'nested saved banner survives empty top-level');
 await browser.saveCardWithMedia({...regressionCard,company_banner_url:''},'edit');
-for(const flag of ['profile_image_allowed','logo_allowed','banner_allowed']) {
- const denied=regressionView.reconcileClientCard(regressionCard,{...template,[flag]:false},'pro').card;
- const count=http.length;
- await assert.rejects(browser.saveCardWithMedia(denied,'edit'),/disappeared unexpectedly/);
- assert.equal(http.length,count,'capability normalization must not silently remove');
+// Real reconciliation -> media intent -> browser save: capability changes retain.
+for(const capabilities of [
+ {layout_type:'executive_paid',banner_allowed:false},
+ {layout_type:'modern_minimal'},
+ {layout_type:'profile_free',access_level:'free',logo_allowed:false,banner_allowed:false},
+ {layout_type:'modern_minimal'},
+]) {
+ const opening=await browser.loadEditableCard(regressionCard.id);
+ const current={...opening.card,edit_revision:opening.revision};
+ const selected={...template,...capabilities,id:randomUUID()};
+ const reconciled=regressionView.reconcileClientCard({...current,template_id:selected.id},selected,'pro').card;
+ const beforeRefs=Object.fromEntries(Object.keys(media.mediaFields).map(k=>[k,media.mediaValue(opening.card,k)]));
+ const uploadCount=http.filter(h=>h.url==='/api/client/media/upload').length;
+ const result=await browser.saveCardWithMedia(reconciled,'edit');
+ assert.equal(http.filter(h=>h.url==='/api/client/media/upload').length,uploadCount);
+ for(const kind of Object.keys(media.mediaFields)) assert.equal(media.mediaValue(result,kind),beforeRefs[kind]);
+ const request=JSON.parse(http.filter(h=>h.url==='/api/client/cards').at(-1).options.body);
+ for(const intent of Object.values(request.media.intents)) assert.equal(intent.operation,'retain');
+ // A subsequent ordinary edit/repeated publish must retain the same references.
+ const next=await browser.loadEditableCard(result.id);
+ const repeat=await browser.saveCardWithMedia({...next.card,edit_revision:next.revision,first_name:'Text edit'},'edit');
+ for(const kind of Object.keys(media.mediaFields)) assert.equal(media.mediaValue(repeat,kind),beforeRefs[kind]);
 }
+
 assert.ok(!JSON.parse(http.filter(h=>h.url==='/api/client/cards').at(-1).options.body).card.media_edits);
-console.log('PASS: unexpected empty/null/undefined blocked before session/upload/finalization; capability removal blocked; nested banner retained.');
+console.log('PASS: unexpected empty/null/undefined blocked before session/upload/finalization; template transitions retain all assets without uploads; nested banner retained.');
 // Lost EDIT response reuses the opening revision; no refresh-before-save.
 const editReads=http.filter(h=>h.url.startsWith('/api/client/cards/')).length;
 const unchangedEdit={...edit,card_name:'Lost edit response'};loseResponse=true;

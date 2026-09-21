@@ -6,7 +6,7 @@ import { flushSync } from "react-dom";
 import { incompleteVisibleMedia } from "@/lib/client-media-visibility";
 import { loadEditableCard } from "@/lib/client-card-media";
 import { cardFontKey } from "@/lib/card-typography";
-import { clientTemplateView, clientFieldOrder, reconcileClientCard } from "@/lib/client-template-view";
+import { clientTemplateView, clientFieldOrder, reconcileClientCard, retainedClientMediaVisibility } from "@/lib/client-template-view";
 import {
   useEffect,
   useMemo,
@@ -861,8 +861,8 @@ export default function ClientCardsPage() {
         template,
         current.selected_text_colour
       ),
-      hidden_fields: [],
-      field_visibility: {},
+      ...(currentPlan === "enterprise" ? { hidden_fields: [], field_visibility: {} } :
+        retainedClientMediaVisibility(current, templateForCard(current, adminTemplates, currentPlan) || template, currentPlan)),
       field_order: nextFieldOrder,
     }));
   }

@@ -37,6 +37,13 @@ export default function PublishingOverlay({ finishing, onFinished }: {
           <use href="/devmaster-publishing-outline.svg#devmaster-mark" className={styles.outline} />
           <use href="/devmaster-publishing-outline.svg#devmaster-mark" className={styles.trace}
             onAnimationIteration={() => { if (finishing) onFinished(); }} />
+          <defs>
+            <linearGradient id="dmi-publish-brand-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="var(--brand-primary, #ff365f)" />
+              <stop offset="52%" stopColor="#d019c8" />
+              <stop offset="100%" stopColor="var(--brand-secondary, #ad00ff)" />
+            </linearGradient>
+          </defs>
         </svg>
         <h2 id="publishing-heading" className={styles.heading}>Publishing your card…</h2>
         <p id="publishing-support" className={styles.support}>Saving your latest changes and media.</p>

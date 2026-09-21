@@ -57,10 +57,10 @@ export function reconcileClientCard(card: SharedClientCard, template: SharedTemp
     if (view.values.has(customFieldStorageKey(key))) custom[customFieldStorageKey(key)] = typeof value === "string" ? value : "";
     else if (!["__dmi_background_mode", "__dmi_gradient_start", "__dmi_gradient_end"].includes(key) && !(key in view.media) && value) changes.add(key);
   }
-  for (const [key, allowed] of Object.entries(view.media)) {
+  for (const key of Object.keys(view.media)) {
     const value = editableMediaValue(card, key as keyof typeof view.media);
-    next[key] = allowed ? value : "";
-    if (!allowed && value) changes.add(key);
+    // Media belongs to the card; template capability controls display/editing only.
+    next[key] = value;
   }
   const pickColour = (value: string | null | undefined, palette: string[], customAllowed: boolean, label: string) => {
     const valid = value && /^#[0-9a-f]{6}$/i.test(value) && (customAllowed || palette.some(c => c.toLowerCase() === value.toLowerCase()));
@@ -81,7 +81,7 @@ export function reconcileClientCard(card: SharedClientCard, template: SharedTemp
     order[section.key] = [...new Set([...saved.filter(f => section.fields.includes(f)), ...section.fields])];
   }
   next.field_order = order;
-  const visible = new Set([...view.content, "title", "first_name", "last_name", "full_name", ...Object.entries(view.media).filter(([, yes]) => yes).map(([key]) => key)]);
+  const visible = new Set([...view.content, "title", "first_name", "last_name", "full_name", ...Object.keys(view.media)]);
   const visibility: Record<string, boolean> = {};
   for (const section of view.sections) visibility[`section:${section.key}`] = card.field_visibility?.[`section:${section.key}`] ?? true;
   for (const field of visible) {
@@ -109,4 +109,12 @@ export function reconcileClientCard(card: SharedClientCard, template: SharedTemp
 export function clientFieldOrder(template: SharedTemplate, plan: ClientCardPlan, saved?: CardFieldOrder | null): CardFieldOrder {
   const view = clientTemplateView(template, plan);
   return Object.fromEntries(view.sections.map(s => [s.key, [...new Set([...(saved?.[s.key as keyof CardFieldOrder] || []).filter(f => s.fields.includes(f)), ...s.fields])]])) as CardFieldOrder;
+}
+
+// Carry media preferences across template selection; content still uses new defaults.
+export function retainedClientMediaVisibility(card: SharedClientCard, previousTemplate: SharedTemplate, plan: ClientCardPlan) {
+  const normalized = reconcileClientCard(card, previousTemplate, plan).card;
+  const media = clientTemplateView(previousTemplate, plan).media;
+  const field_visibility = Object.fromEntries(Object.entries(normalized.field_visibility || {}).filter(([key]) => key in media));
+  return { field_visibility, hidden_fields: Object.keys(field_visibility).filter(key => field_visibility[key] === false) };
 }

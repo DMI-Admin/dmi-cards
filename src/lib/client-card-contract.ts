@@ -128,7 +128,7 @@ export function validateClientCard(input: unknown, template: SharedTemplate, pla
   }
   if (!card.field_order) sectionFields.forEach((fields, section) => { order[section] = [...fields]; });
   const visibility: Record<string, boolean> = {};
-  const visibleKeys = new Set([...content, ...identity, ...Object.keys(media).filter(k => template[media[k as keyof typeof media]] === true)]);
+  const visibleKeys = new Set([...content, ...identity, ...Object.keys(media)]);
   for (const [field, visible] of Object.entries(object(card.field_visibility || {}))) {
     if (typeof visible !== "boolean") reject("Invalid field visibility.");
     const key = customFieldStorageKey(field);

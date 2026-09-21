@@ -58,3 +58,9 @@ assert.ok(cardTree.props.children.some(n=>n?.props?.children==='Saving your late
 assert.ok(cardTree.props.children.some(n=>n?.props?.children==='Please don’t close this window or navigate away.'));
 assert.match(css,/background: #fff/);assert.match(css,/width: min\(100%, 480px\)/);
 console.log('PASS: white responsive card, neutral three-stage list and requested supporting/warning copy.');
+
+assert.ok(source.includes('id="dmi-publish-brand-gradient"'));
+assert.ok(source.includes('var(--brand-primary, #ff365f)'));
+assert.ok(source.includes('var(--brand-secondary, #ad00ff)'));
+assert.match(css,/stroke: url\(#dmi-publish-brand-gradient\)/);
+assert.match(css,/var\(--brand-gradient-subtle/);
