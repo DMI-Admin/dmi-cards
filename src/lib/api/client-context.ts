@@ -74,13 +74,17 @@ export async function requireApiClient(request: Request): Promise<ApiClientConte
     );
   }
 
-  const { data: profile, error: profileError } = await supabase
+  // Both owner-scoped reads depend on verified identity, not on each other.
+  const [{ data: profile, error: profileError }, billingState] = await Promise.all([
+    supabase
     .from("profiles")
     .select(
       "id, title, first_name, last_name, full_name, email, subscription_plan, plan"
     )
     .eq("id", user.id)
-    .maybeSingle();
+    .maybeSingle(),
+    resolveTrustedApiBillingState(supabase, user.id),
+  ]);
 
   if (profileError) {
     console.error("[DMI api] profile lookup failed", {
@@ -96,7 +100,6 @@ export async function requireApiClient(request: Request): Promise<ApiClientConte
   }
 
   const profileRow = profile as ApiProfileRow | null;
-  const billingState = await resolveTrustedApiBillingState(supabase, user.id);
 
   warnIfProfilePlanWouldGrantPaidAccess(profileRow, billingState.plan);
 

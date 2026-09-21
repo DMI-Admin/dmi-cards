@@ -120,3 +120,31 @@ assert.match(page, /Effective feature access:/); assert.match(page, /subscriptio
 const browserSource = fs.readFileSync('src/lib/entitlements/plan-resolver.ts', 'utf8');
 assert.doesNotMatch(browserSource, /\.from\(|subscription_plan|billing_status|resolvePlanFromProfile/);
 console.log('PASS: canonical server/Portal status matrix; legacy profile disagreement eliminated; no Stripe calls; provider mount/focus/navigation/error/sign-out/sign-in/reload; static checkout/cancel/resume/portal-return wiring; subscription label separation.');
+
+// Actual requireApiClient: verify identity first, then overlap independent reads.
+let verified=false, rejectAuth=false, profileFailure=false, billingFailure=false;
+let releaseProfile, releaseBilling; const started=new Set();
+const parallelDb={auth:{async getUser(){return {data:{user:rejectAuth?null:{id:'owner',email:null}},error:null};}},from(table){
+  assert.ok(['profiles','billing_subscriptions'].includes(table));
+  assert.equal(verified,true,'queries only after verified getUser');
+  const q={select(){return q;},eq(key,value){assert.equal(value,'owner');return q;},order(){return q;},
+    async maybeSingle(){started.add('profile');await new Promise(r=>releaseProfile=r);return {data:null,error:profileFailure?{code:'test'}:null};},
+    async limit(){started.add('billing');await new Promise(r=>releaseBilling=r);return {data:[],error:billingFailure?{code:'test'}:null};}};
+  return q;
+}};
+parallelDb.auth.getUser=async()=>{verified=!rejectAuth;return {data:{user:verified?{id:'owner',email:null}:null},error:null};};
+const parallelContext=load('src/lib/api/client-context.ts',{
+  'server-only':{},'@supabase/supabase-js':{createClient:()=>parallelDb},'@/lib/entitlements':ent,
+  '@/lib/api/responses':{ApiRouteError:Error},'@/lib/stripe/billing-state':billing,
+},{process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://local.invalid',NEXT_PUBLIC_SUPABASE_ANON_KEY:'test'}},console:{error(){},warn(){}}});
+const authorizedRequest=new Request('https://local.invalid',{headers:{Authorization:'Bearer test-only'}});
+for(const failure of ['none','profile','billing']){
+  started.clear();profileFailure=failure==='profile';billingFailure=failure==='billing';
+  const pending=parallelContext.requireApiClient(authorizedRequest);
+  for(let i=0;i<12;i++)await Promise.resolve();
+  assert.equal(started.size,2,'both reads start before either finishes');
+  releaseProfile();releaseBilling();
+  if(failure==='none')assert.equal((await pending).plan,'free');else await assert.rejects(pending);
+}
+started.clear();rejectAuth=true;await assert.rejects(parallelContext.requireApiClient(authorizedRequest));assert.equal(started.size,0);
+console.log('PASS: real context verifies Auth before concurrent profile/billing; either read failure rejects; canonical Free fallback preserved.');

@@ -45,10 +45,19 @@ const template = { id: templateId, name: 'Test', access_level: 'paid', layout_ty
 let tables = {}, rpcCalls = [], rpcHandler, uploadFails = false, downloadCorrupt = false;
 const objects = new Map();
 const db = { from(table) {
-  let filters = [], inserted;
-  const q = { select() { return q; }, eq(key, value) { filters.push(r => r[key] === value); return q; }, or() { filters.push(r => r.status === 'published' || r.is_published === true); return q; },
+  let filters = [], inserted, selection;
+  const q = { select(value) { selection=value; return q; }, eq(key, value) { filters.push(r => r[key] === value); return q; }, or() { filters.push(r => r.status === 'published' || r.is_published === true); return q; },
     insert(data) { inserted = data; return q; }, async single() { const row = { ...inserted, id: randomUUID(), state: 'pending', expires_at: new Date(Date.now()+86400000).toISOString() }; (tables[table] ||= []).push(row); return { data: row }; },
-    async maybeSingle() { return { data: (tables[table] || []).find(r => filters.every(f => f(r))) || null }; } }; return q;
+    async maybeSingle() {
+      let row=(tables[table] || []).find(r => filters.every(f => f(r))) || null;
+      if(row && table==='card_media_assets' && selection?.includes('session:')) {
+        assert.ok(selection.includes('card_media_assets_session_id_fkey'));
+        assert.ok(selection.includes('card_media_sessions_card_id_fkey'));
+        const session=tables.card_media_sessions.find(s=>s.id===row.session_id);
+        row={...row,session:session?{...session,card:tables.cards.find(c=>c.id===session.card_id)||null}:null};
+      }
+      return {data:row};
+    } }; return q;
   }, async rpc(name,args) { rpcCalls.push({ name, args: json(args) }); return rpcHandler(name,args); },
   storage: { from(bucket) { assert.equal(bucket,'card-media'); return { async upload(path, bytes, options) { assert.equal(options.upsert,false); if (uploadFails) return { error: { statusCode: '503' } }; if (objects.has(path)) return { error: { statusCode: '409' } }; objects.set(path,new Blob([bytes], { type: options.contentType })); return {}; }, async download(path) { return { data: downloadCorrupt ? new Blob(['bad']) : objects.get(path), error: objects.has(path) ? null : {} }; } }; } } };
 const overrides = {
@@ -168,6 +177,38 @@ tables.card_media_assets=[{id:assetId,session_id:sessionId,kind:'profile',state:
 const privateRoute=load('src/app/api/client/media/[assetId]/route.ts'), publicRoute=load('src/app/api/public/cards/[slug]/media/[kind]/route.ts');
 const privateGet=()=>privateRoute.GET(request,{params:Promise.resolve({assetId})});const publicGet=()=>publicRoute.GET(request,{params:Promise.resolve({slug:cardId,kind:'profile'})});
 assert.equal((await privateGet()).status,200);assert.equal((await publicGet()).status,200);
+// Joined authorization must deny every invalid graph before Storage download.
+const privateBaseline=json(tables); const realFrom=db.from; const realStorage=db.storage.from;
+let privateReads=0, privateDownloads=0;
+db.from=function(...args){privateReads++;return realFrom.apply(this,args);};
+db.storage.from=function(...args){privateDownloads++;return realStorage.apply(this,args);};
+const joinedResponse=await privateGet();
+assert.equal(joinedResponse.status,200);assert.equal(privateReads,1);assert.equal(privateDownloads,1);
+for(const phase of ['auth','asset_lookup','storage_download','total']) assert.match(joinedResponse.headers.get('server-timing'),new RegExp(phase+';dur=\\d+'));
+const beforeInvalid=privateDownloads;
+assert.equal((await privateRoute.GET(request,{params:Promise.resolve({assetId:'invalid'})})).status,404);
+assert.equal(privateDownloads,beforeInvalid);
+for(const mutate of [
+ ()=>{identity={userId:other,plan:'pro'};},
+ ()=>{tables.cards[0].user_id=other;},
+ ()=>{tables.card_media_sessions[0].owner_user_id=other;},
+ ()=>{tables.card_media_assets[0].session_id=randomUUID();},
+ ()=>{tables.card_media_sessions[0].card_id=randomUUID();},
+ ()=>{tables.card_media_assets=[];},
+ ...['reserved','cleanup_pending','deleting','deleted'].map(state=>()=>{tables.card_media_assets[0].state=state;}),
+ ()=>{tables.card_media_sessions[0].state='expired';},
+ ()=>{tables.card_media_sessions[0].state='pending';tables.card_media_sessions[0].expires_at=new Date(0).toISOString();},
+ ()=>{tables.card_media_sessions[0].card_id=null;},
+ ()=>{tables.card_media_assets[0].kind='invalid';},
+]) {
+ tables=json(privateBaseline);identity={userId:owner,plan:'pro'};mutate();
+ const before=privateDownloads;assert.equal((await privateGet()).status,404);assert.equal(privateDownloads,before);
+}
+tables=json(privateBaseline);identity={userId:owner,plan:'pro'};
+tables.card_media_assets[0].state='ready';tables.card_media_sessions[0].state='pending';tables.card_media_sessions[0].card_id=null;
+assert.equal((await privateGet()).status,200,'ready new-card preview remains authorized');
+tables=json(privateBaseline);db.from=realFrom;db.storage.from=realStorage;
+console.log('PASS: one joined private authorization read; foreign owner/card/session, unavailable states and broken binding denied before Storage; new-card preview retained.');
 const timedPublic = await publicGet();
 for (const phase of ['card_lookup','template','asset_lookup','session_lookup','storage_download','total']) assert.match(timedPublic.headers.get('server-timing'),new RegExp(phase+';dur=\\d+'));
 assert.equal(timedPublic.headers.get('cache-control'),'private, no-store');
