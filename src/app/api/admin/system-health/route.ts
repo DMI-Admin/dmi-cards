@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import {
-  emailFromClerkUser,
   isAdminAllowlistConfigured,
   requireAdminAccess,
 } from "@/lib/admin-auth";
@@ -28,9 +27,7 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 export async function GET() {
-  const adminAccess = await requireAdminAccess(await auth(), async () =>
-    emailFromClerkUser(await currentUser())
-  );
+  const adminAccess = await requireAdminAccess(await auth());
 
   if (!adminAccess.authorized) {
     return NextResponse.json(

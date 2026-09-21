@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 
 import AdminSignIn from "@/components/AdminSignIn";
 import {
   adminUnauthorizedPath,
-  emailFromClerkUser,
   requireAdminAccess,
 } from "@/lib/admin-auth";
 
@@ -15,9 +14,7 @@ export default async function AdminPage() {
     return <AdminSignIn redirectUrl="/admin/dashboard" />;
   }
 
-  const adminAccess = await requireAdminAccess(adminAuth, async () =>
-    emailFromClerkUser(await currentUser())
-  );
+  const adminAccess = await requireAdminAccess(adminAuth);
 
   if (!adminAccess.authorized) {
     redirect(adminUnauthorizedPath);

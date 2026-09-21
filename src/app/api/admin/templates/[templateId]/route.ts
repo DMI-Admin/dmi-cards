@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import {
-  emailFromClerkUser,
   requireAdminAccess,
 } from "@/lib/admin-auth";
 import {
@@ -21,9 +20,7 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ templateId: string }> }
 ) {
-  const adminAccess = await requireAdminAccess(await auth(), async () =>
-    emailFromClerkUser(await currentUser())
-  );
+  const adminAccess = await requireAdminAccess(await auth());
 
   if (!adminAccess.authorized) {
     return NextResponse.json(
@@ -83,9 +80,7 @@ export async function DELETE(
   _request: Request,
   context: { params: Promise<{ templateId: string }> }
 ) {
-  const adminAccess = await requireAdminAccess(await auth(), async () =>
-    emailFromClerkUser(await currentUser())
-  );
+  const adminAccess = await requireAdminAccess(await auth());
 
   if (!adminAccess.authorized) {
     return NextResponse.json(
