@@ -50,6 +50,7 @@ import {
 } from "@/lib/templates";
 import { ClientAuthRequiredError, getCurrentUser } from "@/lib/client-auth";
 import { buildPublicCardUrl } from "@/lib/public-url";
+import { clientPublicCardNavigationUrl } from "@/lib/client-public-card-navigation";
 import { normalizeInternationalPhoneNumber } from "@/lib/phone-number";
 import { useClientPlan } from "@/lib/use-client-plan";
 import {
@@ -1424,11 +1425,11 @@ export default function ClientCardsPage() {
   }
 
   async function copyLink(card: ClientCard) {
-    await navigator.clipboard?.writeText(card.public_url);
+    await navigator.clipboard?.writeText(clientPublicCardNavigationUrl(card.slug, card.public_url));
   }
 
   function viewPublicPage(card: ClientCard) {
-    window.open(card.public_url, "_blank", "noopener,noreferrer");
+    window.open(clientPublicCardNavigationUrl(card.slug, card.public_url), "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -2195,7 +2196,7 @@ function PublishSuccessState({
             Public card URL
           </p>
           <span className="mt-1 block truncate text-sm font-medium text-white/80">
-            {card.public_url}
+            {clientPublicCardNavigationUrl(card.slug, card.public_url)}
           </span>
         </div>
 
