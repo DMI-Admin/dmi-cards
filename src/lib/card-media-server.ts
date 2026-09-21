@@ -1,3 +1,4 @@
+import type { MediaRequestTiming } from "@/lib/media-request-timing";
 import "server-only";
 import { createHash } from "node:crypto";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
@@ -13,26 +14,32 @@ export async function cardEditSnapshot(owner: string, cardId: string, database =
   if (!data) throw new ApiRouteError(404, "NOT_FOUND", "Card not found.");
   return data;
 }
-export async function uploadCardMedia(request: Request, sessionId: string, kind: MediaKind, bytes: Buffer, verifiedClient?: Awaited<ReturnType<typeof requireApiClient>>) {
-  const prepared = await prepareCardMediaAsset(request, sessionId, kind, bytes, verifiedClient);
+export async function uploadCardMedia(request: Request, sessionId: string, kind: MediaKind, bytes: Buffer, verifiedClient?: Awaited<ReturnType<typeof requireApiClient>>, timing?: MediaRequestTiming) {
+  const prepared = await prepareCardMediaAsset(request, sessionId, kind, bytes, verifiedClient, timing);
   const database = createSupabaseAdminClient();
   const path = prepared.reservation.object_path as string;
   const assetId = prepared.reservation.asset_id as string;
   if (!mediaUuid.test(assetId) || typeof path !== "string") throw new ApiRouteError(503, "INTERNAL_ERROR", "Invalid media reservation.");
   const storage = database.storage.from(cardMediaBucket);
+  const endUpload = timing?.start("storage_upload");
   const uploaded = await storage.upload(path, prepared.bytes, { contentType: prepared.contentType, upsert: false });
+  endUpload?.();
   // A retry may find the same immutable object. Verify bytes even on duplicate error.
   if (uploaded.error && !["409", "400"].includes(String(uploaded.error.statusCode))) {
     throw new ApiRouteError(503, "INTERNAL_ERROR", "Image upload failed. Your existing image is unchanged; retry save.");
   }
+  const endVerification = timing?.start("verification");
   const verified = await storage.download(path);
   if (verified.error || !verified.data || verified.data.size !== prepared.bytes.length || verified.data.type.split(";")[0] !== prepared.contentType
     || createHash("sha256").update(Buffer.from(await verified.data.arrayBuffer())).digest("hex") !== prepared.sha256) {
     throw new ApiRouteError(503, "INTERNAL_ERROR", "Uploaded image verification failed. Retry save.");
   }
+  endVerification?.();
+  const endReady = timing?.start("ready");
   const { error } = await database.rpc("mark_card_media_ready", {
     p_owner: prepared.ownerId, p_session: sessionId, p_asset: assetId,
   });
+  endReady?.();
   if (error) throw new ApiRouteError(409, "CONFLICT", "Media session expired or changed. The uploaded asset remains tracked for cleanup.");
   return { assetId, reference: `card-media:${assetId}` };
 }

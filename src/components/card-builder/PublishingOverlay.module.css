@@ -1,0 +1,8 @@
+.backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; background: rgb(5 7 19 / 72%); backdrop-filter: blur(8px); color: white; text-align: center; }
+.mark { width: 144px; height: 144px; margin: 0 auto 24px; overflow: visible; }
+.outline { stroke: #c7a1e6; stroke-width: 6; opacity: .22; }
+.trace { stroke: #e4bcff; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 24 76; animation: trace 1.8s linear infinite; }
+.heading { font-size: 24px; font-weight: 600; margin: 0 0 12px; }
+.support { font-size: 14px; color: rgb(255 255 255 / 70%); margin: 0; }
+@keyframes trace { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .trace { animation: none; stroke-dasharray: none; opacity: .8; } }

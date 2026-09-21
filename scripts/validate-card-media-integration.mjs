@@ -106,7 +106,10 @@ identity=null;await assert.rejects(server.uploadCardMedia(request,sessionId,'pro
 identity={userId:owner,plan:'free'};
 const uploadRoute=load('src/app/api/client/media/upload/route.ts');
 const multipart=new FormData();multipart.set('sessionId',sessionId);multipart.set('kind','profile');multipart.set('file',new Blob([png],{type:'image/png'}),'wide.png');
-assert.equal((await uploadRoute.POST(new Request('http://local.invalid/upload',{method:'POST',body:multipart}))).status,200);
+const timedUpload=await uploadRoute.POST(new Request('http://local.invalid/upload',{method:'POST',body:multipart}));
+assert.equal(timedUpload.status,200);
+for(const phase of ['auth','template','normalization','reservation','storage_upload','verification','ready','total']) assert.match(timedUpload.headers.get('server-timing'),new RegExp(phase+';dur=\\d+'));
+assert.ok(!timedUpload.headers.get('server-timing').includes(owner));
 const oversized=Buffer.alloc(2097152+20000);
 assert.equal((await uploadRoute.POST(new Request('http://local.invalid/upload',{method:'POST',body:oversized}))).status,400);
 const newSession=await staging.beginCardMediaSession(request,templateId);
@@ -153,6 +156,28 @@ tables.card_media_assets=[{id:assetId,session_id:sessionId,kind:'profile',state:
 const privateRoute=load('src/app/api/client/media/[assetId]/route.ts'), publicRoute=load('src/app/api/public/cards/[slug]/media/[kind]/route.ts');
 const privateGet=()=>privateRoute.GET(request,{params:Promise.resolve({assetId})});const publicGet=()=>publicRoute.GET(request,{params:Promise.resolve({slug:cardId,kind:'profile'})});
 assert.equal((await privateGet()).status,200);assert.equal((await publicGet()).status,200);
+const timedPublic = await publicGet();
+for (const phase of ['card_lookup','template','asset_lookup','session_lookup','storage_download','total']) assert.match(timedPublic.headers.get('server-timing'),new RegExp(phase+';dur=\\d+'));
+assert.equal(timedPublic.headers.get('cache-control'),'private, no-store');
+assert.ok(!timedPublic.headers.get('server-timing').includes(owner));
+// Prove the real route starts both independent reads before either resolves.
+const originalFrom = db.from;
+const startedReads = new Set(); let releaseReads;
+const readsGate = new Promise(resolve => { releaseReads = resolve; });
+db.from = function(table) {
+  const q = originalFrom.call(this,table), read = q.maybeSingle;
+  q.maybeSingle = async () => {
+    if (['templates','card_media_assets'].includes(table)) { startedReads.add(table); await readsGate; }
+    return read();
+  };
+  return q;
+};
+const pendingPublic = publicGet();
+for(let i=0;i<30;i++) await Promise.resolve();
+assert.equal(startedReads.size,2,'template and exact referenced asset reads overlap');
+releaseReads(); assert.equal((await pendingPublic).status,200); db.from=originalFrom;
+console.log('PASS: real public delivery overlaps independent checks; phase-only Server-Timing; no-store preserved.');
+
 identity={userId:other,plan:'pro'};assert.equal((await privateGet()).status,404);identity=null;assert.equal((await privateGet()).status,401);
 for(const [key,value] of [['field_visibility',{profile_image_url:false}],['hidden_fields',['profile_image_url']],['user_id',other]]) {const old=tables.cards[0][key];tables.cards[0][key]=value;assert.equal((await publicGet()).status,404);tables.cards[0][key]=old;}
 tables.cards[0].status='draft';tables.cards[0].is_published=false;assert.equal((await publicGet()).status,404);tables.cards[0].is_published=true;assert.equal((await publicGet()).status,200,'preserve OR publication contract');

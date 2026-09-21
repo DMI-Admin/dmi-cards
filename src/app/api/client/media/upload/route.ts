@@ -1,11 +1,13 @@
+import { MediaRequestTiming } from "@/lib/media-request-timing";
 import { requireApiClient } from "@/lib/api/client-context";
 import { uploadCardMedia } from "@/lib/card-media-server";
 import { mediaFields, type MediaKind } from "@/lib/card-media";
 import { ApiRouteError, apiErrorFromUnknown, apiSuccess } from "@/lib/api/responses";
 export const runtime = "nodejs";
 export async function POST(request: Request) {
+  const timing = new MediaRequestTiming();
   try {
-    const client = await requireApiClient(request);
+    const client = await timing.measure("auth", () => requireApiClient(request));
     // Bound the streamed multipart body before parsing or image decoding.
     const reader = request.body?.getReader();
     if (!reader) throw new ApiRouteError(400, "INVALID_REQUEST", "Image required.");
@@ -17,6 +19,6 @@ export async function POST(request: Request) {
     const form = await new Response(Buffer.concat(chunks), { headers: { "Content-Type": request.headers.get("content-type") || "" } }).formData();
     const file = form.get("file"); const sessionId = form.get("sessionId"); const kind = form.get("kind");
     if (!(file instanceof File) || typeof sessionId !== "string" || typeof kind !== "string" || !Object.hasOwn(mediaFields, kind)) throw new ApiRouteError(400, "INVALID_REQUEST", "Invalid image upload.");
-    return apiSuccess(await uploadCardMedia(request, sessionId, kind as MediaKind, Buffer.from(await file.arrayBuffer()), client));
-  } catch (error) { return apiErrorFromUnknown(error); }
+    return timing.response(apiSuccess(await uploadCardMedia(request, sessionId, kind as MediaKind, Buffer.from(await file.arrayBuffer()), client, timing)));
+  } catch (error) { return timing.response(apiErrorFromUnknown(error)); }
 }

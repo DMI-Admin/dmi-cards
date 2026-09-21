@@ -1,5 +1,7 @@
 "use client";
 
+import { startClientMediaTiming } from "@/lib/client-media-timing";
+import PublishingOverlay from "@/components/card-builder/PublishingOverlay";
 import { flushSync } from "react-dom";
 import { incompleteVisibleMedia } from "@/lib/client-media-visibility";
 import { loadEditableCard } from "@/lib/client-card-media";
@@ -9,6 +11,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useCallback,
   useState,
 } from "react";
 import type { User } from "@supabase/supabase-js";
@@ -462,6 +465,9 @@ export default function ClientCardsPage() {
     useState<PendingValidation | null>(null);
   const [databaseNotice, setDatabaseNotice] = useState("");
   const [templateError, setTemplateError] = useState("");
+  const publishLock = useRef(false);
+  const [publishing, setPublishing] = useState<"pending" | "finishing" | null>(null);
+  const finishPublishing = useCallback(() => { publishLock.current = false; setPublishing(null); }, []);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [loadingCards, setLoadingCards] = useState(true);
   const [refreshingCards, setRefreshingCards] = useState(false);
@@ -889,6 +895,7 @@ export default function ClientCardsPage() {
     step: BuilderStep,
     options: { skipValidation?: boolean } = {}
   ) {
+    if (publishLock.current) return;
     if (activeStep === 1 && step > 1 &&
         (!draftCard.first_name?.trim() || !draftCard.last_name?.trim())) {
       setNameValidationAttempted(true);
@@ -1163,10 +1170,18 @@ export default function ClientCardsPage() {
     status: CardStatus,
     options: { skipValidation?: boolean; cardOverride?: ClientCard } = {}
   ) {
+    if (publishLock.current) return;
     if (!options.skipValidation && !validateEditorStepTransition(undefined, status)) {
       return;
     }
 
+    if (status === "published") {
+      publishLock.current = true;
+      setPublishing("pending");
+    }
+    let publishCompleted = false;
+    const endPublish = startClientMediaTiming("publish");
+    try {
     const cardToSave = normalizeCardPhoneFields(options.cardOverride || draftCard);
     setSaveError("");
     setSaveMessage("");
@@ -1182,7 +1197,6 @@ export default function ClientCardsPage() {
       return;
     }
 
-    try {
       const selectedTemplate = templateForCard(
         cardToSave,
         adminTemplates,
@@ -1230,6 +1244,7 @@ export default function ClientCardsPage() {
         return;
       }
 
+      const endReconciliation = startClientMediaTiming("reconciliation");
       setCards((currentCards) => {
         const existing = currentCards.some((card) => card.id === draftCard.id);
         const nextCards = existing
@@ -1250,9 +1265,12 @@ export default function ClientCardsPage() {
       );
       if (status === "published") {
         setPublishedSuccessCard(savedCard);
+        publishCompleted = true;
+        setPublishing("finishing");
       } else {
         setShowBuilder(false);
       }
+      endReconciliation();
     } catch (error) {
       console.error("Client card save failed", error);
       setSaveStatus("failed");
@@ -1261,6 +1279,9 @@ export default function ClientCardsPage() {
           ? error.message
           : "Failed to save card. Please try again."
       );
+    } finally {
+      endPublish();
+      if (!publishCompleted) finishPublishing();
     }
   }
 
@@ -1433,6 +1454,8 @@ export default function ClientCardsPage() {
   }
 
   return (
+    <>
+    <div inert={publishing !== null} aria-busy={publishing !== null} style={{ display: "contents" }}>
     <ClientPortalPage>
         <ClientPortalHeader
           title="My Cards"
@@ -1505,7 +1528,7 @@ export default function ClientCardsPage() {
 
             {showBuilder && (
               <EditorModal
-                onClose={() => setShowBuilder(false)}
+                onClose={() => { if (!publishLock.current) setShowBuilder(false); }}
                 actionBar={
                   <EditorStepNavigation
                     activeStep={activeStep}
@@ -1618,6 +1641,9 @@ export default function ClientCardsPage() {
           </>
         )}
     </ClientPortalPage>
+    </div>
+    {publishing && <PublishingOverlay finishing={publishing === "finishing"} onFinished={finishPublishing} />}
+    </>
   );
 }
 

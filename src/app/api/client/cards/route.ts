@@ -1,3 +1,4 @@
+import { MediaRequestTiming } from "@/lib/media-request-timing";
 import {
   ApiRouteError,
   apiErrorFromUnknown,
@@ -24,8 +25,9 @@ type CardSaveBody = {
 };
 
 export async function POST(request: Request) {
+  const timing = new MediaRequestTiming();
   try {
-    const client = await requireApiClient(request);
+    const client = await timing.measure("auth", () => requireApiClient(request));
     const body = (await request.json().catch(() => null)) as CardSaveBody | null;
     const card = body?.card;
     const mode = body?.mode;
@@ -39,16 +41,16 @@ export async function POST(request: Request) {
     }
 
     const supabaseAdmin = createSupabaseAdminClient();
-    const template = await loadSelectableTemplate(
+    const template = await timing.measure("template", () => loadSelectableTemplate(
       supabaseAdmin,
       card.template_id,
       client.plan
-    );
+    ));
 
     if (client.plan === "free" || client.plan === "pro") {
       const data = await writeValidatedClientCard({ database: supabaseAdmin, card, template, media: body?.media as MediaSave,
-        userId: client.userId, mode, plan: client.plan });
-      return apiSuccess({ card: data });
+        userId: client.userId, mode, plan: client.plan, timing });
+      return timing.response(apiSuccess({ card: data }));
     }
     // Enterprise behavior remains outside this Free/Pro transition.
     const { data, error } = await saveClientCardRecord({
@@ -70,9 +72,9 @@ export async function POST(request: Request) {
       );
     }
 
-    return apiSuccess({ card: data });
+    return timing.response(apiSuccess({ card: data }));
   } catch (error) {
-    return apiErrorFromUnknown(error);
+    return timing.response(apiErrorFromUnknown(error));
   }
 }
 

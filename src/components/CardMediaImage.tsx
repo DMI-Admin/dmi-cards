@@ -26,7 +26,10 @@ export default function CardMediaImage({ src, alt, ...props }: ImgHTMLAttributes
   }, [asset, raw]);
   const resolved = asset ? (preview?.asset === asset ? preview.url : "") : resolveCardMedia(raw);
   // eslint-disable-next-line @next/next/no-img-element
-  return <img {...props} alt={alt || ""} src={resolved || undefined}
+  return <img {...props}
+    loading={raw.startsWith("/api/public/cards/") ? "eager" : props.loading}
+    fetchPriority={raw.startsWith("/api/public/cards/") ? "high" : props.fetchPriority}
+    alt={alt || ""} src={resolved || undefined}
     data-media-unavailable={failedSource === raw || !resolved ? true : undefined}
     style={failedSource === raw || !resolved ? { ...props.style, display: "none" } : props.style}
     onError={(event) => { setFailedSource(raw); props.onError?.(event); }} />;

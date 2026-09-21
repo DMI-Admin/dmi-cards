@@ -1,3 +1,4 @@
+import { startClientMediaTiming } from "@/lib/client-media-timing";
 import { editableMediaValue, plannedMediaOperation } from "@/lib/client-media-intent";
 import { md } from "node-forge";
 import { supabase } from "@/lib/supabase";
@@ -9,13 +10,18 @@ type Pending = { hash: string; sessionId: string; revision: string | null; inten
 const snapshots = new Map<string, Snapshot>();
 const inFlight = new Set<string>();
 export async function clientMediaRequest(path: string, init?: RequestInit) {
+  const endRequest = startClientMediaTiming(path === "/api/client/media/sessions" ? "session" : path === "/api/client/cards" ? "save_response" : "request");
+  try {
+  const endAuth = startClientMediaTiming("auth");
   const { data: { session } } = await supabase.auth.getSession();
+  endAuth();
   if (!session?.access_token) throw new Error("Please sign in again.");
   const headers = new Headers(init?.headers); headers.set("Authorization", `Bearer ${session.access_token}`);
   const response = await fetch(path, { ...init, headers, cache: "no-store" });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body?.error?.message || "Request failed. Please retry.");
   return body.data;
+  } finally { endRequest(); }
 }
 function pendingKey(userId: string, id: string) { return `dmi-media-save:${userId}:${id}`; }
 function readPending(key: string): Pending | null {
@@ -83,7 +89,10 @@ export async function saveCardWithMedia(card: SharedClientCard, mode: "create" |
         if (!/^data:image\/(png|jpeg|webp);base64,/i.test(value) || mediaAssetId(value)) throw new Error("Choose an image file to replace this media; arbitrary URLs cannot be saved.");
         const image = await fetch(value).then(response => response.blob());
         const form = new FormData(); form.set("sessionId", pending.sessionId); form.set("kind", kind); form.set("file", image, `${kind}.image`);
-        const uploaded = await clientMediaRequest("/api/client/media/upload", { method: "POST", body: form });
+        const endUpload = startClientMediaTiming(`upload_${kind}`);
+        let uploaded;
+        try { uploaded = await clientMediaRequest("/api/client/media/upload", { method: "POST", body: form }); }
+        finally { endUpload(); }
         pending.intents[kind] = { operation: "replace", asset_id: uploaded.assetId };
       }
       storePending(key, pending);

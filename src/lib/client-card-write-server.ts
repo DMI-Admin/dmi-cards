@@ -1,3 +1,4 @@
+import type { MediaRequestTiming } from "@/lib/media-request-timing";
 import "server-only";
 import { ApiRouteError } from "@/lib/api/responses";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
@@ -8,10 +9,10 @@ import { mediaFields, mediaValue, mediaUuid, type MediaSave, type MediaKind } fr
 import { cardEditSnapshot } from "@/lib/card-media-server";
 import type { SharedTemplate } from "@/lib/templates";
 
-export async function writeValidatedClientCard({ database, card, userId, mode, plan, template, media }: {
+export async function writeValidatedClientCard({ database, card, userId, mode, plan, template, media, timing }: {
   database: ReturnType<typeof createSupabaseAdminClient>;
   card: SharedClientCard; userId: string; mode: "create" | "edit"; plan: "free" | "pro";
-  template: SharedTemplate; media: MediaSave;
+  template: SharedTemplate; media: MediaSave; timing?: MediaRequestTiming;
 }) {
   if (typeof card.id !== "string") throw new ApiRouteError(400, "INVALID_REQUEST", "Invalid card ID.");
   const editing = mode === "edit" && !card.id.startsWith("card-");
@@ -60,12 +61,14 @@ export async function writeValidatedClientCard({ database, card, userId, mode, p
   void _profile; void _logo;
   delete stripped.custom_fields.company_banner_url;
   const slug = editing ? undefined : await ensureUniqueCardSlug(buildCardSlugBase(card), null, database);
+  const endFinalization = timing?.start("finalization");
   const { data, error } = await database.rpc("finalize_client_card_media", {
     p_owner: userId, p_session: media.sessionId, p_operation: editing ? "edit" : "create",
     p_card_id: editing ? card.id : null, p_allowance: plan === "free" ? 1 : 3,
     p_validated_payload: editing ? stripped : { ...stripped, slug },
     p_asset_receipts: media.intents, p_expected_card_revision: media.revision,
   });
+  endFinalization?.();
   if (error) {
     if (error.message?.includes("CARD_ALLOWANCE_EXHAUSTED")) throw new ApiRouteError(403, "FORBIDDEN", "Your card allowance is exhausted.");
     if (error.message?.includes("CARD_REVISION_CONFLICT")) throw new ApiRouteError(409, "CONFLICT", "This card changed since you opened it. Reopen the editor before making a new save.");
@@ -75,6 +78,8 @@ export async function writeValidatedClientCard({ database, card, userId, mode, p
   if (!data || data.card_missing) throw new ApiRouteError(404, "NOT_FOUND", "The saved card no longer exists.");
   // A fresh owned snapshot is the baseline for a SUBSEQUENT logical edit, not
   // a replacement for the opening revision used by this save/retry.
+  const endSnapshot = timing?.start("snapshot");
   const saved = await cardEditSnapshot(userId, data.card_id, database);
+  endSnapshot?.();
   return { ...saved.card, edit_revision: saved.revision };
 }
