@@ -48,3 +48,13 @@ const css=fs.readFileSync('src/components/card-builder/PublishingOverlay.module.
 assert.match(css,/stroke-dashoffset/);assert.match(css,/1\.8s linear infinite/);assert.match(css,/prefers-reduced-motion: reduce[^}]*animation: none/s);
 const svg=fs.readFileSync('public/devmaster-publishing-outline.svg','utf8');assert.equal((svg.match(/<path /g)||[]).length,2);assert.ok(svg.length<2000);assert.ok(!/<image|data:|href=/.test(svg));assert.match(svg,/viewBox="0 0 600 600"/);
 console.log('PASS: actual save handler pending/double-submit/navigation/success/failure; inert close guard; cycle boundary and reduced-motion completion; two lightweight raster-free vector paths.');
+
+const cardTree=render(false).props.children;
+const stages=cardTree.props.children.find(n=>n?.type==='ul');
+assert.equal(stages.props['aria-label'],'Publishing stages');
+assert.deepEqual(Array.from(stages.props.children,n=>n.props.children),['Uploading media','Saving changes','Finalising']);
+for(const stage of stages.props.children) assert.equal(stage.props['aria-current'],undefined,'stages do not pretend measured progress');
+assert.ok(cardTree.props.children.some(n=>n?.props?.children==='Saving your latest changes and media.'));
+assert.ok(cardTree.props.children.some(n=>n?.props?.children==='Please don’t close this window or navigate away.'));
+assert.match(css,/background: #fff/);assert.match(css,/width: min\(100%, 480px\)/);
+console.log('PASS: white responsive card, neutral three-stage list and requested supporting/warning copy.');

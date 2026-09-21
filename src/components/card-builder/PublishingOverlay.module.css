@@ -1,8 +1,13 @@
-.backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; background: rgb(5 7 19 / 72%); backdrop-filter: blur(8px); color: white; text-align: center; }
-.mark { width: 144px; height: 144px; margin: 0 auto 24px; overflow: visible; }
-.outline { stroke: #c7a1e6; stroke-width: 6; opacity: .22; }
-.trace { stroke: #e4bcff; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 24 76; animation: trace 1.8s linear infinite; }
+.backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; overflow-y: auto; background: rgb(5 7 19 / 72%); backdrop-filter: blur(8px); color: #182033; text-align: center; }
+.card { box-sizing: border-box; width: min(100%, 480px); min-width: 0; padding: clamp(28px, 6vw, 44px); border: 1px solid #eceaf1; border-radius: 28px; background: #fff; box-shadow: 0 24px 80px rgb(0 0 0 / 24%), 0 4px 16px rgb(0 0 0 / 8%); }
+.mark { display: block; width: 144px; height: 144px; margin: 0 auto 24px; overflow: visible; }
+.outline { stroke: #873cc0; stroke-width: 6; opacity: .22; }
+.trace { stroke: #8b20ca; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 24 76; animation: trace 1.8s linear infinite; }
 .heading { font-size: 24px; font-weight: 600; margin: 0 0 12px; }
-.support { font-size: 14px; color: rgb(255 255 255 / 70%); margin: 0; }
+.support { font-size: 14px; color: #667085; line-height: 1.6; margin: 0; }
+.stages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; list-style: none; margin: 28px 0 20px; padding: 16px 10px; border: 1px solid #eeedf2; border-radius: 16px; background: #f7f7fa; color: #667085; font-size: 12px; line-height: 1.5; }
+.stages li { min-width: 0; overflow-wrap: break-word; }
+.notice { margin: 0; color: #667085; font-size: 12px; line-height: 1.6; }
+@media (max-width: 360px) { .stages { grid-template-columns: 1fr; gap: 10px; } }
 @keyframes trace { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) { .trace { animation: none; stroke-dasharray: none; opacity: .8; } }

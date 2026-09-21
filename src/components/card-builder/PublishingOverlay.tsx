@@ -32,14 +32,20 @@ export default function PublishingOverlay({ finishing, onFinished }: {
     <div ref={panel} className={styles.backdrop} role="dialog" aria-modal="true"
       aria-labelledby="publishing-heading" aria-describedby="publishing-support" tabIndex={-1}
       onKeyDown={event => { if (event.key === "Tab" || event.key === "Escape") event.preventDefault(); }}>
-      <div role="status" aria-live="polite">
+      <div className={styles.card} role="status" aria-live="polite">
         <svg className={styles.mark} viewBox="0 0 600 600" aria-hidden="true">
           <use href="/devmaster-publishing-outline.svg#devmaster-mark" className={styles.outline} />
           <use href="/devmaster-publishing-outline.svg#devmaster-mark" className={styles.trace}
             onAnimationIteration={() => { if (finishing) onFinished(); }} />
         </svg>
         <h2 id="publishing-heading" className={styles.heading}>Publishing your card…</h2>
-        <p id="publishing-support" className={styles.support}>Saving your latest changes and media</p>
+        <p id="publishing-support" className={styles.support}>Saving your latest changes and media.</p>
+        <ul className={styles.stages} aria-label="Publishing stages">
+          <li>Uploading media</li>
+          <li>Saving changes</li>
+          <li>Finalising</li>
+        </ul>
+        <p className={styles.notice}>Please don’t close this window or navigate away.</p>
       </div>
     </div>
   );
