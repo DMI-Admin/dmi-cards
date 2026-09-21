@@ -7,7 +7,7 @@ function load(path, deps) {
   const exports = {};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(path, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
-  }).outputText, { URL, process: { env: diagnosticEnvironment }, exports, require(name) { if (["@/lib/card-typography", "@/lib/card-section-label", "@/lib/client-media-intent", "@/lib/card-media"].includes(name)) return load(name.replace("@/", "src/") + ".ts", {}); assert.ok(name in deps, name); return deps[name]; } });
+  }).outputText, { URL, process: { env: diagnosticEnvironment }, exports, require(name) { if (["@/lib/card-typography", "@/lib/card-section-label", "@/lib/client-media-intent", "@/lib/card-media", "@/lib/client-media-request"].includes(name)) return load(name.replace("@/", "src/") + ".ts", {}); assert.ok(name in deps, name); return deps[name]; } });
   return exports;
 }
 class ApiRouteError extends Error { constructor(status, code, message) { super(message); this.status = status; } }

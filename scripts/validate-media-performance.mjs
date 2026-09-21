@@ -40,3 +40,40 @@ const privateHtml=renderToString(React.createElement(Image,{src:'card-media:2222
 assert.ok(!privateHtml.includes('/api/public/cards/'));assert.ok(!privateHtml.includes('rel="preload"'));
 const empty=renderToString(React.createElement(Image,{src:'',alt:'Logo'}));assert.match(empty,/display:none/);
 console.log('PASS: timing values only, bounded client entries, real public SSR img/preload before hydration, private path unchanged and empty media hidden.');
+
+// Exercise the actual shared downloader: simultaneous renders share bytes, never
+// completed responses or authorization across users. No network/DB involved.
+const {createPrivateMediaLoader}=load('src/lib/client-media-request.ts');
+const ref='card-media:22222222-2222-4222-8222-222222222222';
+let token='owner-a', downloads=0; const releases=[]; const requests=[];
+const loader=createPrivateMediaLoader(async()=>token,async(path,options)=>{
+  downloads++; requests.push({path,options});
+  await new Promise(resolve=>releases.push(resolve));
+  return new Response('synthetic image bytes');
+});
+const tick=()=>new Promise(resolve=>setImmediate(resolve));
+const a=loader(ref), b=loader(ref), c=loader(ref);
+await tick();assert.equal(downloads,1,'three simultaneous instances share one GET');
+releases.shift()(); const blobs=await Promise.all([a,b,c]);
+assert.equal(blobs[0],blobs[1]);assert.equal(blobs[1],blobs[2]);
+assert.equal(requests[0].options.cache,'no-store');
+assert.equal(requests[0].options.headers.Authorization,'Bearer owner-a');
+const again=loader(ref);await tick();assert.equal(downloads,2,'later mount reauthorizes rather than caching');
+releases.shift()();await again;
+const firstOwner=loader(ref);await tick();token='owner-b';const secondOwner=loader(ref);
+await tick();assert.equal(downloads,4,'different authorization never shares request');
+releases.splice(0).forEach(resolve=>resolve());await Promise.all([firstOwner,secondOwner]);
+token=null;await assert.rejects(loader(ref));assert.equal(downloads,4,'no session means no GET');
+let failures=0;
+const failing=createPrivateMediaLoader(async()=> 'owner',async()=>{failures++;return new Response('',{status:404});});
+await assert.rejects(failing(ref));await assert.rejects(failing(ref));assert.equal(failures,2,'failures never poison retries');
+const {resolveCardMedia}=load('src/lib/card-media.ts');
+for(const kind of ['profile','logo','banner']){
+  const context={id:'11111111-1111-4111-8111-111111111111',kind};
+  const original=resolveCardMedia(ref,context);
+  assert.equal(original,resolveCardMedia(ref,context),'unchanged asset has stable URL');
+  assert.notEqual(original,resolveCardMedia('card-media:33333333-3333-4333-8333-333333333333',context),'replacement changes URL');
+  const rendered=renderToString(React.createElement(Image,{src:original,alt:kind}));
+  assert.ok(rendered.includes(`src="${original}"`),'all public media have SSR src');
+}
+console.log('PASS: private in-flight deduplication, authorization isolation, no completed cache, failed retry, stable/versioned URLs and all media SSR.');
