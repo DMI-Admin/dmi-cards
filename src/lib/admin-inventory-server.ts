@@ -3,8 +3,8 @@ import "server-only";
 
 
 import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
-import { emailFromClerkUser, requireAdminAccess } from "@/lib/admin-auth";
+import { auth } from "@clerk/nextjs/server";
+import { requireAdminAccess } from "@/lib/admin-auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
 // Fixed response contracts: never return account/auth/provider internals.
@@ -32,9 +32,7 @@ type Inventory = keyof typeof inventoryFields;
 
 // Only route-owned constants choose tables. No arbitrary table/column/filter API.
 export async function readAdminInventory(request: Request, inventory: Inventory) {
-  const access = await requireAdminAccess(await auth(), async () =>
-    emailFromClerkUser(await currentUser())
-  );
+  const access = await requireAdminAccess(await auth());
   const headers = { "Cache-Control": "private, no-store" };
   if (!access.authorized) {
     return NextResponse.json({ error: access.error }, { status: access.status, headers });

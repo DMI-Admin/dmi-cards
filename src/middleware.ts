@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { clerkClient, clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import {
   adminForbiddenMessage,
   adminRoutePatterns,
   adminUnauthorizedPath,
-  emailFromClerkUser,
   requireAdminAccess,
 } from "@/lib/admin-auth";
 
@@ -35,11 +34,7 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(new URL("/admin", req.url));
   }
 
-  // Use the same fallback as the Admin APIs without calling the App Router's
-  // currentUser()/auth() helpers inside middleware. ID/claim matches skip it.
-  const adminAccess = await requireAdminAccess(adminAuth, async () =>
-    emailFromClerkUser(await (await clerkClient()).users.getUser(adminAuth.userId))
-  );
+  const adminAccess = await requireAdminAccess(adminAuth);
 
   if (!adminAccess.authorized) {
     if (isAdminApiRoute(req)) {

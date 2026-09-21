@@ -8,7 +8,7 @@ function load(file, deps, globals = {}) {
   const exports = {};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(file, 'utf8'), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
-  }).outputText, { exports, Error, console, process: { env: { DMI_ADMIN_CLERK_USER_ID: 'admin' } },
+  }).outputText, { exports, Error, console, process: { env: { DMI_ADMIN_CLERK_USER_IDS: 'admin' } },
     require: name => { assert.ok(name in deps, name); return deps[name]; }, ...globals });
   return exports;
 }

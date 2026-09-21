@@ -1,8 +1,8 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
-import { emailFromClerkUser, requireAdminAccess } from "@/lib/admin-auth";
+import { auth } from "@clerk/nextjs/server";
+import { requireAdminAccess } from "@/lib/admin-auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { cardSeedFields, type CardCreationResult } from "@/lib/admin-card-mutations";
 
@@ -97,7 +97,7 @@ async function bulk(db: DB, body: Body) {
 }
 
 export async function adminCardMutation(request: Request, operation: "create" | "publish" | "delete", cardId?: string) {
-  const access = await requireAdminAccess(await auth(), async () => emailFromClerkUser(await currentUser()));
+  const access = await requireAdminAccess(await auth());
   if (!access.authorized) return reply({ error: access.error, code: "AUTHORIZATION_ERROR" }, access.status);
   try {
     let body: Body = {};
