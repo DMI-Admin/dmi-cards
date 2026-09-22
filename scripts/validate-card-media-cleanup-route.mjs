@@ -14,7 +14,7 @@ async function test({env={},auth='Bearer '+secret,query='',result={},throws=fals
  console:{info:s=>logs.push(s),error:s=>logs.push(s)},
  require(name){
   if(name==='node:crypto')return {timingSafeEqual};
-  if(name==='@supabase/supabase-js')return {createClient(){calls.push('client');return {};}};
+  if(name==='@supabase/supabase-js')return {createClient(url,key){assert.equal(url,'https://gdpwqivdsjymivleruac.supabase.co');assert.equal(key,'mock-server-key');calls.push('client');return {};}};
   assert.equal(name,'@/lib/card-media-cleanup-server');return {async runCardMediaCleanup(db,limit){assert.equal(limit,5);calls.push('worker');if(throws)throw Error('sensitive failure');return {candidates:5,claimed:5,deleted:5,alreadyAbsent:0,skippedReferenced:0,failed:0,retried:0,staleInvalid:0,deferred:0,sessionsPruned:0,...result};}};
  }});
  const response=await exports.GET(new Request('https://example.test/api/internal/card-media-cleanup'+query,{headers:{authorization:auth}}));
@@ -35,3 +35,13 @@ for(const options of [{result:{failed:1}},{result:{staleInvalid:1}},{throws:true
 }
 assert.deepEqual(JSON.parse(fs.readFileSync('vercel.json','utf8')), {crons:[{path:'/api/internal/card-media-cleanup',schedule:'*/15 * * * *'}]}, 'Only the fixed reviewed schedule is allowed');
 console.log('PASS: fail-closed secret/Production target checks; fixed five; no caller controls; one invocation/no retry loop; safe structured logs; no-store; exact 15-minute cron configuration.');
+
+for(const url of ['https://gdpwqivdsjymivleruac.supabase.co','https://auth.dmicards.com']) {
+ const r=await test({env:{NEXT_PUBLIC_SUPABASE_URL:url}});assert.equal(r.status,200);assert.deepEqual(r.calls,['client','worker']);
+}
+for(const url of [undefined,'','not a URL','https://other.example.com','https://uohdkewufeivdpaljnng.supabase.co',
+ 'http://auth.dmicards.com','https://auth.dmicards.com.evil.example','https://auth.dmicards.com@evil.example',
+ 'https://auth.dmicards.com/path','https://auth.dmicards.com?target=other',' https://auth.dmicards.com']) {
+ const r=await test({env:{NEXT_PUBLIC_SUPABASE_URL:url}});assert.equal(r.status,503);assert.deepEqual(r.calls,[]);
+}
+console.log('PASS: only canonical Production and verified custom origin accepted; service client remains canonical; staging/arbitrary/malformed/missing URLs rejected before client creation.');
