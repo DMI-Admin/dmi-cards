@@ -22,13 +22,14 @@ export default function InitialCardsReadyBoundary({ children, resolved, expected
   // Latch during render so a subsequent refresh cannot re-conceal this page.
   if (ready && !revealed) setRevealed(true);
   return <PageCardReadiness.Provider value={report}>
-    <div className="relative min-h-[20rem]" aria-busy={!ready}>
+    <div className="relative min-h-[20rem]" aria-busy={!ready}
+      style={ready ? undefined : { height: "max(20rem, calc(100svh - 8rem))", overflow: "hidden", scrollbarGutter: "stable" }}>
       <div inert={!ready} aria-hidden={!ready || undefined} style={{ visibility: ready ? "visible" : "hidden", opacity: ready ? 1 : 0 }}>
         {children}
       </div>
       {!ready && <div role="status" aria-live="polite" className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[var(--dmi-bg)]">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/dmi-cards-logo.svg" alt="" width={160} height={64} className="h-16 w-40 object-contain motion-safe:animate-pulse" />
+        <img src="/dmi-cards-logo.svg" alt="" width={240} height={96} className="h-24 w-60 max-w-[80%] object-contain motion-safe:animate-pulse" />
         <span className="text-sm text-[var(--text-secondary)]">Loading your cards…</span>
       </div>}
     </div>
