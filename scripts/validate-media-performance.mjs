@@ -77,3 +77,16 @@ for(const kind of ['profile','logo','banner']){
   assert.ok(rendered.includes(`src="${original}"`),'all public media have SSR src');
 }
 console.log('PASS: private in-flight deduplication, authorization isolation, no completed cache, failed retry, stable/versioned URLs and all media SSR.');
+
+// The real boundary preserves SSR image/preload discovery while concealing card content.
+const Boundary=load('src/components/CardReadyBoundary.tsx').default;
+const gated=renderToString(React.createElement(Boundary,{hasMedia:true},React.createElement(Image,{src:url,alt:'Logo'})));
+assert.match(gated,/visibility:hidden/);
+assert.match(gated,/inert=""/);
+assert.match(gated,/aria-busy="true"/);
+assert.ok(gated.includes(`src="${url}"`));
+assert.match(gated,/rel="preload"/);
+const noMedia=renderToString(React.createElement(Boundary,{hasMedia:false},'Card text'));
+assert.match(noMedia,/visibility:visible/);
+assert.doesNotMatch(noMedia,/absolute inset-0/);
+console.log('PASS: actual readiness boundary SSR retains img/preload, conceals and locks real content; no-media SSR is immediately visible.');
