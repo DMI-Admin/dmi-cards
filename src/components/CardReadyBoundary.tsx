@@ -1,16 +1,20 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useContext, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { CardReadinessReporter } from "@/lib/page-card-readiness";
 import { watchCardImages } from "@/lib/card-media-readiness";
 
 /** The real layout determines sizing and starts requests; the overlay has no content semantics. */
 export default function CardReadyBoundary({ children, hasMedia }: { children: ReactNode; hasMedia: boolean }) {
+  const reportReady = useContext(CardReadinessReporter);
+  const reporter = useRef(reportReady);
+  useLayoutEffect(() => { reporter.current = reportReady; }, [reportReady]);
   const root = useRef<HTMLDivElement>(null);
   const watcher = useRef<ReturnType<typeof watchCardImages> | null>(null);
   const [ready, setReady] = useState(!hasMedia);
   useLayoutEffect(() => {
     if (!root.current) return;
-    watcher.current = watchCardImages(root.current, setReady);
+    watcher.current = watchCardImages(root.current, value => { setReady(value); reporter.current?.(value); });
     return () => { watcher.current?.(); watcher.current = null; };
   }, []);
   // Reconcile React replacements before paint; the observer also handles blob arrival.

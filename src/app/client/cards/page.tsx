@@ -1,5 +1,6 @@
 "use client";
 
+import InitialCardsReadyBoundary, { InventoryCardReadiness } from "@/components/InitialCardsReadyBoundary";
 import { startClientMediaTiming } from "@/lib/client-media-timing";
 import PublishingOverlay from "@/components/card-builder/PublishingOverlay";
 import { flushSync } from "react-dom";
@@ -1445,6 +1446,12 @@ export default function ClientCardsPage() {
     return true;
   }
 
+  const readinessGeneration = useMemo(() => ({ cards, adminTemplates, isPaid }), [cards, adminTemplates, isPaid]);
+  const expectedInitialCards = currentDefaultTemplate && !inventoryError && !planError
+    ? inventoryCardSlots(cards, isPaid).filter(slot => !slot.locked && slot.card).map(slot => slot.card!.id)
+    : [];
+  const initialInventoryResolved = Boolean(inventoryError || planError) || (!loadingCards && !planLoading);
+
   async function copyLink(card: ClientCard) {
     await navigator.clipboard?.writeText(clientPublicCardNavigationUrl(card.slug, card.public_url));
   }
@@ -1457,6 +1464,7 @@ export default function ClientCardsPage() {
     <>
     <div inert={publishing !== null} aria-busy={publishing !== null} style={{ display: "contents" }}>
     <ClientPortalPage>
+      <InitialCardsReadyBoundary resolved={initialInventoryResolved} expected={expectedInitialCards} generation={readinessGeneration}>
         <ClientPortalHeader
           title="My Cards"
           description="Manage your live digital card, public URL, template fields, and lead capture setup."
@@ -1471,11 +1479,7 @@ export default function ClientCardsPage() {
         )}
         {refreshingCards && <p role="status" className="sr-only">Refreshing cards…</p>}
 
-        {loadingCards ? (
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white/50">
-            Loading your templates and cards...
-          </div>
-        ) : !currentDefaultTemplate ? (
+        {loadingCards ? null : !currentDefaultTemplate ? (
           <NoTemplateState templates={visibleTemplates} />
         ) : (
           <>
@@ -1640,6 +1644,7 @@ export default function ClientCardsPage() {
             )}
           </>
         )}
+      </InitialCardsReadyBoundary>
     </ClientPortalPage>
     </div>
     {publishing && <PublishingOverlay finishing={publishing === "finishing"} onFinished={finishPublishing} />}
@@ -1773,6 +1778,26 @@ function EditorModal({
   );
 }
 
+function inventoryCardSlots(cards: ClientCard[], isPaid: boolean) {
+  const cardsBySlot = new Map<number, ClientCard>();
+  const unassignedCards = cards.filter((card) => {
+    if (card.card_slot === 1 || card.card_slot === 2 || card.card_slot === 3) {
+      cardsBySlot.set(card.card_slot, card);
+      return false;
+    }
+
+    return true;
+  });
+  const slots = Array.from({ length: 3 }, (_, index) => {
+    const slotNumber = (index + 1) as 1 | 2 | 3;
+    const card = cardsBySlot.get(slotNumber) || unassignedCards[index] || null;
+    const locked = !isPaid && index > 0;
+
+    return { index, slotNumber, card, locked };
+  });
+  return slots;
+}
+
 function CardList({
   cards,
   isPaid,
@@ -1798,22 +1823,7 @@ function CardList({
   onViewPublicPage: (card: ClientCard) => void;
   onDelete: (card: ClientCard) => Promise<boolean>;
 }) {
-  const cardsBySlot = new Map<number, ClientCard>();
-  const unassignedCards = cards.filter((card) => {
-    if (card.card_slot === 1 || card.card_slot === 2 || card.card_slot === 3) {
-      cardsBySlot.set(card.card_slot, card);
-      return false;
-    }
-
-    return true;
-  });
-  const slots = Array.from({ length: 3 }, (_, index) => {
-    const slotNumber = (index + 1) as 1 | 2 | 3;
-    const card = cardsBySlot.get(slotNumber) || unassignedCards[index] || null;
-    const locked = !isPaid && index > 0;
-
-    return { index, slotNumber, card, locked };
-  });
+  const slots = inventoryCardSlots(cards, isPaid);
 
   return (
     <section className="space-y-4">
@@ -1979,6 +1989,7 @@ function GalleryCardSlot({
                 aria-label={`Select ${card.card_name}`}
                 tabIndex={flipped ? -1 : 0}
               >
+                <InventoryCardReadiness id={card.id} unavailable={!previewTemplate}>
                 {previewTemplate ? (
                   <div className="flex h-full w-full justify-center overflow-hidden">
                     <div className="w-full origin-top">
@@ -1994,6 +2005,7 @@ function GalleryCardSlot({
                     Preview unavailable
                   </div>
                 )}
+                </InventoryCardReadiness>
               </div>
             </div>
 
