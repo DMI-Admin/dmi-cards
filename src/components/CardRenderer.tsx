@@ -1,5 +1,6 @@
 import { resolveCardMedia } from "@/lib/card-media";
 
+import CardReadyBoundary from "@/components/CardReadyBoundary";
 import CardMediaImage from "@/components/CardMediaImage";
 import { cardFontOverride } from "@/lib/card-typography";
 import { cardSectionLabel } from "@/lib/card-section-label";
@@ -592,11 +593,17 @@ export default function CardRenderer({
     ),
   }[layout] || null;
 
+  const hasMedia = Boolean(content && (
+    (content.props.requiresProfileImage && resolveCardMedia(cardData.profile_image_url)) ||
+    (content.props.requiresLogo && resolveCardMedia(cardData.company_logo_url)) ||
+    (content.props.requiresBanner && resolveCardMedia(cardData.company_banner_url))
+  ));
   if (isTemplateShelllessPaidLayout(layout)) {
-    return content;
+    return <CardReadyBoundary hasMedia={hasMedia}>{content}</CardReadyBoundary>;
   }
 
   return (
+    <CardReadyBoundary hasMedia={hasMedia}>
     <div
       className={`${shellClass} text-white shadow-2xl`}
       style={{
@@ -651,6 +658,7 @@ export default function CardRenderer({
 
       {template.access_level === "free" && <DmiFooter textColour={text} />}
     </div>
+    </CardReadyBoundary>
   );
 }
 

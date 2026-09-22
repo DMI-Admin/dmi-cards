@@ -178,6 +178,7 @@ const renderer = load('src/components/CardRenderer.tsx', {
   'react-icons/fa': new Proxy({}, { get: (_, k) => k }),
   '@/lib/card-actions': actions,
   '@/lib/card-action-routing': { resolveCardActionHref: () => null, resolveCardFieldHref: () => null, vCardDataHref: () => '', vCardFilename: () => '' },
+  '@/components/CardReadyBoundary': { default: props => props.children },
   '@/components/CardMediaImage': { default: props => ({ type: 'img', props }) },
   '@/lib/media-slots': load('src/lib/media-slots.ts', {}),
 });
@@ -207,9 +208,10 @@ for (const layout_type of ['classic_free', 'profile_free', 'modern_minimal', 'ex
   for (const mode of ['preview','public']) for (const value of ['',null,undefined,'invalid']) {
     const data = { ...card, action_config:{actions:[]}, profile_image_url:value, company_logo_url:value, company_banner_url:value };
     const tree = renderer.default({template:t,cardData:data,mode,showMediaPlaceholders:false});
-    assert.equal(tree.props.requiresProfileImage,false);
-    assert.equal(tree.props.requiresLogo,false);
-    assert.equal(Boolean(tree.props.requiresBanner),false);
+    assert.equal(tree.props.hasMedia,false);
+    assert.equal(tree.props.children.props.requiresProfileImage,false);
+    assert.equal(tree.props.children.props.requiresLogo,false);
+    assert.equal(Boolean(tree.props.children.props.requiresBanner),false);
     const nodes = flatten(tree);
     assert.equal(nodes.some(n => n?.type === 'img' || n?.type === 'UserRound'),false,layout_type+' missing media collapsed');
   }
@@ -292,7 +294,7 @@ console.log('PASS: actual Step 2 collection/modal/continue: Department+Bio+Profi
 // is independent of an earlier failure (no kind/card-level failure cache).
 let imageSlots=[], imageCursor=0;
 const imageComponent=load('src/components/CardMediaImage.tsx',{
-  react:{useState(initial){const i=imageCursor++;if(!(i in imageSlots))imageSlots[i]=initial;return [imageSlots[i],v=>{imageSlots[i]=v;}];},useEffect(){}},
+  react:{useState(initial){const i=imageCursor++;if(!(i in imageSlots))imageSlots[i]=initial;return [imageSlots[i],v=>{imageSlots[i]=v;}];},useEffect(){},useLayoutEffect(){},useRef(){return {current:null};}},
   'react/jsx-runtime':{jsx,jsxs:jsx},'@/lib/supabase':{supabase:{}}
 }).default;
 function imageRender(src){imageCursor=0;return imageComponent({src,alt:'Logo'});}
@@ -415,10 +417,10 @@ for(const mode of ['preview','public']) {
   for(const layout_type of ['modern_minimal','executive_paid']) {
     const target={...paidTemplate,layout_type,profile_image_allowed:true,logo_allowed:false,banner_allowed:false};
     const suppressed=renderer.default({template:target,cardData:stored,mode});
-    assert.equal(suppressed.props.requiresProfileImage,true);
-    assert.equal(suppressed.props.requiresLogo,false);assert.equal(Boolean(suppressed.props.requiresBanner),false);
+    assert.equal(suppressed.props.children.props.requiresProfileImage,true);
+    assert.equal(suppressed.props.children.props.requiresLogo,false);assert.equal(Boolean(suppressed.props.children.props.requiresBanner),false);
   }
   const restored=renderer.default({template:{...paidTemplate,layout_type:'modern_minimal',profile_image_allowed:true,logo_allowed:true,banner_allowed:true},cardData:stored,mode});
-  assert.equal(restored.props.requiresLogo,true);assert.equal(restored.props.requiresBanner,true);
+  assert.equal(restored.props.children.props.requiresLogo,true);assert.equal(restored.props.children.props.requiresBanner,true);
 }
 console.log('PASS: real preview/public renderer suppresses unsupported retained media and restores it on supporting templates.');
