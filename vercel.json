@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/internal/card-media-cleanup",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}
