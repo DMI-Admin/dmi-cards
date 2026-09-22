@@ -12,7 +12,11 @@ finish afterward. Service-role credentials remain server-side.
 
 Requires Production-only CRON_SECRET (random, at least 32 characters). Exact Bearer
 comparison uses timingSafeEqual; missing/incorrect secret fails before database access.
-Also requires VERCEL_ENV=production and exact approved Production Supabase URL.
+Also requires VERCEL_ENV=production and an exact match to one of the two verified
+Production URLs: https://auth.dmicards.com or
+https://gdpwqivdsjymivleruac.supabase.co. Every other value is rejected. The service
+client remains pinned to https://gdpwqivdsjymivleruac.supabase.co regardless of which
+allowed URL is configured.
 Existing Supabase server variables are reused. Clerk Admin allowlisting is not used
 for this machine endpoint; Clerk middleware currently permits non-Admin API routes.
 
@@ -52,3 +56,6 @@ Activation still requires explicit approval to commit/push and deploy. The endpo
 tests and cron configuration remain local until then. Production CRON_SECRET is
 provisioned separately as Sensitive/Production-only without storing it in source or
 local environment files. Adding the secret alone does not enable the schedule.
+
+The first deployed schedule was disabled after the custom-domain guard returned 503.
+This guard correction is local pending review; it does not re-enable the schedule.

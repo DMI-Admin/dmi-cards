@@ -21,7 +21,8 @@ export async function GET(request: Request) {
     return Response.json({ error: "Parameters are not supported" }, { status: 400, headers });
   }
   if (process.env.VERCEL_ENV !== "production"
-    || process.env.NEXT_PUBLIC_SUPABASE_URL !== productionOrigin
+    || (process.env.NEXT_PUBLIC_SUPABASE_URL !== productionOrigin
+      && process.env.NEXT_PUBLIC_SUPABASE_URL !== "https://auth.dmicards.com")
     || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return Response.json({ error: "Cleanup is not configured" }, { status: 503, headers });
   }
