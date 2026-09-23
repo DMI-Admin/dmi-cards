@@ -40,7 +40,8 @@ export default function Sidebar() {
     {
       title: "Management",
       items: [
-        { name: "Client Onboarding", href: "/clients", icon: UsersRound },
+        { name: "Individual Clients", href: "/clients/individual", icon: UsersRound },
+        { name: "Business Clients", href: "/clients/business", icon: UsersRound },
         { name: "Template Builder", href: "/templates", icon: FileText },
         { name: "Current Templates", href: "/templates/current", icon: ScrollText },
         { name: "Cards", href: "/cards", icon: CreditCard },

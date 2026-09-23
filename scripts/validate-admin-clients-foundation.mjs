@@ -76,7 +76,7 @@ for(const file of fs.readdirSync('src',{recursive:true}).filter(file=>/\.(ts|tsx
  const source=fs.readFileSync('src/'+file,'utf8');
  if(/^\s*["']use client["']/.test(source))assert.doesNotMatch(source,/\.from\(["'](?:clients|client_users)["']\)[\s\S]{0,200}\.(insert|update|delete|upsert)\(/,file);
 }
-const page=fs.readFileSync('src/app/clients/page.tsx','utf8');
+const page=fs.readFileSync('src/components/admin/AdminClientsPage.tsx','utf8');
 // Execute the actual page handlers with controlled Clerk/fetch promises.
 const parsedPage = ts.createSourceFile('page.tsx', page, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const handlers = {};
@@ -92,7 +92,7 @@ function statusHarness({confirmed=true, token=async()=> 'fresh-session-token', r
  const clientContract=load('src/lib/admin-client-contract.ts', {}, {fetch:async(path,options)=>{
   events.push('fetch'); requests.push({path,...plain(options)}); return response();
  }});
- const context={mutationPending:pending, window:{confirm:()=>{events.push('confirm');return confirmed;}},
+ const context={setMutationBusy:()=>{},mutationPending:pending, window:{confirm:()=>{events.push('confirm');return confirmed;}},
   getToken:async options=>{events.push('token');assert.deepEqual(plain(options),{skipCache:true});return token();},
   mutateAdminClient:clientContract.mutateAdminClient,alert:message=>errors.push(message),fetchClientData:()=>events.push('refresh'),Error};
  vm.createContext(context);
