@@ -6,12 +6,12 @@ import crypto from 'node:crypto';
 import ts from 'typescript';
 import { pathToFileURL } from 'node:url';
 import { loadStagingSchema } from './lib/admin-clients-staging-fixture.mjs';
-function load(file, deps = {}) {
+function load(file, deps = {}, globals = {}) {
   const exports = {};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(file, 'utf8'), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText, { exports, Error, console, URL, Request, Set, process: { env: { DMI_ADMIN_CLERK_USER_IDS: 'admin' } },
-    require: name => { assert.ok(name in deps, name); return deps[name]; } });
+    ...globals, require: name => { assert.ok(name in deps, name); return deps[name]; } });
   return exports;
 }
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -77,6 +77,61 @@ for(const file of fs.readdirSync('src',{recursive:true}).filter(file=>/\.(ts|tsx
  if(/^\s*["']use client["']/.test(source))assert.doesNotMatch(source,/\.from\(["'](?:clients|client_users)["']\)[\s\S]{0,200}\.(insert|update|delete|upsert)\(/,file);
 }
 const page=fs.readFileSync('src/app/clients/page.tsx','utf8');
+// Execute the actual page handlers with controlled Clerk/fetch promises.
+const parsedPage = ts.createSourceFile('page.tsx', page, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const handlers = {};
+function visit(node) {
+ if (ts.isFunctionDeclaration(node) && ['mutate','toggleClientStatus'].includes(node.name?.text)) handlers[node.name.text] = node.getText(parsedPage);
+ ts.forEachChild(node, visit);
+}
+visit(parsedPage);
+assert.match(page, /const \{ getToken \} = useAuth\(\)/);
+assert.equal(Object.keys(handlers).length, 2);
+function statusHarness({confirmed=true, token=async()=> 'fresh-session-token', response=async()=>({ok:true,json:async()=>({ok:true})})}={}) {
+ const events=[], requests=[], errors=[], pending={current:false};
+ const clientContract=load('src/lib/admin-client-contract.ts', {}, {fetch:async(path,options)=>{
+  events.push('fetch'); requests.push({path,...plain(options)}); return response();
+ }});
+ const context={mutationPending:pending, window:{confirm:()=>{events.push('confirm');return confirmed;}},
+  getToken:async options=>{events.push('token');assert.deepEqual(plain(options),{skipCache:true});return token();},
+  mutateAdminClient:clientContract.mutateAdminClient,alert:message=>errors.push(message),fetchClientData:()=>events.push('refresh'),Error};
+ vm.createContext(context);
+ vm.runInContext(ts.transpileModule(Object.values(handlers).join('\n'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText,context);
+ return {context,events,requests,errors,pending};
+}
+for (const [status,next] of [['active','suspended'],['suspended','active']]) {
+ const h=statusHarness();await h.context.toggleClientStatus({id:individual,status,full_name:'Test'});
+ assert.deepEqual(h.events,['confirm','token','fetch','refresh']);
+ assert.equal(h.requests.length,1);const req=h.requests[0];
+ assert.equal(req.path,`/api/admin/clients/${individual}/status`);assert.equal(req.method,'PATCH');
+ assert.deepEqual(JSON.parse(req.body),{status:next});assert.equal(req.credentials,'same-origin');
+ assert.equal(req.headers.Authorization,'Bearer fresh-session-token');assert.equal(h.pending.current,false);
+}
+const cancel=statusHarness({confirmed:false});await cancel.context.toggleClientStatus({id:individual,status:'active'});
+assert.deepEqual(cancel.events,['confirm']);assert.equal(cancel.requests.length,0);
+for(const token of [async()=>null,async()=>'',async()=> '  ',async()=>{throw new Error('refresh failed');}]){
+ const h=statusHarness({token});await h.context.toggleClientStatus({id:individual,status:'active'});
+ assert.equal(h.requests.length,0);assert.equal(h.errors.length,1);assert.equal(h.pending.current,false);
+}
+let releaseToken, releaseResponse;
+const duplicate=statusHarness({token:()=>new Promise(resolve=>{releaseToken=resolve;}),response:()=>new Promise(resolve=>{releaseResponse=resolve;})});
+const inFlight=duplicate.context.toggleClientStatus({id:individual,status:'active'});
+await duplicate.context.toggleClientStatus({id:individual,status:'active'});
+assert.deepEqual(duplicate.events,['confirm','token']);
+releaseToken('fresh-session-token');
+for(let i=0;i<10 && !releaseResponse;i++) await Promise.resolve();
+assert.ok(releaseResponse);await duplicate.context.toggleClientStatus({id:individual,status:'active'});
+assert.equal(duplicate.requests.length,1);releaseResponse({ok:true,json:async()=>({ok:true})});await inFlight;
+assert.equal(duplicate.pending.current,false);
+for(const response of [async()=>({ok:false,json:async()=>({error:'Admin access is required.'})}),async()=>{throw new Error('network failure');}]){
+ const h=statusHarness({response});await h.context.toggleClientStatus({id:individual,status:'active'});
+ assert.equal(h.requests.length,1);assert.equal(h.errors.length,1);assert.equal(h.pending.current,false);assert.ok(!h.events.includes('refresh'));
+}
+for(const [method,path] of [['POST','/api/admin/clients'],['PATCH',`/api/admin/clients/${individual}`]]){
+ const h=statusHarness();assert.equal(await h.context.mutate(path,method,{full_name:'Test'}),true);
+ assert.deepEqual(h.events,['fetch']);assert.equal(h.requests[0].headers.Authorization,undefined);assert.equal(h.requests[0].credentials,'same-origin');
+}
+console.log('PASS: actual status handlers refresh after confirmation; suspend/reactivate PATCH + Bearer; cancel/refresh failure; duplicate lock; no replay; Create/Edit compatibility.');
 assert.doesNotMatch(page,/cards_active|supabase|Paid Users|Overdue["']/);
 assert.match(page,/relationships\?\.staffCards/);assert.match(page,/getAdminClientCounts\(\)/);
 assert.doesNotMatch(page.slice(page.indexOf('function findCardsForUser'),page.indexOf('function openCardPreview')),/email|full_name/);

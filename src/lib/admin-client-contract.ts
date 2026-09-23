@@ -37,9 +37,9 @@ export function clientRelationshipCounts(clients: AccountLink[], staff: StaffLin
 }
 export type ClientRelationshipCounts = ReturnType<typeof clientRelationshipCounts>;
 
-export async function mutateAdminClient(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown): Promise<void> {
+export async function mutateAdminClient(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown, token?: string): Promise<void> {
   const response = await fetch(path, {
-    method, credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json" },
+    method, credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const result = await response.json().catch(() => null);

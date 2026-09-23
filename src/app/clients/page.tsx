@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import Sidebar from "@/components/Sidebar";
 import CardRenderer from "@/components/CardRenderer";
 import { mutateAdminCard } from "@/lib/admin-card-mutations";
@@ -124,6 +125,7 @@ const importHeaders = [
 ];
 
 export default function ClientsPage() {
+  const { getToken } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [clientUsers, setClientUsers] = useState<ClientUser[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
@@ -133,10 +135,23 @@ export default function ClientsPage() {
   const importPending = useRef(false);
   const [importOperation, setImportOperation] = useState<{ signature: string; id: string } | null>(null);
   const mutationPending = useRef(false);
-  async function mutate(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) {
+  async function mutate(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown, refreshSession = false) {
     if (mutationPending.current) return false;
     mutationPending.current = true;
-    try { await mutateAdminClient(path, method, body); return true; }
+    try {
+      let token: string | undefined;
+      if (refreshSession) {
+        try {
+          const freshToken = await getToken({ skipCache: true });
+          if (!freshToken?.trim()) throw new Error("Missing session token");
+          token = freshToken;
+        } catch {
+          throw new Error("Could not refresh your Admin session. Please sign in again before retrying.");
+        }
+      }
+      await mutateAdminClient(path, method, body, token);
+      return true;
+    }
     catch (error) { alert(error instanceof Error ? error.message : "Operation failed."); return false; }
     finally { mutationPending.current = false; }
   }
@@ -242,6 +257,7 @@ export default function ClientsPage() {
   }
 
   async function toggleClientStatus(client: Client) {
+    if (mutationPending.current) return;
     const nextStatus = client.status === "suspended" ? "active" : "suspended";
     const actionLabel = nextStatus === "suspended" ? "Suspend" : "Reactivate";
     const clientLabel =
@@ -254,7 +270,7 @@ export default function ClientsPage() {
 
     if (!confirmed) return;
 
-    if (!await mutate(`/api/admin/clients/${client.id}/status`, "PATCH", { status: nextStatus })) return;
+    if (!await mutate(`/api/admin/clients/${client.id}/status`, "PATCH", { status: nextStatus }, true)) return;
 
     void fetchClientData();
   }
