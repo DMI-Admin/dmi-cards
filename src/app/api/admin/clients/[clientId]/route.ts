@@ -1,3 +1,4 @@
+import { adminClientMutation } from "@/lib/admin-client-mutations-server";
 import { NextResponse } from "next/server";
 
 export async function DELETE() {
@@ -13,4 +14,8 @@ export async function DELETE() {
       },
     }
   );
+}
+
+export async function PATCH(request: Request, context: { params: Promise<{ clientId: string }> }) {
+  return adminClientMutation(request, "update-client", (await context.params).clientId);
 }

@@ -15,7 +15,7 @@ const contactFields = [
 const inventoryFields = {
   clients: [
     "id", "full_name", "company_name", "email", "phone", "status",
-    "subscription_plan", "account_type", "billing_status", "cards_active", "created_at", "job_title",
+    "subscription_plan", "account_type", "billing_status", "created_at", "job_title",
   ],
   client_users: ["id", "client_id", "name", "status", "created_at", ...contactFields],
   cards: [

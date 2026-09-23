@@ -1,0 +1,2010 @@
+{
+  "source": "Read-only capture from uohdkewufeivdpaljnng, PostgreSQL 17.6; no rows included",
+  "columns": [
+    {
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "table": "billing_subscriptions",
+      "type": "uuid"
+    },
+    {
+      "column": "user_id",
+      "default": null,
+      "not_null": true,
+      "table": "billing_subscriptions",
+      "type": "uuid"
+    },
+    {
+      "column": "profile_id",
+      "default": null,
+      "not_null": false,
+      "table": "billing_subscriptions",
+      "type": "uuid"
+    },
+    {
+      "column": "stripe_customer_id",
+      "default": null,
+      "not_null": true,
+      "table": "billing_subscriptions",
+      "type": "text"
+    },
+    {
+      "column": "stripe_subscription_id",
+      "default": null,
+      "not_null": true,
+      "table": "billing_subscriptions",
+      "type": "text"
+    },
+    {
+      "column": "stripe_subscription_status",
+      "default": "'unknown'::text",
+      "not_null": true,
+      "table": "billing_subscriptions",
+      "type": "text"
+    },
+    {
+      "column": "stripe_price_id",
+      "default": null,
+      "not_null": false,
+      "table": "billing_subscriptions",
+      "type": "text"
+    },
+    {
+      "column": "dmi_plan",
+      "default": "'free'::text",
+      "not_null": true,
+      "table": "billing_subscriptions",
+      "type": "text"
+    },
+    {
+      "column": "current_period_end",
+      "default": null,
+      "not_null": false,
+      "table": "billing_subscriptions",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "cancel_at_period_end",
+      "default": "false",
+      "not_null": true,
+      "table": "billing_subscriptions",
+      "type": "boolean"
+    },
+    {
+      "column": "latest_invoice_id",
+      "default": null,
+      "not_null": false,
+      "table": "billing_subscriptions",
+      "type": "text"
+    },
+    {
+      "column": "checkout_session_id",
+      "default": null,
+      "not_null": false,
+      "table": "billing_subscriptions",
+      "type": "text"
+    },
+    {
+      "column": "created_at",
+      "default": "now()",
+      "not_null": true,
+      "table": "billing_subscriptions",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "updated_at",
+      "default": "now()",
+      "not_null": true,
+      "table": "billing_subscriptions",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "table": "card_media_assets",
+      "type": "uuid"
+    },
+    {
+      "column": "session_id",
+      "default": null,
+      "not_null": true,
+      "table": "card_media_assets",
+      "type": "uuid"
+    },
+    {
+      "column": "kind",
+      "default": null,
+      "not_null": true,
+      "table": "card_media_assets",
+      "type": "text"
+    },
+    {
+      "column": "sha256",
+      "default": null,
+      "not_null": true,
+      "table": "card_media_assets",
+      "type": "text"
+    },
+    {
+      "column": "mime_type",
+      "default": null,
+      "not_null": true,
+      "table": "card_media_assets",
+      "type": "text"
+    },
+    {
+      "column": "size_bytes",
+      "default": null,
+      "not_null": true,
+      "table": "card_media_assets",
+      "type": "integer"
+    },
+    {
+      "column": "state",
+      "default": "'reserved'::text",
+      "not_null": true,
+      "table": "card_media_assets",
+      "type": "text"
+    },
+    {
+      "column": "created_at",
+      "default": "now()",
+      "not_null": true,
+      "table": "card_media_assets",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "cleanup_after",
+      "default": "(now() + '48:00:00'::interval)",
+      "not_null": true,
+      "table": "card_media_assets",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "cleanup_token",
+      "default": null,
+      "not_null": false,
+      "table": "card_media_assets",
+      "type": "uuid"
+    },
+    {
+      "column": "cleanup_lease_until",
+      "default": null,
+      "not_null": false,
+      "table": "card_media_assets",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "cleanup_attempts",
+      "default": "0",
+      "not_null": true,
+      "table": "card_media_assets",
+      "type": "integer"
+    },
+    {
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "table": "card_media_sessions",
+      "type": "uuid"
+    },
+    {
+      "column": "owner_user_id",
+      "default": null,
+      "not_null": true,
+      "table": "card_media_sessions",
+      "type": "uuid"
+    },
+    {
+      "column": "template_id",
+      "default": null,
+      "not_null": true,
+      "table": "card_media_sessions",
+      "type": "uuid"
+    },
+    {
+      "column": "card_id",
+      "default": null,
+      "not_null": false,
+      "table": "card_media_sessions",
+      "type": "uuid"
+    },
+    {
+      "column": "state",
+      "default": "'pending'::text",
+      "not_null": true,
+      "table": "card_media_sessions",
+      "type": "text"
+    },
+    {
+      "column": "created_at",
+      "default": "now()",
+      "not_null": true,
+      "table": "card_media_sessions",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "expires_at",
+      "default": "(now() + '48:00:00'::interval)",
+      "not_null": true,
+      "table": "card_media_sessions",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "finalization_digest",
+      "default": null,
+      "not_null": false,
+      "table": "card_media_sessions",
+      "type": "text"
+    },
+    {
+      "column": "finalized_operation",
+      "default": null,
+      "not_null": false,
+      "table": "card_media_sessions",
+      "type": "text"
+    },
+    {
+      "column": "finalized_card_id",
+      "default": null,
+      "not_null": false,
+      "table": "card_media_sessions",
+      "type": "uuid"
+    },
+    {
+      "column": "finalization_result",
+      "default": null,
+      "not_null": false,
+      "table": "card_media_sessions",
+      "type": "jsonb"
+    },
+    {
+      "column": "finalized_at",
+      "default": null,
+      "not_null": false,
+      "table": "card_media_sessions",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "table": "cards",
+      "type": "uuid"
+    },
+    {
+      "column": "user_id",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "uuid"
+    },
+    {
+      "column": "template_id",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "uuid"
+    },
+    {
+      "column": "profile_image_url",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "company_logo_url",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "custom_fields",
+      "default": "'{}'::jsonb",
+      "not_null": true,
+      "table": "cards",
+      "type": "jsonb"
+    },
+    {
+      "column": "card_name",
+      "default": "'Primary Digital Card'::text",
+      "not_null": true,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "slug",
+      "default": null,
+      "not_null": true,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "is_published",
+      "default": "false",
+      "not_null": true,
+      "table": "cards",
+      "type": "boolean"
+    },
+    {
+      "column": "selected_colour",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "full_name",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "job_title",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "company_name",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "email",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "phone",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "website",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "address",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "whatsapp",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "linkedin",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "instagram",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "facebook",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "youtube",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "booking_link",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "custom_url",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "hidden_fields",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text[]"
+    },
+    {
+      "column": "field_order",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "jsonb"
+    },
+    {
+      "column": "lead_capture_settings",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "jsonb"
+    },
+    {
+      "column": "status",
+      "default": "'draft'::text",
+      "not_null": true,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "created_at",
+      "default": "now()",
+      "not_null": true,
+      "table": "cards",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "updated_at",
+      "default": "now()",
+      "not_null": true,
+      "table": "cards",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "title",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "first_name",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "last_name",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "selected_text_colour",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "text"
+    },
+    {
+      "column": "field_visibility",
+      "default": "'{}'::jsonb",
+      "not_null": true,
+      "table": "cards",
+      "type": "jsonb"
+    },
+    {
+      "column": "action_config",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "jsonb"
+    },
+    {
+      "column": "card_slot",
+      "default": null,
+      "not_null": false,
+      "table": "cards",
+      "type": "smallint"
+    },
+    {
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "table": "client_users",
+      "type": "uuid"
+    },
+    {
+      "column": "client_id",
+      "default": null,
+      "not_null": false,
+      "table": "client_users",
+      "type": "uuid"
+    },
+    {
+      "column": "profile_id",
+      "default": null,
+      "not_null": false,
+      "table": "client_users",
+      "type": "uuid"
+    },
+    {
+      "column": "user_id",
+      "default": null,
+      "not_null": false,
+      "table": "client_users",
+      "type": "uuid"
+    },
+    {
+      "column": "title",
+      "default": null,
+      "not_null": false,
+      "table": "client_users",
+      "type": "text"
+    },
+    {
+      "column": "first_name",
+      "default": null,
+      "not_null": false,
+      "table": "client_users",
+      "type": "text"
+    },
+    {
+      "column": "last_name",
+      "default": null,
+      "not_null": false,
+      "table": "client_users",
+      "type": "text"
+    },
+    {
+      "column": "full_name",
+      "default": null,
+      "not_null": false,
+      "table": "client_users",
+      "type": "text"
+    },
+    {
+      "column": "email",
+      "default": null,
+      "not_null": false,
+      "table": "client_users",
+      "type": "text"
+    },
+    {
+      "column": "phone",
+      "default": null,
+      "not_null": false,
+      "table": "client_users",
+      "type": "text"
+    },
+    {
+      "column": "job_title",
+      "default": null,
+      "not_null": false,
+      "table": "client_users",
+      "type": "text"
+    },
+    {
+      "column": "status",
+      "default": "'active'::text",
+      "not_null": true,
+      "table": "client_users",
+      "type": "text"
+    },
+    {
+      "column": "created_at",
+      "default": "now()",
+      "not_null": true,
+      "table": "client_users",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "updated_at",
+      "default": "now()",
+      "not_null": true,
+      "table": "client_users",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "table": "clients",
+      "type": "uuid"
+    },
+    {
+      "column": "profile_id",
+      "default": null,
+      "not_null": false,
+      "table": "clients",
+      "type": "uuid"
+    },
+    {
+      "column": "user_id",
+      "default": null,
+      "not_null": false,
+      "table": "clients",
+      "type": "uuid"
+    },
+    {
+      "column": "title",
+      "default": null,
+      "not_null": false,
+      "table": "clients",
+      "type": "text"
+    },
+    {
+      "column": "first_name",
+      "default": null,
+      "not_null": false,
+      "table": "clients",
+      "type": "text"
+    },
+    {
+      "column": "last_name",
+      "default": null,
+      "not_null": false,
+      "table": "clients",
+      "type": "text"
+    },
+    {
+      "column": "full_name",
+      "default": "''::text",
+      "not_null": true,
+      "table": "clients",
+      "type": "text"
+    },
+    {
+      "column": "company_name",
+      "default": null,
+      "not_null": false,
+      "table": "clients",
+      "type": "text"
+    },
+    {
+      "column": "email",
+      "default": "''::text",
+      "not_null": true,
+      "table": "clients",
+      "type": "text"
+    },
+    {
+      "column": "phone",
+      "default": null,
+      "not_null": false,
+      "table": "clients",
+      "type": "text"
+    },
+    {
+      "column": "status",
+      "default": "'active'::text",
+      "not_null": true,
+      "table": "clients",
+      "type": "text"
+    },
+    {
+      "column": "subscription_plan",
+      "default": "'free'::text",
+      "not_null": true,
+      "table": "clients",
+      "type": "text"
+    },
+    {
+      "column": "account_type",
+      "default": "'individual'::text",
+      "not_null": true,
+      "table": "clients",
+      "type": "text"
+    },
+    {
+      "column": "billing_status",
+      "default": "'free'::text",
+      "not_null": true,
+      "table": "clients",
+      "type": "text"
+    },
+    {
+      "column": "cards_active",
+      "default": "0",
+      "not_null": true,
+      "table": "clients",
+      "type": "integer"
+    },
+    {
+      "column": "created_at",
+      "default": "now()",
+      "not_null": true,
+      "table": "clients",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "updated_at",
+      "default": "now()",
+      "not_null": true,
+      "table": "clients",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "id",
+      "default": null,
+      "not_null": true,
+      "table": "profiles",
+      "type": "uuid"
+    },
+    {
+      "column": "title",
+      "default": null,
+      "not_null": false,
+      "table": "profiles",
+      "type": "text"
+    },
+    {
+      "column": "first_name",
+      "default": null,
+      "not_null": false,
+      "table": "profiles",
+      "type": "text"
+    },
+    {
+      "column": "last_name",
+      "default": null,
+      "not_null": false,
+      "table": "profiles",
+      "type": "text"
+    },
+    {
+      "column": "full_name",
+      "default": null,
+      "not_null": false,
+      "table": "profiles",
+      "type": "text"
+    },
+    {
+      "column": "email",
+      "default": null,
+      "not_null": false,
+      "table": "profiles",
+      "type": "text"
+    },
+    {
+      "column": "subscription_plan",
+      "default": "'free'::text",
+      "not_null": true,
+      "table": "profiles",
+      "type": "text"
+    },
+    {
+      "column": "plan",
+      "default": "'free'::text",
+      "not_null": true,
+      "table": "profiles",
+      "type": "text"
+    },
+    {
+      "column": "created_at",
+      "default": "now()",
+      "not_null": true,
+      "table": "profiles",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "updated_at",
+      "default": "now()",
+      "not_null": true,
+      "table": "profiles",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "not_null": true,
+      "table": "templates",
+      "type": "uuid"
+    },
+    {
+      "column": "name",
+      "default": "'Unconfigured staging template'::text",
+      "not_null": true,
+      "table": "templates",
+      "type": "text"
+    },
+    {
+      "column": "slug",
+      "default": null,
+      "not_null": false,
+      "table": "templates",
+      "type": "text"
+    },
+    {
+      "column": "layout_type",
+      "default": "'classic_free'::text",
+      "not_null": true,
+      "table": "templates",
+      "type": "text"
+    },
+    {
+      "column": "access_level",
+      "default": "'free'::text",
+      "not_null": true,
+      "table": "templates",
+      "type": "text"
+    },
+    {
+      "column": "status",
+      "default": "'draft'::text",
+      "not_null": true,
+      "table": "templates",
+      "type": "text"
+    },
+    {
+      "column": "logo_size",
+      "default": "'standard'::text",
+      "not_null": false,
+      "table": "templates",
+      "type": "text"
+    },
+    {
+      "column": "requires_profile_image",
+      "default": "true",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "requires_logo",
+      "default": "false",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "requires_banner",
+      "default": "false",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "gradient_enabled",
+      "default": "false",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "colour_palette",
+      "default": null,
+      "not_null": false,
+      "table": "templates",
+      "type": "text[]"
+    },
+    {
+      "column": "free_colour_palette",
+      "default": null,
+      "not_null": false,
+      "table": "templates",
+      "type": "text[]"
+    },
+    {
+      "column": "allowed_fonts",
+      "default": null,
+      "not_null": false,
+      "table": "templates",
+      "type": "text[]"
+    },
+    {
+      "column": "default_font",
+      "default": null,
+      "not_null": false,
+      "table": "templates",
+      "type": "text"
+    },
+    {
+      "column": "supports_bio",
+      "default": "true",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "supports_save_contact",
+      "default": "true",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "allowed_fields",
+      "default": "'{}'::text[]",
+      "not_null": true,
+      "table": "templates",
+      "type": "text[]"
+    },
+    {
+      "column": "primary_color",
+      "default": null,
+      "not_null": false,
+      "table": "templates",
+      "type": "text"
+    },
+    {
+      "column": "secondary_color",
+      "default": null,
+      "not_null": false,
+      "table": "templates",
+      "type": "text"
+    },
+    {
+      "column": "text_color",
+      "default": null,
+      "not_null": false,
+      "table": "templates",
+      "type": "text"
+    },
+    {
+      "column": "button_color",
+      "default": null,
+      "not_null": false,
+      "table": "templates",
+      "type": "text"
+    },
+    {
+      "column": "button_text_color",
+      "default": null,
+      "not_null": false,
+      "table": "templates",
+      "type": "text"
+    },
+    {
+      "column": "custom_fields",
+      "default": "'{}'::jsonb",
+      "not_null": true,
+      "table": "templates",
+      "type": "jsonb"
+    },
+    {
+      "column": "show_personal_section",
+      "default": "true",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "show_company_section",
+      "default": "true",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "show_contact_section",
+      "default": "true",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "show_social_section",
+      "default": "false",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "is_published",
+      "default": "false",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "usage_count",
+      "default": "0",
+      "not_null": true,
+      "table": "templates",
+      "type": "integer"
+    },
+    {
+      "column": "created_at",
+      "default": "now()",
+      "not_null": true,
+      "table": "templates",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "updated_at",
+      "default": "now()",
+      "not_null": true,
+      "table": "templates",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "text_colours",
+      "default": "'[]'::jsonb",
+      "not_null": true,
+      "table": "templates",
+      "type": "jsonb"
+    },
+    {
+      "column": "allowed_actions",
+      "default": null,
+      "not_null": false,
+      "table": "templates",
+      "type": "jsonb"
+    },
+    {
+      "column": "profile_image_allowed",
+      "default": "true",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "profile_image_default_enabled",
+      "default": "true",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "logo_allowed",
+      "default": "false",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "logo_default_enabled",
+      "default": "false",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "banner_allowed",
+      "default": "false",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "banner_default_enabled",
+      "default": "false",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "custom_colour_allowed",
+      "default": "false",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "custom_text_colour_allowed",
+      "default": "false",
+      "not_null": true,
+      "table": "templates",
+      "type": "boolean"
+    },
+    {
+      "column": "field_config",
+      "default": "'{}'::jsonb",
+      "not_null": true,
+      "table": "templates",
+      "type": "jsonb"
+    },
+    {
+      "column": "renderer_options",
+      "default": "'{}'::jsonb",
+      "not_null": true,
+      "table": "templates",
+      "type": "jsonb"
+    },
+    {
+      "column": "template_contract_version",
+      "default": null,
+      "not_null": false,
+      "table": "templates",
+      "type": "integer"
+    }
+  ],
+  "constraints": [
+    {
+      "definition": "CHECK (((action_config IS NULL) OR (jsonb_typeof(action_config) = 'object'::text)))",
+      "name": "cards_action_config_object_check",
+      "table": "cards",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (((card_slot IS NULL) OR (card_slot = ANY (ARRAY[1, 2, 3]))))",
+      "name": "cards_card_slot_check",
+      "table": "cards",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (((field_order IS NULL) OR (jsonb_typeof(field_order) = 'object'::text)))",
+      "name": "cards_field_order_object_check",
+      "table": "cards",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((jsonb_typeof(field_visibility) = 'object'::text))",
+      "name": "cards_field_visibility_object_check",
+      "table": "cards",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (((lead_capture_settings IS NULL) OR (jsonb_typeof(lead_capture_settings) = 'object'::text)))",
+      "name": "cards_lead_capture_settings_object_check",
+      "table": "cards",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "name": "cards_pkey",
+      "table": "cards",
+      "type": "p",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE SET NULL",
+      "name": "cards_template_id_fkey",
+      "table": "cards",
+      "type": "f",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE",
+      "name": "cards_user_id_fkey",
+      "table": "cards",
+      "type": "f",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((((finalization_digest IS NULL) AND (finalized_operation IS NULL) AND (finalized_card_id IS NULL) AND (finalization_result IS NULL) AND (finalized_at IS NULL)) OR ((finalization_digest IS NOT NULL) AND (finalization_digest ~ '^[0-9a-f]{64}$'::text) AND (finalized_operation IS NOT NULL) AND (finalized_operation = ANY (ARRAY['create'::text, 'edit'::text])) AND (finalized_card_id IS NOT NULL) AND (finalization_result IS NOT NULL) AND (jsonb_typeof(finalization_result) = 'object'::text) AND (octet_length((finalization_result)::text) <= 2048) AND (finalized_at IS NOT NULL) AND (state = 'attached'::text))))",
+      "name": "card_media_finalization_receipt_check",
+      "table": "card_media_sessions",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE SET NULL",
+      "name": "card_media_sessions_card_id_fkey",
+      "table": "card_media_sessions",
+      "type": "f",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((expires_at > created_at))",
+      "name": "card_media_sessions_check",
+      "table": "card_media_sessions",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "name": "card_media_sessions_pkey",
+      "table": "card_media_sessions",
+      "type": "p",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((state = ANY (ARRAY['pending'::text, 'attached'::text, 'expired'::text])))",
+      "name": "card_media_sessions_state_check",
+      "table": "card_media_sessions",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((cleanup_attempts >= 0))",
+      "name": "card_media_assets_cleanup_attempts_check",
+      "table": "card_media_assets",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((kind = ANY (ARRAY['profile'::text, 'logo'::text, 'banner'::text])))",
+      "name": "card_media_assets_kind_check",
+      "table": "card_media_assets",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((mime_type = ANY (ARRAY['image/jpeg'::text, 'image/png'::text, 'image/webp'::text])))",
+      "name": "card_media_assets_mime_type_check",
+      "table": "card_media_assets",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "name": "card_media_assets_pkey",
+      "table": "card_media_assets",
+      "type": "p",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (session_id) REFERENCES card_media_sessions(id) ON DELETE RESTRICT",
+      "name": "card_media_assets_session_id_fkey",
+      "table": "card_media_assets",
+      "type": "f",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (session_id, kind, sha256)",
+      "name": "card_media_assets_session_id_kind_sha256_key",
+      "table": "card_media_assets",
+      "type": "u",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((sha256 ~ '^[0-9a-f]{64}$'::text))",
+      "name": "card_media_assets_sha256_check",
+      "table": "card_media_assets",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (((size_bytes >= 1) AND (size_bytes <= 2097152)))",
+      "name": "card_media_assets_size_bytes_check",
+      "table": "card_media_assets",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((state = ANY (ARRAY['reserved'::text, 'ready'::text, 'attached'::text, 'cleanup_pending'::text, 'deleting'::text, 'deleted'::text])))",
+      "name": "card_media_assets_state_check",
+      "table": "card_media_assets",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (((cleanup_token IS NULL) = (cleanup_lease_until IS NULL)))",
+      "name": "card_media_cleanup_lease_pair",
+      "table": "card_media_assets",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((access_level = ANY (ARRAY['free'::text, 'paid'::text])))",
+      "name": "templates_access_level_check",
+      "table": "templates",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (((allowed_actions IS NULL) OR (jsonb_typeof(allowed_actions) = 'object'::text)))",
+      "name": "templates_allowed_actions_object_check",
+      "table": "templates",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((jsonb_typeof(field_config) = 'object'::text))",
+      "name": "templates_field_config_object_check",
+      "table": "templates",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "name": "templates_pkey",
+      "table": "templates",
+      "type": "p",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (((NOT ((status = 'published'::text) OR (is_published IS TRUE))) OR ((NULLIF(btrim(name), ''::text) IS NOT NULL) AND (NULLIF(btrim(slug), ''::text) IS NOT NULL))))",
+      "name": "templates_published_identity_check",
+      "table": "templates",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((jsonb_typeof(renderer_options) = 'object'::text))",
+      "name": "templates_renderer_options_object_check",
+      "table": "templates",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (slug)",
+      "name": "templates_slug_key",
+      "table": "templates",
+      "type": "u",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((status = ANY (ARRAY['draft'::text, 'published'::text])))",
+      "name": "templates_status_check",
+      "table": "templates",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE",
+      "name": "profiles_id_fkey",
+      "table": "profiles",
+      "type": "f",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "name": "profiles_pkey",
+      "table": "profiles",
+      "type": "p",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((plan = ANY (ARRAY['free'::text, 'paid'::text])))",
+      "name": "profiles_plan_check",
+      "table": "profiles",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((subscription_plan = ANY (ARRAY['free'::text, 'paid'::text])))",
+      "name": "profiles_subscription_plan_check",
+      "table": "profiles",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "name": "clients_pkey",
+      "table": "clients",
+      "type": "p",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE",
+      "name": "clients_profile_id_fkey",
+      "table": "clients",
+      "type": "f",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE",
+      "name": "clients_user_id_fkey",
+      "table": "clients",
+      "type": "f",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE",
+      "name": "client_users_client_id_fkey",
+      "table": "client_users",
+      "type": "f",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "name": "client_users_pkey",
+      "table": "client_users",
+      "type": "p",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE",
+      "name": "client_users_profile_id_fkey",
+      "table": "client_users",
+      "type": "f",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE",
+      "name": "client_users_user_id_fkey",
+      "table": "client_users",
+      "type": "f",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "name": "billing_subscriptions_pkey",
+      "table": "billing_subscriptions",
+      "type": "p",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((dmi_plan = ANY (ARRAY['free'::text, 'pro'::text, 'enterprise'::text])))",
+      "name": "billing_subscriptions_plan_check",
+      "table": "billing_subscriptions",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE",
+      "name": "billing_subscriptions_profile_id_fkey",
+      "table": "billing_subscriptions",
+      "type": "f",
+      "validated": true
+    },
+    {
+      "definition": "CHECK ((stripe_subscription_status = ANY (ARRAY['active'::text, 'trialing'::text, 'past_due'::text, 'unpaid'::text, 'canceled'::text, 'incomplete'::text, 'incomplete_expired'::text, 'paused'::text, 'unknown'::text])))",
+      "name": "billing_subscriptions_status_check",
+      "table": "billing_subscriptions",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE",
+      "name": "billing_subscriptions_user_id_fkey",
+      "table": "billing_subscriptions",
+      "type": "f",
+      "validated": true
+    }
+  ],
+  "indexes": [
+    {
+      "indexdef": "CREATE INDEX billing_subscriptions_customer_id_idx ON public.billing_subscriptions USING btree (stripe_customer_id)",
+      "indexname": "billing_subscriptions_customer_id_idx",
+      "schemaname": "public",
+      "tablename": "billing_subscriptions",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX billing_subscriptions_pkey ON public.billing_subscriptions USING btree (id)",
+      "indexname": "billing_subscriptions_pkey",
+      "schemaname": "public",
+      "tablename": "billing_subscriptions",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX billing_subscriptions_profile_id_idx ON public.billing_subscriptions USING btree (profile_id)",
+      "indexname": "billing_subscriptions_profile_id_idx",
+      "schemaname": "public",
+      "tablename": "billing_subscriptions",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX billing_subscriptions_subscription_id_unique_idx ON public.billing_subscriptions USING btree (stripe_subscription_id)",
+      "indexname": "billing_subscriptions_subscription_id_unique_idx",
+      "schemaname": "public",
+      "tablename": "billing_subscriptions",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX billing_subscriptions_user_id_idx ON public.billing_subscriptions USING btree (user_id)",
+      "indexname": "billing_subscriptions_user_id_idx",
+      "schemaname": "public",
+      "tablename": "billing_subscriptions",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX card_media_assets_cleanup ON public.card_media_assets USING btree (cleanup_after) WHERE (state <> 'deleted'::text)",
+      "indexname": "card_media_assets_cleanup",
+      "schemaname": "public",
+      "tablename": "card_media_assets",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX card_media_assets_pkey ON public.card_media_assets USING btree (id)",
+      "indexname": "card_media_assets_pkey",
+      "schemaname": "public",
+      "tablename": "card_media_assets",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX card_media_assets_session_id_kind_sha256_key ON public.card_media_assets USING btree (session_id, kind, sha256)",
+      "indexname": "card_media_assets_session_id_kind_sha256_key",
+      "schemaname": "public",
+      "tablename": "card_media_assets",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX card_media_cleanup_worker_due ON public.card_media_assets USING btree (cleanup_after, id)",
+      "indexname": "card_media_cleanup_worker_due",
+      "schemaname": "public",
+      "tablename": "card_media_assets",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX card_media_sessions_card ON public.card_media_sessions USING btree (card_id)",
+      "indexname": "card_media_sessions_card",
+      "schemaname": "public",
+      "tablename": "card_media_sessions",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX card_media_sessions_expiry ON public.card_media_sessions USING btree (expires_at) WHERE (state = 'pending'::text)",
+      "indexname": "card_media_sessions_expiry",
+      "schemaname": "public",
+      "tablename": "card_media_sessions",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX card_media_sessions_owner ON public.card_media_sessions USING btree (owner_user_id)",
+      "indexname": "card_media_sessions_owner",
+      "schemaname": "public",
+      "tablename": "card_media_sessions",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX card_media_sessions_pkey ON public.card_media_sessions USING btree (id)",
+      "indexname": "card_media_sessions_pkey",
+      "schemaname": "public",
+      "tablename": "card_media_sessions",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX cards_pkey ON public.cards USING btree (id)",
+      "indexname": "cards_pkey",
+      "schemaname": "public",
+      "tablename": "cards",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX cards_slug_unique_idx ON public.cards USING btree (slug)",
+      "indexname": "cards_slug_unique_idx",
+      "schemaname": "public",
+      "tablename": "cards",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX cards_user_id_card_slot_unique_idx ON public.cards USING btree (user_id, card_slot) WHERE ((user_id IS NOT NULL) AND (card_slot IS NOT NULL))",
+      "indexname": "cards_user_id_card_slot_unique_idx",
+      "schemaname": "public",
+      "tablename": "cards",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX cards_user_id_idx ON public.cards USING btree (user_id)",
+      "indexname": "cards_user_id_idx",
+      "schemaname": "public",
+      "tablename": "cards",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX client_users_client_id_idx ON public.client_users USING btree (client_id)",
+      "indexname": "client_users_client_id_idx",
+      "schemaname": "public",
+      "tablename": "client_users",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX client_users_pkey ON public.client_users USING btree (id)",
+      "indexname": "client_users_pkey",
+      "schemaname": "public",
+      "tablename": "client_users",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX client_users_profile_id_unique_idx ON public.client_users USING btree (profile_id) WHERE (profile_id IS NOT NULL)",
+      "indexname": "client_users_profile_id_unique_idx",
+      "schemaname": "public",
+      "tablename": "client_users",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX client_users_user_id_unique_idx ON public.client_users USING btree (user_id) WHERE (user_id IS NOT NULL)",
+      "indexname": "client_users_user_id_unique_idx",
+      "schemaname": "public",
+      "tablename": "client_users",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX clients_pkey ON public.clients USING btree (id)",
+      "indexname": "clients_pkey",
+      "schemaname": "public",
+      "tablename": "clients",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX clients_profile_id_unique_idx ON public.clients USING btree (profile_id) WHERE (profile_id IS NOT NULL)",
+      "indexname": "clients_profile_id_unique_idx",
+      "schemaname": "public",
+      "tablename": "clients",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX clients_user_id_unique_idx ON public.clients USING btree (user_id) WHERE (user_id IS NOT NULL)",
+      "indexname": "clients_user_id_unique_idx",
+      "schemaname": "public",
+      "tablename": "clients",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX profiles_pkey ON public.profiles USING btree (id)",
+      "indexname": "profiles_pkey",
+      "schemaname": "public",
+      "tablename": "profiles",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX templates_pkey ON public.templates USING btree (id)",
+      "indexname": "templates_pkey",
+      "schemaname": "public",
+      "tablename": "templates",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX templates_published_access_idx ON public.templates USING btree (is_published, access_level)",
+      "indexname": "templates_published_access_idx",
+      "schemaname": "public",
+      "tablename": "templates",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX templates_slug_key ON public.templates USING btree (slug)",
+      "indexname": "templates_slug_key",
+      "schemaname": "public",
+      "tablename": "templates",
+      "tablespace": null
+    },
+    {
+      "indexdef": "CREATE INDEX templates_status_access_idx ON public.templates USING btree (status, access_level)",
+      "indexname": "templates_status_access_idx",
+      "schemaname": "public",
+      "tablename": "templates",
+      "tablespace": null
+    }
+  ],
+  "triggers": [
+    {
+      "definition": "CREATE TRIGGER cards_assign_card_slot BEFORE INSERT OR UPDATE ON public.cards FOR EACH ROW EXECUTE FUNCTION assign_card_slot()",
+      "enabled": "O",
+      "name": "cards_assign_card_slot",
+      "table": "cards"
+    },
+    {
+      "definition": "CREATE TRIGGER cards_set_updated_at BEFORE UPDATE ON public.cards FOR EACH ROW EXECUTE FUNCTION set_updated_at()",
+      "enabled": "O",
+      "name": "cards_set_updated_at",
+      "table": "cards"
+    },
+    {
+      "definition": "CREATE TRIGGER templates_set_updated_at BEFORE UPDATE ON public.templates FOR EACH ROW EXECUTE FUNCTION set_updated_at()",
+      "enabled": "O",
+      "name": "templates_set_updated_at",
+      "table": "templates"
+    },
+    {
+      "definition": "CREATE TRIGGER ensure_client_records_after_profile_insert AFTER INSERT ON public.profiles FOR EACH ROW EXECUTE FUNCTION ensure_client_records_after_profile_write()",
+      "enabled": "O",
+      "name": "ensure_client_records_after_profile_insert",
+      "table": "profiles"
+    },
+    {
+      "definition": "CREATE TRIGGER ensure_client_records_after_profile_update AFTER UPDATE OF title, first_name, last_name, full_name, email, subscription_plan, plan ON public.profiles FOR EACH ROW EXECUTE FUNCTION ensure_client_records_after_profile_write()",
+      "enabled": "O",
+      "name": "ensure_client_records_after_profile_update",
+      "table": "profiles"
+    },
+    {
+      "definition": "CREATE TRIGGER profiles_set_updated_at BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION set_updated_at()",
+      "enabled": "O",
+      "name": "profiles_set_updated_at",
+      "table": "profiles"
+    }
+  ],
+  "tables": [
+    {
+      "acl": "{postgres=arwdDxtm/postgres,authenticated=r/postgres,service_role=arwd/postgres}",
+      "forced": false,
+      "name": "billing_subscriptions",
+      "owner": "postgres",
+      "rls": true
+    },
+    {
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+      "forced": false,
+      "name": "card_media_assets",
+      "owner": "postgres",
+      "rls": true
+    },
+    {
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+      "forced": false,
+      "name": "card_media_sessions",
+      "owner": "postgres",
+      "rls": true
+    },
+    {
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres,anon=r/postgres}",
+      "forced": false,
+      "name": "cards",
+      "owner": "postgres",
+      "rls": true
+    },
+    {
+      "acl": "{postgres=arwdDxtm/postgres,authenticated=r/postgres,service_role=arwd/postgres}",
+      "forced": false,
+      "name": "client_users",
+      "owner": "postgres",
+      "rls": true
+    },
+    {
+      "acl": "{postgres=arwdDxtm/postgres,authenticated=r/postgres,service_role=arwd/postgres}",
+      "forced": false,
+      "name": "clients",
+      "owner": "postgres",
+      "rls": true
+    },
+    {
+      "acl": "{postgres=arwdDxtm/postgres,authenticated=arw/postgres,service_role=arwd/postgres}",
+      "forced": false,
+      "name": "profiles",
+      "owner": "postgres",
+      "rls": true
+    },
+    {
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,anon=r/postgres,authenticated=r/postgres}",
+      "forced": false,
+      "name": "templates",
+      "owner": "postgres",
+      "rls": true
+    }
+  ],
+  "policies": [
+    {
+      "cmd": "SELECT",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users can read own billing subscription",
+      "qual": "((auth.uid() = user_id) OR (auth.uid() = profile_id))",
+      "roles": [
+        "authenticated"
+      ],
+      "schemaname": "public",
+      "tablename": "billing_subscriptions",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "permissive": "PERMISSIVE",
+      "policyname": "Public can read published cards",
+      "qual": "((status = 'published'::text) OR (is_published IS TRUE))",
+      "roles": [
+        "anon"
+      ],
+      "schemaname": "public",
+      "tablename": "cards",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users can read own cards",
+      "qual": "(auth.uid() = user_id)",
+      "roles": [
+        "authenticated"
+      ],
+      "schemaname": "public",
+      "tablename": "cards",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users can read own client user record",
+      "qual": "((auth.uid() = profile_id) OR (auth.uid() = user_id))",
+      "roles": [
+        "authenticated"
+      ],
+      "schemaname": "public",
+      "tablename": "client_users",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users can read own client record",
+      "qual": "((auth.uid() = profile_id) OR (auth.uid() = user_id))",
+      "roles": [
+        "authenticated"
+      ],
+      "schemaname": "public",
+      "tablename": "clients",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users can insert own profile",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "schemaname": "public",
+      "tablename": "profiles",
+      "with_check": "(auth.uid() = id)"
+    },
+    {
+      "cmd": "SELECT",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users can read own profile",
+      "qual": "(auth.uid() = id)",
+      "roles": [
+        "authenticated"
+      ],
+      "schemaname": "public",
+      "tablename": "profiles",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users can update own profile",
+      "qual": "(auth.uid() = id)",
+      "roles": [
+        "authenticated"
+      ],
+      "schemaname": "public",
+      "tablename": "profiles",
+      "with_check": "(auth.uid() = id)"
+    },
+    {
+      "cmd": "SELECT",
+      "permissive": "PERMISSIVE",
+      "policyname": "Published templates are readable",
+      "qual": "((status = 'published'::text) OR (is_published = true))",
+      "roles": [
+        "anon",
+        "authenticated"
+      ],
+      "schemaname": "public",
+      "tablename": "templates",
+      "with_check": null
+    }
+  ],
+  "functions": [
+    {
+      "signature": "assign_card_slot()",
+      "name": "assign_card_slot",
+      "definition": "CREATE OR REPLACE FUNCTION public.assign_card_slot()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\ndeclare\n  next_slot smallint;\nbegin\n  if tg_op = 'UPDATE' then\n    new.card_slot = old.card_slot;\n    return new;\n  end if;\n\n  if new.user_id is null then\n    new.card_slot = null;\n    return new;\n  end if;\n\n  perform pg_advisory_xact_lock(\n    hashtextextended('public.cards.card_slot:' || new.user_id::text, 0)\n  );\n\n  if new.card_slot is not null then\n    if exists (\n      select 1\n      from public.cards\n      where user_id = new.user_id\n        and card_slot = new.card_slot\n    ) then\n      raise exception 'CARD_SLOT_ALREADY_OCCUPIED: requested card slot is no longer available';\n    end if;\n\n    return new;\n  end if;\n\n  select slot\n  into next_slot\n  from generate_series(1, 3) as slot\n  where not exists (\n    select 1\n    from public.cards\n    where user_id = new.user_id\n      and card_slot = slot\n  )\n  order by slot asc\n  limit 1;\n\n  if next_slot is null then\n    raise exception 'CARD_SLOT_LIMIT_REACHED: users can have at most three cards';\n  end if;\n\n  new.card_slot = next_slot;\n  return new;\nend;\n$function$\n",
+      "definition_md5": "f37dc0d2e10aea86a3e9ac17954a5ec0",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "signature": "attach_card_media_session(uuid,uuid,uuid)",
+      "name": "attach_card_media_session",
+      "definition": "CREATE OR REPLACE FUNCTION public.attach_card_media_session(p_owner uuid, p_session uuid, p_card uuid)\n RETURNS text\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\ndeclare s public.card_media_sessions; c public.cards; a public.card_media_assets;\n  ref text; expected text; n integer := 0;\nbegin\n  perform pg_advisory_xact_lock(hashtextextended('public.cards.card_slot:' || p_owner::text,0));\n  select * into s from public.card_media_sessions where id=p_session for update;\n  if not found or s.owner_user_id is distinct from p_owner\n     or not public.card_media_owner_exists(p_owner) then raise exception 'MEDIA_SESSION_UNAVAILABLE'; end if;\n  select * into c from public.cards where id=p_card and user_id=p_owner for update;\n  if not found or c.template_id is distinct from s.template_id then raise exception 'MEDIA_CARD_UNAVAILABLE'; end if;\n  if s.state='attached' and s.card_id=p_card then return 'already_attached'; end if;\n  if s.state <> 'pending' or s.expires_at <= now() or (s.card_id is not null and s.card_id <> p_card) then\n    raise exception 'MEDIA_SESSION_UNAVAILABLE';\n  end if;\n  for a in select * from public.card_media_assets where session_id=p_session order by id for update loop\n    ref := 'card-media:' || a.id::text;\n    expected := case a.kind when 'profile' then c.profile_image_url when 'logo' then c.company_logo_url\n      else c.custom_fields->>'company_banner_url' end;\n    if expected = ref then\n      if a.state <> 'ready' then raise exception 'MEDIA_ASSET_NOT_READY'; end if;\n      update public.card_media_assets set state='attached' where id=a.id;\n      n := n + 1;\n    end if;\n  end loop;\n  if n=0 then raise exception 'NO_MEDIA_REFERENCES_TO_ATTACH'; end if;\n  update public.card_media_sessions set state='attached',card_id=p_card where id=p_session;\n  return 'attached';\nend;\n$function$\n",
+      "definition_md5": "c61f02baea38256fe481681e8ccf4268",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "signature": "card_media_cleanup_candidates(integer)",
+      "name": "card_media_cleanup_candidates",
+      "definition": "CREATE OR REPLACE FUNCTION public.card_media_cleanup_candidates(p_limit integer)\n RETURNS jsonb\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare result jsonb;\nbegin\n  perform public.check_card_media_cleanup_boundary();\n  if p_limit is null or p_limit < 1 or p_limit > 50 then raise exception 'MEDIA_CLEANUP_BATCH_INVALID'; end if;\n  select coalesce(jsonb_agg(id order by cleanup_after,id),'[]'::jsonb) into result from (\n    select id,cleanup_after from public.card_media_assets\n    where cleanup_after <= now() and (cleanup_lease_until is null or cleanup_lease_until <= now())\n    order by cleanup_after,id limit p_limit\n  ) candidates;\n  return result;\nend $function$\n",
+      "definition_md5": "652165e1ffd2b15556c60e5aeefff22a",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "signature": "card_media_owner_exists(uuid)",
+      "name": "card_media_owner_exists",
+      "definition": "CREATE OR REPLACE FUNCTION public.card_media_owner_exists(p_owner uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\n  select exists(select 1 from auth.users where id = p_owner);\n$function$\n",
+      "definition_md5": "3cb6168de01857672847f3452cc03e01",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "signature": "check_card_media_cleanup_boundary()",
+      "name": "check_card_media_cleanup_boundary",
+      "definition": "CREATE OR REPLACE FUNCTION public.check_card_media_cleanup_boundary()\n RETURNS void\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare r record; p text; c oid := 'public.cards'::regclass; sig text; t oid;\nbegin\n  if not (select relrowsecurity from pg_class where oid=c) then\n    raise exception 'MEDIA_CLEANUP_CARDS_RLS_REQUIRED';\n  end if;\n  foreach p in array array['SELECT','INSERT','UPDATE','DELETE'] loop\n    if not has_table_privilege('service_role',c,p) then raise exception 'MEDIA_CLEANUP_SERVICE_ACCESS_REQUIRED'; end if;\n  end loop;\n  foreach t in array array['public.card_media_assets'::regclass::oid,'public.card_media_sessions'::regclass::oid] loop\n    if not (select relrowsecurity from pg_class where oid=t) then raise exception 'MEDIA_CLEANUP_REGISTRY_RLS_REQUIRED'; end if;\n    foreach p in array array['SELECT','INSERT','UPDATE','DELETE'] loop\n      if not has_table_privilege('service_role',t,p) then raise exception 'MEDIA_CLEANUP_REGISTRY_ACCESS_REQUIRED'; end if;\n    end loop;\n  end loop;\n  -- Conservative membership closure also covers SET ROLE paths, not just INHERIT.\n  for r in select oid,rolsuper,rolcreaterole from pg_roles where\n    oid in ('authenticated'::regrole,'anon'::regrole)\n    or pg_has_role('authenticated',oid,'MEMBER') or pg_has_role('anon',oid,'MEMBER') loop\n    if r.rolsuper or r.rolcreaterole or r.oid=(select relowner from pg_class where oid=c) then\n      raise exception 'MEDIA_CLEANUP_PRIVILEGED_BROWSER_ROLE';\n    end if;\n    foreach p in array array['INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] loop\n      if has_table_privilege(r.oid,c,p) then raise exception 'MEDIA_CLEANUP_REQUIRES_CARDS_HARDENING'; end if;\n    end loop;\n    if current_setting('server_version_num')::integer >= 170000 then\n      if has_table_privilege(r.oid,c,'MAINTAIN') then raise exception 'MEDIA_CLEANUP_REQUIRES_CARDS_HARDENING'; end if;\n    end if;\n    foreach p in array array['INSERT','UPDATE','REFERENCES'] loop\n      if has_any_column_privilege(r.oid,c,p) then raise exception 'MEDIA_CLEANUP_REQUIRES_COLUMN_HARDENING'; end if;\n    end loop;\n    foreach t in array array['public.card_media_assets'::regclass::oid,'public.card_media_sessions'::regclass::oid] loop\n      if r.oid=(select relowner from pg_class where oid=t) then raise exception 'MEDIA_CLEANUP_REGISTRY_OWNER_PATH'; end if;\n      foreach p in array array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] loop\n        if has_table_privilege(r.oid,t,p) then raise exception 'MEDIA_CLEANUP_REGISTRY_BROWSER_ACCESS'; end if;\n      end loop;\n      foreach p in array array['SELECT','INSERT','UPDATE','REFERENCES'] loop\n        if has_any_column_privilege(r.oid,t,p) then raise exception 'MEDIA_CLEANUP_REGISTRY_COLUMN_ACCESS'; end if;\n      end loop;\n    end loop;\n    foreach sig in array array[\n      'public.finalize_client_card_media(uuid,uuid,text,uuid,smallint,jsonb,jsonb,text)',\n      'public.attach_card_media_session(uuid,uuid,uuid)',\n      'public.reserve_card_media_asset(uuid,uuid,text,text,text,integer)',\n      'public.mark_card_media_ready(uuid,uuid,uuid)',\n      'public.retire_card_media_asset(uuid)', 'public.claim_card_media_cleanup(uuid)',\n      'public.create_client_card_atomic(uuid,smallint,jsonb)',\n      'public.get_client_card_edit_snapshot(uuid,uuid)', 'public.card_media_owner_exists(uuid)'\n    ] loop\n      if to_regprocedure(sig) is null then raise exception 'MEDIA_CLEANUP_RPC_MISSING'; end if;\n      if has_function_privilege(r.oid,to_regprocedure(sig),'EXECUTE')\n        or not has_function_privilege('service_role',to_regprocedure(sig),'EXECUTE') then\n        raise exception 'MEDIA_CLEANUP_RPC_PERMISSIONS';\n      end if;\n    end loop;\n  end loop;\nend $function$\n",
+      "definition_md5": "c35a0f0cde7dd567c5852e6f355c93fa",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "signature": "claim_card_media_cleanup(uuid)",
+      "name": "claim_card_media_cleanup",
+      "definition": "CREATE OR REPLACE FUNCTION public.claim_card_media_cleanup(p_asset uuid)\n RETURNS text\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\ndeclare s public.card_media_sessions; a public.card_media_assets; sid uuid; ref text;\nbegin\n  select session_id into sid from public.card_media_assets where id=p_asset;\n  if not found then return 'not_found'; end if;\n  select * into s from public.card_media_sessions where id=sid for update;\n  select * into a from public.card_media_assets where id=p_asset for update;\n  if a.state='deleted' then return 'deleted'; end if;\n  if a.state='attached' then return 'attached'; end if;\n  if a.cleanup_after > now() then return 'not_due'; end if;\n  ref := 'card-media:' || a.id::text;\n  if exists(select 1 from public.cards where profile_image_url=ref or company_logo_url=ref\n      or custom_fields->>'company_banner_url'=ref) then return 'referenced'; end if;\n  update public.card_media_assets set state='deleting' where id=p_asset;\n  if s.state = 'pending'\n    and (\n      s.expires_at <= now()\n      or not public.card_media_owner_exists(s.owner_user_id)\n    )\n  then\n    update public.card_media_sessions set state='expired' where id=s.id;\n  end if;\n  return 'deleting';\nend;\n$function$\n",
+      "definition_md5": "454f3f6af7d71380c509a8bcc5a623e3",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "signature": "create_client_card_atomic(uuid,smallint,jsonb)",
+      "name": "create_client_card_atomic",
+      "definition": "CREATE OR REPLACE FUNCTION public.create_client_card_atomic(p_owner_user_id uuid, p_card_allowance smallint, p_card_payload jsonb)\n RETURNS jsonb\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\ndeclare\n  result public.cards%rowtype;\nbegin\n  if p_owner_user_id is null or p_card_allowance is null or p_card_allowance not in (1, 3)\n     or p_card_payload is null or jsonb_typeof(p_card_payload) <> 'object'\n     or octet_length(p_card_payload::text) > 262144 then\n    raise exception 'INVALID_CARD_CREATION_INPUT' using errcode = '22023';\n  end if;\n  if exists (select 1 from jsonb_object_keys(p_card_payload) as k(key)\n    where key <> all(array['template_id', 'card_name', 'slug', 'full_name', 'title', 'first_name', 'last_name', 'job_title', 'company_name', 'email', 'phone', 'website', 'address', 'whatsapp', 'linkedin', 'instagram', 'facebook', 'youtube', 'booking_link', 'custom_url', 'profile_image_url', 'company_logo_url', 'selected_colour', 'selected_text_colour', 'field_order', 'field_visibility', 'custom_fields', 'action_config', 'lead_capture_settings', 'hidden_fields', 'status', 'is_published'])) then\n    raise exception 'UNSUPPORTED_CARD_PAYLOAD_FIELD' using errcode = '22023';\n  end if;\n  if nullif(btrim(p_card_payload->>'card_name'), '') is null\n     or nullif(btrim(p_card_payload->>'full_name'), '') is null\n     or nullif(btrim(p_card_payload->>'slug'), '') is null\n     or nullif(p_card_payload->>'template_id', '') is null\n     or (p_card_payload->>'status') is null\n     or (p_card_payload->>'status') not in ('published', 'draft')\n     or jsonb_typeof(p_card_payload->'is_published') is distinct from 'boolean'\n     or ((p_card_payload->>'is_published')::boolean is distinct from ((p_card_payload->>'status') = 'published')) then\n    raise exception 'INVALID_CARD_PAYLOAD' using errcode = '22023';\n  end if;\n  perform pg_advisory_xact_lock(\n    hashtextextended('public.cards.card_slot:' || p_owner_user_id::text, 0)\n  );\n  if (select count(*) from public.cards where user_id = p_owner_user_id) >= p_card_allowance then\n    raise exception 'CARD_ALLOWANCE_EXHAUSTED' using errcode = 'P0001';\n  end if;\n  -- Omit card_slot: assign_card_slot() reuses this transaction lock and allocates.\n  -- No profile_id: it is absent from the verified live cards contract.\n  insert into public.cards (user_id, template_id, card_name, slug, full_name, title, first_name, last_name, job_title, company_name, email, phone, website, address, whatsapp, linkedin, instagram, facebook, youtube, booking_link, custom_url, profile_image_url, company_logo_url, selected_colour, selected_text_colour, field_order, field_visibility, custom_fields, action_config, lead_capture_settings, hidden_fields, status, is_published)\n  select p_owner_user_id, v.template_id, v.card_name, v.slug, v.full_name, v.title, v.first_name, v.last_name, v.job_title, v.company_name, v.email, v.phone, v.website, v.address, v.whatsapp, v.linkedin, v.instagram, v.facebook, v.youtube, v.booking_link, v.custom_url, v.profile_image_url, v.company_logo_url, v.selected_colour, v.selected_text_colour, v.field_order, v.field_visibility, v.custom_fields, v.action_config, v.lead_capture_settings, v.hidden_fields, v.status, v.is_published\n  from jsonb_to_record(p_card_payload) as v(template_id uuid, card_name text, slug text, full_name text, title text, first_name text, last_name text, job_title text, company_name text, email text, phone text, website text, address text, whatsapp text, linkedin text, instagram text, facebook text, youtube text, booking_link text, custom_url text, profile_image_url text, company_logo_url text, selected_colour text, selected_text_colour text, field_order jsonb, field_visibility jsonb, custom_fields jsonb, action_config jsonb, lead_capture_settings jsonb, hidden_fields text[], status text, is_published boolean)\n  returning * into result;\n  return to_jsonb(result);\nend;\n$function$\n",
+      "definition_md5": "eb2fad360a207820bb5ac8d541fa03cd",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "signature": "ensure_client_records_after_profile_write()",
+      "name": "ensure_client_records_after_profile_write",
+      "definition": "CREATE OR REPLACE FUNCTION public.ensure_client_records_after_profile_write()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nbegin\n  perform public.ensure_client_records_for_profile(new.id);\n  return new;\nend;\n$function$\n",
+      "definition_md5": "ea6a0ab201cc2269867008b0527f9dbd",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "signature": "ensure_client_records_for_profile(uuid)",
+      "name": "ensure_client_records_for_profile",
+      "definition": "CREATE OR REPLACE FUNCTION public.ensure_client_records_for_profile(target_profile_id uuid)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\ndeclare\n  profile_record public.profiles%rowtype;\n  client_record_id uuid;\n  selected_title text;\n  selected_first_name text;\n  selected_last_name text;\n  selected_full_name text;\n  selected_email text;\nbegin\n  select *\n  into profile_record\n  from public.profiles\n  where id = target_profile_id;\n\n  if not found then\n    return null;\n  end if;\n\n  selected_title := coalesce(profile_record.title, '');\n  selected_first_name := coalesce(profile_record.first_name, '');\n  selected_last_name := coalesce(profile_record.last_name, '');\n  selected_full_name := coalesce(\n    nullif(profile_record.full_name, ''),\n    nullif(concat_ws(' ', nullif(selected_title, ''), nullif(selected_first_name, ''), nullif(selected_last_name, '')), ''),\n    nullif(profile_record.email, ''),\n    'Client'\n  );\n  selected_email := coalesce(profile_record.email, '');\n\n  select id\n  into client_record_id\n  from public.clients\n  where profile_id = profile_record.id\n     or user_id = profile_record.id\n  limit 1;\n\n  if client_record_id is null and selected_email <> '' then\n    select id\n    into client_record_id\n    from public.clients\n    where lower(email) = lower(selected_email)\n      and coalesce(account_type, 'individual') = 'individual'\n    order by created_at asc\n    limit 1;\n  end if;\n\n  if client_record_id is null then\n    insert into public.clients (\n      profile_id,\n      user_id,\n      title,\n      first_name,\n      last_name,\n      full_name,\n      company_name,\n      email,\n      account_type,\n      subscription_plan,\n      billing_status,\n      status,\n      cards_active\n    ) values (\n      profile_record.id,\n      profile_record.id,\n      selected_title,\n      selected_first_name,\n      selected_last_name,\n      selected_full_name,\n      '',\n      selected_email,\n      'individual',\n      'free',\n      'free',\n      'active',\n      0\n    )\n    returning id into client_record_id;\n  else\n    update public.clients\n    set\n      profile_id = coalesce(profile_id, profile_record.id),\n      user_id = coalesce(user_id, profile_record.id),\n      title = coalesce(nullif(title, ''), selected_title),\n      first_name = coalesce(nullif(first_name, ''), selected_first_name),\n      last_name = coalesce(nullif(last_name, ''), selected_last_name),\n      full_name = coalesce(nullif(full_name, ''), selected_full_name),\n      email = coalesce(nullif(email, ''), selected_email),\n      account_type = 'individual',\n      status = coalesce(nullif(status, ''), 'active'),\n      cards_active = coalesce(cards_active, 0),\n      updated_at = now()\n    where id = client_record_id;\n  end if;\n\n  if not exists (\n    select 1\n    from public.client_users\n    where profile_id = profile_record.id\n       or user_id = profile_record.id\n       or (\n         client_id = client_record_id\n         and selected_email <> ''\n         and lower(coalesce(email, '')) = lower(selected_email)\n       )\n  ) then\n    insert into public.client_users (\n      client_id,\n      profile_id,\n      user_id,\n      title,\n      first_name,\n      last_name,\n      full_name,\n      email,\n      status\n    ) values (\n      client_record_id,\n      profile_record.id,\n      profile_record.id,\n      selected_title,\n      selected_first_name,\n      selected_last_name,\n      selected_full_name,\n      selected_email,\n      'active'\n    );\n  else\n    update public.client_users\n    set\n      client_id = coalesce(client_id, client_record_id),\n      profile_id = coalesce(profile_id, profile_record.id),\n      user_id = coalesce(user_id, profile_record.id),\n      title = coalesce(nullif(title, ''), selected_title),\n      first_name = coalesce(nullif(first_name, ''), selected_first_name),\n      last_name = coalesce(nullif(last_name, ''), selected_last_name),\n      full_name = coalesce(nullif(full_name, ''), selected_full_name),\n      email = coalesce(nullif(email, ''), selected_email),\n      status = coalesce(nullif(status, ''), 'active'),\n      updated_at = now()\n    where profile_id = profile_record.id\n       or user_id = profile_record.id\n       or (\n         client_id = client_record_id\n         and selected_email <> ''\n         and lower(coalesce(email, '')) = lower(selected_email)\n       );\n  end if;\n\n  return client_record_id;\nend;\n$function$\n",
+      "definition_md5": "010d4e08fb0a67dd5ee0808a7101c8ee",
+      "acl": "{postgres=X/postgres}"
+    },
+    {
+      "signature": "ensure_current_client_account()",
+      "name": "ensure_current_client_account",
+      "definition": "CREATE OR REPLACE FUNCTION public.ensure_current_client_account()\n RETURNS TABLE(client_id uuid, client_user_id uuid)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\ndeclare\n  current_user_id uuid;\n  selected_client_id uuid;\n  selected_client_user_id uuid;\nbegin\n  current_user_id := auth.uid();\n\n  if current_user_id is null then\n    raise exception 'Authentication required'\n      using errcode = '28000';\n  end if;\n\n  insert into public.profiles (\n    id,\n    title,\n    first_name,\n    last_name,\n    full_name,\n    email,\n    subscription_plan,\n    plan\n  )\n  select\n    users.id,\n    coalesce(users.raw_user_meta_data ->> 'title', ''),\n    coalesce(users.raw_user_meta_data ->> 'first_name', ''),\n    coalesce(users.raw_user_meta_data ->> 'last_name', ''),\n    coalesce(\n      nullif(users.raw_user_meta_data ->> 'full_name', ''),\n      nullif(\n        concat_ws(\n          ' ',\n          nullif(users.raw_user_meta_data ->> 'title', ''),\n          nullif(users.raw_user_meta_data ->> 'first_name', ''),\n          nullif(users.raw_user_meta_data ->> 'last_name', '')\n        ),\n        ''\n      ),\n      ''\n    ),\n    users.email,\n    'free',\n    'free'\n  from auth.users as users\n  where users.id = current_user_id\n  on conflict (id) do update\n  set\n    title = coalesce(nullif(public.profiles.title, ''), excluded.title),\n    first_name = coalesce(nullif(public.profiles.first_name, ''), excluded.first_name),\n    last_name = coalesce(nullif(public.profiles.last_name, ''), excluded.last_name),\n    full_name = coalesce(nullif(public.profiles.full_name, ''), excluded.full_name),\n    email = coalesce(nullif(public.profiles.email, ''), excluded.email),\n    updated_at = now();\n\n  selected_client_id := public.ensure_client_records_for_profile(current_user_id);\n\n  select client_users.id\n  into selected_client_user_id\n  from public.client_users\n  where client_users.profile_id = current_user_id\n     or client_users.user_id = current_user_id\n  order by client_users.created_at asc\n  limit 1;\n\n  client_id := selected_client_id;\n  client_user_id := selected_client_user_id;\n  return next;\nend;\n$function$\n",
+      "definition_md5": "87289ab8b8a45b2a813db9a66bdb2bee",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+    },
+    {
+      "signature": "finalize_client_card_media(uuid,uuid,text,uuid,smallint,jsonb,jsonb,text)",
+      "name": "finalize_client_card_media",
+      "definition": "CREATE OR REPLACE FUNCTION public.finalize_client_card_media(p_owner uuid, p_session uuid, p_operation text, p_card_id uuid, p_allowance smallint, p_validated_payload jsonb, p_asset_receipts jsonb, p_expected_card_revision text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare\n  s public.card_media_sessions;\n  a public.card_media_assets;\n  original public.cards;\n  saved public.cards;\n  payload jsonb := p_validated_payload;\n  digest text; revision text; result jsonb; intent jsonb;\n  v_kind text; action text; old_ref text; next_ref text; aid uuid;\n  old_refs jsonb := '{}'::jsonb;\n  refs jsonb := '{}'::jsonb;\n  new_ids uuid[] := array[]::uuid[];\n  old_ids uuid[] := array[]::uuid[];\n  involved uuid[];\n  new_count integer := 0;\nbegin\n  if p_owner is null or p_session is null or p_operation is null\n     or p_operation not in ('create','edit') or p_allowance is null or p_allowance not in (1,3)\n     or (p_operation='create' and (p_card_id is not null or p_expected_card_revision is not null))\n     or (p_operation='edit' and (p_card_id is null or p_expected_card_revision is null\n         or p_expected_card_revision !~ '^[0-9a-f]{64}$'))\n     or payload is null or jsonb_typeof(payload)<>'object' or octet_length(payload::text)>262144\n     or p_asset_receipts is null or jsonb_typeof(p_asset_receipts)<>'object'\n     or octet_length(p_asset_receipts::text)>2048 then\n    raise exception 'INVALID_MEDIA_FINALIZATION_INPUT' using errcode='22023';\n  end if;\n  if exists(select 1 from jsonb_object_keys(payload) k(key) where key <> all(array['template_id', 'card_name', 'slug', 'full_name', 'title', 'first_name', 'last_name', 'job_title', 'company_name', 'email', 'phone', 'website', 'address', 'whatsapp', 'linkedin', 'instagram', 'facebook', 'youtube', 'booking_link', 'custom_url', 'profile_image_url', 'company_logo_url', 'selected_colour', 'selected_text_colour', 'field_order', 'field_visibility', 'custom_fields', 'action_config', 'lead_capture_settings', 'hidden_fields', 'status', 'is_published']))\n     or payload ?| array['profile_image_url','company_logo_url']\n     or coalesce(payload->'custom_fields','{}'::jsonb) ? 'company_banner_url'\n     or jsonb_typeof(payload->'custom_fields') is distinct from 'object'\n     or jsonb_typeof(payload->'field_visibility') is distinct from 'object'\n     or (p_operation='edit' and payload ? 'slug') then\n    raise exception 'INVALID_FINALIZATION_PAYLOAD_FIELDS' using errcode='22023';\n  end if;\n  if nullif(btrim(payload->>'card_name'),'') is null\n     or nullif(btrim(payload->>'full_name'),'') is null\n     or nullif(payload->>'template_id','') is null\n     or (p_operation='create' and nullif(btrim(payload->>'slug'),'') is null)\n     or payload->>'status' is null or payload->>'status' not in ('draft','published')\n     or jsonb_typeof(payload->'is_published') is distinct from 'boolean'\n     or (payload->>'is_published')::boolean is distinct from (payload->>'status'='published') then\n    raise exception 'INVALID_CARD_PAYLOAD' using errcode='22023';\n  end if;\n  if (select array_agg(key order by key) from jsonb_object_keys(p_asset_receipts) k(key))\n     is distinct from array['banner','logo','profile'] then\n    raise exception 'INVALID_MEDIA_INTENTS' using errcode='22023';\n  end if;\n  foreach v_kind in array array['profile','logo','banner'] loop\n    intent := p_asset_receipts->v_kind;\n    action := intent->>'operation';\n    if jsonb_typeof(intent) is distinct from 'object' or action is null\n       or action not in ('retain','remove','replace') then\n      raise exception 'INVALID_MEDIA_INTENT' using errcode='22023';\n    end if;\n    if (action='replace' and (select array_agg(key order by key) from jsonb_object_keys(intent) k(key))\n         is distinct from array['asset_id','operation'])\n       or (action<>'replace' and intent <> jsonb_build_object('operation',action))\n       or (action='retain' and p_operation='create') then\n      raise exception 'INVALID_MEDIA_INTENT' using errcode='22023';\n    end if;\n    if action='replace' then\n      aid := (intent->>'asset_id')::uuid;\n      if aid is null or aid=any(new_ids) then raise exception 'INVALID_MEDIA_RECEIPT'; end if;\n      new_ids := array_append(new_ids,aid);\n    end if;\n  end loop;\n  -- Canonical JSONB digest v1: generated slug/allowance do not identify content.\n  digest := encode(sha256(convert_to(jsonb_build_object('version',1,'operation',p_operation,\n    'card_id',p_card_id,'payload',payload-'slug','media',p_asset_receipts,\n    'expected_revision',p_expected_card_revision)::text,'UTF8')),'hex');\n  perform pg_advisory_xact_lock(hashtextextended('public.cards.card_slot:' || p_owner::text,0));\n  if not public.card_media_owner_exists(p_owner) then raise exception 'MEDIA_OWNER_UNAVAILABLE'; end if;\n\n  -- Determine old bindings without locking the card ahead of its media sessions.\n  if p_operation='edit' then\n    select * into original from public.cards where id=p_card_id and user_id=p_owner;\n    -- A deleted-card replay must still reach its durable session receipt.\n    if found then\n      old_refs := jsonb_build_object('profile',original.profile_image_url,'logo',original.company_logo_url,\n        'banner',original.custom_fields->>'company_banner_url');\n      foreach v_kind in array array['profile','logo','banner'] loop\n        old_ref := old_refs->>v_kind;\n        if old_ref like 'card-media:%' then\n          old_ids := array_append(old_ids,substring(old_ref from 12)::uuid);\n        end if;\n      end loop;\n    end if;\n  end if;\n  if exists(select 1 from public.card_media_assets x\n      where x.id=any(new_ids) and x.session_id<>p_session)\n     or exists(select 1 from public.card_media_assets x join public.card_media_sessions ms on ms.id=x.session_id\n      where x.id=any(old_ids) and ms.owner_user_id<>p_owner) then\n    raise exception 'MEDIA_RECEIPT_UNAVAILABLE';\n  end if;\n  select array_agg(distinct session_id) into involved from public.card_media_assets\n    where id=any(new_ids || old_ids);\n  perform 1 from public.card_media_sessions where id=p_session or id=any(involved) order by id for update;\n  select * into s from public.card_media_sessions where id=p_session;\n  if not found or s.owner_user_id is distinct from p_owner then raise exception 'MEDIA_SESSION_UNAVAILABLE'; end if;\n  if s.finalization_digest is not null then\n    if s.finalization_digest <> digest then raise exception 'MEDIA_IDEMPOTENCY_CONFLICT'; end if;\n    return s.finalization_result || jsonb_build_object('replayed',true,'card_missing',\n      not exists(select 1 from public.cards where id=s.finalized_card_id and user_id=p_owner));\n  end if;\n  if s.state<>'pending' or s.expires_at<=now()\n     or s.template_id is distinct from (payload->>'template_id')::uuid\n     or (p_operation='create' and s.card_id is not null)\n     or (p_operation='edit' and s.card_id is distinct from p_card_id) then\n    raise exception 'MEDIA_SESSION_UNAVAILABLE';\n  end if;\n  if p_operation='edit' then\n    select * into original from public.cards where id=p_card_id and user_id=p_owner for update;\n    if not found then raise exception 'MEDIA_CARD_UNAVAILABLE'; end if;\n    revision := encode(sha256(convert_to(to_jsonb(original)::text,'UTF8')),'hex');\n    if revision <> p_expected_card_revision then raise exception 'CARD_REVISION_CONFLICT'; end if;\n    -- Recheck the pre-lock snapshot; never continue with an incomplete lock set.\n    if old_refs is distinct from jsonb_build_object('profile',original.profile_image_url,\n      'logo',original.company_logo_url,'banner',original.custom_fields->>'company_banner_url') then\n      raise exception 'CARD_REVISION_CONFLICT';\n    end if;\n  end if;\n  -- Include all new-session assets: attach_card_media_session visits them all.\n  perform 1 from public.card_media_assets\n    where session_id=p_session or id=any(old_ids || new_ids) order by id for update;\n  foreach v_kind in array array['profile','logo','banner'] loop\n    action := p_asset_receipts->v_kind->>'operation';\n    old_ref := old_refs->>v_kind;\n    if action='replace' then\n      aid := (p_asset_receipts->v_kind->>'asset_id')::uuid;\n      select * into a from public.card_media_assets where id=aid;\n      if not found or a.session_id<>p_session or a.kind<>v_kind or a.state<>'ready' then\n        raise exception 'MEDIA_RECEIPT_UNAVAILABLE';\n      end if;\n      next_ref := 'card-media:' || aid::text;\n      new_count := new_count+1;\n    elsif action='retain' then\n      next_ref := coalesce(old_ref,'');\n      if next_ref like 'card-media:%' then\n        aid := substring(next_ref from 12)::uuid;\n        if not exists(select 1 from public.card_media_assets x join public.card_media_sessions ms on ms.id=x.session_id\n          where x.id=aid and x.kind=v_kind and x.state='attached' and ms.owner_user_id=p_owner and ms.card_id=p_card_id\n          and ms.state='attached') then raise exception 'MEDIA_RETAINED_ASSET_UNAVAILABLE'; end if;\n      end if;\n      -- Legacy data/http media copied ONLY from the exact owned card, not input.\n    else\n      next_ref := '';\n    end if;\n    refs := refs || jsonb_build_object(v_kind,next_ref);\n  end loop;\n  payload := payload || jsonb_build_object('profile_image_url',refs->>'profile','company_logo_url',refs->>'logo',\n    'custom_fields',(payload->'custom_fields') || jsonb_build_object('company_banner_url',refs->>'banner'));\n  if octet_length(payload::text)>262144 then raise exception 'INVALID_CARD_PAYLOAD'; end if;\n  if p_operation='create' then\n    result := public.create_client_card_atomic(p_owner,p_allowance,payload);\n    select * into saved from public.cards where id=(result->>'id')::uuid;\n  else\n    -- Exact validated content update; immutable owner/id/slug/slot never assigned.\n    update public.cards c set\n    template_id=v.template_id,\n    card_name=v.card_name,\n    full_name=v.full_name,\n    title=v.title,\n    first_name=v.first_name,\n    last_name=v.last_name,\n    job_title=v.job_title,\n    company_name=v.company_name,\n    email=v.email,\n    phone=v.phone,\n    website=v.website,\n    address=v.address,\n    whatsapp=v.whatsapp,\n    linkedin=v.linkedin,\n    instagram=v.instagram,\n    facebook=v.facebook,\n    youtube=v.youtube,\n    booking_link=v.booking_link,\n    custom_url=v.custom_url,\n    profile_image_url=v.profile_image_url,\n    company_logo_url=v.company_logo_url,\n    selected_colour=v.selected_colour,\n    selected_text_colour=v.selected_text_colour,\n    field_order=v.field_order,\n    field_visibility=v.field_visibility,\n    custom_fields=v.custom_fields,\n    action_config=v.action_config,\n    lead_capture_settings=v.lead_capture_settings,\n    hidden_fields=v.hidden_fields,\n    status=v.status,\n    is_published=v.is_published\n    from jsonb_to_record(payload) as v(template_id uuid, card_name text, slug text, full_name text, title text, first_name text, last_name text, job_title text, company_name text, email text, phone text, website text, address text, whatsapp text, linkedin text, instagram text, facebook text, youtube text, booking_link text, custom_url text, profile_image_url text, company_logo_url text, selected_colour text, selected_text_colour text, field_order jsonb, field_visibility jsonb, custom_fields jsonb, action_config jsonb, lead_capture_settings jsonb, hidden_fields text[], status text, is_published boolean)\n    where c.id=p_card_id and c.user_id=p_owner returning c.* into saved;\n  end if;\n  if new_count>0 then\n    perform public.attach_card_media_session(p_owner,p_session,saved.id);\n  else\n    -- Zero new media / removal-only saves also consume their retry session.\n    update public.card_media_sessions set state='attached',card_id=saved.id where id=p_session;\n  end if;\n  -- Persisted replacement is now in the SAME transaction. Never delete objects here.\n  foreach aid in array old_ids loop\n    -- Never retire a foreign/corrupt binding; retained bindings were checked above.\n    if exists(select 1 from public.card_media_assets x join public.card_media_sessions ms on ms.id=x.session_id\n      where x.id=aid and ms.owner_user_id=p_owner and ms.card_id=saved.id) then\n      perform public.retire_card_media_asset(aid);\n    end if;\n  end loop;\n  revision := encode(sha256(convert_to(to_jsonb(saved)::text,'UTF8')),'hex');\n  result := jsonb_build_object('card_id',saved.id,'status',saved.status,'is_published',saved.is_published,\n    'revision',revision,'replayed',false,'card_missing',false);\n  update public.card_media_sessions set finalization_digest=digest,finalized_operation=p_operation,\n    finalized_card_id=saved.id,finalization_result=result,finalized_at=now() where id=p_session;\n  return result;\nend;\n$function$\n",
+      "definition_md5": "9545fb128f9711c27ee3cf7598f1d0d9",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "signature": "get_client_card_edit_snapshot(uuid,uuid)",
+      "name": "get_client_card_edit_snapshot",
+      "definition": "CREATE OR REPLACE FUNCTION public.get_client_card_edit_snapshot(p_owner uuid, p_card_id uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare\n  card_row public.cards%rowtype;\n  result jsonb;\nbegin\n  select c.* into card_row\n  from public.cards as c\n  where c.id = p_card_id and c.user_id = p_owner;\n\n  -- Identical result for a missing card, foreign-owned card or null identity.\n  if not found then\n    return null;\n  end if;\n\n  result := jsonb_build_object(\n    'card', to_jsonb(card_row),\n    'revision', encode(sha256(convert_to(to_jsonb(card_row)::text,'UTF8')),'hex')\n  );\n\n  -- Bounded full snapshot, with room for legacy inline media. Never truncate:\n  -- the revision must describe exactly the complete card returned to the editor.\n  -- This response ceiling does not change any write/upload/field validation limit.\n  if octet_length(result::text) > 16777216 then\n    raise exception 'CARD_EDIT_SNAPSHOT_TOO_LARGE' using errcode = '54000';\n  end if;\n\n  return result;\nend;\n$function$\n",
+      "definition_md5": "69cc9837f7d81caf5a08db0efafe01cb",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "signature": "get_current_client_account_status()",
+      "name": "get_current_client_account_status",
+      "definition": "CREATE OR REPLACE FUNCTION public.get_current_client_account_status()\n RETURNS TABLE(client_id uuid, client_status text, client_user_id uuid, client_user_status text, is_suspended boolean)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\ndeclare\n  current_user_id uuid;\n  current_email text;\n  selected_client_id uuid;\n  selected_client_status text;\n  selected_client_user_id uuid;\n  selected_client_user_status text;\nbegin\n  current_user_id := auth.uid();\n\n  if current_user_id is null then\n    raise exception 'Authentication required'\n      using errcode = '28000';\n  end if;\n\n  select users.email\n  into current_email\n  from auth.users as users\n  where users.id = current_user_id;\n\n  select clients.id, clients.status\n  into selected_client_id, selected_client_status\n  from public.clients\n  where clients.profile_id = current_user_id\n     or clients.user_id = current_user_id\n     or (\n       current_email is not null\n       and lower(coalesce(clients.email, '')) = lower(current_email)\n     )\n  order by\n    case\n      when clients.profile_id = current_user_id or clients.user_id = current_user_id then 0\n      else 1\n    end,\n    clients.created_at asc\n  limit 1;\n\n  select client_users.id, client_users.status\n  into selected_client_user_id, selected_client_user_status\n  from public.client_users\n  where client_users.profile_id = current_user_id\n     or client_users.user_id = current_user_id\n     or (\n       selected_client_id is not null\n       and client_users.client_id = selected_client_id\n       and current_email is not null\n       and lower(coalesce(client_users.email, '')) = lower(current_email)\n     )\n     or (\n       current_email is not null\n       and lower(coalesce(client_users.email, '')) = lower(current_email)\n     )\n  order by\n    case\n      when client_users.profile_id = current_user_id or client_users.user_id = current_user_id then 0\n      else 1\n    end,\n    client_users.created_at asc\n  limit 1;\n\n  client_id := selected_client_id;\n  client_status := coalesce(selected_client_status, 'active');\n  client_user_id := selected_client_user_id;\n  client_user_status := coalesce(selected_client_user_status, 'active');\n  is_suspended :=\n    lower(coalesce(selected_client_status, 'active')) in ('suspended', 'inactive')\n    or lower(coalesce(selected_client_user_status, 'active')) in ('suspended', 'inactive');\n\n  return next;\nend;\n$function$\n",
+      "definition_md5": "43287bd210fe1a5c7cc85750212e039d",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+    },
+    {
+      "signature": "manage_card_media_cleanup(uuid,text,uuid)",
+      "name": "manage_card_media_cleanup",
+      "definition": "CREATE OR REPLACE FUNCTION public.manage_card_media_cleanup(p_asset uuid, p_action text, p_token uuid DEFAULT NULL::uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare a public.card_media_assets%rowtype; s public.card_media_sessions%rowtype;\n  owner_id uuid; session_id uuid; outcome text; ref text; token uuid;\nbegin\n  perform public.check_card_media_cleanup_boundary();\n  if p_action is null or p_action not in ('claim','check','complete','retry') then raise exception 'MEDIA_CLEANUP_ACTION_INVALID'; end if;\n  select ms.owner_user_id,ms.id into owner_id,session_id from public.card_media_assets ma\n    join public.card_media_sessions ms on ms.id=ma.session_id where ma.id=p_asset;\n  if not found then return jsonb_build_object('status','invalid'); end if;\n  perform pg_advisory_xact_lock(hashtextextended('public.cards.card_slot:'||owner_id::text,0));\n  select * into s from public.card_media_sessions where id=session_id for update;\n  select * into a from public.card_media_assets where id=p_asset for update;\n  if not found then return jsonb_build_object('status','invalid'); end if;\n  if p_action <> 'claim' and (p_token is null or a.cleanup_token is distinct from p_token\n    or a.cleanup_lease_until <= clock_timestamp() or a.cleanup_lease_until is null) then\n    return jsonb_build_object('status','stale');\n  end if;\n  if p_action='claim' and a.cleanup_lease_until > clock_timestamp() then\n    return jsonb_build_object('status','busy');\n  end if;\n  ref := 'card-media:'||a.id::text;\n  -- GLOBAL references: never rely only on the owning card/session or visibility.\n  if exists(select 1 from public.cards where profile_image_url=ref or company_logo_url=ref\n    or custom_fields->>'company_banner_url'=ref) then\n    update public.card_media_assets set cleanup_after=now()+interval '24 hours',\n      cleanup_token=null,cleanup_lease_until=null where id=a.id;\n    return jsonb_build_object('status','referenced');\n  end if;\n  if p_action='claim' then\n    if a.cleanup_after > now() then return jsonb_build_object('status','not_due'); end if;\n    if a.state='attached' then\n      -- Deleted-card/account or superseded orphan. Retirement starts the SAME 24h grace.\n      outcome := public.retire_card_media_asset(a.id);\n      return jsonb_build_object('status',outcome);\n    end if;\n    if a.state in ('reserved','ready') and s.state='pending' and s.expires_at > now()\n      and public.card_media_owner_exists(s.owner_user_id) then\n      update public.card_media_assets set cleanup_after=s.expires_at where id=a.id;\n      return jsonb_build_object('status','not_due');\n    end if;\n    if a.state <> 'deleted' then\n      outcome := public.claim_card_media_cleanup(a.id);\n      if outcome <> 'deleting' then return jsonb_build_object('status',outcome); end if;\n    end if;\n    token := gen_random_uuid();\n    update public.card_media_assets set cleanup_token=token,\n      cleanup_lease_until=clock_timestamp()+interval '5 minutes',cleanup_attempts=cleanup_attempts+1 where id=a.id;\n    return jsonb_build_object('status','claimed','token',token,'retried',a.cleanup_attempts>0,\n      'path',s.owner_user_id::text||'/'||s.id::text||'/'||a.kind||'/'||a.id::text||\n        case a.mime_type when 'image/jpeg' then '.jpg' when 'image/png' then '.png' when 'image/webp' then '.webp' end);\n  end if;\n  if a.state not in ('deleting','deleted') then return jsonb_build_object('status','invalid'); end if;\n  if p_action='check' then return jsonb_build_object('status','authorized'); end if;\n  if p_action='complete' then\n    -- Caller has confirmed Storage absence. Retain tombstone AND receipt forever.\n    -- Reconcile tombstones daily to catch a very late in-flight abandoned upload.\n    update public.card_media_assets set state='deleted',cleanup_token=null,cleanup_lease_until=null,\n      cleanup_after=now()+interval '24 hours' where id=a.id;\n    return jsonb_build_object('status','deleted');\n  end if;\n  update public.card_media_assets set cleanup_token=null,cleanup_lease_until=null,\n    cleanup_after=now()+interval '15 minutes' where id=a.id;\n  return jsonb_build_object('status','retry');\nend $function$\n",
+      "definition_md5": "8b96463924a1750cd77316abd5163d9b",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "signature": "mark_card_media_ready(uuid,uuid,uuid)",
+      "name": "mark_card_media_ready",
+      "definition": "CREATE OR REPLACE FUNCTION public.mark_card_media_ready(p_owner uuid, p_session uuid, p_asset uuid)\n RETURNS void\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\ndeclare s public.card_media_sessions;\nbegin\n  select * into s from public.card_media_sessions where id=p_session for update;\n  if not found or s.owner_user_id is distinct from p_owner or s.state <> 'pending' or s.expires_at <= now()\n     or not public.card_media_owner_exists(p_owner) then\n    raise exception 'MEDIA_SESSION_UNAVAILABLE';\n  end if;\n  update public.card_media_assets set state='ready'\n    where id=p_asset and session_id=p_session and state in ('reserved','ready');\n  if not found then raise exception 'MEDIA_ASSET_UNAVAILABLE'; end if;\nend;\n$function$\n",
+      "definition_md5": "59b26030e8cc5022d192aae86a35f6ed",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "signature": "prune_empty_card_media_sessions(integer)",
+      "name": "prune_empty_card_media_sessions",
+      "definition": "CREATE OR REPLACE FUNCTION public.prune_empty_card_media_sessions(p_limit integer)\n RETURNS integer\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare s record; removed integer := 0;\nbegin\n  perform public.check_card_media_cleanup_boundary();\n  if p_limit is null or p_limit < 1 or p_limit > 50 then raise exception 'MEDIA_CLEANUP_BATCH_INVALID'; end if;\n  for s in select id from public.card_media_sessions ms\n    where ms.state in ('pending','expired') and ms.expires_at < now()-interval '7 days'\n      and ms.finalization_digest is null and ms.finalization_result is null and ms.finalized_at is null\n      and not exists(select 1 from public.card_media_assets a where a.session_id=ms.id)\n    order by ms.expires_at,ms.id limit p_limit for update of ms skip locked loop\n    -- Reserve/finalize both acquire the session lock first; expired sessions cannot revive.\n    delete from public.card_media_sessions where id=s.id;\n    removed := removed+1;\n  end loop;\n  return removed;\nend $function$\n",
+      "definition_md5": "b522a831bc126191c0f54ffc7057f61c",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "signature": "reserve_card_media_asset(uuid,uuid,text,text,text,integer)",
+      "name": "reserve_card_media_asset",
+      "definition": "CREATE OR REPLACE FUNCTION public.reserve_card_media_asset(p_owner uuid, p_session uuid, p_kind text, p_sha256 text, p_mime text, p_size integer)\n RETURNS jsonb\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\ndeclare s public.card_media_sessions; a public.card_media_assets; ext text;\nbegin\n  select * into s from public.card_media_sessions where id = p_session for update;\n  if not found or s.owner_user_id is distinct from p_owner or s.state <> 'pending' or s.expires_at <= now()\n     or not public.card_media_owner_exists(p_owner) then\n    raise exception 'MEDIA_SESSION_UNAVAILABLE';\n  end if;\n  if not exists(select 1 from public.card_media_assets where session_id=p_session and kind=p_kind and sha256=p_sha256)\n     and (select count(*) from public.card_media_assets where session_id=p_session) >= 12 then\n    raise exception 'MEDIA_SESSION_ASSET_LIMIT';\n  end if;\n  insert into public.card_media_assets(session_id,kind,sha256,mime_type,size_bytes,cleanup_after)\n    values(p_session,p_kind,p_sha256,p_mime,p_size,s.expires_at)\n    on conflict(session_id,kind,sha256) do nothing;\n  select * into a from public.card_media_assets\n    where session_id=p_session and kind=p_kind and sha256=p_sha256 for update;\n  if a.state not in ('reserved','ready') or a.mime_type is distinct from p_mime or a.size_bytes is distinct from p_size then\n    raise exception 'MEDIA_RETRY_CONFLICT';\n  end if;\n  ext := case a.mime_type when 'image/jpeg' then 'jpg' when 'image/png' then 'png' else 'webp' end;\n  return jsonb_build_object('asset_id',a.id,'state',a.state,'object_path',\n    s.owner_user_id::text || '/' || s.id::text || '/' || a.kind || '/' || a.id::text || '.' || ext);\nend;\n$function$\n",
+      "definition_md5": "3dae33101590e9cc8e2683846f757a80",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "signature": "retire_card_media_asset(uuid)",
+      "name": "retire_card_media_asset",
+      "definition": "CREATE OR REPLACE FUNCTION public.retire_card_media_asset(p_asset uuid)\n RETURNS text\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\ndeclare sid uuid; owner_id uuid; a public.card_media_assets; ref text;\nbegin\n  select session_id into sid from public.card_media_assets where id=p_asset;\n  if not found then return 'not_found'; end if;\n  select owner_user_id into owner_id from public.card_media_sessions where id=sid;\n  perform pg_advisory_xact_lock(hashtextextended('public.cards.card_slot:' || owner_id::text,0));\n  perform 1 from public.card_media_sessions where id=sid for update;\n  select * into a from public.card_media_assets where id=p_asset for update;\n  if a.state <> 'attached' then return a.state; end if;\n  ref := 'card-media:' || a.id::text;\n  if exists(select 1 from public.cards where profile_image_url=ref or company_logo_url=ref\n      or custom_fields->>'company_banner_url'=ref) then return 'referenced'; end if;\n  update public.card_media_assets set state='cleanup_pending',cleanup_after=now()+interval '24 hours' where id=p_asset;\n  return 'cleanup_pending';\nend;\n$function$\n",
+      "definition_md5": "e0ae9c1282106de55e86a19d1ff869fd",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "signature": "set_updated_at()",
+      "name": "set_updated_at",
+      "definition": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\nbegin\n  new.updated_at = now();\n  return new;\nend;\n$function$\n",
+      "definition_md5": "4d6804d5850641a33867814c9e76a714",
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+    }
+  ]
+}

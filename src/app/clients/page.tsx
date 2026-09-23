@@ -1,12 +1,12 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import CardRenderer from "@/components/CardRenderer";
 import { mutateAdminCard } from "@/lib/admin-card-mutations";
 import { getAdminInventory } from "@/lib/admin-inventory";
 import { getAdminTemplates } from "@/lib/templates";
-import { supabase } from "@/lib/supabase";
+import { mutateAdminClient, getAdminClientCounts, type ClientRelationshipCounts } from "@/lib/admin-client-contract";
 import * as XLSX from "xlsx";
 import { Download, FileSpreadsheet, UploadCloud } from "lucide-react";
 
@@ -20,7 +20,7 @@ type Client = {
   subscription_plan: string | null;
   account_type: string | null;
   billing_status: string | null;
-  cards_active: number | null;
+  card_count: number;
   created_at: string;
   job_title?: string | null;
 };
@@ -129,6 +129,17 @@ export default function ClientsPage() {
   const [cards, setCards] = useState<Card[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
+  const [relationships, setRelationships] = useState<ClientRelationshipCounts | null>(null);
+  const importPending = useRef(false);
+  const [importOperation, setImportOperation] = useState<{ signature: string; id: string } | null>(null);
+  const mutationPending = useRef(false);
+  async function mutate(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) {
+    if (mutationPending.current) return false;
+    mutationPending.current = true;
+    try { await mutateAdminClient(path, method, body); return true; }
+    catch (error) { alert(error instanceof Error ? error.message : "Operation failed."); return false; }
+    finally { mutationPending.current = false; }
+  }
   const [expandedCompany, setExpandedCompany] = useState<string | null>(null);
   const [fullListMode, setFullListMode] = useState<"individual" | "business" | null>(null);
 
@@ -148,7 +159,7 @@ export default function ClientsPage() {
   const [phone, setPhone] = useState("");
   const [accountType, setAccountType] = useState("individual");
   const [subscriptionPlan, setSubscriptionPlan] = useState("free");
-  const [billingStatus, setBillingStatus] = useState("free");
+  const [, setBillingStatus] = useState("free");
   const [clientStatus, setClientStatus] = useState("active");
 
   const [staffFullName, setStaffFullName] = useState("");
@@ -171,13 +182,13 @@ export default function ClientsPage() {
   async function fetchClientData() {
     setLoading(true);
     try {
-      const [nextClients, nextUsers, nextCards, nextTemplates] = await Promise.all([
+      const [nextClients, nextUsers, nextCards, nextTemplates, counts] = await Promise.all([
         getAdminInventory<Client>("clients"), getAdminInventory<ClientUser>("client-users"),
-        getAdminInventory<Card>("cards"), getAdminTemplates(),
+        getAdminInventory<Card>("cards"), getAdminTemplates(), getAdminClientCounts(),
       ]);
-      setClients(nextClients); setClientUsers(nextUsers); setCards(nextCards);
+      setClients(nextClients.map(client => ({ ...client, card_count: counts.cardCounts[client.id] ?? 0 }))); setClientUsers(nextUsers); setCards(nextCards); setRelationships(counts);
       setTemplates(nextTemplates as Template[]);
-    } catch (error) { alert(error instanceof Error ? error.message : "Admin inventory failed to load. Please retry."); }
+    } catch (error) { setRelationships(null); alert(error instanceof Error ? error.message : "Admin inventory failed to load. Please retry."); }
     finally { setLoading(false); }
   }
 
@@ -220,20 +231,9 @@ export default function ClientsPage() {
   async function createClientRecord() {
     if (accountType === "individual" && (!fullName || !email)) return;
     if (accountType !== "individual" && (!companyName || !email)) return;
-    const { error } = await supabase.from("clients").insert([
-      {
-        full_name: fullName || companyName,
-        company_name: companyName,
-        email,
-        phone,
-        account_type: accountType,
-        subscription_plan: subscriptionPlan,
-        billing_status: billingStatus,
-        status: clientStatus,
-        cards_active: 0,
-      },
-    ]);
-    if (error) return alert(error.message);
+    if (!await mutate("/api/admin/clients", "POST", {
+      full_name: fullName || companyName, company_name: companyName, email, phone, account_type: accountType, status: clientStatus,
+    })) return;
     setFullName("");
     setCompanyName("");
     setEmail("");
@@ -254,35 +254,16 @@ export default function ClientsPage() {
 
     if (!confirmed) return;
 
-    const { error } = await supabase
-      .from("clients")
-      .update({ status: nextStatus })
-      .eq("id", client.id);
-    if (error) return alert(error.message);
-
-    const { error: usersError } = await supabase
-      .from("client_users")
-      .update({ status: nextStatus })
-      .eq("client_id", client.id);
-
-    if (usersError) return alert(usersError.message);
+    if (!await mutate(`/api/admin/clients/${client.id}/status`, "PATCH", { status: nextStatus })) return;
 
     void fetchClientData();
   }
 
   async function createClientUser(client: Client) {
     if (!staffFullName || !staffEmail) return;
-    const { error } = await supabase.from("client_users").insert([
-      {
-        client_id: client.id,
-        full_name: staffFullName,
-        job_title: staffJobTitle,
-        email: staffEmail,
-        phone: staffPhone,
-        status: "active",
-      },
-    ]);
-    if (error) return alert(error.message);
+    if (!await mutate("/api/admin/client-users", "POST", {
+      client_id: client.id, full_name: staffFullName, job_title: staffJobTitle, email: staffEmail, phone: staffPhone,
+    })) return;
     setStaffFullName("");
     setStaffJobTitle("");
     setStaffEmail("");
@@ -292,8 +273,7 @@ export default function ClientsPage() {
 
   async function deleteClientUser(user: ClientUser) {
     if (!window.confirm(`Delete user ${user.full_name || user.name}?`)) return;
-    const { error } = await supabase.from("client_users").delete().eq("id", user.id);
-    if (error) return alert(error.message);
+    if (!await mutate(`/api/admin/client-users/${user.id}`, "DELETE")) return;
     void fetchClientData();
   }
 
@@ -330,7 +310,7 @@ export default function ClientsPage() {
       subscription_plan: client.subscription_plan || "",
       billing_status: client.billing_status || "",
       status: client.status || "",
-      cards_active: String(client.cards_active ?? 0),
+
     });
   }
 
@@ -381,58 +361,13 @@ export default function ClientsPage() {
       return alert("Email is required.");
     }
 
-    if (detailsModal.type === "client") {
-      const nextSubscriptionPlan =
-        detailsForm.account_type === "individual" ? detailsForm.subscription_plan : "paid";
-      const nextBillingStatus =
-        detailsForm.account_type === "individual" && nextSubscriptionPlan === "free" ? "free" : "paid";
-      const { error } = await supabase
-        .from("clients")
-        .update({
-          full_name: detailsForm.full_name,
-          company_name: detailsForm.company_name,
-          email: detailsForm.email,
-          phone: detailsForm.phone,
-          account_type: detailsForm.account_type,
-          subscription_plan: nextSubscriptionPlan,
-          billing_status: nextBillingStatus,
-          status: detailsForm.status,
-          cards_active: Number(detailsForm.cards_active || 0),
-        })
-        .eq("id", detailsModal.data.id);
-      if (error) return alert(error.message);
-    } else if (detailsModal.type === "admin") {
-      const { error } = await supabase
-        .from("clients")
-        .update({
-          full_name: detailsForm.full_name,
-          email: detailsForm.email,
-          phone: detailsForm.phone,
-        })
-        .eq("id", detailsModal.data.id);
-      if (error) return alert(error.message);
-    } else {
-      const { error } = await supabase
-        .from("client_users")
-        .update({
-          full_name: detailsForm.full_name,
-          job_title: detailsForm.job_title,
-          email: detailsForm.email,
-          phone: detailsForm.phone,
-          website: detailsForm.website,
-          address: detailsForm.address,
-          whatsapp: detailsForm.whatsapp,
-          linkedin: detailsForm.linkedin,
-          instagram: detailsForm.instagram,
-          facebook: detailsForm.facebook,
-          youtube: detailsForm.youtube,
-          booking_link: detailsForm.booking_link,
-          custom_url: detailsForm.custom_url,
-          status: detailsForm.status,
-        })
-        .eq("id", detailsModal.data.id);
-      if (error) return alert(error.message);
-    }
+    const fields = detailsModal.type === "client"
+      ? ["full_name", "company_name", "email", "phone", "account_type"]
+      : detailsModal.type === "admin" ? ["full_name", "email", "phone"]
+      : ["full_name", "job_title", "email", "phone", "website", "address", "whatsapp", "linkedin", "instagram", "facebook", "youtube", "booking_link", "custom_url", "status"];
+    const path = detailsModal.type === "staff" ? "client-users" : "clients";
+    if (!await mutate(`/api/admin/${path}/${detailsModal.data.id}`, "PATCH",
+      Object.fromEntries(fields.map(key => [key, detailsForm[key] || ""])))) return;
 
     await fetchClientData();
     closeDetailsModal();
@@ -483,70 +418,31 @@ export default function ClientsPage() {
   }
 
   async function confirmImport() {
+    if (importPending.current) return;
+    importPending.current = true;
     setImportingFile(true);
     try {
-      const companies = new Map<string, ImportRow[]>();
-      importRows.forEach((row) => {
-        if (!row.company_name.trim()) return;
-        companies.set(row.company_name, [...(companies.get(row.company_name) || []), row]);
-      });
-      let importedCompanies = 0;
-      let importedUsers = 0;
-      for (const [company, rows] of companies.entries()) {
-        const first = rows[0];
-        const { data, error } = await supabase
-          .from("clients")
-          .insert([
-            {
-              full_name: first.full_name || company,
-              company_name: company,
-              email: first.email || `${slugify(company)}-${Date.now()}@dmi.local`,
-              phone: first.phone || "",
-              account_type: accountType === "individual" ? "business" : accountType,
-              subscription_plan: "paid",
-              billing_status: "paid",
-              status: clientStatus,
-              cards_active: 0,
-            },
-          ])
-          .select("id")
-          .single();
-        if (error || !data) {
-          alert(error?.message || `Could not import ${company}`);
-          continue;
-        }
-        importedCompanies += 1;
-        const users = rows
-          .filter((row) => row.full_name.trim())
-          .map((row) => ({
-            client_id: data.id,
-            full_name: row.full_name,
-            job_title: row.job_title,
-            email: row.email,
-            phone: row.phone,
-            website: row.website,
-            address: row.address,
-            whatsapp: row.whatsapp,
-            linkedin: row.linkedin,
-            instagram: row.instagram,
-            facebook: row.facebook,
-            youtube: row.youtube,
-            booking_link: row.booking_link,
-            custom_url: row.custom_url,
-            status: "active",
-          }));
-        if (users.length) {
-          const { error: usersError } = await supabase.from("client_users").insert(users);
-          if (usersError) alert(usersError.message);
-          else importedUsers += users.length;
-        }
+      const groups = new Map<string, ImportRow[]>();
+      for (const row of importRows) {
+        const company = row.company_name.trim();
+        if (!company || !row.full_name.trim()) throw new Error("Every import row requires a company and full name.");
+        groups.set(company, [...(groups.get(company) || []), row]);
       }
+      const companies = [...groups].map(([company, rows]) => ({
+        client: { company_name: company, full_name: rows[0].full_name, email: rows[0].email,
+          phone: rows[0].phone, account_type: accountType === "enterprise" ? "enterprise" : "business", status: clientStatus },
+        staff: rows.map(row => Object.fromEntries(Object.entries(row).filter(([key]) => key !== "company_name"))),
+      }));
+      const signature = JSON.stringify(companies);
+      const operation = importOperation?.signature === signature ? importOperation : { signature, id: crypto.randomUUID() };
+      setImportOperation(operation);
+      await mutateAdminClient("/api/admin/clients/import", "POST", { operationId: operation.id, companies });
       await fetchClientData();
-      alert(`Imported ${importedCompanies} companies and ${importedUsers} users.`);
+      alert(`Imported ${companies.length} companies and ${importRows.length} staff contacts. No login accounts or subscriptions were created.`);
+      setImportOperation(null);
       cancelImport();
-    } finally {
-      setImportingFile(false);
-    }
+    } catch (error) { alert(error instanceof Error ? error.message : "Import failed. Keep the import unchanged to retry safely."); }
+    finally { importPending.current = false; setImportingFile(false); }
   }
 
   function toggleCompany(clientId: string) {
@@ -558,15 +454,8 @@ export default function ClientsPage() {
   }
 
   function findCardsForUser(companyId: string, user: ClientUser) {
-    const companyCards = cards.filter((card) => card.client_id === companyId);
-    const userEmail = user.email?.trim().toLowerCase();
-    const userName = (user.full_name || user.name || "").trim().toLowerCase();
-    if (userEmail) {
-      const matches = companyCards.filter((card) => card.email?.trim().toLowerCase() === userEmail);
-      if (matches.length) return matches;
-    }
-    if (!userName) return [];
-    return companyCards.filter((card) => card.full_name?.trim().toLowerCase() === userName);
+    const ids = new Set(relationships?.staffCards[user.id] || []);
+    return cards.filter(card => card.client_id === companyId && ids.has(card.id));
   }
 
   function openCardPreview(userCards: Card[], user: ClientUser) {
@@ -634,15 +523,7 @@ export default function ClientsPage() {
     }));
   }, [importRows]);
 
-  const totalClients = clients.length;
-  const totalUsers = individualClients.length + clientUsers.length;
-  const paidClients = clients.filter((client) => client.billing_status === "paid").length;
-  const freeUsers = individualClients.filter(
-    (client) => client.subscription_plan === "free" || client.billing_status === "free"
-  ).length;
-  const overdueClients = clients.filter((client) => client.billing_status === "overdue").length;
-  const businessAccounts = businessClients.filter((client) => client.account_type === "business").length;
-  const enterpriseAccounts = businessClients.filter((client) => client.account_type === "enterprise").length;
+  const summary = relationships?.summary;
   const latestPreviewUser = previewUserId
     ? clientUsers.find((user) => user.id === previewUserId) || null
     : null;
@@ -663,14 +544,13 @@ export default function ClientsPage() {
         </div>
 
         <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Total Clients" value={totalClients} caption="All account records" />
-          <StatCard label="Total Users" value={totalUsers} caption="People across all accounts" />
-          <StatCard label="Free Users" value={freeUsers} caption="Individual free access" />
-          <StatCard label="Paid Users" value={paidClients} caption="Current billing" />
-          <StatCard label="Individual Users" value={individualClients.length} caption="Personal client accounts" />
-          <StatCard label="Business Accounts" value={businessAccounts} caption="Company workspaces" />
-          <StatCard label="Enterprise Accounts" value={enterpriseAccounts} caption="Enterprise workspaces" />
-          <StatCard label="Overdue" value={overdueClients} caption="Needs attention" danger />
+          <StatCard label="Total Clients" value={summary?.totalClients ?? "—"} caption="Account records" />
+          <StatCard label="Individuals" value={summary?.individuals ?? "—"} caption="Individual accounts" />
+          <StatCard label="Business" value={summary?.business ?? "—"} caption="Company accounts" />
+          <StatCard label="Enterprise" value={summary?.enterprise ?? "—"} caption="Enterprise accounts" />
+          <StatCard label="Activated Users" value={summary?.activatedUsers ?? "—"} caption="Distinct linked Auth identities" />
+          <StatCard label="Invited / Unlinked Staff" value={summary?.unlinkedStaff ?? "—"} caption="No verified user identity" />
+          <StatCard label="Cards" value={summary?.cards ?? "—"} caption="Actual card records" />
         </div>
 
         <AddClientSection
@@ -943,7 +823,7 @@ function AddClientSection(props: {
           <select
             value={props.subscriptionPlan}
             onChange={(e) => props.applySubscriptionPlan(e.target.value)}
-            disabled={props.accountType !== "individual"}
+            disabled
             className="inputStyle"
           >
             {props.accountType === "individual" ? (
@@ -956,7 +836,7 @@ function AddClientSection(props: {
             )}
           </select>
           <span className="mt-2 block text-xs text-white/35">
-            Billing status is system-controlled and will later sync from Finance/Stripe.
+            Legacy account label only. Paid access is determined by Stripe, not this field.
           </span>
         </Field>
         <Field label="Client Status">
@@ -1088,7 +968,7 @@ function IndividualFilters(props: {
         <FilterSelect value={props.billing} onChange={props.setBilling} label="All Billing" options={["paid", "trial", "overdue", "cancelled"]} />
         <FilterSelect value={props.status} onChange={props.setStatus} label="All Statuses" options={["active", "pending", "suspended"]} />
       </div>
-      <p className="mt-3 text-xs text-white/35">Billing status will later sync from Finance/Stripe.</p>
+      <p className="mt-3 text-xs text-white/35">Legacy plan and billing labels are informational; Stripe controls access. Use Suspend/Reactivate for account status.</p>
     </div>
   );
 }
@@ -1114,7 +994,7 @@ function BusinessFilters(props: {
         <FilterSelect value={props.billing} onChange={props.setBilling} label="All Billing" options={["paid", "trial", "overdue", "cancelled"]} />
         <FilterSelect value={props.status} onChange={props.setStatus} label="All Statuses" options={["active", "pending", "suspended"]} />
       </div>
-      <p className="mt-3 text-xs text-white/35">Billing status will later sync from Finance/Stripe.</p>
+      <p className="mt-3 text-xs text-white/35">Legacy plan and billing labels are informational; Stripe controls access. Use Suspend/Reactivate for account status.</p>
     </div>
   );
 }
@@ -1140,7 +1020,7 @@ function IndividualTable(props: {
             <td className="p-5 text-white/70">{client.email}</td>
             <td className="p-5 capitalize text-white/70">{client.subscription_plan}</td>
             <td className="p-5"><BillingBadge status={client.billing_status || "paid"} /></td>
-            <td className="p-5 text-white/70">{client.cards_active ?? 0}</td>
+            <td className="p-5 text-white/70">{client.card_count ?? 0}</td>
             <td className="p-5"><StatusBadge status={client.status} /></td>
             <td className="p-5"><ClientActions client={client} onView={props.openClientDetails} onToggle={props.toggleClientStatus} /></td>
           </tr>
@@ -1183,7 +1063,7 @@ function BusinessTable(props: {
       <tbody>
         {props.loading ? <TableMessage message="Loading company accounts..." /> : props.companies.length === 0 ? <TableMessage message="No matching company accounts found." /> : props.companies.map((company) => {
           const users = props.clientUsers.filter((user) => user.client_id === company.id);
-          const companyCardCount = props.cards.filter((card) => card.client_id === company.id).length;
+          const companyCardCount = company.card_count ?? 0;
           const expanded = props.expandedCompany === company.id;
           return (
             <Fragment key={company.id}>
@@ -1268,11 +1148,7 @@ function normalizeImportRow(row: Record<string, string>): ImportRow {
   }, {} as ImportRow);
 }
 
-function slugify(value: string) {
-  return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}
-
-function StatCard({ label, value, caption, danger = false }: { label: string; value: number; caption: string; danger?: boolean }) {
+function StatCard({ label, value, caption, danger = false }: { label: string; value: number | string; caption: string; danger?: boolean }) {
   return (
     <div className={`flex min-h-40 flex-col justify-between rounded-3xl border p-6 shadow-2xl ${danger ? "border-red-400/20 bg-red-500/10 shadow-red-500/5" : "border-white/10 bg-white/5 shadow-[#AC00FF]/5"}`}>
       <div>
@@ -1402,7 +1278,7 @@ function UserDetailsModal({ modal, form, editMode, onChange, onClose, onEdit, on
   onSave: () => void;
 }) {
   const fields = modal.type === "client"
-    ? [["full_name", "Full Name"], ["company_name", "Company Name"], ["email", "Email"], ["phone", "Phone"], ["account_type", "Account Type"], ["subscription_plan", "Subscription"], ["billing_status", "Billing Status"], ["status", "Status"], ["cards_active", "Cards Active"]]
+    ? [["full_name", "Full Name"], ["company_name", "Company Name"], ["email", "Email"], ["phone", "Phone"], ["account_type", "Account Type"], ["subscription_plan", "Subscription"], ["billing_status", "Billing Status"], ["status", "Status"]]
     : modal.type === "admin"
     ? [["full_name", "Contact Name"], ["email", "Email"], ["phone", "Phone"]]
     : [["company_name", "Company Name"], ["full_name", "Full Name"], ["job_title", "Job Title"], ["email", "Email"], ["phone", "Phone"], ["website", "Website"], ["address", "Address"], ["whatsapp", "WhatsApp"], ["linkedin", "LinkedIn"], ["instagram", "Instagram"], ["facebook", "Facebook"], ["youtube", "YouTube"], ["booking_link", "Booking Link"], ["custom_url", "Custom URL"], ["status", "Status"]];
@@ -1410,7 +1286,7 @@ function UserDetailsModal({ modal, form, editMode, onChange, onClose, onEdit, on
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
       <div className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#0F0E38] text-white shadow-2xl shadow-[#AC00FF]/20">
         <div className="flex items-start justify-between gap-6 border-b border-white/10 p-6">
-          <div><h2 className="text-2xl font-semibold">User Details</h2><p className="mt-1 text-sm text-white/45">Billing status will later sync from Finance/Stripe.</p></div>
+          <div><h2 className="text-2xl font-semibold">User Details</h2><p className="mt-1 text-sm text-white/45">Legacy plan and billing labels are informational; Stripe controls access. Use Suspend/Reactivate for account status.</p></div>
           <div className="flex gap-3">{!editMode && <button onClick={onEdit} className="rounded-2xl bg-[#AC00FF] px-5 py-2.5 text-sm font-medium">Edit</button>}<button onClick={onClose} className="rounded-2xl bg-white/10 px-5 py-2.5 text-sm font-medium">Close</button></div>
         </div>
         <div className="flex-1 overflow-y-auto p-6">
@@ -1418,7 +1294,7 @@ function UserDetailsModal({ modal, form, editMode, onChange, onClose, onEdit, on
             {fields.map(([field, label]) => (
               <div key={field} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                 <p className="text-xs uppercase tracking-[0.14em] text-white/35">{label}</p>
-                {editMode ? <ModalEditField modalType={modal.type} field={field} value={form[field] || ""} form={form} onChange={onChange} /> : <p className="mt-3 break-words text-sm text-white/80">{form[field] || "-"}</p>}
+                {editMode && !(modal.type === "client" && ["subscription_plan", "billing_status", "status"].includes(field)) ? <ModalEditField modalType={modal.type} field={field} value={form[field] || ""} form={form} onChange={onChange} /> : <p className="mt-3 break-words text-sm text-white/80">{form[field] || "-"}</p>}
               </div>
             ))}
           </div>
@@ -1436,7 +1312,7 @@ function ModalEditField({ modalType, field, value, form, onChange }: { modalType
     return <select value={value} onChange={(e) => onChange(field, e.target.value)} className={inputClass}>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select>;
   }
   if (modalType === "client" && field === "account_type") {
-    return <select value={value} onChange={(e) => { const next = e.target.value; onChange("account_type", next); onChange("subscription_plan", next === "individual" ? form.subscription_plan || "free" : "paid"); onChange("billing_status", next === "individual" && form.subscription_plan === "free" ? "free" : "paid"); }} className={inputClass}><option value="individual">individual</option><option value="business">business</option><option value="enterprise">enterprise</option></select>;
+    return <select value={value} onChange={(e) => onChange("account_type", e.target.value)} className={inputClass}><option value="individual">individual</option><option value="business">business</option><option value="enterprise">enterprise</option></select>;
   }
   if (modalType === "client" && field === "subscription_plan") {
     const isIndividual = form.account_type === "individual";
