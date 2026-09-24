@@ -112,13 +112,18 @@
 
 /* Individual drawer polish only; shared drawer sizing stays unchanged. */
 .stackedFields { display:grid; grid-template-columns:minmax(0,1fr); gap:20px; margin-top:28px; }
-.clientDetails { padding-block:24px; }
-.detailStack { display:grid; grid-template-columns:minmax(0,1fr); gap:22px; }
+.clientDetails { padding-block:16px; }
+.detailStack { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; }
 .detailRow { min-width:0; }
-.accountActions { border-top:1px solid #e5e1ed; margin-top:16px; padding-top:24px; }
+.accountActions { border-top:1px solid #e5e1ed; margin-top:12px; padding-top:16px; }
 .accountActions h3 { font-size:14px; font-weight:700; margin-bottom:12px; }
 .accountActions button { min-height:44px; padding:10px 16px; border:1px solid #dedbe9; border-radius:10px; background:#fff; font-size:13px; font-weight:600; }
 .page .paginationPill { min-height:44px; padding:10px 20px; border:1px solid #dedbe9; border-radius:999px; background:#fff; color:#17213b; font-size:13px; font-weight:600; }
 .page .paginationPill:disabled { background:#f2f0f6; border-color:#e5e1ed; color:#75798a; opacity:1; cursor:not-allowed; }
 
 .page .sheet .individualPrimary { color:#fff!important; }
+
+.clientSummary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; padding-block:12px; border-top:1px solid #e5e1ed; }
+.clientSummary dt { font-size:12px; color:#64748b; }
+.clientSummary dd { margin:4px 0 0; font-size:14px; font-weight:600; text-transform:capitalize; overflow-wrap:anywhere; }
+.planNote { font-size:12px; color:#64748b; margin:0; }

@@ -1272,14 +1272,14 @@ function UserDetailsModal({ busy, error, notice, onStatus, modal, form, editMode
   onSave: () => void;
 }) {
   const fields = modal.type === "client"
-    ? [["full_name", "Full Name"], ["email", "Email"], ["phone", "Phone Number"], ["company_name", "Company Name"], ["account_type", "Account Type"], ["subscription_plan", "Subscription"], ["billing_status", "Billing Status"], ["status", "Status"]]
+    ? [["full_name", "Full Name"], ["email", "Email"], ["phone", "Phone Number"]]
     : modal.type === "admin"
     ? [["full_name", "Contact Name"], ["email", "Email"], ["phone", "Phone"]]
     : [["company_name", "Company Name"], ["full_name", "Full Name"], ["job_title", "Job Title"], ["email", "Email"], ["phone", "Phone"], ["website", "Website"], ["address", "Address"], ["whatsapp", "WhatsApp"], ["linkedin", "LinkedIn"], ["instagram", "Instagram"], ["facebook", "Facebook"], ["youtube", "YouTube"], ["booking_link", "Booking Link"], ["custom_url", "Custom URL"], ["status", "Status"]];
   return (
     <AdminClientSheet title={modal.type === "staff" ? "Manage Staff" : "Manage Client"} busy={busy} onClose={onClose} notice={notice}>
       {error && <p role="alert" className={styles.error}>{error}</p>}
-      <p className="mb-4 text-sm text-slate-500">Plan and billing labels are informational, not entitlement grants.</p>
+      {modal.type !== "client" && <p className="mb-4 text-sm text-slate-500">Plan and billing labels are informational, not entitlement grants.</p>}
       <div className={styles.headerActions}>
         {!editMode && <button disabled={busy} className={styles.primary} onClick={onEdit}>Edit details</button>}
         {modal.type === "admin" && <button disabled={busy} onClick={onStatus}>{form.status === "suspended" ? "Reactivate Client" : "Suspend Client"}</button>}
@@ -1293,11 +1293,18 @@ function UserDetailsModal({ busy, error, notice, onStatus, modal, form, editMode
                 {editMode && !(modal.type === "client" && ["subscription_plan", "billing_status", "status"].includes(field)) ? <ModalEditField label={label} modalType={modal.type} field={field} value={form[field] || ""} form={form} onChange={onChange} /> : <p className="mt-3 break-words text-sm text-slate-700">{form[field] || "-"}</p>}
               </div>
             ))}
-            {modal.type === "client" && <div className={styles.detailRow}><p className="text-xs uppercase tracking-[0.14em] text-slate-500">Cards</p><p className="mt-3 text-sm text-slate-700">{modal.data.card_count ?? "—"}</p></div>}
           </div>
         </div>
         {editMode && <div className="flex justify-end gap-3 border-t border-slate-200 p-5"><button disabled={busy} onClick={onCancel} className="rounded-2xl bg-slate-50 px-5 py-3 text-sm font-medium">Cancel</button><button disabled={busy} onClick={onSave} className={`rounded-2xl bg-gradient-to-r from-pink-600 to-purple-700 text-white px-5 py-3 text-sm font-medium ${modal.type === "client" ? `${styles.primary} ${styles.individualPrimary}` : ""}`}>{busy ? "Saving…" : "Save Changes"}</button></div>}
       </fieldset>
+      {modal.type === "client" && <>
+        <dl className={styles.clientSummary} aria-label="Client summary">
+          <div><dt>Plan</dt><dd>{individualPlanLabel(modal.data.subscription_plan)}</dd></div>
+          <div><dt>Cards</dt><dd>{modal.data.card_count ?? "—"}</dd></div>
+          <div><dt>Status</dt><dd>{form.status || "—"}</dd></div>
+        </dl>
+        <p className={styles.planNote}>Plan is a display label, not an entitlement grant.</p>
+      </>}
       {modal.type === "client" && <section className={styles.accountActions} aria-label="Account Actions">
         <h3>Account Actions</h3>
         <button disabled={busy} onClick={onStatus}>{form.status === "suspended" ? "Reactivate Client" : "Suspend Client"}</button>

@@ -81,7 +81,7 @@ const server=http.createServer((req,res)=>{
   if(area==='individual'){
    await page.getByRole('button',{name:'Manage Alex Customer 14',exact:true}).click();
    const detailRows=page.locator('dialog[open] [class*="detailStack"] > div');
-   assert.deepEqual(await detailRows.locator('> p:first-child').allTextContents(),['Full Name','Email','Phone Number','Company Name','Account Type','Subscription','Billing Status','Status','Cards']);
+   assert.deepEqual(await detailRows.locator('> p:first-child').allTextContents(),['Full Name','Email','Phone Number']);
    const bounds=await detailRows.evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {x:r.x,y:r.y,border:getComputedStyle(n).borderWidth};}));
    for(let i=1;i<bounds.length;i++){assert.equal(bounds[i].x,bounds[0].x);assert.ok(bounds[i].y>bounds[i-1].y);}
    assert.ok(bounds.every(b=>b.border==='0px'));
@@ -89,12 +89,30 @@ const server=http.createServer((req,res)=>{
    assert.ok(actions.y>bounds.at(-1).y);
    await page.getByRole('button',{name:'Edit details',exact:true}).click();
    assert.equal(await page.getByRole('button',{name:'Save Changes',exact:true}).evaluate(node=>getComputedStyle(node).color),'rgb(255, 255, 255)');
-   const editBounds=await Promise.all(['Full Name','Email','Phone Number','Company Name','Account Type'].map(name=>page.getByLabel(name,{exact:true}).boundingBox()));
+   const editBounds=await Promise.all(['Full Name','Email','Phone Number'].map(name=>page.getByLabel(name,{exact:true}).boundingBox()));
    for(let i=1;i<editBounds.length;i++){assert.equal(editBounds[i].x,editBounds[0].x);assert.ok(editBounds[i].y>editBounds[i-1].y);}
    await page.getByRole('button',{name:'Cancel',exact:true}).click();
    await page.keyboard.press('Escape');
   }
 
+ }
+ for(const {width,height} of [{width:1440,height:740},{width:1280,height:720},{width:768,height:600},{width:390,height:667},{width:320,height:568}]){
+  await page.setViewportSize({width,height});await page.goto(origin+'/clients/individual');
+  await page.getByRole('button',{name:'Manage Alex Customer 14',exact:true}).click();
+  assert.deepEqual(await page.locator('dialog[open] dt').allTextContents(),['Plan','Cards','Status']);
+  for(const editing of [false,true]){
+   if(editing)await page.getByRole('button',{name:'Edit details',exact:true}).click();
+   assert.equal(await page.getByLabel('Company Name',{exact:true}).count(),0);
+   assert.equal(await page.getByLabel('Account Type',{exact:true}).count(),0);
+   const body=page.locator('dialog[open] [class*="sheetBody"]');
+   const metrics=await body.evaluate(n=>({overflow:n.scrollHeight-n.clientHeight,height:n.clientHeight}));
+   assert.ok(metrics.overflow<= (width>=1280?0:metrics.height*0.75),'bounded drawer scroll '+width+'x'+height+' edit='+editing);
+   const action=page.getByRole('button',{name:'Suspend Client',exact:true});
+   await action.scrollIntoViewIfNeeded();const box=await action.boundingBox();
+   assert.ok(box.y>=0&&box.y+box.height<=height,'Account Actions reachable');
+   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  }
+  await page.keyboard.press('Escape');
  }
  await page.setViewportSize({width:390,height:844});await page.goto(origin+'/clients/individual');
  await page.getByRole('button',{name:'+ Add Individual Client',exact:true}).click();
