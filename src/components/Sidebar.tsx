@@ -1,6 +1,5 @@
 "use client";
 
-import AdminAppearanceControl from "./admin/AdminAppearance";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -139,7 +138,6 @@ export default function Sidebar() {
       </nav>
 
       <div className="border-t p-4">
-        <AdminAppearanceControl />
         <button
           type="button"
           onClick={handleSignOut}

@@ -152,3 +152,8 @@
  .businessInventory th:first-child { width:32%; }
  .businessInventory th:nth-child(3) { width:64px; }
 }
+
+/* Clip painted header/row backgrounds without changing table sizing. */
+.inventoryCard { overflow:clip; }
+.inventoryClip { border-radius:12px; overflow:clip; }
+.inventoryCard .inventoryClip { border-radius:0 0 23px 23px; }

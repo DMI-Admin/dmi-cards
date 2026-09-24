@@ -966,7 +966,7 @@ function ClientSection({ title, description, count, onViewFullList, filters, chi
   children: React.ReactNode;
 }) {
   return (
-    <div className="mb-8 rounded-3xl border admin-border admin-surface">
+    <div className={`mb-8 rounded-3xl border admin-border admin-surface ${styles.inventoryCard}`}>
       <SectionHeader title={title} description={description} count={count} onViewFullList={onViewFullList} />
       {filters}
       <div className="max-h-[520px] overflow-y-auto">{children}</div>
@@ -1011,7 +1011,7 @@ function IndividualTable(props: {
   toggleClientStatus: (client: Client) => void;
 }) {
   return (
-    <table className={`${styles.inventoryTable} ${styles.compactInventory} ${styles.individualInventory}`}>
+    <div className={styles.inventoryClip}><table className={`${styles.inventoryTable} ${styles.compactInventory} ${styles.individualInventory}`}>
       <thead className="sticky top-0 z-30 border-b admin-border admin-surface-secondary">
         <tr className="text-left admin-secondary">
           <th className="p-5">Client</th><th className="p-5">Email</th><th className="p-5">Plan</th><th className="p-5">Cards</th><th className="p-5">Status</th><th className="p-5">Manage</th>
@@ -1029,7 +1029,7 @@ function IndividualTable(props: {
           </tr>
         ))}
       </tbody>
-    </table>
+    </table></div>
   );
 }
 
@@ -1062,7 +1062,7 @@ function BusinessTable(props: {
   deleteClientUser: (user: ClientUser) => void;
 }) {
   return (
-    <><table className={`${styles.inventoryTable} ${styles.compactInventory} ${styles.businessInventory}`}>
+    <><div className={styles.inventoryClip}><table className={`${styles.inventoryTable} ${styles.compactInventory} ${styles.businessInventory}`}>
       <thead className="sticky top-0 z-30 border-b admin-border admin-surface-secondary">
         <tr className="text-left admin-secondary">
           <th className="p-5">Company</th><th className="p-5">Primary Contact</th><th className="p-5">People</th><th className="p-5">Cards</th><th className="p-5">Status</th><th className="p-5">Manage</th>
@@ -1090,7 +1090,7 @@ function BusinessTable(props: {
             </tbody>
           );
         })}
-    </table>
+    </table></div>
     {props.managementCompanies?.filter(company => company.id === props.expandedCompany).map(company => {
       const users = props.clientUsers.filter(user => user.client_id === company.id);
       return <AdminClientSheet key={company.id} title={company.company_name || company.full_name} busy={props.busy} onClose={() => props.onCloseManagement?.()} notice={props.notice}>

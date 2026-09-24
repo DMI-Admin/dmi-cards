@@ -27,6 +27,7 @@ const control=fs.readFileSync('src/components/admin/AdminAppearance.tsx','utf8')
 assert.doesNotMatch(control,/dataset\.theme|["']dmi-theme["']/);
 assert.match(control,/delete document.documentElement.dataset.adminAppearance/);
 assert.match(fs.readFileSync('src/app/settings/page.tsx','utf8'),/AdminAppearanceControl/);
+assert.doesNotMatch(fs.readFileSync('src/components/Sidebar.tsx','utf8'),/AdminAppearanceControl|Admin appearance/);
 assert.match(fs.readFileSync('src/app/client/settings/page.tsx','utf8'),/ThemeSelector/);
 // Check brand button gradient endpoints/intermediate colors against white text.
 function luminance(rgb){return rgb.map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4}).reduce((a,v,i)=>a+v*[.2126,.7152,.0722][i],0);}
@@ -45,7 +46,7 @@ export async function runAdminThemeChecks(page,origin,tmp,checkDensity=async()=>
   for(const result of results)assert.ok(result.ratio>=4.5,JSON.stringify(result));
  }
  for(const [mode,os,dark] of [['system','light',false],['system','dark',true],['light','dark',false],['dark','light',true]]){
-  await page.setViewportSize({width:1440,height:740});await page.emulateMedia({colorScheme:os});await page.goto(origin+'/clients/individual');
+  await page.setViewportSize({width:1440,height:740});await page.emulateMedia({colorScheme:os});await page.goto(origin+'/settings');
   await page.getByLabel('Admin appearance',{exact:true}).first().selectOption(mode);await page.reload();
   assert.equal(await page.getByLabel('Admin appearance',{exact:true}).first().inputValue(),mode);
   assert.equal(await page.evaluate(()=>localStorage.getItem('dmi-admin-appearance')),mode);
@@ -93,7 +94,7 @@ export async function runAdminThemeChecks(page,origin,tmp,checkDensity=async()=>
   }
  }
  // System reacts without reload; explicit mode wins against live OS changes.
- await page.setViewportSize({width:1440,height:740});await page.goto(origin+'/clients/individual');
+ await page.setViewportSize({width:1440,height:740});await page.goto(origin+'/settings');
  await page.getByLabel('Admin appearance',{exact:true}).first().selectOption('system');
  for(const os of ['light','dark']){await page.emulateMedia({colorScheme:os});await settle();assert.equal(await page.locator('main').evaluate(n=>getComputedStyle(n).colorScheme),os);}
  await page.getByLabel('Admin appearance',{exact:true}).first().selectOption('light');await page.emulateMedia({colorScheme:'dark'});await settle();assert.equal(await page.locator('main').evaluate(n=>getComputedStyle(n).colorScheme),'light');
@@ -107,7 +108,7 @@ export async function runAdminThemeChecks(page,origin,tmp,checkDensity=async()=>
  await page.getByLabel('Admin appearance',{exact:true}).first().selectOption('dark');
  for(const query of ['loading','empty']){await page.goto(origin+'/clients/individual?'+query);await page.getByText(query==='loading'?'Loading individual clients...':'No matching individual clients found.',{exact:true}).waitFor();await contrast(page.locator('main td'));}
  await page.setViewportSize({width:320,height:568});await page.getByRole('button',{name:'Open Admin navigation',exact:true}).focus();await page.keyboard.press('Enter');
- const nav=page.getByRole('dialog',{name:'DMI Cards Admin',exact:true});await nav.getByLabel('Admin appearance',{exact:true}).selectOption('light');
+ const nav=page.getByRole('dialog',{name:'DMI Cards Admin',exact:true});assert.equal(await nav.getByLabel('Admin appearance',{exact:true}).count(),0);
  await contrast(nav.locator('label, nav p, nav a'));await page.keyboard.press('Escape');
  assert.equal(await page.getByRole('button',{name:'Open Admin navigation',exact:true}).evaluate(n=>n===document.activeElement),true);
  console.log('PASS: 72 theme/area/viewport combinations; OS tracking, overrides, persistence, contrast ≥4.5, dialogs, errors, empty/loading, mobile navigation/focus and Client preference isolation.');

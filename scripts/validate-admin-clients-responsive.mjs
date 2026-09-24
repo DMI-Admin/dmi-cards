@@ -38,15 +38,16 @@ export async function mutateAdminClient(url,method,body,token){
 fs.writeFileSync(path.join(tmp,'entry.jsx'),`
 import React from 'react';import {createRoot} from 'react-dom/client';
 import Page from '${root}/src/components/admin/AdminClientsPage.tsx';
+import Settings from '${root}/src/app/settings/page.tsx';
 import {AdminAppearanceInitializer} from '${root}/src/components/admin/AdminAppearance.tsx';
 import ThemeInitializer from '${root}/src/components/ThemeInitializer.tsx';
 window.events=[];window.records=Array.from({length:30},(_,i)=>({id:'fixture-'+i,full_name:'Alex Customer '+i,company_name:i>=15?'Company '+i:null,email:'alex'+i+'@example.invalid',account_type:i>=15?'business':'individual',status:i%5===0?'suspended':'active',subscription_plan:'free',created_at:new Date(2026,0,i+1).toISOString()}));
-createRoot(document.getElementById('root')).render(<><ThemeInitializer/><AdminAppearanceInitializer/><Page area={location.pathname.includes('business')?'business':'individual'}/></>);
+createRoot(document.getElementById('root')).render(<><ThemeInitializer/><AdminAppearanceInitializer/>{location.pathname==='/settings'?<Settings/>:<Page area={location.pathname.includes('business')?'business':'individual'}/>}</>);
 `);
 await esbuild.build({entryPoints:[path.join(tmp,'entry.jsx')],bundle:true,outfile:path.join(tmp,'app.js'),nodePaths:[root+'/node_modules'],jsx:'automatic',loader:{'.css':'local-css'},plugins:[{name:'fixture',setup(build){
 build.onResolve({filter:/.*/},args=>{
 if(mocks[args.path])return {path:args.path,namespace:'fixture'};
-if(args.path.startsWith('@/'))return {path:path.join(root,'src',args.path.slice(2)+(args.path.endsWith('Sidebar')?'.tsx':'.ts'))};
+if(args.path.startsWith('@/'))return {path:path.join(root,'src',args.path.slice(2)+((args.path.endsWith('Sidebar')||args.path.endsWith('AdminAppearance'))?'.tsx':'.ts'))};
 });
 build.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:mocks[args.path],loader:'jsx',resolveDir:root}));
 }}]});
@@ -59,6 +60,9 @@ const server=http.createServer((req,res)=>{
  res.setHeader('Content-Type','text/html');res.end('<!doctype html><html data-theme="system"><head><script>'+adminAppearanceBootstrap+'</script><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/base.css"><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script src="/app.js"></script></body></html>');
 });
 async function checkInventoryDensity(table,width){
+ const clip=await table.evaluate(n=>{const s=getComputedStyle(n.parentElement);return {overflow:s.overflow,bottom:s.borderBottomLeftRadius};});
+ assert.equal(clip.overflow,'clip');assert.ok(parseFloat(clip.bottom)>0);
+
  const m=await table.evaluate(table=>{
   const row=table.querySelector('tbody tr'),cells=[...row.cells],heads=[...table.querySelectorAll('thead th')];
   return {height:row.getBoundingClientRect().height,display:getComputedStyle(row).display,headDisplay:getComputedStyle(table.querySelector('thead')).display,
