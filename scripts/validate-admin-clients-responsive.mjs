@@ -68,11 +68,33 @@ const server=http.createServer((req,res)=>{
   assert.equal(overflow,false,area+' overflow '+width);
   if(width===390||width===1440)await page.screenshot({path:tmp+'/'+area+'-'+width+'.png',fullPage:true});
   await page.getByRole('button',{name:area==='individual'?'+ Add Individual Client':'+ Add Business',exact:true}).click();
+  if(area==='individual'){
+   const bounds=await Promise.all(['Full Name','Email','Phone Number','Plan'].map(name=>page.getByLabel(name,{exact:true}).boundingBox()));
+   for(let i=1;i<bounds.length;i++){assert.equal(bounds[i].x,bounds[0].x);assert.equal(bounds[i].width,bounds[0].width);assert.ok(bounds[i].y>bounds[i-1].y+bounds[i-1].height);}
+   assert.equal(await page.getByRole('button',{name:'Create Account',exact:true}).evaluate(node=>getComputedStyle(node).color),'rgb(255, 255, 255)');
+  }
   const box=await page.locator('dialog[open]').boundingBox();
   assert.ok(box.width<=width,area+' dialog fits '+width);
   if(width<640)assert.equal(Math.round(box.width),width);
   for(let i=0;i<8;i++){await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>Boolean(document.activeElement.closest('dialog[open]'))),true);}
   await page.keyboard.press('Escape');assert.equal(await page.locator('dialog[open]').count(),0);
+  if(area==='individual'){
+   await page.getByRole('button',{name:'Manage Alex Customer 14',exact:true}).click();
+   const detailRows=page.locator('dialog[open] [class*="detailStack"] > div');
+   assert.deepEqual(await detailRows.locator('> p:first-child').allTextContents(),['Full Name','Email','Phone Number','Company Name','Account Type','Subscription','Billing Status','Status','Cards']);
+   const bounds=await detailRows.evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {x:r.x,y:r.y,border:getComputedStyle(n).borderWidth};}));
+   for(let i=1;i<bounds.length;i++){assert.equal(bounds[i].x,bounds[0].x);assert.ok(bounds[i].y>bounds[i-1].y);}
+   assert.ok(bounds.every(b=>b.border==='0px'));
+   const actions=await page.getByRole('region',{name:'Account Actions'}).boundingBox();
+   assert.ok(actions.y>bounds.at(-1).y);
+   await page.getByRole('button',{name:'Edit details',exact:true}).click();
+   assert.equal(await page.getByRole('button',{name:'Save Changes',exact:true}).evaluate(node=>getComputedStyle(node).color),'rgb(255, 255, 255)');
+   const editBounds=await Promise.all(['Full Name','Email','Phone Number','Company Name','Account Type'].map(name=>page.getByLabel(name,{exact:true}).boundingBox()));
+   for(let i=1;i<editBounds.length;i++){assert.equal(editBounds[i].x,editBounds[0].x);assert.ok(editBounds[i].y>editBounds[i-1].y);}
+   await page.getByRole('button',{name:'Cancel',exact:true}).click();
+   await page.keyboard.press('Escape');
+  }
+
  }
  await page.setViewportSize({width:390,height:844});await page.goto(origin+'/clients/individual');
  await page.getByRole('button',{name:'+ Add Individual Client',exact:true}).click();
@@ -103,6 +125,12 @@ const server=http.createServer((req,res)=>{
 
  await page.keyboard.press('Escape');
  await page.getByRole('button',{name:'View All Clients',exact:true}).first().click();
+ assert.equal(await page.getByLabel('Search people, company or email').getAttribute('placeholder'),'Search');
+ for(const name of ['Previous','Next']){
+  const button=page.getByRole('button',{name,exact:true});
+  const pill=await button.evaluate(node=>({radius:getComputedStyle(node).borderRadius,background:getComputedStyle(node).backgroundColor,height:node.getBoundingClientRect().height}));
+  assert.equal(pill.radius,'999px');assert.ok(pill.height>=44);assert.notEqual(pill.background,'rgba(0, 0, 0, 0)');
+ }
  await page.getByLabel('Search people, company or email').fill('no matching account');
  await page.getByText('No matching individual clients found.',{exact:true}).waitFor();
  await page.keyboard.press('Escape');

@@ -752,9 +752,9 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
           )}
           </fieldset>
           <div className="flex items-center justify-between border-t border-slate-200 p-5">
-            <button disabled={fullPage.page <= 1} onClick={() => setPagination({ key: filterKey, page: fullPage.page - 1 })}>Previous</button>
+            <button className={fullListMode === "individual" ? styles.paginationPill : undefined} disabled={fullPage.page <= 1} onClick={() => setPagination({ key: filterKey, page: fullPage.page - 1 })}>Previous</button>
             <span>Page {fullPage.page} of {fullPage.pages}</span>
-            <button disabled={fullPage.page >= fullPage.pages} onClick={() => setPagination({ key: filterKey, page: fullPage.page + 1 })}>Next</button>
+            <button className={fullListMode === "individual" ? styles.paginationPill : undefined} disabled={fullPage.page >= fullPage.pages} onClick={() => setPagination({ key: filterKey, page: fullPage.page + 1 })}>Next</button>
           </div>
         </FullListModal>
       )}
@@ -840,7 +840,7 @@ function AddClientSection(props: {
       <p className="mt-2 text-sm leading-6 text-slate-500">
         {props.accountType === "individual" ? "Create a personal Free account." : "Create a company first; staff can be added later."}
       </p>
-      <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5">
+      <div className={props.accountType === "individual" ? styles.stackedFields : "mt-7 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5"}>
         <fieldset disabled={props.busy} aria-busy={props.busy} className="contents">
         {props.accountType === "business" && <Field label="Company Name">
           <input value={props.companyName} onChange={(e) => props.setCompanyName(e.target.value)} className={styles.input} />
@@ -855,7 +855,7 @@ function AddClientSection(props: {
           <input value={props.phone} onChange={(e) => props.setPhone(e.target.value)} className={styles.input} />
         </Field>
         {props.accountType === "individual" && <Field label="Plan">
-          <select value="free" disabled className={styles.input}>
+          <select aria-label="Plan" value="free" disabled className={styles.input}>
             <option value="free">Free</option>
             <option value="pro" disabled>Pro (not available here yet)</option>
           </select>
@@ -871,7 +871,7 @@ function AddClientSection(props: {
         </Field>}
         </fieldset>
       </div>
-      <button disabled={props.busy} onClick={props.createClientRecord} className="mt-7 rounded-2xl bg-gradient-to-r from-pink-600 to-purple-700 text-white px-6 py-3 font-medium transition hover:opacity-90">
+      <button disabled={props.busy} onClick={props.createClientRecord} className={`mt-7 rounded-2xl bg-gradient-to-r from-pink-600 to-purple-700 text-white px-6 py-3 font-medium transition hover:opacity-90 ${props.accountType === "individual" ? `${styles.primary} ${styles.individualPrimary}` : ""}`}>
         {props.busy ? "Creating…" : "Create Account"}
       </button></>}
 
@@ -987,7 +987,7 @@ function IndividualFilters(props: {
   return (
     <div className="border-b border-slate-200 p-6">
       <div className={styles.filters}>
-        <input aria-label="Search people, company or email" placeholder="Search people, company or email" value={props.search} onChange={(e) => props.setSearch(e.target.value)} className={styles.input} />
+        <input aria-label="Search people, company or email" placeholder="Search" value={props.search} onChange={(e) => props.setSearch(e.target.value)} className={styles.input} />
         <FilterSelect value={props.plan} onChange={props.setPlan} label="All Plans" options={["free", "pro"]} />
         <FilterSelect value={props.billing} onChange={props.setBilling} label="All Billing" options={["paid", "trial", "overdue", "cancelled"]} />
         <FilterSelect value={props.status} onChange={props.setStatus} label="All Statuses" options={["active", "pending", "suspended"]} />
@@ -1272,7 +1272,7 @@ function UserDetailsModal({ busy, error, notice, onStatus, modal, form, editMode
   onSave: () => void;
 }) {
   const fields = modal.type === "client"
-    ? [["full_name", "Full Name"], ["company_name", "Company Name"], ["email", "Email"], ["phone", "Phone"], ["account_type", "Account Type"], ["subscription_plan", "Subscription"], ["billing_status", "Billing Status"], ["status", "Status"]]
+    ? [["full_name", "Full Name"], ["email", "Email"], ["phone", "Phone Number"], ["company_name", "Company Name"], ["account_type", "Account Type"], ["subscription_plan", "Subscription"], ["billing_status", "Billing Status"], ["status", "Status"]]
     : modal.type === "admin"
     ? [["full_name", "Contact Name"], ["email", "Email"], ["phone", "Phone"]]
     : [["company_name", "Company Name"], ["full_name", "Full Name"], ["job_title", "Job Title"], ["email", "Email"], ["phone", "Phone"], ["website", "Website"], ["address", "Address"], ["whatsapp", "WhatsApp"], ["linkedin", "LinkedIn"], ["instagram", "Instagram"], ["facebook", "Facebook"], ["youtube", "YouTube"], ["booking_link", "Booking Link"], ["custom_url", "Custom URL"], ["status", "Status"]];
@@ -1280,24 +1280,28 @@ function UserDetailsModal({ busy, error, notice, onStatus, modal, form, editMode
     <AdminClientSheet title={modal.type === "staff" ? "Manage Staff" : "Manage Client"} busy={busy} onClose={onClose} notice={notice}>
       {error && <p role="alert" className={styles.error}>{error}</p>}
       <p className="mb-4 text-sm text-slate-500">Plan and billing labels are informational, not entitlement grants.</p>
-      {modal.type === "client" && <p className="mb-4">Cards: {modal.data.card_count ?? "—"}</p>}
       <div className={styles.headerActions}>
         {!editMode && <button disabled={busy} className={styles.primary} onClick={onEdit}>Edit details</button>}
-        {modal.type !== "staff" && <button disabled={busy} onClick={onStatus}>{form.status === "suspended" ? "Reactivate Client" : "Suspend Client"}</button>}
+        {modal.type === "admin" && <button disabled={busy} onClick={onStatus}>{form.status === "suspended" ? "Reactivate Client" : "Suspend Client"}</button>}
       </div>
       <fieldset disabled={busy}>
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className={modal.type === "client" ? styles.clientDetails : "flex-1 overflow-y-auto p-6"}>
+          <div className={modal.type === "client" ? styles.detailStack : "grid grid-cols-1 sm:grid-cols-2 gap-3"}>
             {fields.map(([field, label]) => (
-              <div key={field} className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div key={field} className={modal.type === "client" ? styles.detailRow : "rounded-2xl border border-slate-200 bg-white p-3"}>
                 <p className="text-xs uppercase tracking-[0.14em] text-slate-500">{label}</p>
                 {editMode && !(modal.type === "client" && ["subscription_plan", "billing_status", "status"].includes(field)) ? <ModalEditField label={label} modalType={modal.type} field={field} value={form[field] || ""} form={form} onChange={onChange} /> : <p className="mt-3 break-words text-sm text-slate-700">{form[field] || "-"}</p>}
               </div>
             ))}
+            {modal.type === "client" && <div className={styles.detailRow}><p className="text-xs uppercase tracking-[0.14em] text-slate-500">Cards</p><p className="mt-3 text-sm text-slate-700">{modal.data.card_count ?? "—"}</p></div>}
           </div>
         </div>
-        {editMode && <div className="flex justify-end gap-3 border-t border-slate-200 p-5"><button disabled={busy} onClick={onCancel} className="rounded-2xl bg-slate-50 px-5 py-3 text-sm font-medium">Cancel</button><button disabled={busy} onClick={onSave} className="rounded-2xl bg-gradient-to-r from-pink-600 to-purple-700 text-white px-5 py-3 text-sm font-medium">{busy ? "Saving…" : "Save Changes"}</button></div>}
+        {editMode && <div className="flex justify-end gap-3 border-t border-slate-200 p-5"><button disabled={busy} onClick={onCancel} className="rounded-2xl bg-slate-50 px-5 py-3 text-sm font-medium">Cancel</button><button disabled={busy} onClick={onSave} className={`rounded-2xl bg-gradient-to-r from-pink-600 to-purple-700 text-white px-5 py-3 text-sm font-medium ${modal.type === "client" ? `${styles.primary} ${styles.individualPrimary}` : ""}`}>{busy ? "Saving…" : "Save Changes"}</button></div>}
       </fieldset>
+      {modal.type === "client" && <section className={styles.accountActions} aria-label="Account Actions">
+        <h3>Account Actions</h3>
+        <button disabled={busy} onClick={onStatus}>{form.status === "suspended" ? "Reactivate Client" : "Suspend Client"}</button>
+      </section>}
     </AdminClientSheet>
   );
 }

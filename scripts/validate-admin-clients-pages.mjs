@@ -81,3 +81,23 @@ assert.match(css,/desktopSidebar.*display:none/);assert.match(css,/prefers-reduc
 const drawer=fs.readFileSync('src/components/admin/AdminClientSheet.tsx','utf8');
 assert.match(drawer,/showModal/);assert.match(drawer,/aria-labelledby/);assert.match(drawer,/if \(!busy\) onClose/);assert.match(drawer,/previous.focus/);
 console.log('PASS: create/success/manage presentation, confirmation busy/error states, native dialog focus contract, scoped sidebar and phone/tablet layout rules.');
+
+const stackedAdd=render('individual',{createOpen:true});
+assert.match(stackedAdd,/class="stackedFields"/);
+assert.match(stackedAdd,/class="[^"]*primary[^"]*"[^>]*>Create Account/);
+const clientDetail={type:'client',data:rows[0]};
+const managed=render('individual',{detailsModal:clientDetail,detailsForm:{full_name:'Person 0',status:'active'}});
+assert.match(managed,/class="detailStack"/);
+assert.doesNotMatch(managed,/key="[^"]*" class="rounded-2xl/);
+assert.ok(managed.indexOf('Account Actions')>managed.indexOf('detailStack'));
+assert.match(render('individual',{detailsModal:clientDetail,detailsEditMode:true,detailsForm:{full_name:'Person 0'}}),/class="[^"]*primary[^"]*"[^>]*>Save Changes/);
+const allIndividuals=render('individual',{fullListMode:'individual'});
+assert.match(allIndividuals,/placeholder="Search"/);
+assert.match(allIndividuals,/class="paginationPill" disabled=""[^>]*>Previous/);
+assert.match(allIndividuals,/class="paginationPill"[^>]*>Next/);
+assert.match(css,/stackedFields.*grid-template-columns:minmax\(0,1fr\)/);
+assert.match(css,/detailStack.*grid-template-columns:minmax\(0,1fr\)/);
+assert.match(css,/paginationPill.*border-radius:999px/);
+assert.match(css,/paginationPill:disabled.*background:/);
+assert.match(css,/primary.*color:#fff!important/);
+console.log('PASS: Individual stacked create/manage/edit, lower Account Actions, explicit white primary text, Search placeholder and shaped disabled pagination.');
