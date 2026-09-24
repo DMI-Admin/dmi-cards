@@ -1,8 +1,10 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { accountsForArea, clientPage, individualPlanLabel } from "@/lib/admin-client-lists";
+import AdminClientSheet from "./AdminClientSheet";
+import styles from "./AdminClientsPage.module.css";
 import Sidebar from "@/components/Sidebar";
 import CardRenderer from "@/components/CardRenderer";
 import { mutateAdminCard } from "@/lib/admin-card-mutations";
@@ -133,6 +135,14 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [relationships, setRelationships] = useState<ClientRelationshipCounts | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [createdAccount, setCreatedAccount] = useState<{ id: string; name: string; email: string; status: string } | null>(null);
+  const [statusTarget, setStatusTarget] = useState<Client | null>(null);
+  const [notice, setNotice] = useState("");
+  const [operationError, setOperationError] = useState("");
+  const lastCreatedId = useRef<string | null>(null);
   const importPending = useRef(false);
   const [importOperation, setImportOperation] = useState<{ signature: string; id: string } | null>(null);
   const mutationPending = useRef(false);
@@ -141,6 +151,7 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
     if (mutationPending.current) return false;
     mutationPending.current = true;
     setMutationBusy(true);
+    setOperationError("");
     try {
       let token: string | undefined;
       if (refreshSession) {
@@ -152,10 +163,11 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
           throw new Error("Could not refresh your Admin session. Please sign in again before retrying.");
         }
       }
-      await mutateAdminClient(path, method, body, token);
+      const result = await mutateAdminClient(path, method, body, token);
+      lastCreatedId.current = result?.id || null;
       return true;
     }
-    catch (error) { alert(error instanceof Error ? error.message : "Operation failed."); return false; }
+    catch (error) { setOperationError(error instanceof Error ? error.message : "Operation failed."); return false; }
     finally { mutationPending.current = false; setMutationBusy(false); }
   }
   const [expandedCompany, setExpandedCompany] = useState<string | null>(null);
@@ -201,7 +213,7 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
       ]);
       setClients(nextClients.map(client => ({ ...client, card_count: counts.cardCounts[client.id] ?? 0 }))); setClientUsers(nextUsers); setCards(nextCards); setRelationships(counts);
       setTemplates(nextTemplates as Template[]);
-    } catch (error) { setRelationships(null); alert(error instanceof Error ? error.message : "Admin inventory failed to load. Please retry."); }
+    } catch (error) { setRelationships(null); setOperationError(error instanceof Error ? error.message : "Admin inventory failed to load. Please retry."); }
     finally { setLoading(false); }
   }
 
@@ -221,11 +233,18 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
   }, [fullListMode]);
 
   async function createClientRecord() {
-    if (accountType === "individual" && (!fullName || !email)) return;
-    if (accountType !== "individual" && (!companyName || !fullName || !email)) return;
+    if (createdAccount || mutationPending.current) return;
+    if (accountType === "individual" && (!fullName || !email)) { setOperationError("Full name and email are required."); return; }
+    if (accountType !== "individual" && (!companyName || !fullName || !email)) { setOperationError("Company name, primary contact and email are required."); return; }
     if (!await mutate("/api/admin/clients", "POST", {
       full_name: fullName || companyName, company_name: companyName, email, phone, account_type: accountType, status: clientStatus,
     })) return;
+    setCreatedAccount({ id: lastCreatedId.current || "", name: companyName || fullName, email, status: clientStatus });
+    if (lastCreatedId.current) {
+      setNotice("Account created successfully.");
+    } else {
+      setOperationError("Account saved, but its ID was not returned. Refresh the inventory before managing it; do not resubmit.");
+    }
     setFullName("");
     setCompanyName("");
     setEmail("");
@@ -233,23 +252,20 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
     void fetchClientData();
   }
 
-  async function toggleClientStatus(client: Client) {
+  function toggleClientStatus(client: Client) {
+    if (mutationPending.current) return;
+    setOperationError("");
+    setStatusTarget(client);
+  }
+
+  async function confirmClientStatus(client: Client) {
     if (mutationPending.current) return;
     const nextStatus = client.status === "suspended" ? "active" : "suspended";
-    const actionLabel = nextStatus === "suspended" ? "Suspend" : "Reactivate";
-    const clientLabel =
-      client.company_name || client.full_name || client.email || "this client";
-    const confirmed = window.confirm(
-      nextStatus === "suspended"
-        ? `${actionLabel} ${clientLabel}? The client will lose access to the Client Portal, but their cards, contacts, profile, billing records, Wallet passes, and account data will remain intact.`
-        : `${actionLabel} ${clientLabel}? This restores Client Portal access using the existing account data.`
-    );
-
-    if (!confirmed) return;
-
     if (!await mutate(`/api/admin/clients/${client.id}/status`, "PATCH", { status: nextStatus }, true)) return;
-
-    void fetchClientData();
+    setStatusTarget(null);
+    setNotice(nextStatus === "suspended" ? "Client suspended successfully." : "Client reactivated successfully.");
+    setDetailsForm(current => ({ ...current, status: nextStatus }));
+    await fetchClientData();
   }
 
   async function createClientUser(client: Client) {
@@ -261,12 +277,14 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
     setStaffJobTitle("");
     setStaffEmail("");
     setStaffPhone("");
+    setNotice("Staff member created successfully.");
     void fetchClientData();
   }
 
   async function deleteClientUser(user: ClientUser) {
     if (!window.confirm(`Delete user ${user.full_name || user.name}?`)) return;
     if (!await mutate(`/api/admin/client-users/${user.id}`, "DELETE")) return;
+    setNotice("Staff member deleted successfully.");
     void fetchClientData();
   }
 
@@ -278,7 +296,7 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
     if (!confirmed) return;
 
     try { await mutateAdminCard(`/api/admin/cards/${card.id}`, "DELETE"); }
-    catch (error) { alert(error instanceof Error ? error.message : "Card deletion failed."); return; }
+    catch (error) { setOperationError(error instanceof Error ? error.message : "Card deletion failed."); return; }
 
     const remainingPreviewCards = previewCards.filter((item) => item.id !== card.id);
     setPreviewCards(remainingPreviewCards);
@@ -292,6 +310,7 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
   }
 
   function openClientDetails(client: Client) {
+    setOperationError("");
     setDetailsModal({ type: "client", data: client });
     setDetailsEditMode(false);
     setDetailsForm({
@@ -349,9 +368,9 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
 
   async function saveDetailsChanges() {
     if (!detailsModal) return;
-    if (!detailsForm.full_name?.trim()) return alert("Full name is required.");
+    if (!detailsForm.full_name?.trim()) return setOperationError("Full name is required.");
     if ((detailsModal.type === "client" || detailsModal.type === "admin") && !detailsForm.email?.trim()) {
-      return alert("Email is required.");
+      return setOperationError("Email is required.");
     }
 
     const fields = detailsModal.type === "client"
@@ -363,7 +382,8 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
       Object.fromEntries(fields.map(key => [key, detailsForm[key] || ""])))) return;
 
     await fetchClientData();
-    closeDetailsModal();
+    setNotice("Details updated successfully.");
+    setDetailsEditMode(false);
   }
 
   function downloadExcelTemplate() {
@@ -390,11 +410,14 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
   }
 
   async function prepareImportFile(file: File) {
-    const rows = await parseImportFile(file);
-    setImportFileName(file.name);
-    setImportRowCount(rows.length);
-    setImportRows(rows.map(normalizeImportRow));
-    setReviewImport(true);
+    try {
+      const rows = await parseImportFile(file);
+      setImportFileName(file.name);
+      setImportRowCount(rows.length);
+      setImportRows(rows.map(normalizeImportRow));
+      setReviewImport(true);
+      setOperationError("");
+    } catch { setOperationError("Could not read the import file. Choose a valid CSV or Excel file."); }
   }
 
   function cancelImport() {
@@ -431,14 +454,15 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
       setImportOperation(operation);
       await mutateAdminClient("/api/admin/clients/import", "POST", { operationId: operation.id, companies });
       await fetchClientData();
-      alert(`Imported ${companies.length} companies and ${importRows.length} staff contacts. No login accounts or subscriptions were created.`);
+      setNotice(`Imported ${companies.length} companies and ${importRows.length} staff contacts. No login accounts or subscriptions were created.`);
       setImportOperation(null);
       cancelImport();
-    } catch (error) { alert(error instanceof Error ? error.message : "Import failed. Keep the import unchanged to retry safely."); }
+    } catch (error) { setOperationError(error instanceof Error ? error.message : "Import failed. Keep the import unchanged to retry safely."); }
     finally { importPending.current = false; setImportingFile(false); }
   }
 
   function toggleCompany(clientId: string) {
+    setFullListMode(null);
     setExpandedCompany((current) => (current === clientId ? null : clientId));
     setStaffFullName("");
     setStaffJobTitle("");
@@ -507,7 +531,8 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
     }));
   }, [importRows]);
 
-  const summary = relationships?.summary;
+  const areaAccounts = area === "individual" ? individualClients : businessClients;
+  const metricsReady = !loading && Boolean(relationships);
   const latestPreviewUser = previewUserId
     ? clientUsers.find((user) => user.id === previewUserId) || null
     : null;
@@ -516,26 +541,53 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
   );
 
   return (
-    <main className="flex min-h-screen bg-[#070B1A] text-white">
-      <Sidebar />
-      <section className="flex-1 p-10">
-        <div className="mb-10">
-          <h1 className="text-4xl font-bold">{area === "individual" ? "Individual Clients" : "Business Clients"}</h1>
-          <p className="mt-3 max-w-4xl text-white/50">
-            {area === "individual" ? "Manage personal DMI Cards customers and their cards." : "Manage company accounts, primary contacts, staff and cards."}
-          </p>
+    <main className={styles.page}>
+      <div className={styles.desktopSidebar}><Sidebar /></div>
+      <section className={styles.content}>
+        <button className={styles.menuButton} onClick={() => setMenuOpen(true)} aria-label="Open Admin navigation">☰ Menu</button>
+        <div className={styles.pageHeader}>
+          <div><h1 className="text-3xl font-bold">{area === "individual" ? "Individual Clients" : "Business Clients"}</h1>
+          <p className="mt-3 max-w-4xl text-slate-500">
+            {area === "individual" ? "Manage personal DMI Cards customers and their cards." : "Manage company accounts, staff and digital cards."}
+          </p></div>
+          <div className={styles.headerActions}>
+            <button className={styles.primary} onClick={() => { setCreatedAccount(null); setOperationError(""); setNotice(""); setCreateOpen(true); }}>+ {area === "individual" ? "Add Individual Client" : "Add Business"}</button>
+            <button onClick={() => setFullListMode(area)}>View All {area === "individual" ? "Clients" : "Companies"}</button>
+            {area === "business" && <button onClick={() => { setOperationError(""); setNotice(""); setImportOpen(true); }}>Import</button>}
+          </div>
         </div>
 
-        <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Total Clients" value={summary?.totalClients ?? "—"} caption="Account records" />
-          <StatCard label="Individuals" value={summary?.individuals ?? "—"} caption="Individual accounts" />
-          <StatCard label="Business" value={summary ? summary.business + summary.enterprise : "—"} caption="Includes legacy company accounts" />
-          <StatCard label="Activated Users" value={summary?.activatedUsers ?? "—"} caption="Distinct linked Auth identities" />
-          <StatCard label="Invited / Unlinked Staff" value={summary?.unlinkedStaff ?? "—"} caption="No verified user identity" />
-          <StatCard label="Cards" value={summary?.cards ?? "—"} caption="Actual card records" />
+        <div className={styles.kpis}>
+          <StatCard label={area === "individual" ? "Total Individuals" : "Companies"} value={metricsReady ? areaAccounts.length : "—"} caption={area === "individual" ? "Individual accounts" : "Includes legacy Enterprise accounts"} />
+          <StatCard label={area === "individual" ? "Active" : "Active Companies"} value={metricsReady ? areaAccounts.filter(row => row.status === "active").length : "—"} caption="Account status" />
+          <StatCard label={area === "individual" ? "Suspended" : "Suspended Companies"} value={metricsReady ? areaAccounts.filter(row => row.status === "suspended").length : "—"} caption="Account status" />
+          {area === "business" && <>
+            <StatCard label="People" value={metricsReady ? relationships?.areas.businessPeople ?? "—" : "—"} caption="Company staff memberships" />
+            <StatCard label="Activated Users" value={metricsReady ? relationships?.areas.businessActivatedUsers ?? "—" : "—"} caption="Distinct verified company/staff identities" />
+          </>}
+          <StatCard label="Cards" value={metricsReady ? (area === "individual" ? relationships?.areas.individualCards : relationships?.areas.businessCards) ?? "—" : "—"} caption="Actual cards in this account area" />
         </div>
 
-        <AddClientSection
+        {(createOpen || importOpen) && <AdminClientSheet title={importOpen ? "Bulk Company Import" : createdAccount ? "Account created" : area === "individual" ? "Add Individual Client" : "Add Business"} busy={mutationBusy || importingFile} onClose={() => { setCreateOpen(false); setImportOpen(false); }} wide={importOpen} notice={notice}>
+          {operationError && <p role="alert" className={styles.error}>{operationError}</p>}
+          {createdAccount && !importOpen ? <div className={styles.onboarding}>
+            <div className={styles.successMark} aria-hidden="true">✓</div>
+            <h3>Account created</h3><strong>{createdAccount.name}</strong><p>{createdAccount.email}</p>
+            <p>Status: {createdAccount.status}</p>
+            {area === "individual" && <p>Plan: Free · maximum 1 card. Cards: {clients.find(client => client.id === createdAccount.id)?.card_count ?? "Checking inventory…"}</p>}
+            <h4>Next steps</h4>
+            <button disabled title="Invitation delivery is not implemented">Send Invitation — Coming soon</button>
+            {area === "individual" && <button disabled title="Individual card creation requires the client’s authenticated account">Create First Card — client sign-in required</button>}
+            <button className={styles.primary} disabled={!createdAccount.id} onClick={() => {
+              const saved = clients.find(client => client.id === createdAccount.id);
+              if (!saved) { setOperationError("The account is saved. Refresh its inventory before managing it."); void fetchClientData(); return; }
+              setCreateOpen(false);
+              if (area === "business") toggleCompany(saved.id); else openClientDetails(saved);
+            }}>{area === "business" ? "Manage Company / Add Staff" : "View / Manage Client"}</button>
+            {area === "business" && <button onClick={() => { setCreateOpen(false); setImportOpen(true); }}>Open existing company + staff import</button>}
+            <button onClick={() => setCreateOpen(false)}>Done</button>
+          </div> : <>
+        <AddClientSection mode={importOpen ? "import" : "create"}
           fullName={fullName}
           setFullName={setFullName}
           companyName={companyName}
@@ -561,30 +613,22 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
           confirmImport={confirmImport}
           cancelImport={cancelImport}
         />
+          </>}
+        </AdminClientSheet>}
+
 
         <fieldset disabled={mutationBusy} aria-busy={mutationBusy} className="min-w-0">
         {mutationBusy && <p role="status">Saving changes…</p>}
         {area === "individual" && <ClientSection
           title="Recent Individual Clients"
           description="Individual accounts are shown as people."
-          count={Math.min(10, filteredIndividualClients.length)}
+          count={Math.min(10, individualClients.length)}
           onViewFullList={() => setFullListMode("individual")}
-          filters={
-            <IndividualFilters
-              search={individualSearch}
-              setSearch={setIndividualSearch}
-              plan={individualPlanFilter}
-              setPlan={setIndividualPlanFilter}
-              billing={individualBillingFilter}
-              setBilling={setIndividualBillingFilter}
-              status={individualStatusFilter}
-              setStatus={setIndividualStatusFilter}
-            />
-          }
+          filters={null}
         >
           <IndividualTable
             loading={loading}
-            clients={filteredIndividualClients.slice(0, 10)}
+            clients={individualClients.slice(0, 10)}
             openClientDetails={openClientDetails}
             toggleClientStatus={toggleClientStatus}
           />
@@ -593,20 +637,18 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
         {area === "business" && <ClientSection
           title="Recent Companies"
           description="Business companies and historical Enterprise accounts."
-          count={Math.min(10, filteredBusinessClients.length)}
+          count={Math.min(10, businessClients.length)}
           onViewFullList={() => setFullListMode("business")}
-          filters={
-            <BusinessFilters
-              search={businessSearch}
-              setSearch={setBusinessSearch}
-              status={businessStatusFilter}
-              setStatus={setBusinessStatusFilter}
-            />
-          }
+          filters={null}
         >
           <BusinessTable
             loading={loading}
-            companies={filteredBusinessClients.slice(0, 10)}
+            companies={businessClients.slice(0, 10)}
+            managementCompanies={businessClients}
+            busy={mutationBusy}
+            error={operationError}
+            notice={notice}
+            onCloseManagement={() => setExpandedCompany(null)}
             clientUsers={clientUsers}
             cards={cards}
             expandedCompany={expandedCompany}
@@ -631,6 +673,21 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
         </fieldset>
       </section>
 
+      {notice && <div role="status" className={styles.toast}>{notice}<button aria-label="Dismiss notification" onClick={() => setNotice("")}>×</button></div>}
+      {operationError && !createOpen && !importOpen && !detailsModal && !expandedCompany && !statusTarget && <div role="alert" className={styles.error}>{operationError}</div>}
+      {menuOpen && <AdminClientSheet title="DMI Cards Admin" onClose={() => setMenuOpen(false)}><div className={styles.mobileSidebar}><Sidebar /></div></AdminClientSheet>}
+      {statusTarget && <AdminClientSheet title={statusTarget.status === "suspended" ? "Reactivate Client" : "Suspend Client"} busy={mutationBusy} onClose={() => { setStatusTarget(null); setOperationError(""); }} confirm>
+        <div className={styles.confirmation}>
+          <span aria-hidden="true" className={styles.warning}>!</span>
+          <h3>{statusTarget.company_name || statusTarget.full_name}</h3>
+          <p>{statusTarget.status === "suspended" ? "Restore Client Portal access using the existing account data." : "This stops Client Portal access. Cards, contacts, billing records, Wallet passes and account data remain intact."}</p>
+          {operationError && <p role="alert" className={styles.error}>{operationError}</p>}
+          <div className={styles.headerActions}>
+            <button disabled={mutationBusy} onClick={() => { setStatusTarget(null); setOperationError(""); }}>Cancel</button>
+            <button disabled={mutationBusy} className={statusTarget.status === "suspended" ? styles.primary : styles.danger} onClick={() => void confirmClientStatus(statusTarget)}>{mutationBusy ? (statusTarget.status === "suspended" ? "Reactivating…" : "Suspending…") : (statusTarget.status === "suspended" ? "Reactivate Client" : "Suspend Client")}</button>
+          </div>
+        </div>
+      </AdminClientSheet>}
       {fullListMode && (
         <FullListModal
           title={fullListMode === "individual" ? "All Individual Clients" : "All Companies"}
@@ -694,7 +751,7 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
             </div>
           )}
           </fieldset>
-          <div className="flex items-center justify-between border-t border-white/10 p-5">
+          <div className="flex items-center justify-between border-t border-slate-200 p-5">
             <button disabled={fullPage.page <= 1} onClick={() => setPagination({ key: filterKey, page: fullPage.page - 1 })}>Previous</button>
             <span>Page {fullPage.page} of {fullPage.pages}</span>
             <button disabled={fullPage.page >= fullPage.pages} onClick={() => setPagination({ key: filterKey, page: fullPage.page + 1 })}>Next</button>
@@ -705,6 +762,12 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
       {detailsModal && (
         <UserDetailsModal
           busy={mutationBusy}
+          error={operationError}
+          notice={notice}
+          onStatus={() => {
+            if (detailsModal.type === "staff") return;
+            toggleClientStatus(clients.find(client => client.id === detailsModal.data.id) || detailsModal.data);
+          }}
           modal={detailsModal}
           form={detailsForm}
           editMode={detailsEditMode}
@@ -745,6 +808,7 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
 }
 
 function AddClientSection(props: {
+  mode: "create" | "import";
   fullName: string;
   setFullName: (value: string) => void;
   companyName: string;
@@ -771,35 +835,35 @@ function AddClientSection(props: {
   cancelImport: () => void;
 }) {
   return (
-    <div className="mb-8 rounded-3xl border border-white/10 bg-white/5 p-7">
-      <h2 className="text-2xl font-semibold">{props.accountType === "individual" ? "Add Individual Client" : "Add Business"}</h2>
-      <p className="mt-2 text-sm leading-6 text-white/45">
+    <div className="space-y-4">
+      {props.mode === "create" && <><h2 className="text-2xl font-semibold">{props.accountType === "individual" ? "Add Individual Client" : "Add Business"}</h2>
+      <p className="mt-2 text-sm leading-6 text-slate-500">
         {props.accountType === "individual" ? "Create a personal Free account." : "Create a company first; staff can be added later."}
       </p>
-      <div className="mt-7 grid grid-cols-4 gap-x-4 gap-y-5">
+      <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5">
         <fieldset disabled={props.busy} aria-busy={props.busy} className="contents">
         {props.accountType === "business" && <Field label="Company Name">
-          <input value={props.companyName} onChange={(e) => props.setCompanyName(e.target.value)} className="inputStyle" />
+          <input value={props.companyName} onChange={(e) => props.setCompanyName(e.target.value)} className={styles.input} />
         </Field>}
         <Field label={props.accountType === "individual" ? "Full Name" : "Primary Contact Name"}>
-          <input value={props.fullName} onChange={(e) => props.setFullName(e.target.value)} className="inputStyle" />
+          <input value={props.fullName} onChange={(e) => props.setFullName(e.target.value)} className={styles.input} />
         </Field>
         <Field label={props.accountType === "business" ? "Primary Contact Email" : "Email"}>
-          <input value={props.email} onChange={(e) => props.setEmail(e.target.value)} className="inputStyle" />
+          <input value={props.email} onChange={(e) => props.setEmail(e.target.value)} className={styles.input} />
         </Field>
         <Field label="Phone Number">
-          <input value={props.phone} onChange={(e) => props.setPhone(e.target.value)} className="inputStyle" />
+          <input value={props.phone} onChange={(e) => props.setPhone(e.target.value)} className={styles.input} />
         </Field>
         {props.accountType === "individual" && <Field label="Plan">
-          <select value="free" disabled className="inputStyle">
+          <select value="free" disabled className={styles.input}>
             <option value="free">Free</option>
             <option value="pro" disabled>Pro (not available here yet)</option>
           </select>
-          <span className="mt-2 block text-xs text-white/35">Free: 1 card. Pro: up to 3 premium cards. Pro grants and subscription links are not available here yet.</span>
+          <span className="mt-2 block text-xs text-slate-500">Free: 1 card. Pro: up to 3 premium cards. Pro grants and subscription links are not available here yet.</span>
         </Field>}
         {/* TODO: Send Pro Subscription Link. Complimentary Pro needs a reviewed server entitlement grant, not a legacy plan label. */}
         {props.accountType === "business" && <Field label="Status">
-          <select value={props.clientStatus} onChange={(e) => props.setClientStatus(e.target.value)} className="inputStyle">
+          <select value={props.clientStatus} onChange={(e) => props.setClientStatus(e.target.value)} className={styles.input}>
             <option value="active">Active</option>
             <option value="pending">Pending</option>
             <option value="suspended">Suspended</option>
@@ -807,31 +871,31 @@ function AddClientSection(props: {
         </Field>}
         </fieldset>
       </div>
-      <button disabled={props.busy} onClick={props.createClientRecord} className="mt-7 rounded-2xl bg-[#AC00FF] px-6 py-3 font-medium transition hover:opacity-90">
-        {props.busy ? "Saving…" : "Create Account"}
-      </button>
+      <button disabled={props.busy} onClick={props.createClientRecord} className="mt-7 rounded-2xl bg-gradient-to-r from-pink-600 to-purple-700 text-white px-6 py-3 font-medium transition hover:opacity-90">
+        {props.busy ? "Creating…" : "Create Account"}
+      </button></>}
 
-      {props.accountType === "business" && <div className="mt-8 rounded-3xl border border-white/10 bg-[#101935]/60 p-6 shadow-2xl shadow-[#AC00FF]/5">
+      {props.mode === "import" && props.accountType === "business" && <div className="space-y-4">
         <div className="grid gap-6 xl:grid-cols-[1fr_520px]">
           <div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#AC00FF]/15 text-purple-100 ring-1 ring-[#AC00FF]/30">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-50 text-purple-700 ring-1 ring-[#AC00FF]/30">
               <FileSpreadsheet size={22} />
             </div>
             <h3 className="mt-4 text-2xl font-semibold">Bulk Company Import</h3>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/45">
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
               Imports companies and staff together from Excel or CSV. Company-scoped staff import is planned; billing is not configured here.
             </p>
           </div>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <button type="button" onClick={props.downloadExcelTemplate} className="flex h-14 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-5 text-sm font-medium transition hover:bg-white/15">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button type="button" onClick={props.downloadExcelTemplate} className="flex h-14 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 text-sm font-medium transition hover:bg-white/15">
                 <Download size={18} />
                 Download Template
               </button>
-              <label className="flex h-14 cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6D4BFF] px-5 text-sm font-medium">
+              <label className="flex h-14 cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-pink-600 to-purple-700 text-white px-5 text-sm font-medium">
                 <UploadCloud size={18} />
                 {props.importingFile ? "Importing..." : "Upload Company File"}
-                <input type="file" accept=".csv,.xlsx,.xls" disabled={props.importingFile} className="hidden" onChange={(e) => {
+                <input type="file" accept=".csv,.xlsx,.xls" disabled={props.importingFile} className="sr-only" onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) void props.prepareImportFile(file);
                   e.target.value = "";
@@ -847,39 +911,39 @@ function AddClientSection(props: {
         </div>
       </div>}
 
-      {props.accountType === "business" && props.reviewImport && (
-        <div className="mt-8 rounded-3xl border border-[#AC00FF]/25 bg-[#070B1A]/55 p-6">
+      {props.mode === "import" && props.accountType === "business" && props.reviewImport && (
+        <div className="mt-8 rounded-3xl border border-[#AC00FF]/25 bg-slate-50/55 p-6">
           <div className="flex items-start justify-between gap-6">
             <div>
               <h3 className="text-2xl font-semibold">Review Import</h3>
-              <p className="mt-2 text-sm text-white/45">Review and edit staff users before anything is saved.</p>
+              <p className="mt-2 text-sm text-slate-500">Review and edit staff users before anything is saved.</p>
             </div>
             <div className="flex gap-3">
-              <button disabled={props.importingFile} onClick={props.cancelImport} className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-medium">Cancel Import</button>
-              <button disabled={props.importingFile} onClick={props.confirmImport} className="rounded-2xl bg-[#AC00FF] px-5 py-3 text-sm font-medium">Confirm Import</button>
+              <button disabled={props.importingFile} onClick={props.cancelImport} className="rounded-2xl bg-slate-50 px-5 py-3 text-sm font-medium">Cancel Import</button>
+              <button disabled={props.importingFile} onClick={props.confirmImport} className="rounded-2xl bg-gradient-to-r from-pink-600 to-purple-700 text-white px-5 py-3 text-sm font-medium">Confirm Import</button>
             </div>
           </div>
           <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
             {props.importCompanies.map((company) => (
-              <div key={company.company} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-xs text-white/35">Company name</p>
+              <div key={company.company} className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-xs text-slate-500">Company name</p>
                 <p className="mt-1 font-medium">{company.company}</p>
-                <p className="mt-3 text-xs text-white/35">First staff user</p>
-                <p className="mt-1 text-sm text-white/70">{company.primaryContact}</p>
+                <p className="mt-3 text-xs text-slate-500">First staff user</p>
+                <p className="mt-1 text-sm text-slate-600">{company.primaryContact}</p>
               </div>
             ))}
           </div>
-          <div className="mt-6 overflow-x-auto rounded-2xl border border-white/10">
-            <table className="min-w-[1900px] w-full text-sm">
-              <thead className="bg-white/5 text-left text-white/45">
+          <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200">
+            <table className={styles.importTable}>
+              <thead className="bg-white text-left text-slate-500">
                 <tr>{importHeaders.map((header) => <th key={header} className="p-3 capitalize">{header.replace("_", " ")}</th>)}</tr>
               </thead>
               <tbody>
                 {props.importRows.map((row, index) => (
-                  <tr key={`${row.company_name}-${row.email}-${index}`} className="border-t border-white/5">
+                  <tr key={`${row.company_name}-${row.email}-${index}`} className="border-t border-slate-100">
                     {(importHeaders as (keyof ImportRow)[]).map((field) => (
-                      <td key={field} className="p-2">
-                        <input value={row[field] || ""} onChange={(e) => props.updateImportRow(index, field, e.target.value)} className="h-11 w-full rounded-xl border border-white/10 bg-[#101935] px-3 text-sm outline-none focus:border-[#AC00FF]" />
+                      <td key={field} data-label={field.replaceAll("_", " ")} className="p-2">
+                        <input aria-label={`Row ${index + 1} ${field.replaceAll("_", " ")}`} disabled={props.importingFile} value={row[field] || ""} onChange={(e) => props.updateImportRow(index, field, e.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-[#AC00FF]" />
                       </td>
                     ))}
                   </tr>
@@ -902,7 +966,7 @@ function ClientSection({ title, description, count, onViewFullList, filters, chi
   children: React.ReactNode;
 }) {
   return (
-    <div className="mb-8 rounded-3xl border border-white/10 bg-white/5">
+    <div className="mb-8 rounded-3xl border border-slate-200 bg-white">
       <SectionHeader title={title} description={description} count={count} onViewFullList={onViewFullList} />
       {filters}
       <div className="max-h-[520px] overflow-y-auto">{children}</div>
@@ -921,21 +985,21 @@ function IndividualFilters(props: {
   setStatus: (value: string) => void;
 }) {
   return (
-    <div className="border-b border-white/10 p-6">
-      <div className="grid grid-cols-4 gap-4">
-        <input placeholder="Search people, company or email" value={props.search} onChange={(e) => props.setSearch(e.target.value)} className="inputStyle" />
+    <div className="border-b border-slate-200 p-6">
+      <div className={styles.filters}>
+        <input aria-label="Search people, company or email" placeholder="Search people, company or email" value={props.search} onChange={(e) => props.setSearch(e.target.value)} className={styles.input} />
         <FilterSelect value={props.plan} onChange={props.setPlan} label="All Plans" options={["free", "pro"]} />
         <FilterSelect value={props.billing} onChange={props.setBilling} label="All Billing" options={["paid", "trial", "overdue", "cancelled"]} />
         <FilterSelect value={props.status} onChange={props.setStatus} label="All Statuses" options={["active", "pending", "suspended"]} />
       </div>
-      <p className="mt-3 text-xs text-white/35">Legacy plan and billing labels are informational; Stripe controls access. Use Suspend/Reactivate for account status.</p>
+      <p className="mt-3 text-xs text-slate-500">Legacy plan and billing labels are informational; Stripe controls access. Use Suspend/Reactivate for account status.</p>
     </div>
   );
 }
 
 function BusinessFilters(props: { search: string; setSearch: (value: string) => void; status: string; setStatus: (value: string) => void }) {
-  return <div className="border-b border-white/10 p-6"><div className="grid grid-cols-5 gap-4">
-    <input placeholder="Search company, contact or email" value={props.search} onChange={e => props.setSearch(e.target.value)} className="inputStyle" />
+  return <div className="border-b border-slate-200 p-6"><div className={styles.filters}>
+    <input aria-label="Search company, contact or email" placeholder="Search company, contact or email" value={props.search} onChange={e => props.setSearch(e.target.value)} className={styles.input} />
     <FilterSelect value={props.status} onChange={props.setStatus} label="All Statuses" options={["active", "pending", "suspended"]} />
   </div></div>;
 }
@@ -947,21 +1011,21 @@ function IndividualTable(props: {
   toggleClientStatus: (client: Client) => void;
 }) {
   return (
-    <table className="w-full">
-      <thead className="sticky top-0 z-30 border-b border-white/10 bg-[#101935]">
-        <tr className="text-left text-white/60">
-          <th className="p-5">Client</th><th className="p-5">Email</th><th className="p-5">Plan</th><th className="p-5">Cards</th><th className="p-5">Status</th><th className="p-5">Actions</th>
+    <table className={styles.inventoryTable}>
+      <thead className="sticky top-0 z-30 border-b border-slate-200 bg-slate-50">
+        <tr className="text-left text-slate-600">
+          <th className="p-5">Client</th><th className="p-5">Email</th><th className="p-5">Plan</th><th className="p-5">Cards</th><th className="p-5">Status</th><th className="p-5">Manage</th>
         </tr>
       </thead>
       <tbody>
         {props.loading ? <TableMessage message="Loading individual clients..." /> : props.clients.length === 0 ? <TableMessage message="No matching individual clients found." /> : props.clients.map((client) => (
-          <tr key={client.id} className="border-t border-white/5 hover:bg-white/5">
-            <td className="p-5 font-medium">{client.full_name}</td>
-            <td className="p-5 text-white/70">{client.email}</td>
-            <td className="p-5 capitalize text-white/70">{individualPlanLabel(client.subscription_plan)}</td>
-            <td className="p-5 text-white/70">{client.card_count ?? 0}</td>
-            <td className="p-5"><StatusBadge status={client.status} /></td>
-            <td className="p-5"><ClientActions client={client} onView={props.openClientDetails} onToggle={props.toggleClientStatus} /></td>
+          <tr key={client.id} className="border-t border-slate-100 hover:bg-white">
+            <td data-label="Client" className="p-5 font-medium">{client.full_name}</td>
+            <td data-label="Email" className="p-5 text-slate-600">{client.email}</td>
+            <td data-label="Plan (display label)" className="p-5 capitalize text-slate-600">{individualPlanLabel(client.subscription_plan)}</td>
+            <td data-label="Cards" className="p-5 text-slate-600">{client.card_count ?? 0}</td>
+            <td data-label="Status" className="p-5"><StatusBadge status={client.status} /></td>
+            <td data-label="Manage" className="p-5"><ClientActions client={client} onView={props.openClientDetails} onToggle={props.toggleClientStatus} /></td>
           </tr>
         ))}
       </tbody>
@@ -972,6 +1036,11 @@ function IndividualTable(props: {
 function BusinessTable(props: {
   loading: boolean;
   companies: Client[];
+  managementCompanies?: Client[];
+  busy?: boolean;
+  error?: string;
+  notice?: string;
+  onCloseManagement?: () => void;
   clientUsers: ClientUser[];
   cards: Card[];
   expandedCompany: string | null;
@@ -993,44 +1062,50 @@ function BusinessTable(props: {
   deleteClientUser: (user: ClientUser) => void;
 }) {
   return (
-    <table className="w-full">
-      <thead className="sticky top-0 z-30 border-b border-white/10 bg-[#101935]">
-        <tr className="text-left text-white/60">
-          <th className="p-5">Company</th><th className="p-5">Primary Contact</th><th className="p-5">People</th><th className="p-5">Cards</th><th className="p-5">Status</th><th className="p-5">Actions</th>
+    <><table className={styles.inventoryTable}>
+      <thead className="sticky top-0 z-30 border-b border-slate-200 bg-slate-50">
+        <tr className="text-left text-slate-600">
+          <th className="p-5">Company</th><th className="p-5">Primary Contact</th><th className="p-5">People</th><th className="p-5">Cards</th><th className="p-5">Status</th><th className="p-5">Manage</th>
         </tr>
       </thead>
-      <tbody>
-        {props.loading ? <TableMessage message="Loading company accounts..." /> : props.companies.length === 0 ? <TableMessage message="No matching company accounts found." /> : props.companies.map((company) => {
+        {props.loading ? <tbody><TableMessage message="Loading company accounts..." /></tbody> : props.companies.length === 0 ? <tbody><TableMessage message="No matching company accounts found." /></tbody> : props.companies.map((company) => {
           const users = props.clientUsers.filter((user) => user.client_id === company.id);
           const companyCardCount = company.card_count ?? 0;
-          const expanded = props.expandedCompany === company.id;
           return (
-            <Fragment key={company.id}>
-              <tr onClick={() => props.toggleCompany(company.id)} className="cursor-pointer border-t border-white/5 hover:bg-white/5">
-                <td className="p-5 font-medium">{company.company_name || company.full_name}{company.account_type === "enterprise" && <span className="ml-2 text-xs text-white/45">Legacy Enterprise</span>}</td>
-                <td className="p-5 text-white/70">{company.full_name}</td>
-                <td className="p-5 text-white/70">{users.length}</td>
-                <td className="p-5 text-white/70">{companyCardCount}</td>
-                <td className="p-5"><StatusBadge status={company.status} /></td>
-                <td className="p-5">
+            <tbody key={company.id}>
+              <tr className="border-t border-slate-100 hover:bg-white">
+                <td data-label="Company" className="p-5 font-medium">{company.company_name || company.full_name}{company.account_type === "enterprise" && <span className="ml-2 text-xs text-slate-500">Legacy Enterprise</span>}</td>
+                <td data-label="Primary Contact" className="p-5 text-slate-600">{company.full_name}</td>
+                <td data-label="People" className="p-5 text-slate-600">{users.length}</td>
+                <td data-label="Cards" className="p-5 text-slate-600">{companyCardCount}</td>
+                <td data-label="Status" className="p-5"><StatusBadge status={company.status} /></td>
+                <td data-label="Manage" className="p-5">
                   <div className="flex gap-3">
-                    <button onClick={(e) => { e.stopPropagation(); props.toggleCompany(company.id); }} className="text-sm text-blue-300 hover:text-blue-200">Manage</button>
-                    <button onClick={(e) => { e.stopPropagation(); props.toggleClientStatus(company); }} className="text-sm text-yellow-300 hover:text-yellow-200">{company.status === "suspended" ? "Reactivate Client" : "Suspend Client"}</button>
+                    <button onClick={(e) => { e.stopPropagation(); props.toggleCompany(company.id); }} className="text-sm text-purple-700 hover:text-purple-800">Manage</button>
+
                   </div>
                 </td>
               </tr>
-              {expanded && (
-                <tr className="border-t border-white/5 bg-[#101935]/50">
-                  <td colSpan={6} className="p-5">
-                    <div className="space-y-5 rounded-2xl border border-white/10 bg-white/5 p-5">
-                      <div className="rounded-2xl border border-[#AC00FF]/25 bg-[#070B1A]/60 p-5">
+
+            </tbody>
+          );
+        })}
+    </table>
+    {props.managementCompanies?.filter(company => company.id === props.expandedCompany).map(company => {
+      const users = props.clientUsers.filter(user => user.client_id === company.id);
+      return <AdminClientSheet key={company.id} title={company.company_name || company.full_name} busy={props.busy} onClose={() => props.onCloseManagement?.()} notice={props.notice}>
+        {props.error && <p role="alert" className={styles.error}>{props.error}</p>}
+        <fieldset disabled={props.busy}>
+                    <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5">
+                      <button disabled={props.busy} onClick={() => props.toggleClientStatus(company)}>{company.status === "suspended" ? "Reactivate Client" : "Suspend Client"}</button>
+                      <div className="rounded-2xl border border-[#AC00FF]/25 bg-slate-50/60 p-5">
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/15 px-3 py-1 text-xs font-medium text-purple-100">Client Admin</span>
+                            <span className="rounded-full border border-[#AC00FF]/30 bg-purple-50 px-3 py-1 text-xs font-medium text-purple-700">Client Admin</span>
                             <h3 className="mt-3 text-lg font-semibold">Client Admin / Main Contact</h3>
-                            <p className="mt-1 text-sm text-white/45">This is the company contact responsible for onboarding and staff data.</p>
+                            <p className="mt-1 text-sm text-slate-500">This is the company contact responsible for onboarding and staff data.</p>
                           </div>
-                          <button type="button" onClick={() => props.openAdminContactDetails(company)} className="rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-medium text-white/80">Edit Admin Contact</button>
+                          <button type="button" onClick={() => props.openAdminContactDetails(company)} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700">Edit Admin Contact</button>
                         </div>
                         <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
                           <AdminContactDetail label="Contact Name" value={company.full_name || "-"} />
@@ -1039,23 +1114,20 @@ function BusinessTable(props: {
                           <AdminContactDetail label="Role" value={company.job_title || "Client Admin"} />
                         </div>
                       </div>
-                      <div className="grid grid-cols-5 gap-3">
-                        <input placeholder="Full name" value={props.staffFullName} onChange={(e) => props.setStaffFullName(e.target.value)} className="inputStyle" />
-                        <input placeholder="Job title" value={props.staffJobTitle} onChange={(e) => props.setStaffJobTitle(e.target.value)} className="inputStyle" />
-                        <input placeholder="Email" value={props.staffEmail} onChange={(e) => props.setStaffEmail(e.target.value)} className="inputStyle" />
-                        <input placeholder="Phone" value={props.staffPhone} onChange={(e) => props.setStaffPhone(e.target.value)} className="inputStyle" />
-                        <button onClick={() => props.createClientUser(company)} className="rounded-2xl bg-[#AC00FF] px-5 text-sm font-medium">Add User</button>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <input aria-label="Full name" placeholder="Full name" value={props.staffFullName} onChange={(e) => props.setStaffFullName(e.target.value)} className={styles.input} />
+                        <input aria-label="Job title" placeholder="Job title" value={props.staffJobTitle} onChange={(e) => props.setStaffJobTitle(e.target.value)} className={styles.input} />
+                        <input aria-label="Email" placeholder="Email" value={props.staffEmail} onChange={(e) => props.setStaffEmail(e.target.value)} className={styles.input} />
+                        <input aria-label="Phone" placeholder="Phone" value={props.staffPhone} onChange={(e) => props.setStaffPhone(e.target.value)} className={styles.input} />
+                        <button onClick={() => props.createClientUser(company)} className="rounded-2xl bg-gradient-to-r from-pink-600 to-purple-700 text-white px-5 text-sm font-medium">Add User</button>
                       </div>
                       <StaffUsersTable users={users} companyId={company.id} findCardsForUser={props.findCardsForUser} openStaffDetails={props.openStaffDetails} openCardPreview={props.openCardPreview} deleteClientUser={props.deleteClientUser} />
                     </div>
-                  </td>
-                </tr>
-              )}
-            </Fragment>
-          );
-        })}
-      </tbody>
-    </table>
+
+        </fieldset>
+      </AdminClientSheet>;
+    })}
+    </>
   );
 }
 
@@ -1086,32 +1158,13 @@ function normalizeImportRow(row: Record<string, string>): ImportRow {
 }
 
 function StatCard({ label, value, caption, danger = false }: { label: string; value: number | string; caption: string; danger?: boolean }) {
-  return (
-    <div className={`flex min-h-40 flex-col justify-between rounded-3xl border p-6 shadow-2xl ${danger ? "border-red-400/20 bg-red-500/10 shadow-red-500/5" : "border-white/10 bg-white/5 shadow-[#AC00FF]/5"}`}>
-      <div>
-        <p className="text-xs font-medium uppercase tracking-[0.16em] text-white/35">{label}</p>
-        <p className="mt-3 text-sm leading-5 text-white/45">{caption}</p>
-      </div>
-      <p className={`mt-7 text-5xl font-semibold ${danger ? "text-red-300" : "text-white"}`}>{value}</p>
-    </div>
-  );
+  return <div className={styles.stat}><p>{label}</p><strong className={danger ? styles.danger : ""}>{value}</strong><small>{caption}</small></div>;
+
 }
 
 function FullListModal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-6">
-      <div className="flex h-[85vh] max-h-[85vh] w-[92vw] max-w-7xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#0F0E38] text-white shadow-2xl shadow-[#AC00FF]/20">
-        <div className="shrink-0 flex items-center justify-between border-b border-white/10 p-6">
-          <div>
-            <h2 className="text-2xl font-semibold">{title}</h2>
-            <p className="mt-1 text-sm text-white/45">Full list view with search, filters, sticky headers, and actions.</p>
-          </div>
-          <button onClick={onClose} className="rounded-2xl bg-white/10 px-5 py-2.5 text-sm font-medium">Close</button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
-      </div>
-    </div>
-  );
+  return <AdminClientSheet title={title} onClose={onClose} wide>{children}</AdminClientSheet>;
+
 }
 
 function StaffUsersTable(props: {
@@ -1127,16 +1180,16 @@ function StaffUsersTable(props: {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="font-semibold">Users / Staff</h3>
-          <p className="mt-1 text-sm text-white/45">Staff users under this company account.</p>
+          <p className="mt-1 text-sm text-slate-500">Staff users under this company account.</p>
         </div>
-        <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/55">{props.users.length} users</span>
+        <span className="rounded-full bg-slate-50 px-3 py-1 text-xs text-slate-600">{props.users.length} users</span>
       </div>
       {props.users.length === 0 ? (
-        <p className="mt-5 text-sm text-white/45">No users added yet. Add users here or import them later.</p>
+        <p className="mt-5 text-sm text-slate-500">No users added yet. Add users here or import them later.</p>
       ) : (
-        <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
-          <table className="w-full text-sm">
-            <thead className="bg-white/5 text-left text-white/45">
+        <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+          <table className={styles.inventoryTable}>
+            <thead className="bg-white text-left text-slate-500">
               <tr><th className="p-4">Full Name</th><th className="p-4">Job Title</th><th className="p-4">Email</th><th className="p-4">Phone</th><th className="p-4">Status</th><th className="p-4">Cards</th><th className="p-4">Card Status</th><th className="p-4">Actions</th></tr>
             </thead>
             <tbody>
@@ -1144,18 +1197,18 @@ function StaffUsersTable(props: {
                 const userCards = props.findCardsForUser(props.companyId, user);
                 const cardStatus = userCards.length ? userCards.some((card) => card.is_published) ? "published" : "draft" : "unpublished";
                 return (
-                  <tr key={user.id} className="border-t border-white/5">
-                    <td className="p-4">{user.full_name || user.name || "Unnamed user"}</td>
-                    <td className="p-4 text-white/60">{user.job_title || "-"}</td>
-                    <td className="p-4 text-white/60">{user.email || "-"}</td>
-                    <td className="p-4 text-white/60">{user.phone || "-"}</td>
-                    <td className="p-4"><StatusBadge status={user.status || "active"} /></td>
-                    <td className="p-4 text-white/60">{userCards.length}</td>
-                    <td className="p-4"><CardStatusBadge status={cardStatus} /></td>
-                    <td className="p-4">
-                      <button onClick={() => props.openStaffDetails(user)} className="mr-4 text-sm text-blue-300 hover:text-blue-200">View</button>
-                      {userCards.length > 0 && <button onClick={() => props.openCardPreview(userCards, user)} className="mr-4 text-sm text-green-300 hover:text-green-200">Card Preview</button>}
-                      <button onClick={() => props.deleteClientUser(user)} className="text-sm text-red-300 hover:text-red-200">Delete</button>
+                  <tr key={user.id} className="border-t border-slate-100">
+                    <td data-label="Name" className="p-4">{user.full_name || user.name || "Unnamed user"}</td>
+                    <td data-label="Job title" className="p-4 text-slate-600">{user.job_title || "-"}</td>
+                    <td data-label="Email" className="p-4 text-slate-600">{user.email || "-"}</td>
+                    <td data-label="Phone" className="p-4 text-slate-600">{user.phone || "-"}</td>
+                    <td data-label="Status" className="p-4"><StatusBadge status={user.status || "active"} /></td>
+                    <td data-label="Cards" className="p-4 text-slate-600">{userCards.length}</td>
+                    <td data-label="Card status" className="p-4"><CardStatusBadge status={cardStatus} /></td>
+                    <td data-label="Actions" className="p-4">
+                      <button onClick={() => props.openStaffDetails(user)} className="mr-4 text-sm text-purple-700 hover:text-purple-800">View</button>
+                      {userCards.length > 0 && <button onClick={() => props.openCardPreview(userCards, user)} className="mr-4 text-sm text-emerald-800 hover:text-green-200">Card Preview</button>}
+                      <button onClick={() => props.deleteClientUser(user)} className="text-sm text-red-700 hover:text-red-800">Delete</button>
                     </td>
                   </tr>
                 );
@@ -1170,26 +1223,26 @@ function StaffUsersTable(props: {
 
 function SectionHeader({ title, description, count, onViewFullList }: { title: string; description: string; count: number; onViewFullList: () => void }) {
   return (
-    <div className="flex items-center justify-between border-b border-white/10 p-6">
+    <div className="flex items-center justify-between border-b border-slate-200 p-6">
       <div>
         <h2 className="text-2xl font-semibold">{title}</h2>
-        <p className="mt-1 text-sm text-white/45">{description}</p>
+        <p className="mt-1 text-sm text-slate-500">{description}</p>
       </div>
       <div className="flex items-center gap-3">
-        <span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/15 px-3 py-1 text-xs font-medium text-purple-100">{count} shown</span>
-        <button type="button" onClick={onViewFullList} className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-medium text-white/70 transition hover:bg-white/15 hover:text-white">{title.includes("Companies") ? "View All Companies" : "View All Clients"}</button>
+        <span className="rounded-full border border-[#AC00FF]/30 bg-purple-50 px-3 py-1 text-xs font-medium text-purple-700">{count} shown</span>
+        <button type="button" onClick={onViewFullList} className="rounded-2xl bg-slate-50 px-4 py-2 text-xs font-medium text-slate-600 transition hover:bg-white/15 hover:text-purple-800">{title.includes("Companies") ? "View All Companies" : "View All Clients"}</button>
       </div>
     </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="block"><span className="mb-2 block text-sm font-medium text-white/55">{label}</span>{children}</label>;
+  return <label className="block"><span className="mb-2 block text-sm font-medium text-slate-600">{label}</span>{children}</label>;
 }
 
 function FilterSelect({ value, onChange, label, options }: { value: string; onChange: (value: string) => void; label: string; options: string[] }) {
   return (
-    <select value={value} onChange={(event) => onChange(event.target.value)} className="inputStyle">
+    <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className={styles.input}>
       <option value="all">{label}</option>
       {options.map((option) => <option key={option} value={option}>{option.charAt(0).toUpperCase() + option.slice(1)}</option>)}
     </select>
@@ -1197,15 +1250,18 @@ function FilterSelect({ value, onChange, label, options }: { value: string; onCh
 }
 
 function ImportStatus({ label, value }: { label: string; value: string }) {
-  return <div className="min-w-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"><p className="text-xs text-white/35">{label}</p><p className="mt-1 truncate text-sm font-medium text-white/80">{value}</p></div>;
+  return <div className="min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-3"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 truncate text-sm font-medium text-slate-700">{value}</p></div>;
 }
 
 function AdminContactDetail({ label, value, emphasized = false }: { label: string; value: string; emphasized?: boolean }) {
-  return <div className="min-w-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"><p className="text-xs text-white/35">{label}</p><p className={`mt-1 truncate text-sm font-medium ${emphasized ? "text-purple-100" : "text-white/80"}`}>{value}</p></div>;
+  return <div className="min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-3"><p className="text-xs text-slate-500">{label}</p><p className={`mt-1 truncate text-sm font-medium ${emphasized ? "text-purple-700" : "text-slate-700"}`}>{value}</p></div>;
 }
 
-function UserDetailsModal({ busy, modal, form, editMode, onChange, onClose, onEdit, onCancel, onSave }: {
+function UserDetailsModal({ busy, error, notice, onStatus, modal, form, editMode, onChange, onClose, onEdit, onCancel, onSave }: {
   busy: boolean;
+  error: string;
+  notice: string;
+  onStatus: () => void;
   modal: Exclude<DetailsModal, null>;
   form: Record<string, string>;
   editMode: boolean;
@@ -1221,50 +1277,53 @@ function UserDetailsModal({ busy, modal, form, editMode, onChange, onClose, onEd
     ? [["full_name", "Contact Name"], ["email", "Email"], ["phone", "Phone"]]
     : [["company_name", "Company Name"], ["full_name", "Full Name"], ["job_title", "Job Title"], ["email", "Email"], ["phone", "Phone"], ["website", "Website"], ["address", "Address"], ["whatsapp", "WhatsApp"], ["linkedin", "LinkedIn"], ["instagram", "Instagram"], ["facebook", "Facebook"], ["youtube", "YouTube"], ["booking_link", "Booking Link"], ["custom_url", "Custom URL"], ["status", "Status"]];
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
-      <div className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#0F0E38] text-white shadow-2xl shadow-[#AC00FF]/20">
-        <div className="flex items-start justify-between gap-6 border-b border-white/10 p-6">
-          <div><h2 className="text-2xl font-semibold">User Details</h2><p className="mt-1 text-sm text-white/45">Legacy plan and billing labels are informational; Stripe controls access. Use Suspend/Reactivate for account status.</p></div>
-          <div className="flex gap-3">{!editMode && <button onClick={onEdit} className="rounded-2xl bg-[#AC00FF] px-5 py-2.5 text-sm font-medium">Edit</button>}<button onClick={onClose} className="rounded-2xl bg-white/10 px-5 py-2.5 text-sm font-medium">Close</button></div>
-        </div>
+    <AdminClientSheet title={modal.type === "staff" ? "Manage Staff" : "Manage Client"} busy={busy} onClose={onClose} notice={notice}>
+      {error && <p role="alert" className={styles.error}>{error}</p>}
+      <p className="mb-4 text-sm text-slate-500">Plan and billing labels are informational, not entitlement grants.</p>
+      {modal.type === "client" && <p className="mb-4">Cards: {modal.data.card_count ?? "—"}</p>}
+      <div className={styles.headerActions}>
+        {!editMode && <button disabled={busy} className={styles.primary} onClick={onEdit}>Edit details</button>}
+        {modal.type !== "staff" && <button disabled={busy} onClick={onStatus}>{form.status === "suspended" ? "Reactivate Client" : "Suspend Client"}</button>}
+      </div>
+      <fieldset disabled={busy}>
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {fields.map(([field, label]) => (
-              <div key={field} className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                <p className="text-xs uppercase tracking-[0.14em] text-white/35">{label}</p>
-                {editMode && !(modal.type === "client" && ["subscription_plan", "billing_status", "status"].includes(field)) ? <ModalEditField modalType={modal.type} field={field} value={form[field] || ""} form={form} onChange={onChange} /> : <p className="mt-3 break-words text-sm text-white/80">{form[field] || "-"}</p>}
+              <div key={field} className="rounded-2xl border border-slate-200 bg-white p-3">
+                <p className="text-xs uppercase tracking-[0.14em] text-slate-500">{label}</p>
+                {editMode && !(modal.type === "client" && ["subscription_plan", "billing_status", "status"].includes(field)) ? <ModalEditField label={label} modalType={modal.type} field={field} value={form[field] || ""} form={form} onChange={onChange} /> : <p className="mt-3 break-words text-sm text-slate-700">{form[field] || "-"}</p>}
               </div>
             ))}
           </div>
         </div>
-        {editMode && <div className="flex justify-end gap-3 border-t border-white/10 p-5"><button disabled={busy} onClick={onCancel} className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-medium">Cancel</button><button disabled={busy} onClick={onSave} className="rounded-2xl bg-[#AC00FF] px-5 py-3 text-sm font-medium">{busy ? "Saving…" : "Save Changes"}</button></div>}
-      </div>
-    </div>
+        {editMode && <div className="flex justify-end gap-3 border-t border-slate-200 p-5"><button disabled={busy} onClick={onCancel} className="rounded-2xl bg-slate-50 px-5 py-3 text-sm font-medium">Cancel</button><button disabled={busy} onClick={onSave} className="rounded-2xl bg-gradient-to-r from-pink-600 to-purple-700 text-white px-5 py-3 text-sm font-medium">{busy ? "Saving…" : "Save Changes"}</button></div>}
+      </fieldset>
+    </AdminClientSheet>
   );
 }
 
-function ModalEditField({ modalType, field, value, form, onChange }: { modalType: "client" | "admin" | "staff"; field: string; value: string; form: Record<string, string>; onChange: (field: string, value: string) => void }) {
-  const inputClass = "mt-2 h-10 w-full rounded-xl border border-white/10 bg-[#101935] px-3 text-sm outline-none transition focus:border-[#AC00FF]";
+function ModalEditField({ label, modalType, field, value, form, onChange }: { label: string; modalType: "client" | "admin" | "staff"; field: string; value: string; form: Record<string, string>; onChange: (field: string, value: string) => void }) {
+  const inputClass = "mt-2 h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none transition focus:border-[#AC00FF]";
   if (field === "status") {
     const options = modalType === "staff" ? ["active", "suspended"] : ["active", "pending", "suspended"];
-    return <select value={value} onChange={(e) => onChange(field, e.target.value)} className={inputClass}>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select>;
+    return <select aria-label={label} value={value} onChange={(e) => onChange(field, e.target.value)} className={inputClass}>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select>;
   }
   if (modalType === "client" && field === "account_type") {
-    return <select value={value} onChange={(e) => onChange("account_type", e.target.value)} className={inputClass}><option value="individual">individual</option><option value="business">business</option>{value === "enterprise" && <option value="enterprise" disabled>enterprise (legacy)</option>}</select>;
+    return <select aria-label={label} value={value} onChange={(e) => onChange("account_type", e.target.value)} className={inputClass}><option value="individual">individual</option><option value="business">business</option>{value === "enterprise" && <option value="enterprise" disabled>enterprise (legacy)</option>}</select>;
   }
   if (modalType === "client" && field === "subscription_plan") {
     const isIndividual = form.account_type === "individual";
-    return <select value={isIndividual ? value : "paid"} disabled={!isIndividual} onChange={(e) => { onChange("subscription_plan", e.target.value); onChange("billing_status", e.target.value === "free" ? "free" : "paid"); }} className={inputClass}>{isIndividual ? <><option value="free">free</option><option value="paid">paid</option></> : <option value="paid">paid</option>}</select>;
+    return <select aria-label={label} value={isIndividual ? value : "paid"} disabled={!isIndividual} onChange={(e) => { onChange("subscription_plan", e.target.value); onChange("billing_status", e.target.value === "free" ? "free" : "paid"); }} className={inputClass}>{isIndividual ? <><option value="free">free</option><option value="paid">paid</option></> : <option value="paid">paid</option>}</select>;
   }
   if (modalType === "client" && field === "billing_status") {
     const controlled = form.account_type === "individual" && form.subscription_plan === "free" ? "free" : "paid";
-    return <select value={controlled} disabled className={inputClass}><option value="free">free</option><option value="paid">paid</option></select>;
+    return <select aria-label={label} value={controlled} disabled className={inputClass}><option value="free">free</option><option value="paid">paid</option></select>;
   }
-  return <input value={value} onChange={(e) => onChange(field, e.target.value)} className={inputClass} />;
+  return <input aria-label={label} value={value} onChange={(e) => onChange(field, e.target.value)} className={inputClass} />;
 }
 
 function TableMessage({ message }: { message: string }) {
-  return <tr><td colSpan={6} className="p-5 text-white/50">{message}</td></tr>;
+  return <tr><td colSpan={6} className="p-5 text-slate-500">{message}</td></tr>;
 }
 
 function PublishedCardPreviewModal({ cards, user, currentIndex, templates, onPrevious, onNext, onClose, onDeleteCard }: {
@@ -1281,43 +1340,41 @@ function PublishedCardPreviewModal({ cards, user, currentIndex, templates, onPre
   const template = templates.find((item) => item.id === card.template_id) || null;
   const data = user ? { ...card, full_name: user.full_name || user.name || card.full_name, job_title: user.job_title || card.job_title, email: user.email || card.email, phone: user.phone || card.phone, website: user.website || card.website, address: user.address || card.address, whatsapp: user.whatsapp || card.whatsapp, linkedin: user.linkedin || card.linkedin, instagram: user.instagram || card.instagram, facebook: user.facebook || card.facebook, youtube: user.youtube || card.youtube, booking_link: user.booking_link || card.booking_link, custom_url: user.custom_url || card.custom_url } : card;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
-      <div className="max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/10 bg-[#0F0E38] text-white shadow-2xl shadow-[#AC00FF]/20">
-        <div className="flex items-start justify-between gap-6 border-b border-white/10 p-6">
-          <div><h2 className="text-2xl font-semibold">Card Preview</h2><p className="mt-1 text-sm text-white/45">{card.card_name || card.name || "Digital card"} · {template?.name || "Template unavailable"}</p></div>
+    <AdminClientSheet title="Card Preview" onClose={onClose}>
+        <div className="flex items-start justify-between gap-6 border-b border-slate-200 p-6">
+          <div><h2 className="text-2xl font-semibold">Card Preview</h2><p className="mt-1 text-sm text-slate-500">{card.card_name || card.name || "Digital card"} · {template?.name || "Template unavailable"}</p></div>
           <div className="flex items-center gap-3">
-            {cards.length > 1 && <><button onClick={onPrevious} className="rounded-2xl bg-white/10 px-4 py-2.5 text-sm">←</button><span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/15 px-3 py-1 text-xs font-medium text-purple-100">Card {currentIndex + 1} of {cards.length}</span><button onClick={onNext} className="rounded-2xl bg-white/10 px-4 py-2.5 text-sm">→</button></>}
-            <button onClick={() => onDeleteCard(card)} className="rounded-2xl bg-red-500/15 px-5 py-2.5 text-sm font-medium text-red-200 transition hover:bg-red-500/25">Delete Card</button>
-            <button onClick={onClose} className="rounded-2xl bg-white/10 px-5 py-2.5 text-sm font-medium">Close</button>
+            {cards.length > 1 && <><button onClick={onPrevious} className="rounded-2xl bg-slate-50 px-4 py-2.5 text-sm">←</button><span className="rounded-full border border-[#AC00FF]/30 bg-purple-50 px-3 py-1 text-xs font-medium text-purple-700">Card {currentIndex + 1} of {cards.length}</span><button onClick={onNext} className="rounded-2xl bg-slate-50 px-4 py-2.5 text-sm">→</button></>}
+            <button onClick={() => onDeleteCard(card)} className="rounded-2xl bg-red-50 px-5 py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-500/25">Delete Card</button>
+            <button onClick={onClose} className="rounded-2xl bg-slate-50 px-5 py-2.5 text-sm font-medium">Close</button>
           </div>
         </div>
         <div className="max-h-[calc(85vh-104px)] overflow-y-auto p-6">
-          <p className="mb-4 text-center text-xs text-white/35">
+          <p className="mb-4 text-center text-xs text-slate-500">
             Admin deletion is for support and enterprise management only.
           </p>
           {template ? (
-            <div className="mx-auto max-w-md"><CardRenderer mode="preview" showActions={template.supports_save_contact ?? true} template={template} cardData={data} /></div>
+            <div className={`mx-auto max-w-md ${styles.mediaPreview}`}><CardRenderer mode="preview" showActions={template.supports_save_contact ?? true} template={template} cardData={data} /></div>
           ) : (
-            <div className="mx-auto max-w-md rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-center text-sm leading-6 text-white/55">
+            <div className="mx-auto max-w-md rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm leading-6 text-slate-600">
               This card references a template that is not currently published.
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </AdminClientSheet>
   );
 }
 
-function ClientActions({ client, onView, onToggle }: { client: Client; onView: (client: Client) => void; onToggle: (client: Client) => void }) {
-  return <div className="flex gap-3"><button onClick={() => onView(client)} className="text-sm text-blue-300 hover:text-blue-200">View</button><button onClick={() => onToggle(client)} className="text-sm text-yellow-300 hover:text-yellow-200">{client.status === "suspended" ? "Reactivate Client" : "Suspend Client"}</button></div>;
+function ClientActions({ client, onView }: { client: Client; onView: (client: Client) => void; onToggle: (client: Client) => void }) {
+  return <button className={styles.manage} onClick={() => onView(client)} aria-label={`Manage ${client.full_name}`}>Manage →</button>;
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const styles = status === "active" ? "bg-green-500/20 text-green-300" : status === "pending" ? "bg-yellow-500/20 text-yellow-300" : "bg-red-500/20 text-red-300";
+  const styles = status === "active" ? "bg-emerald-50 text-emerald-800" : status === "pending" ? "bg-amber-50 text-amber-800" : "bg-red-50 text-red-700";
   return <span className={`rounded-full px-3 py-1 text-xs capitalize ${styles}`}>{status}</span>;
 }
 
 function CardStatusBadge({ status }: { status: string }) {
-  const styles = status === "published" ? "bg-green-500/20 text-green-300" : status === "draft" ? "bg-yellow-500/20 text-yellow-300" : "bg-white/10 text-white/50";
+  const styles = status === "published" ? "bg-emerald-50 text-emerald-800" : status === "draft" ? "bg-amber-50 text-amber-800" : "bg-slate-50 text-slate-500";
   return <span className={`rounded-full px-3 py-1 text-xs capitalize ${styles}`}>{status}</span>;
 }

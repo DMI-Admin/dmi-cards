@@ -24,6 +24,9 @@ const cards = [{id:cardId,user_id:owner}, {id:'company-card',client_id:company,u
 const counts = plain(contract.clientRelationshipCounts(clients, staff, cards, new Set([owner,staffOwner])));
 assert.equal(counts.cardCounts[individual],1); assert.equal(counts.cardCounts[company],1);
 assert.deepEqual(counts.staffCards[unlinked],[]); assert.deepEqual(counts.staffCards[other],['company-card']);
+assert.deepEqual(counts.areas,{individualCards:1,businessCards:1,businessPeople:3,businessActivatedUsers:1});
+const scoped = plain(contract.clientRelationshipCounts([...clients,{id:'legacy',account_type:'enterprise',user_id:staffOwner},{id:'duplicate',account_type:'individual',user_id:owner}], [...staff,{id:'legacy-staff',client_id:'legacy',user_id:staffOwner},{id:'foreign',client_id:'missing-company',user_id:owner}], [...cards,{id:'legacy-card',client_id:'legacy'}],new Set([owner,staffOwner])));
+assert.deepEqual(scoped.areas,{individualCards:1,businessCards:2,businessPeople:4,businessActivatedUsers:1});
 assert.equal(counts.summary.activatedUsers,2); assert.equal(counts.summary.unlinkedStaff,2); assert.equal(counts.summary.cards,3);
 assert.equal(contract.linkedUser({id:individual,user_id:owner,profile_id:staffOwner}),null);
 assert.equal(contract.clientRelationshipCounts([{id:individual,account_type:'individual',profile_id:owner}],[],cards,new Set([owner])).cardCounts[individual],1);
@@ -57,7 +60,8 @@ for(const key of ['user_id','profile_id','cards_active','subscription_plan','bil
  assert.equal((await run('update-staff',{full_name:'Name',[key]:owner})).status,400);
 }
 assert.equal(calls.length,0);
-assert.equal((await run('create-client',{full_name:'Name',email:'person@test.test',account_type:'individual'})).status,200);
+const createdResponse=await run('create-client',{full_name:'Name',email:'person@test.test',account_type:'individual'});
+assert.equal(createdResponse.status,200);assert.equal(createdResponse.body.id,individual);
 assert.equal(calls.at(-1).insert.subscription_plan,'free');
 assert.equal((await run('create-client',{full_name:'Name',email:'person@test.test',status:'suspended'})).status,200);assert.equal(calls.at(-1).insert.status,'suspended');
 assert.equal((await run('update-client',{full_name:'Updated'})).status,200);
@@ -81,50 +85,51 @@ const page=fs.readFileSync('src/components/admin/AdminClientsPage.tsx','utf8');
 const parsedPage = ts.createSourceFile('page.tsx', page, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const handlers = {};
 function visit(node) {
- if (ts.isFunctionDeclaration(node) && ['mutate','toggleClientStatus'].includes(node.name?.text)) handlers[node.name.text] = node.getText(parsedPage);
+ if (ts.isFunctionDeclaration(node) && ['mutate','toggleClientStatus','confirmClientStatus'].includes(node.name?.text)) handlers[node.name.text] = node.getText(parsedPage);
  ts.forEachChild(node, visit);
 }
 visit(parsedPage);
 assert.match(page, /const \{ getToken \} = useAuth\(\)/);
-assert.equal(Object.keys(handlers).length, 2);
+assert.equal(Object.keys(handlers).length, 3);
 function statusHarness({confirmed=true, token=async()=> 'fresh-session-token', response=async()=>({ok:true,json:async()=>({ok:true})})}={}) {
  const events=[], requests=[], errors=[], pending={current:false};
  const clientContract=load('src/lib/admin-client-contract.ts', {}, {fetch:async(path,options)=>{
   events.push('fetch'); requests.push({path,...plain(options)}); return response();
  }});
- const context={setMutationBusy:()=>{},mutationPending:pending, window:{confirm:()=>{events.push('confirm');return confirmed;}},
+ const context={lastCreatedId:{current:null},setOperationError:message=>{if(message)errors.push(message);},setNotice:()=>{},setDetailsForm:()=>{},setStatusTarget:client=>{if(client)events.push("confirm");},setMutationBusy:()=>{},mutationPending:pending, window:{confirm:()=>{events.push('confirm');return confirmed;}},
   getToken:async options=>{events.push('token');assert.deepEqual(plain(options),{skipCache:true});return token();},
   mutateAdminClient:clientContract.mutateAdminClient,alert:message=>errors.push(message),fetchClientData:()=>events.push('refresh'),Error};
  vm.createContext(context);
  vm.runInContext(ts.transpileModule(Object.values(handlers).join('\n'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText,context);
+ context.performStatus=async client=>{context.toggleClientStatus(client);if(confirmed)await context.confirmClientStatus(client);};
  return {context,events,requests,errors,pending};
 }
 for (const [status,next] of [['active','suspended'],['suspended','active']]) {
- const h=statusHarness();await h.context.toggleClientStatus({id:individual,status,full_name:'Test'});
+ const h=statusHarness();await h.context.performStatus({id:individual,status,full_name:'Test'});
  assert.deepEqual(h.events,['confirm','token','fetch','refresh']);
  assert.equal(h.requests.length,1);const req=h.requests[0];
  assert.equal(req.path,`/api/admin/clients/${individual}/status`);assert.equal(req.method,'PATCH');
  assert.deepEqual(JSON.parse(req.body),{status:next});assert.equal(req.credentials,'same-origin');
  assert.equal(req.headers.Authorization,'Bearer fresh-session-token');assert.equal(h.pending.current,false);
 }
-const cancel=statusHarness({confirmed:false});await cancel.context.toggleClientStatus({id:individual,status:'active'});
+const cancel=statusHarness({confirmed:false});await cancel.context.performStatus({id:individual,status:'active'});
 assert.deepEqual(cancel.events,['confirm']);assert.equal(cancel.requests.length,0);
 for(const token of [async()=>null,async()=>'',async()=> '  ',async()=>{throw new Error('refresh failed');}]){
- const h=statusHarness({token});await h.context.toggleClientStatus({id:individual,status:'active'});
+ const h=statusHarness({token});await h.context.performStatus({id:individual,status:'active'});
  assert.equal(h.requests.length,0);assert.equal(h.errors.length,1);assert.equal(h.pending.current,false);
 }
 let releaseToken, releaseResponse;
 const duplicate=statusHarness({token:()=>new Promise(resolve=>{releaseToken=resolve;}),response:()=>new Promise(resolve=>{releaseResponse=resolve;})});
-const inFlight=duplicate.context.toggleClientStatus({id:individual,status:'active'});
-await duplicate.context.toggleClientStatus({id:individual,status:'active'});
+const inFlight=duplicate.context.performStatus({id:individual,status:'active'});
+await duplicate.context.performStatus({id:individual,status:'active'});
 assert.deepEqual(duplicate.events,['confirm','token']);
 releaseToken('fresh-session-token');
 for(let i=0;i<10 && !releaseResponse;i++) await Promise.resolve();
-assert.ok(releaseResponse);await duplicate.context.toggleClientStatus({id:individual,status:'active'});
+assert.ok(releaseResponse);await duplicate.context.performStatus({id:individual,status:'active'});
 assert.equal(duplicate.requests.length,1);releaseResponse({ok:true,json:async()=>({ok:true})});await inFlight;
 assert.equal(duplicate.pending.current,false);
 for(const response of [async()=>({ok:false,json:async()=>({error:'Admin access is required.'})}),async()=>{throw new Error('network failure');}]){
- const h=statusHarness({response});await h.context.toggleClientStatus({id:individual,status:'active'});
+ const h=statusHarness({response});await h.context.performStatus({id:individual,status:'active'});
  assert.equal(h.requests.length,1);assert.equal(h.errors.length,1);assert.equal(h.pending.current,false);assert.ok(!h.events.includes('refresh'));
 }
 for(const [method,path] of [['POST','/api/admin/clients'],['PATCH',`/api/admin/clients/${individual}`]]){

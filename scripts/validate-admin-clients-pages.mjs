@@ -8,6 +8,8 @@ import {renderToStaticMarkup} from 'react-dom/server';
 function load(path,deps={}) {
  const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,{exports,require:n=>{assert.ok(n in deps,n);return deps[n];},console,Map,Set});return exports;
 }
+const styles=new Proxy({}, {get:(_,key)=>String(key)});
+const sheet=load('src/components/admin/AdminClientSheet.tsx',{'react':React,'react/jsx-runtime':jsx,'./AdminClientsPage.module.css':{default:styles}});
 const lists=load('src/lib/admin-client-lists.ts');
 const rows=Array.from({length:60},(_,i)=>({id:String(i).padStart(3,'0'),full_name:'Person '+i,company_name:'Company '+i,email:'test@example.invalid',account_type:i<30?'individual':i===59?'enterprise':'business',created_at:new Date(Date.UTC(2026,0,i+1)).toISOString(),status:'active',subscription_plan:'free',billing_status:'free',card_count:2}));
 const original=JSON.stringify(rows);
@@ -23,20 +25,20 @@ function render(area,overrides={}) {
  let index=0;
  const react={...React,useState:initial=>{const name=hookNames[index++];const values={clients:rows,loading:false,...overrides};return [Object.hasOwn(values,name)?values[name]:initial,()=>{}];},useEffect:()=>{},useMemo:fn=>fn(),useRef:value=>({current:value})};
  const noop=()=>null;
- const mod=load(file,{'react':react,'react/jsx-runtime':jsx,'@clerk/nextjs':{useAuth:()=>({getToken:async()=>null})},'@/lib/admin-client-lists':lists,'@/components/Sidebar':{default:noop},'@/components/CardRenderer':{default:noop},'@/lib/admin-card-mutations':{},'@/lib/admin-inventory':{},'@/lib/templates':{},'@/lib/admin-client-contract':{},xlsx:{},'lucide-react':{Download:noop,FileSpreadsheet:noop,UploadCloud:noop}});
+ const mod=load(file,{'react':react,'react/jsx-runtime':jsx,'./AdminClientSheet':sheet,'./AdminClientsPage.module.css':{default:styles},'@clerk/nextjs':{useAuth:()=>({getToken:async()=>null})},'@/lib/admin-client-lists':lists,'@/components/Sidebar':{default:noop},'@/components/CardRenderer':{default:noop},'@/lib/admin-card-mutations':{},'@/lib/admin-inventory':{},'@/lib/templates':{},'@/lib/admin-client-contract':{},xlsx:{},'lucide-react':{Download:noop,FileSpreadsheet:noop,UploadCloud:noop}});
  return renderToStaticMarkup(mod.default({area}));
 }
 const individual=render('individual');const business=render('business');
 assert.match(individual,/Add Individual Client/);assert.doesNotMatch(individual,/Bulk Company Import|Recent Companies|Company 59/);
-assert.match(business,/Add Business/);assert.match(business,/Bulk Company Import/);assert.match(business,/Legacy Enterprise/);assert.doesNotMatch(business,/Recent Individual Clients|>Plan<|>Paid</);
-assert.equal((individual.match(/<tr class="border-t/g)||[]).length,10);assert.equal((business.match(/<tr class="cursor-pointer/g)||[]).length,10);
+assert.match(business,/Add Business/);assert.match(render("business",{importOpen:true}),/Bulk Company Import/);assert.match(business,/Legacy Enterprise/);assert.doesNotMatch(business,/Recent Individual Clients|>Plan<|>Paid</);
+assert.equal((individual.match(/<tr class="border-t/g)||[]).length,10);assert.equal((business.match(/<tr class="border-t/g)||[]).length,10);
 assert.ok(individual.indexOf('Person 29')<individual.indexOf('Person 28'));assert.ok(business.indexOf('Company 59')<business.indexOf('Company 58'));
 assert.doesNotMatch(individual+business,/<option value="enterprise"/);
-assert.match(individual,/<option value="free" selected="">Free/);assert.match(individual,/<option value="pro" disabled="">Pro/);
+assert.match(render("individual",{createOpen:true}),/<option value="free" selected="">Free/);assert.match(render("individual",{createOpen:true}),/<option value="pro" disabled="">Pro/);
 for(const area of ['individual','business']) {
  const full=render(area,{fullListMode:area});assert.match(full,/Page 1 of 2/);
  const modal=full.slice(full.lastIndexOf('All '+(area==='individual'?'Individual Clients':'Companies')));
- const pattern=area==='individual'?/<tr class="border-t/g:/<tr class="cursor-pointer/g;
+ const pattern=area==='individual'?/<tr class="border-t/g:/<tr class="border-t/g;
  assert.equal((modal.match(pattern)||[]).length,25);
  const busy=render(area,{mutationBusy:true});assert.match(busy,/<fieldset disabled="" aria-busy="true"/);assert.match(busy,/Saving/);
  const route=fs.readFileSync(`src/app/clients/${area}/page.tsx`,'utf8');assert.match(route,new RegExp(`area="${area}"`));
@@ -45,3 +47,37 @@ assert.match(fs.readFileSync('src/app/clients/page.tsx','utf8'),/redirect\("\/cl
 const sidebar=fs.readFileSync('src/components/Sidebar.tsx','utf8');assert.doesNotMatch(sidebar,/Client Onboarding/);assert.match(sidebar,/\/clients\/individual/);assert.match(sidebar,/\/clients\/business/);
 assert.match(source,/account_type: "business", status: clientStatus/);assert.match(source,/Send Pro Subscription Link/);
 console.log('PASS: rendered account-area separation, latest ten, legacy Enterprise, no new Enterprise selection, Free-only creation, paginated full lists, busy controls, Business-only import and compatibility navigation.');
+
+assert.doesNotMatch(individual, /Total Clients|Invited \/ Unlinked|All Plans|All Billing/);
+assert.match(individual, /Total Individuals/);
+assert.doesNotMatch(business, /Total Individuals|All Status/);
+assert.match(business, /Active Companies/);
+assert.match(business, /Suspended Companies/);
+assert.match(business, /Company staff memberships/);
+assert.match(render('individual', {individualSearch:'no-match', individualStatusFilter:'suspended'}), /Person 29/);
+assert.match(render('business', {businessSearch:'no-match', businessStatusFilter:'suspended'}), /Company 59/);
+assert.match(render('individual', {fullListMode:'individual'}), /All Plans/);
+assert.match(render('business', {fullListMode:'business'}), /All Status/);
+console.log('PASS: scoped summaries; recent lists unfiltered; filters retained exclusively in full inventories.');
+
+for(const area of ['individual','business']) {
+ const add=render(area,{createOpen:true});
+ assert.match(add,/Create Account/);
+ assert.match(render(area,{createOpen:true,mutationBusy:true}),/Creating…/);
+ const success=render(area,{createOpen:true,createdAccount:{id:'created-id',name:'Created account',email:'created@example.invalid',status:'active'}});
+ assert.match(success,/Account created/);assert.match(success,/Created account/);assert.match(success,/Next steps/);
+ assert.doesNotMatch(success,/>Create Account</);
+ const confirm=render(area,{statusTarget:{...rows[0],status:'active'}});
+ assert.match(confirm,/Suspend Client/);assert.match(confirm,/Client Portal access/);
+ assert.match(render(area,{statusTarget:rows[0],mutationBusy:true}),/Suspending…/);
+ assert.match(render(area,{statusTarget:{...rows[0],status:'suspended'},mutationBusy:true}),/Reactivating…/);
+ assert.match(render(area,{statusTarget:rows[0],operationError:'Request failed'}),/role="alert"[^>]*>Request failed/);
+}
+assert.doesNotMatch(source.slice(source.indexOf('function toggleClientStatus'),source.indexOf('async function createClientUser')),/window.confirm/);
+const css=fs.readFileSync('src/components/admin/AdminClientsPage.module.css','utf8');
+assert.match(css,/max-width:1800px/);assert.match(css,/width:78vw/);assert.match(css,/width:100vw/);
+assert.match(css,/max-width:639px/);assert.match(css,/inventoryTable thead.*display:none/);
+assert.match(css,/desktopSidebar.*display:none/);assert.match(css,/prefers-reduced-motion/);
+const drawer=fs.readFileSync('src/components/admin/AdminClientSheet.tsx','utf8');
+assert.match(drawer,/showModal/);assert.match(drawer,/aria-labelledby/);assert.match(drawer,/if \(!busy\) onClose/);assert.match(drawer,/previous.focus/);
+console.log('PASS: create/success/manage presentation, confirmation busy/error states, native dialog focus contract, scoped sidebar and phone/tablet layout rules.');

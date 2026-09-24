@@ -106,6 +106,7 @@ export async function adminClientMutation(request: Request, operation: Operation
       const query = operation === "create-client" ? db.from("clients").insert(content) : db.from("clients").update(content).eq("id", id);
       const { data, error } = await query.select("id");
       if (error || !data?.length) throw new Invalid("The record could not be saved. Refresh before retrying.", 409);
+      return NextResponse.json({ ok: true, id: data[0].id }, { headers });
     }
     return NextResponse.json({ ok: true }, { headers });
   } catch (error) {

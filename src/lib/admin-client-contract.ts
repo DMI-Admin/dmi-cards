@@ -22,7 +22,17 @@ export function clientRelationshipCounts(clients: AccountLink[], staff: StaffLin
   const staffCards = Object.fromEntries(staff.map(person => [person.id,
     cards.filter(card => Boolean(verifiedOwner(person)) && card.user_id === verifiedOwner(person) && card.client_id === person.client_id).map(card => card.id),
   ]));
+  const companies = clients.filter(row => ["business", "enterprise"].includes(row.account_type || ""));
+  const companyIds = new Set(companies.map(row => row.id));
+  const companyStaff = staff.filter(row => Boolean(row.client_id && companyIds.has(row.client_id)));
+  const individualOwners = new Set(clients.filter(row => row.account_type === "individual").map(verifiedOwner).filter(Boolean));
   return {
+    areas: {
+      individualCards: cards.filter(card => Boolean(card.user_id && individualOwners.has(card.user_id))).length,
+      businessCards: cards.filter(card => Boolean(card.client_id && companyIds.has(card.client_id))).length,
+      businessPeople: companyStaff.length,
+      businessActivatedUsers: new Set([...companies, ...companyStaff].map(verifiedOwner).filter(Boolean)).size,
+    },
     summary: {
       totalClients: clients.length,
       individuals: clients.filter(row => row.account_type === "individual").length,
@@ -37,13 +47,14 @@ export function clientRelationshipCounts(clients: AccountLink[], staff: StaffLin
 }
 export type ClientRelationshipCounts = ReturnType<typeof clientRelationshipCounts>;
 
-export async function mutateAdminClient(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown, token?: string): Promise<void> {
+export async function mutateAdminClient(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown, token?: string): Promise<{ id?: string }> {
   const response = await fetch(path, {
     method, credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const result = await response.json().catch(() => null);
   if (!response.ok || !result?.ok) throw new Error(result?.error || "The operation was not confirmed. Refresh before retrying.");
+  return { ...(typeof result.id === "string" ? { id: result.id } : {}) };
 }
 export async function getAdminClientCounts(): Promise<ClientRelationshipCounts> {
   const response = await fetch("/api/admin/clients/summary", { credentials: "same-origin", cache: "no-store" });
