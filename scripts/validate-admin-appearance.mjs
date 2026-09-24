@@ -85,10 +85,14 @@ export async function runAdminThemeChecks(page,origin,tmp,checkDensity=async()=>
     }else{
      await page.getByRole('button',{name:'Manage',exact:true}).first().click();
      const company=page.getByRole('dialog',{name:'Company 29',exact:true});await contrast(company.locator('p,h2,h3'));
-     await company.getByRole('button',{name:'Edit Admin Contact',exact:true}).click();
-     const detail=page.getByRole('dialog',{name:'Manage Client',exact:true});await contrast(detail.locator('p,h2'));
-     await detail.getByRole('button',{name:'Edit details',exact:true}).click();await contrast(detail.locator('input'));
-     await page.keyboard.press('Escape');await page.keyboard.press('Escape');
+     await company.getByRole('button',{name:'Edit Company',exact:true}).click();
+     const detail=page.getByRole('dialog',{name:'Edit Company',exact:true});await contrast(detail.locator('p,h2'));
+     await contrast(detail.locator('input'));
+     await page.keyboard.press('Escape');
+     await company.getByRole('button',{name:'+ Add Person',exact:true}).click();await contrast(page.getByRole('dialog',{name:'Add Person',exact:true}).locator('input,p,label'));
+     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+     await page.getByRole('dialog',{name:'Add Person',exact:true}).getByRole('button',{name:'Cancel',exact:true}).click();
+     await page.keyboard.press('Escape');
     }
    }
   }

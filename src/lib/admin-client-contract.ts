@@ -43,6 +43,7 @@ export function clientRelationshipCounts(clients: AccountLink[], staff: StaffLin
       cards: cards.length,
     },
     cardCounts, staffCards,
+    staffActivated: Object.fromEntries(staff.map(person => [person.id, Boolean(verifiedOwner(person))])),
   };
 }
 export type ClientRelationshipCounts = ReturnType<typeof clientRelationshipCounts>;

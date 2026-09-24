@@ -138,7 +138,7 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [createdAccount, setCreatedAccount] = useState<{ id: string; name: string; email: string; status: string } | null>(null);
+  const [createdAccount, setCreatedAccount] = useState<{ id: string; name: string; email: string; status: string; contact?: string; phone?: string } | null>(null);
   const [statusTarget, setStatusTarget] = useState<Client | null>(null);
   const [notice, setNotice] = useState("");
   const [operationError, setOperationError] = useState("");
@@ -187,6 +187,8 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
   const accountType = area;
   const [clientStatus, setClientStatus] = useState("active");
 
+  const [addPersonCompany, setAddPersonCompany] = useState<string | null>(null);
+  const [staffLastName, setStaffLastName] = useState("");
   const [staffFullName, setStaffFullName] = useState("");
   const [staffJobTitle, setStaffJobTitle] = useState("");
   const [staffEmail, setStaffEmail] = useState("");
@@ -239,7 +241,7 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
     if (!await mutate("/api/admin/clients", "POST", {
       full_name: fullName || companyName, company_name: companyName, email, phone, account_type: accountType, status: clientStatus,
     })) return;
-    setCreatedAccount({ id: lastCreatedId.current || "", name: companyName || fullName, email, status: clientStatus });
+    setCreatedAccount({ id: lastCreatedId.current || "", name: companyName || fullName, email, status: clientStatus, contact: fullName, phone });
     if (lastCreatedId.current) {
       setNotice("Account created successfully.");
     } else {
@@ -263,22 +265,24 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
     const nextStatus = client.status === "suspended" ? "active" : "suspended";
     if (!await mutate(`/api/admin/clients/${client.id}/status`, "PATCH", { status: nextStatus }, true)) return;
     setStatusTarget(null);
-    setNotice(nextStatus === "suspended" ? "Client suspended successfully." : "Client reactivated successfully.");
+    setNotice(`${client.account_type === "individual" ? "Client" : "Company"} ${nextStatus === "suspended" ? "suspended" : "reactivated"} successfully.`);
     setDetailsForm(current => ({ ...current, status: nextStatus }));
     await fetchClientData();
   }
 
   async function createClientUser(client: Client) {
-    if (!staffFullName || !staffEmail) return;
+    if (!staffFullName.trim() || !staffLastName.trim() || !staffEmail.trim()) { setOperationError("First name, last name and email are required."); return false; }
     if (!await mutate("/api/admin/client-users", "POST", {
-      client_id: client.id, full_name: staffFullName, job_title: staffJobTitle, email: staffEmail, phone: staffPhone,
-    })) return;
+      client_id: client.id, full_name: `${staffFullName.trim()} ${staffLastName.trim()}`, job_title: staffJobTitle, email: staffEmail, phone: staffPhone,
+    })) return false;
     setStaffFullName("");
     setStaffJobTitle("");
     setStaffEmail("");
     setStaffPhone("");
-    setNotice("Staff member created successfully.");
-    void fetchClientData();
+    setStaffLastName("");
+    setNotice("Person added as an unlinked contact. No invitation was sent.");
+    await fetchClientData();
+    return true;
   }
 
   async function deleteClientUser(user: ClientUser) {
@@ -327,13 +331,14 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
   }
 
   function openAdminContactDetails(client: Client) {
+    setOperationError("");
     setDetailsModal({ type: "admin", data: client });
-    setDetailsEditMode(false);
+    setDetailsEditMode(true);
     setDetailsForm({
       full_name: client.full_name || "",
       email: client.email || "",
       phone: client.phone || "",
-      job_title: client.job_title || "",
+      company_name: client.company_name || "",
     });
   }
 
@@ -373,9 +378,10 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
       return setOperationError("Email is required.");
     }
 
+    if (detailsModal.type === "admin" && !detailsForm.company_name?.trim()) return setOperationError("Company name is required.");
     const fields = detailsModal.type === "client"
       ? ["full_name", "company_name", "email", "phone", "account_type"]
-      : detailsModal.type === "admin" ? ["full_name", "email", "phone"]
+      : detailsModal.type === "admin" ? ["company_name", "full_name", "email", "phone"]
       : ["full_name", "job_title", "email", "phone", "website", "address", "whatsapp", "linkedin", "instagram", "facebook", "youtube", "booking_link", "custom_url", "status"];
     const path = detailsModal.type === "staff" ? "client-users" : "clients";
     if (!await mutate(`/api/admin/${path}/${detailsModal.data.id}`, "PATCH",
@@ -383,6 +389,7 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
 
     await fetchClientData();
     setNotice("Details updated successfully.");
+    if (detailsModal.type === "admin") closeDetailsModal();
     setDetailsEditMode(false);
   }
 
@@ -462,6 +469,9 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
   }
 
   function toggleCompany(clientId: string) {
+    setOperationError("");
+    setAddPersonCompany(null);
+    setStaffLastName("");
     setFullListMode(null);
     setExpandedCompany((current) => (current === clientId ? null : clientId));
     setStaffFullName("");
@@ -568,23 +578,24 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
           <StatCard label="Cards" value={metricsReady ? (area === "individual" ? relationships?.areas.individualCards : relationships?.areas.businessCards) ?? "—" : "—"} caption="Actual cards in this account area" />
         </div>
 
-        {(createOpen || importOpen) && <AdminClientSheet title={importOpen ? "Bulk Company Import" : createdAccount ? "Account created" : area === "individual" ? "Add Individual Client" : "Add Business"} busy={mutationBusy || importingFile} onClose={() => { setCreateOpen(false); setImportOpen(false); }} wide={importOpen} notice={notice}>
+        {(createOpen || importOpen) && <AdminClientSheet title={importOpen ? "Bulk Company Import" : createdAccount ? (area === "business" ? "Company created" : "Account created") : area === "individual" ? "Add Individual Client" : "Add Business"} busy={mutationBusy || importingFile} onClose={() => { setCreateOpen(false); setImportOpen(false); }} wide={importOpen} notice={notice}>
           {operationError && <p role="alert" className={styles.error}>{operationError}</p>}
           {createdAccount && !importOpen ? <div className={styles.onboarding}>
             <div className={styles.successMark} aria-hidden="true">✓</div>
-            <h3>Account created</h3><strong>{createdAccount.name}</strong><p>{createdAccount.email}</p>
+            <h3>{area === "business" ? "Company created" : "Account created"}</h3><strong>{createdAccount.name}</strong>
+            {area === "business" && <><p>Primary Contact: {createdAccount.contact}</p><p>Phone: {createdAccount.phone || "—"}</p><p>People: {loading ? "Checking inventory…" : clientUsers.filter(user => user.client_id === createdAccount.id).length}</p><p>Cards: {clients.find(client => client.id === createdAccount.id)?.card_count ?? "Checking inventory…"}</p></>}<p>{createdAccount.email}</p>
             <p>Status: {createdAccount.status}</p>
             {area === "individual" && <p>Plan: Free · maximum 1 card. Cards: {clients.find(client => client.id === createdAccount.id)?.card_count ?? "Checking inventory…"}</p>}
             <h4>Next steps</h4>
-            <button disabled title="Invitation delivery is not implemented">Send Invitation — Coming soon</button>
+            {area === "individual" && <button disabled title="Invitation delivery is not implemented">Send Invitation — Coming soon</button>}
+            {area === "business" && <button disabled={!clients.some(client => client.id === createdAccount.id)} onClick={() => { setCreateOpen(false); toggleCompany(createdAccount.id); setAddPersonCompany(createdAccount.id); }}>Add Person</button>}
             {area === "individual" && <button disabled title="Individual card creation requires the client’s authenticated account">Create First Card — client sign-in required</button>}
             <button className={styles.primary} disabled={!createdAccount.id} onClick={() => {
               const saved = clients.find(client => client.id === createdAccount.id);
               if (!saved) { setOperationError("The account is saved. Refresh its inventory before managing it."); void fetchClientData(); return; }
               setCreateOpen(false);
               if (area === "business") toggleCompany(saved.id); else openClientDetails(saved);
-            }}>{area === "business" ? "Manage Company / Add Staff" : "View / Manage Client"}</button>
-            {area === "business" && <button onClick={() => { setCreateOpen(false); setImportOpen(true); }}>Open existing company + staff import</button>}
+            }}>{area === "business" ? "Manage Company" : "View / Manage Client"}</button>
             <button onClick={() => setCreateOpen(false)}>Done</button>
           </div> : <>
         <AddClientSection mode={importOpen ? "import" : "create"}
@@ -645,6 +656,8 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
             loading={loading}
             companies={businessClients.slice(0, 10)}
             managementCompanies={businessClients}
+            staffActivated={relationships?.staffActivated}
+            addPersonCompany={addPersonCompany}
             busy={mutationBusy}
             error={operationError}
             notice={notice}
@@ -655,6 +668,8 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
             toggleCompany={toggleCompany}
             toggleClientStatus={toggleClientStatus}
             openAdminContactDetails={openAdminContactDetails}
+            staffLastName={staffLastName}
+            setStaffLastName={setStaffLastName}
             staffFullName={staffFullName}
             setStaffFullName={setStaffFullName}
             staffJobTitle={staffJobTitle}
@@ -676,15 +691,15 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
       {notice && <div role="status" className={styles.toast}>{notice}<button aria-label="Dismiss notification" onClick={() => setNotice("")}>×</button></div>}
       {operationError && !createOpen && !importOpen && !detailsModal && !expandedCompany && !statusTarget && <div role="alert" className={styles.error}>{operationError}</div>}
       {menuOpen && <AdminClientSheet title="DMI Cards Admin" onClose={() => setMenuOpen(false)}><div className={styles.mobileSidebar}><Sidebar /></div></AdminClientSheet>}
-      {statusTarget && <AdminClientSheet title={statusTarget.status === "suspended" ? "Reactivate Client" : "Suspend Client"} busy={mutationBusy} onClose={() => { setStatusTarget(null); setOperationError(""); }} confirm>
+      {statusTarget && <AdminClientSheet title={`${statusTarget.status === "suspended" ? "Reactivate" : "Suspend"} ${statusTarget.account_type === "individual" ? "Client" : "Company"}`} busy={mutationBusy} onClose={() => { setStatusTarget(null); setOperationError(""); }} confirm>
         <div className={styles.confirmation}>
           <span aria-hidden="true" className={styles.warning}>!</span>
           <h3>{statusTarget.company_name || statusTarget.full_name}</h3>
-          <p>{statusTarget.status === "suspended" ? "Restore Client Portal access using the existing account data." : "This stops Client Portal access. Cards, contacts, billing records, Wallet passes and account data remain intact."}</p>
+          <p>{statusTarget.status === "suspended" ? "Restore Client Portal access using the existing account data." : (statusTarget.account_type === "individual" ? "This stops Client Portal access. Cards, contacts, billing records, Wallet passes and account data remain intact." : "This updates company and staff status atomically and restricts access through existing account checks. Stored company, staff and card data is preserved.")}</p>
           {operationError && <p role="alert" className={styles.error}>{operationError}</p>}
           <div className={styles.headerActions}>
             <button disabled={mutationBusy} onClick={() => { setStatusTarget(null); setOperationError(""); }}>Cancel</button>
-            <button disabled={mutationBusy} className={statusTarget.status === "suspended" ? styles.primary : styles.danger} onClick={() => void confirmClientStatus(statusTarget)}>{mutationBusy ? (statusTarget.status === "suspended" ? "Reactivating…" : "Suspending…") : (statusTarget.status === "suspended" ? "Reactivate Client" : "Suspend Client")}</button>
+            <button disabled={mutationBusy} className={statusTarget.status === "suspended" ? styles.primary : styles.danger} onClick={() => void confirmClientStatus(statusTarget)}>{mutationBusy ? (statusTarget.status === "suspended" ? "Reactivating…" : "Suspending…") : (`${statusTarget.status === "suspended" ? "Reactivate" : "Suspend"} ${statusTarget.account_type === "individual" ? "Client" : "Company"}`)}</button>
           </div>
         </div>
       </AdminClientSheet>}
@@ -733,6 +748,8 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
                   toggleCompany={toggleCompany}
                   toggleClientStatus={toggleClientStatus}
                   openAdminContactDetails={openAdminContactDetails}
+                  staffLastName={staffLastName}
+                  setStaffLastName={setStaffLastName}
                   staffFullName={staffFullName}
                   setStaffFullName={setStaffFullName}
                   staffJobTitle={staffJobTitle}
@@ -776,7 +793,7 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
           onEdit={() => setDetailsEditMode(true)}
           onCancel={() => {
             if (detailsModal.type === "client") openClientDetails(detailsModal.data);
-            else if (detailsModal.type === "admin") openAdminContactDetails(detailsModal.data);
+            else if (detailsModal.type === "admin") closeDetailsModal();
             else openStaffDetails(detailsModal.data);
           }}
           onSave={saveDetailsChanges}
@@ -840,7 +857,7 @@ function AddClientSection(props: {
       <p className="mt-2 text-sm leading-6 admin-muted">
         {props.accountType === "individual" ? "Create a personal Free account." : "Create a company first; staff can be added later."}
       </p>
-      <div className={props.accountType === "individual" ? styles.stackedFields : "mt-7 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5"}>
+      <div className={styles.stackedFields}>
         <fieldset disabled={props.busy} aria-busy={props.busy} className="contents">
         {props.accountType === "business" && <Field label="Company Name">
           <input value={props.companyName} onChange={(e) => props.setCompanyName(e.target.value)} className={styles.input} />
@@ -871,8 +888,8 @@ function AddClientSection(props: {
         </Field>}
         </fieldset>
       </div>
-      <button disabled={props.busy} onClick={props.createClientRecord} className={`mt-7 rounded-2xl admin-primary px-6 py-3 font-medium transition hover:opacity-90 ${props.accountType === "individual" ? `${styles.primary} ${styles.individualPrimary}` : ""}`}>
-        {props.busy ? "Creating…" : "Create Account"}
+      <button disabled={props.busy} onClick={props.createClientRecord} className={`mt-7 rounded-2xl admin-primary px-6 py-3 font-medium transition hover:opacity-90 ${styles.primary} ${styles.individualPrimary}`}>
+        {props.busy ? "Creating…" : props.accountType === "business" ? "Create Business" : "Create Account"}
       </button></>}
 
       {props.mode === "import" && props.accountType === "business" && <div className="space-y-4">
@@ -1047,6 +1064,10 @@ function BusinessTable(props: {
   toggleCompany: (id: string) => void;
   toggleClientStatus: (client: Client) => void;
   openAdminContactDetails: (client: Client) => void;
+  staffActivated?: Record<string, boolean>;
+  addPersonCompany?: string | null;
+  staffLastName: string;
+  setStaffLastName: (value: string) => void;
   staffFullName: string;
   setStaffFullName: (value: string) => void;
   staffJobTitle: string;
@@ -1055,7 +1076,7 @@ function BusinessTable(props: {
   setStaffEmail: (value: string) => void;
   staffPhone: string;
   setStaffPhone: (value: string) => void;
-  createClientUser: (client: Client) => void;
+  createClientUser: (client: Client) => Promise<boolean>;
   findCardsForUser: (companyId: string, user: ClientUser) => Card[];
   openStaffDetails: (user: ClientUser) => void;
   openCardPreview: (cards: Card[], user: ClientUser) => void;
@@ -1091,42 +1112,7 @@ function BusinessTable(props: {
           );
         })}
     </table></div>
-    {props.managementCompanies?.filter(company => company.id === props.expandedCompany).map(company => {
-      const users = props.clientUsers.filter(user => user.client_id === company.id);
-      return <AdminClientSheet key={company.id} title={company.company_name || company.full_name} busy={props.busy} onClose={() => props.onCloseManagement?.()} notice={props.notice}>
-        {props.error && <p role="alert" className={styles.error}>{props.error}</p>}
-        <fieldset disabled={props.busy}>
-                    <div className="space-y-5 rounded-2xl border admin-border admin-surface p-5">
-                      <button disabled={props.busy} onClick={() => props.toggleClientStatus(company)}>{company.status === "suspended" ? "Reactivate Client" : "Suspend Client"}</button>
-                      <div className="rounded-2xl border admin-border admin-surface-secondary p-5">
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <span className="rounded-full border admin-border admin-accent-surface px-3 py-1 text-xs font-medium admin-accent">Client Admin</span>
-                            <h3 className="mt-3 text-lg font-semibold">Client Admin / Main Contact</h3>
-                            <p className="mt-1 text-sm admin-muted">This is the company contact responsible for onboarding and staff data.</p>
-                          </div>
-                          <button type="button" onClick={() => props.openAdminContactDetails(company)} className="rounded-2xl border admin-border admin-surface-secondary px-4 py-2 text-sm font-medium admin-text">Edit Admin Contact</button>
-                        </div>
-                        <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
-                          <AdminContactDetail label="Contact Name" value={company.full_name || "-"} />
-                          <AdminContactDetail label="Email" value={company.email || "-"} emphasized />
-                          <AdminContactDetail label="Phone" value={company.phone || "-"} emphasized />
-                          <AdminContactDetail label="Role" value={company.job_title || "Client Admin"} />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <input aria-label="Full name" placeholder="Full name" value={props.staffFullName} onChange={(e) => props.setStaffFullName(e.target.value)} className={styles.input} />
-                        <input aria-label="Job title" placeholder="Job title" value={props.staffJobTitle} onChange={(e) => props.setStaffJobTitle(e.target.value)} className={styles.input} />
-                        <input aria-label="Email" placeholder="Email" value={props.staffEmail} onChange={(e) => props.setStaffEmail(e.target.value)} className={styles.input} />
-                        <input aria-label="Phone" placeholder="Phone" value={props.staffPhone} onChange={(e) => props.setStaffPhone(e.target.value)} className={styles.input} />
-                        <button onClick={() => props.createClientUser(company)} className="rounded-2xl admin-primary px-5 text-sm font-medium">Add User</button>
-                      </div>
-                      <StaffUsersTable users={users} companyId={company.id} findCardsForUser={props.findCardsForUser} openStaffDetails={props.openStaffDetails} openCardPreview={props.openCardPreview} deleteClientUser={props.deleteClientUser} />
-                    </div>
-
-        </fieldset>
-      </AdminClientSheet>;
-    })}
+    {props.managementCompanies?.filter(company => company.id === props.expandedCompany).map(company => <CompanyManagement key={company.id} company={company} {...props} />)}
     </>
   );
 }
@@ -1167,58 +1153,57 @@ function FullListModal({ title, onClose, children }: { title: string; onClose: (
 
 }
 
-function StaffUsersTable(props: {
-  users: ClientUser[];
-  companyId: string;
-  findCardsForUser: (companyId: string, user: ClientUser) => Card[];
-  openStaffDetails: (user: ClientUser) => void;
-  openCardPreview: (cards: Card[], user: ClientUser) => void;
-  deleteClientUser: (user: ClientUser) => void;
-}) {
-  return (
-    <div>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="font-semibold">Users / Staff</h3>
-          <p className="mt-1 text-sm admin-muted">Staff users under this company account.</p>
-        </div>
-        <span className="rounded-full admin-surface-secondary px-3 py-1 text-xs admin-secondary">{props.users.length} users</span>
+function CompanyManagement(props: Parameters<typeof BusinessTable>[0] & { company: Client }) {
+  const [mode, setMode] = useState<"overview" | "add" | "people">(props.addPersonCompany === props.company.id ? "add" : "overview");
+  const [peoplePage, setPeoplePage] = useState(1);
+  const addingPending = useRef(false);
+  const [adding, setAdding] = useState(false);
+  const busy = props.busy || adding;
+  async function addPerson() {
+    if (addingPending.current) return;
+    addingPending.current = true;
+    setAdding(true);
+    try { if (await props.createClientUser(props.company)) setMode("overview"); }
+    finally { addingPending.current = false; setAdding(false); }
+  }
+  const company = props.company;
+  const people = props.clientUsers.filter(person => person.client_id === company.id).sort((a,b) => (b.created_at || "").localeCompare(a.created_at || "") || a.id.localeCompare(b.id));
+  const paged = clientPage(people, peoplePage);
+  const visiblePeople = mode === "people" ? paged.rows : people.slice(0,5);
+  return <AdminClientSheet title={mode === "add" ? "Add Person" : mode === "people" ? "All People" : company.company_name || company.full_name} busy={busy} onClose={() => props.onCloseManagement?.()} notice={props.notice}>
+    {props.error && <p role="alert" className={styles.error}>{props.error}</p>}
+    <fieldset disabled={busy} className="min-w-0">
+    {mode === "add" ? <>
+      <p className="text-sm admin-muted">Add an unlinked contact to {company.company_name}. This does not create a login or send an invitation.</p>
+      <div className={styles.stackedFields}>
+        <Field label="First Name"><input className={styles.input} value={props.staffFullName} onChange={e=>props.setStaffFullName(e.target.value)} /></Field>
+        <Field label="Last Name"><input className={styles.input} value={props.staffLastName} onChange={e=>props.setStaffLastName(e.target.value)} /></Field>
+        <Field label="Email"><input type="email" className={styles.input} value={props.staffEmail} onChange={e=>props.setStaffEmail(e.target.value)} /></Field>
+        <Field label="Job Title"><input className={styles.input} value={props.staffJobTitle} onChange={e=>props.setStaffJobTitle(e.target.value)} /></Field>
+        <Field label="Phone"><input className={styles.input} value={props.staffPhone} onChange={e=>props.setStaffPhone(e.target.value)} /></Field>
       </div>
-      {props.users.length === 0 ? (
-        <p className="mt-5 text-sm admin-muted">No users added yet. Add users here or import them later.</p>
-      ) : (
-        <div className="mt-5 overflow-hidden rounded-2xl border admin-border">
-          <table className={styles.inventoryTable}>
-            <thead className="admin-surface text-left admin-muted">
-              <tr><th className="p-4">Full Name</th><th className="p-4">Job Title</th><th className="p-4">Email</th><th className="p-4">Phone</th><th className="p-4">Status</th><th className="p-4">Cards</th><th className="p-4">Card Status</th><th className="p-4">Actions</th></tr>
-            </thead>
-            <tbody>
-              {props.users.map((user) => {
-                const userCards = props.findCardsForUser(props.companyId, user);
-                const cardStatus = userCards.length ? userCards.some((card) => card.is_published) ? "published" : "draft" : "unpublished";
-                return (
-                  <tr key={user.id} className="border-t admin-border">
-                    <td data-label="Name" className="p-4">{user.full_name || user.name || "Unnamed user"}</td>
-                    <td data-label="Job title" className="p-4 admin-secondary">{user.job_title || "-"}</td>
-                    <td data-label="Email" className="p-4 admin-secondary">{user.email || "-"}</td>
-                    <td data-label="Phone" className="p-4 admin-secondary">{user.phone || "-"}</td>
-                    <td data-label="Status" className="p-4"><StatusBadge status={user.status || "active"} /></td>
-                    <td data-label="Cards" className="p-4 admin-secondary">{userCards.length}</td>
-                    <td data-label="Card status" className="p-4"><CardStatusBadge status={cardStatus} /></td>
-                    <td data-label="Actions" className="p-4">
-                      <button onClick={() => props.openStaffDetails(user)} className="mr-4 text-sm admin-accent ">View</button>
-                      {userCards.length > 0 && <button onClick={() => props.openCardPreview(userCards, user)} className="mr-4 text-sm admin-success-text ">Card Preview</button>}
-                      <button onClick={() => props.deleteClientUser(user)} className="text-sm admin-danger-text ">Delete</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
+      <div className={`${styles.headerActions} mt-6`}><button onClick={()=>setMode("overview")}>Cancel</button><button className={styles.primary} onClick={() => void addPerson()}>{busy ? "Adding…" : "Add Person"}</button></div>
+    </> : <>
+      {mode === "overview" ? <>
+        <div className={styles.headerActions}><button className={styles.primary} onClick={()=>props.openAdminContactDetails(company)}>Edit Company</button></div>
+        <dl className={`${styles.detailStack} ${styles.clientDetails}`}>
+          {[["Company Name",company.company_name],["Primary Contact Name",company.full_name],["Primary Contact Email",company.email],["Phone",company.phone]].map(([label,value])=><div key={label}><dt className="text-xs admin-muted">{label}</dt><dd className="mt-1 break-words text-sm">{value || "—"}</dd></div>)}
+        </dl>
+        <dl className={styles.clientSummary} aria-label="Company summary"><div><dt>People</dt><dd>{people.length}</dd></div><div><dt>Cards</dt><dd>{company.card_count ?? "—"}</dd></div><div><dt>Status</dt><dd>{company.status}</dd></div></dl>
+      </> : <div className={styles.headerActions}><button onClick={()=>setMode("overview")}>Back to Company</button></div>}
+      <section className={styles.companyPeople} aria-label="People">
+        <h3 className="font-semibold">People</h3>
+        <div className={styles.headerActions}><button onClick={()=>setMode("add")}>+ Add Person</button>{mode !== "people" && <button onClick={()=>{setPeoplePage(1);setMode("people");}}>View All People</button>}</div>
+        {visiblePeople.length === 0 ? <p className="text-sm admin-muted">No people yet. Add a person as an unlinked contact.</p> : <ul className={styles.peopleList}>{visiblePeople.map(person=><li key={person.id}>
+          <div><strong>{person.full_name || person.name || "Unnamed person"}</strong><p>{person.email || "—"}</p><span>{props.staffActivated ? (props.staffActivated[person.id] === true ? "Activated" : "Unlinked") : "Identity unavailable"}</span></div>
+          <button className={styles.manage} onClick={()=>props.openStaffDetails(person)}>Manage</button>
+        </li>)}</ul>}
+        {mode === "people" && <div className={styles.headerActions}><button disabled={paged.page<=1} onClick={()=>setPeoplePage(paged.page-1)}>Previous</button><span>Page {paged.page} of {paged.pages}</span><button disabled={paged.page>=paged.pages} onClick={()=>setPeoplePage(paged.page+1)}>Next</button></div>}
+      </section>
+      {mode === "overview" && <section className={styles.accountActions} aria-label="Account Actions"><h3>Account Actions</h3><button onClick={()=>props.toggleClientStatus(company)}>{company.status === "suspended" ? "Reactivate Company" : "Suspend Company"}</button></section>}
+    </>}
+    </fieldset>
+  </AdminClientSheet>;
 }
 
 function SectionHeader({ title, description, count, onViewFullList }: { title: string; description: string; count: number; onViewFullList: () => void }) {
@@ -1253,9 +1238,6 @@ function ImportStatus({ label, value }: { label: string; value: string }) {
   return <div className="min-w-0 rounded-2xl border admin-border admin-surface px-4 py-3"><p className="text-xs admin-muted">{label}</p><p className="mt-1 truncate text-sm font-medium admin-text">{value}</p></div>;
 }
 
-function AdminContactDetail({ label, value, emphasized = false }: { label: string; value: string; emphasized?: boolean }) {
-  return <div className="min-w-0 rounded-2xl border admin-border admin-surface px-4 py-3"><p className="text-xs admin-muted">{label}</p><p className={`mt-1 truncate text-sm font-medium ${emphasized ? "admin-accent" : "admin-text"}`}>{value}</p></div>;
-}
 
 function UserDetailsModal({ busy, error, notice, onStatus, modal, form, editMode, onChange, onClose, onEdit, onCancel, onSave }: {
   busy: boolean;
@@ -1274,28 +1256,27 @@ function UserDetailsModal({ busy, error, notice, onStatus, modal, form, editMode
   const fields = modal.type === "client"
     ? [["full_name", "Full Name"], ["email", "Email"], ["phone", "Phone Number"]]
     : modal.type === "admin"
-    ? [["full_name", "Contact Name"], ["email", "Email"], ["phone", "Phone"]]
+    ? [["company_name", "Company Name"], ["full_name", "Primary Contact Name"], ["email", "Primary Contact Email"], ["phone", "Phone"]]
     : [["company_name", "Company Name"], ["full_name", "Full Name"], ["job_title", "Job Title"], ["email", "Email"], ["phone", "Phone"], ["website", "Website"], ["address", "Address"], ["whatsapp", "WhatsApp"], ["linkedin", "LinkedIn"], ["instagram", "Instagram"], ["facebook", "Facebook"], ["youtube", "YouTube"], ["booking_link", "Booking Link"], ["custom_url", "Custom URL"], ["status", "Status"]];
   return (
-    <AdminClientSheet title={modal.type === "staff" ? "Manage Staff" : "Manage Client"} busy={busy} onClose={onClose} notice={notice}>
+    <AdminClientSheet title={modal.type === "staff" ? "Manage Staff" : modal.type === "admin" ? "Edit Company" : "Manage Client"} busy={busy} onClose={onClose} notice={notice}>
       {error && <p role="alert" className={styles.error}>{error}</p>}
-      {modal.type !== "client" && <p className="mb-4 text-sm admin-muted">Plan and billing labels are informational, not entitlement grants.</p>}
+      {modal.type === "staff" && <p className="mb-4 text-sm admin-muted">Plan and billing labels are informational, not entitlement grants.</p>}
       <div className={styles.headerActions}>
         {!editMode && <button disabled={busy} className={styles.primary} onClick={onEdit}>Edit details</button>}
-        {modal.type === "admin" && <button disabled={busy} onClick={onStatus}>{form.status === "suspended" ? "Reactivate Client" : "Suspend Client"}</button>}
       </div>
       <fieldset disabled={busy}>
-        <div className={modal.type === "client" ? styles.clientDetails : "flex-1 overflow-y-auto p-6"}>
-          <div className={modal.type === "client" ? styles.detailStack : "grid grid-cols-1 sm:grid-cols-2 gap-3"}>
+        <div className={modal.type !== "staff" ? styles.clientDetails : "flex-1 overflow-y-auto p-6"}>
+          <div className={modal.type !== "staff" ? styles.detailStack : "grid grid-cols-1 sm:grid-cols-2 gap-3"}>
             {fields.map(([field, label]) => (
-              <div key={field} className={modal.type === "client" ? styles.detailRow : "rounded-2xl border admin-border admin-surface p-3"}>
+              <div key={field} className={modal.type !== "staff" ? styles.detailRow : "rounded-2xl border admin-border admin-surface p-3"}>
                 <p className="text-xs uppercase tracking-[0.14em] admin-muted">{label}</p>
                 {editMode && !(modal.type === "client" && ["subscription_plan", "billing_status", "status"].includes(field)) ? <ModalEditField label={label} modalType={modal.type} field={field} value={form[field] || ""} form={form} onChange={onChange} /> : <p className="mt-3 break-words text-sm admin-text">{form[field] || "-"}</p>}
               </div>
             ))}
           </div>
         </div>
-        {editMode && <div className="flex justify-end gap-3 border-t admin-border p-5"><button disabled={busy} onClick={onCancel} className="rounded-2xl admin-surface-secondary px-5 py-3 text-sm font-medium">Cancel</button><button disabled={busy} onClick={onSave} className={`rounded-2xl admin-primary px-5 py-3 text-sm font-medium ${modal.type === "client" ? `${styles.primary} ${styles.individualPrimary}` : ""}`}>{busy ? "Saving…" : "Save Changes"}</button></div>}
+        {editMode && <div className="flex justify-end gap-3 border-t admin-border p-5"><button disabled={busy} onClick={onCancel} className="rounded-2xl admin-surface-secondary px-5 py-3 text-sm font-medium">Cancel</button><button disabled={busy} onClick={onSave} className={`rounded-2xl admin-primary px-5 py-3 text-sm font-medium ${modal.type !== "staff" ? `${styles.primary} ${styles.individualPrimary}` : ""}`}>{busy ? "Saving…" : "Save Changes"}</button></div>}
       </fieldset>
       {modal.type === "client" && <>
         <dl className={styles.clientSummary} aria-label="Client summary">
@@ -1382,10 +1363,5 @@ function ClientActions({ client, onView }: { client: Client; onView: (client: Cl
 
 function StatusBadge({ status }: { status: string }) {
   const styles = status === "active" ? "admin-status-success" : status === "pending" ? "admin-status-warning" : "admin-status-danger";
-  return <span className={`rounded-full px-3 py-1 text-xs capitalize ${styles}`}>{status}</span>;
-}
-
-function CardStatusBadge({ status }: { status: string }) {
-  const styles = status === "published" ? "admin-status-success" : status === "draft" ? "admin-status-warning" : "admin-status-neutral";
   return <span className={`rounded-full px-3 py-1 text-xs capitalize ${styles}`}>{status}</span>;
 }

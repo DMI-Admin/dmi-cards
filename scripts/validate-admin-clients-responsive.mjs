@@ -23,13 +23,14 @@ const mocks={
 '@/components/CardRenderer':"export default function CardRenderer(){return null;}",
 '@/lib/templates':"export const getAdminTemplates=async()=>[];",
 '@/lib/admin-card-mutations':"export const mutateAdminCard=async()=>{};",
-'@/lib/admin-inventory':"export const getAdminInventory=async type=>{await new Promise(r=>setTimeout(r,location.search.includes('loading')?800:10));if(location.search.includes('empty'))return [];return type==='clients'?window.records:[]};",
+'@/lib/admin-inventory':"export const getAdminInventory=async type=>{await new Promise(r=>setTimeout(r,location.search.includes('loading')?800:10));if(location.search.includes('empty'))return [];return type==='clients'?window.records:type==='client-users'?window.people:[]};",
 '@/lib/admin-client-contract':`
-export async function getAdminClientCounts(){return {summary:{},areas:{individualCards:0,businessCards:0,businessPeople:0,businessActivatedUsers:0},staffCards:{},cardCounts:{}}}
+export async function getAdminClientCounts(){return {summary:{},areas:{individualCards:0,businessCards:0,businessPeople:0,businessActivatedUsers:0},staffCards:{},cardCounts:{},staffActivated:Object.fromEntries(window.people.map(p=>[p.id,p.id==='linked-person']))}}
 export async function mutateAdminClient(url,method,body,token){
  window.events.push({url,method,body,token}); await new Promise(r=>setTimeout(r,180));
  if(window.failNext){window.failNext=false;throw new Error('Fixture request failed');}
  if(method==='POST' && url==='/api/admin/clients'){const id=crypto.randomUUID();window.records.unshift({...body,id,created_at:new Date().toISOString(),subscription_plan:'free',billing_status:'free'});return {id};}
+ if(method==='POST' && url==='/api/admin/client-users'){const id=crypto.randomUUID();window.people.unshift({...body,id,created_at:new Date().toISOString()});return {id};}
  if(url.endsWith('/status')){window.records.find(r=>r.id===url.split('/')[4]).status=body.status;return {};}
  if(method==='PATCH'){Object.assign(window.records.find(r=>r.id===url.split('/').pop()),body);return {};}
  return {};
@@ -41,7 +42,7 @@ import Page from '${root}/src/components/admin/AdminClientsPage.tsx';
 import Settings from '${root}/src/app/settings/page.tsx';
 import {AdminAppearanceInitializer} from '${root}/src/components/admin/AdminAppearance.tsx';
 import ThemeInitializer from '${root}/src/components/ThemeInitializer.tsx';
-window.events=[];window.records=Array.from({length:30},(_,i)=>({id:'fixture-'+i,full_name:'Alex Customer '+i,company_name:i>=15?'Company '+i:null,email:'alex'+i+'@example.invalid',account_type:i>=15?'business':'individual',status:i%5===0?'suspended':'active',subscription_plan:'free',created_at:new Date(2026,0,i+1).toISOString()}));
+window.people=[{id:'linked-person',client_id:'fixture-29',full_name:'Linked Person',email:'linked@example.invalid'},{id:'unlinked-person',client_id:'fixture-29',full_name:'Unlinked Person',email:'unlinked@example.invalid'}];window.events=[];window.records=Array.from({length:30},(_,i)=>({id:'fixture-'+i,full_name:'Alex Customer '+i,company_name:i>=15?'Company '+i:null,email:'alex'+i+'@example.invalid',account_type:i>=15?'business':'individual',status:i%5===0?'suspended':'active',subscription_plan:'free',created_at:new Date(2026,0,i+1).toISOString()}));
 createRoot(document.getElementById('root')).render(<><ThemeInitializer/><AdminAppearanceInitializer/>{location.pathname==='/settings'?<Settings/>:<Page area={location.pathname.includes('business')?'business':'individual'}/>}</>);
 `);
 await esbuild.build({entryPoints:[path.join(tmp,'entry.jsx')],bundle:true,outfile:path.join(tmp,'app.js'),nodePaths:[root+'/node_modules'],jsx:'automatic',loader:{'.css':'local-css'},plugins:[{name:'fixture',setup(build){
@@ -194,15 +195,75 @@ async function checkInventoryDensity(table,width){
  await page.getByLabel('Company Name',{exact:true}).fill('New Fixture Company');
  await page.getByLabel('Primary Contact Name',{exact:true}).fill('Pat Owner');
  await page.getByLabel('Primary Contact Email',{exact:true}).fill('pat@example.invalid');
- await page.getByRole('button',{name:'Create Account',exact:true}).click();
- await page.getByRole('heading',{name:'Account created',exact:true}).last().waitFor();
- await page.getByRole('button',{name:'Manage Company / Add Staff',exact:true}).click();
+ await page.evaluate(()=>{window.failNext=true;});
+ await page.getByRole('button',{name:'Create Business',exact:true}).click();
+ await page.getByRole('alert').waitFor();
+ assert.equal(await page.getByLabel('Company Name',{exact:true}).inputValue(),'New Fixture Company');
+ await page.getByRole('button',{name:'Create Business',exact:true}).evaluate(button=>{button.click();button.click();});
+ await page.getByRole('heading',{name:'Company created',exact:true}).last().waitFor();
+ assert.equal(await page.locator('dialog[open]').count(),1);
+ const companyId=await page.evaluate(()=>window.records.find(r=>r.company_name==='New Fixture Company').id);
+ assert.equal(await page.evaluate(()=>window.events.filter(e=>e.url==='/api/admin/clients'&&e.body.company_name==='New Fixture Company').length),2); // one failure, one durable create
+ await page.getByRole('button',{name:'Add Person',exact:true}).click();
+ const addPerson=page.getByRole('dialog',{name:'Add Person',exact:true});
+ await addPerson.getByLabel('First Name',{exact:true}).fill('Sam');await addPerson.getByLabel('Last Name',{exact:true}).fill('Staff');
+ await addPerson.getByLabel('Email',{exact:true}).fill('sam@example.invalid');
+ await addPerson.getByRole('button',{name:'Add Person',exact:true}).evaluate(button=>{button.click();button.click();});
  await page.getByRole('dialog',{name:'New Fixture Company',exact:true}).waitFor();
+ const staffWrite=await page.evaluate(()=>window.events.filter(e=>e.url==='/api/admin/client-users'));
+ assert.equal(staffWrite.length,1);assert.equal(staffWrite[0].body.client_id,companyId);
+ assert.equal(staffWrite[0].body.full_name,'Sam Staff');assert.ok(!('user_id' in staffWrite[0].body));assert.ok(!('profile_id' in staffWrite[0].body));
+ const companyDrawer=page.getByRole('dialog',{name:'New Fixture Company',exact:true});
+ await companyDrawer.getByText('Unlinked',{exact:true}).waitFor();
+ await companyDrawer.getByRole('button',{name:'View All People',exact:true}).click();
+ await page.getByRole('dialog',{name:'All People',exact:true}).getByText('Sam Staff',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Back to Company',exact:true}).click();
+ await companyDrawer.getByRole('button',{name:'Edit Company',exact:true}).click();
+ const editCompany=page.getByRole('dialog',{name:'Edit Company',exact:true});
+ await editCompany.getByLabel('Company Name',{exact:true}).fill('Edited Fixture Company');
+ await editCompany.getByRole('button',{name:'Save Changes',exact:true}).click();
+ const edited=page.getByRole('dialog',{name:'Edited Fixture Company',exact:true});await edited.waitFor();
+ const companyEdit=await page.evaluate(id=>window.events.find(e=>e.url==='/api/admin/clients/'+id),companyId);
+ assert.deepEqual(Object.keys(companyEdit.body).sort(),['company_name','email','full_name','phone']);
+ for(const action of ['Suspend Company','Reactivate Company']){
+  await edited.getByRole('button',{name:action,exact:true}).click();
+  const confirmation=page.getByRole('dialog',{name:action,exact:true});
+  await confirmation.getByRole('button',{name:action,exact:true}).click();await confirmation.waitFor({state:'hidden'});
+ }
+ assert.equal(await page.evaluate(id=>window.events.filter(e=>e.url==='/api/admin/clients/'+id+'/status'&&e.method==='PATCH'&&e.token==='fixture-token').length,companyId),2);
+ await page.keyboard.press('Escape');
+ await page.getByRole('button',{name:'Manage',exact:true}).first().click();
+ await page.getByRole('dialog',{name:'Edited Fixture Company',exact:true}).waitFor();
  await page.keyboard.press('Escape');
  await page.getByRole('button',{name:'Open Admin navigation',exact:true}).click();
  await page.getByRole('dialog',{name:'DMI Cards Admin',exact:true}).waitFor();
  await page.keyboard.press('Escape');
  assert.equal(await page.locator('dialog[open]').count(),0);
+ // Company-specific widths AND short heights; no live API/data calls.
+ for(const [width,height] of [[1440,740],[1280,600],[768,600],[540,500],[320,568]]){
+  await page.setViewportSize({width,height});await page.goto(origin+'/clients/business');
+  await page.getByRole('button',{name:'Manage',exact:true}).first().click();
+  const company=page.getByRole('dialog',{name:'Company 29',exact:true});
+  await company.getByText('Activated',{exact:true}).waitFor();await company.getByText('Unlinked',{exact:true}).waitFor();
+  await company.getByRole('button',{name:'Suspend Company',exact:true}).scrollIntoViewIfNeeded();
+  const actionBox=await company.getByRole('button',{name:'Suspend Company',exact:true}).boundingBox();assert.ok(actionBox.y>=0 && actionBox.y+actionBox.height<=height);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.screenshot({path:tmp+`/company-manage-${width}-${height}.png`,fullPage:true});
+  await company.getByRole('button',{name:'Edit Company',exact:true}).click();
+  const edit=page.getByRole('dialog',{name:'Edit Company',exact:true});
+  assert.equal(await edit.locator('input').count(),4);
+  await edit.getByRole('button',{name:'Cancel',exact:true}).click();
+  await company.getByRole('button',{name:'+ Add Person',exact:true}).click();
+  const person=page.getByRole('dialog',{name:'Add Person',exact:true});
+  await person.getByLabel('First Name',{exact:true}).fill('Keep');await person.getByLabel('Last Name',{exact:true}).fill('Values');await person.getByLabel('Email',{exact:true}).fill('keep@example.invalid');
+  await page.evaluate(()=>{window.failNext=true;});await person.getByRole('button',{name:'Add Person',exact:true}).click();
+  await person.getByRole('alert').waitFor();assert.equal(await person.getByLabel('First Name',{exact:true}).inputValue(),'Keep');
+  await person.getByRole('button',{name:'Add Person',exact:true}).scrollIntoViewIfNeeded();
+  assert.equal(await person.evaluate(n=>n.scrollWidth>n.clientWidth),false);
+  await page.screenshot({path:tmp+`/company-add-person-${width}-${height}.png`,fullPage:true});
+  await person.getByRole('button',{name:'Cancel',exact:true}).click();await page.keyboard.press('Escape');
+ }
+ console.log('PASS: Business creation failure/duplicate lock, exact UUID staff creation, no identity fabrication, edit allowlist, company status with fresh token, People and short-height responsive access.');
  if(process.argv.includes('--theme')){await runAdminThemeChecks(page,origin,tmp,checkInventoryDensity);await page.goto(origin+'/clients/business');}
  await page.emulateMedia({reducedMotion:'reduce'});
  assert.equal(await page.getByRole('button',{name:'+ Add Business',exact:true}).evaluate(node=>getComputedStyle(node).animationName),'none');

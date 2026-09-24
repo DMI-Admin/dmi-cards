@@ -62,10 +62,10 @@ console.log('PASS: scoped summaries; recent lists unfiltered; filters retained e
 
 for(const area of ['individual','business']) {
  const add=render(area,{createOpen:true});
- assert.match(add,/Create Account/);
+ assert.match(add,area==='business'?/Create Business/:/Create Account/);
  assert.match(render(area,{createOpen:true,mutationBusy:true}),/Creating…/);
  const success=render(area,{createOpen:true,createdAccount:{id:'created-id',name:'Created account',email:'created@example.invalid',status:'active'}});
- assert.match(success,/Account created/);assert.match(success,/Created account/);assert.match(success,/Next steps/);
+ assert.match(success,area==='business'?/Company created/:/Account created/);assert.match(success,/Created account/);assert.match(success,/Next steps/);
  assert.doesNotMatch(success,/>Create Account</);
  const confirm=render(area,{statusTarget:{...rows[0],status:'active'}});
  assert.match(confirm,/Suspend Client/);assert.match(confirm,/Client Portal access/);
@@ -117,3 +117,12 @@ assert.match(css,/@media \(min-width:1024px\)/);
 assert.match(css,/compactInventory td.*padding:6px 12px; font-size:13px/);
 assert.match(css,/compactInventory td button.*min-height:44px/);
 console.log('PASS: Recent/View All share scoped desktop density and column variants; touch targets retained.');
+
+const company=render('business',{expandedCompany:'059',clientUsers:[{id:'person',client_id:'059',full_name:'Linked Person',email:'person@example.invalid'}],relationships:{areas:{},staffActivated:{person:true}}});
+assert.match(company,/Edit Company/);assert.match(company,/Company summary/);assert.match(company,/Activated/);assert.match(company,/View All People/);assert.match(company,/Suspend Company/);
+const unlinked=render('business',{expandedCompany:'059',clientUsers:[{id:'person',client_id:'059',full_name:'Unlinked Person'}],relationships:{areas:{},staffActivated:{person:false}}});assert.match(unlinked,/Unlinked/);
+const editCompany=render('business',{detailsModal:{type:'admin',data:rows[59]},detailsEditMode:true,detailsForm:{company_name:'Company'}}).split('<dialog')[1];
+for(const label of ['Company Name','Primary Contact Name','Primary Contact Email','Phone'])assert.ok(editCompany.includes('aria-label="'+label+'"'));
+assert.doesNotMatch(editCompany,/Billing Status|Account Type|Subscription|Job Title/);
+assert.match(render('business',{createOpen:true}),/class="stackedFields"/);
+console.log('PASS: Business stacked creation, company success, safe edit fields, company management and verified identity presentation.');

@@ -223,3 +223,9 @@ try {
  await pg.exec('reset role;');
  console.log('PASS: PostgreSQL COMMIT; provisioning new/repeat/paid/business/enterprise; preserved provisioning ACLs; service-only RPCs; atomic import rollback/retry/conflict; atomic suspension rollback/reactivation; parent-lock staff guards.');
 } finally {await pg.close();}
+
+assert.equal(counts.staffActivated[staffId],true);
+assert.equal(counts.staffActivated[unlinked],false);
+assert.equal(counts.staffActivated.missing,false);
+assert.equal(contract.clientRelationshipCounts([], [{id:'conflict',user_id:owner,profile_id:staffOwner}],[],new Set([owner,staffOwner])).staffActivated.conflict,false);
+console.log('PASS: per-person activation requires a verified, non-conflicting real identity.');

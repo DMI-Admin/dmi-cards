@@ -157,3 +157,10 @@
 .inventoryCard { overflow:clip; }
 .inventoryClip { border-radius:12px; overflow:clip; }
 .inventoryCard .inventoryClip { border-radius:0 0 23px 23px; }
+
+.companyPeople { display:grid; gap:16px; padding-top:20px; }
+.peopleList { display:grid; gap:0; padding:0; list-style:none; }
+.peopleList li { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid var(--admin-border); font-size:13px; }
+.peopleList li > div { min-width:0; overflow-wrap:anywhere; }
+.peopleList p,.peopleList span { color:var(--admin-muted); }
+.peopleList button { flex-shrink:0; }
