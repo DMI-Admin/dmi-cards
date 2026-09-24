@@ -547,7 +547,7 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
         <button className={styles.menuButton} onClick={() => setMenuOpen(true)} aria-label="Open Admin navigation">☰ Menu</button>
         <div className={styles.pageHeader}>
           <div><h1 className="text-3xl font-bold">{area === "individual" ? "Individual Clients" : "Business Clients"}</h1>
-          <p className="mt-3 max-w-4xl text-slate-500">
+          <p className="mt-3 max-w-4xl admin-muted">
             {area === "individual" ? "Manage personal DMI Cards customers and their cards." : "Manage company accounts, staff and digital cards."}
           </p></div>
           <div className={styles.headerActions}>
@@ -751,7 +751,7 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
             </div>
           )}
           </fieldset>
-          <div className="flex items-center justify-between border-t border-slate-200 p-5">
+          <div className="flex items-center justify-between border-t admin-border p-5">
             <button className={fullListMode === "individual" ? styles.paginationPill : undefined} disabled={fullPage.page <= 1} onClick={() => setPagination({ key: filterKey, page: fullPage.page - 1 })}>Previous</button>
             <span>Page {fullPage.page} of {fullPage.pages}</span>
             <button className={fullListMode === "individual" ? styles.paginationPill : undefined} disabled={fullPage.page >= fullPage.pages} onClick={() => setPagination({ key: filterKey, page: fullPage.page + 1 })}>Next</button>
@@ -837,7 +837,7 @@ function AddClientSection(props: {
   return (
     <div className="space-y-4">
       {props.mode === "create" && <><h2 className="text-2xl font-semibold">{props.accountType === "individual" ? "Add Individual Client" : "Add Business"}</h2>
-      <p className="mt-2 text-sm leading-6 text-slate-500">
+      <p className="mt-2 text-sm leading-6 admin-muted">
         {props.accountType === "individual" ? "Create a personal Free account." : "Create a company first; staff can be added later."}
       </p>
       <div className={props.accountType === "individual" ? styles.stackedFields : "mt-7 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5"}>
@@ -859,7 +859,7 @@ function AddClientSection(props: {
             <option value="free">Free</option>
             <option value="pro" disabled>Pro (not available here yet)</option>
           </select>
-          <span className="mt-2 block text-xs text-slate-500">Free: 1 card. Pro: up to 3 premium cards. Pro grants and subscription links are not available here yet.</span>
+          <span className="mt-2 block text-xs admin-muted">Free: 1 card. Pro: up to 3 premium cards. Pro grants and subscription links are not available here yet.</span>
         </Field>}
         {/* TODO: Send Pro Subscription Link. Complimentary Pro needs a reviewed server entitlement grant, not a legacy plan label. */}
         {props.accountType === "business" && <Field label="Status">
@@ -871,28 +871,28 @@ function AddClientSection(props: {
         </Field>}
         </fieldset>
       </div>
-      <button disabled={props.busy} onClick={props.createClientRecord} className={`mt-7 rounded-2xl bg-gradient-to-r from-pink-600 to-purple-700 text-white px-6 py-3 font-medium transition hover:opacity-90 ${props.accountType === "individual" ? `${styles.primary} ${styles.individualPrimary}` : ""}`}>
+      <button disabled={props.busy} onClick={props.createClientRecord} className={`mt-7 rounded-2xl admin-primary px-6 py-3 font-medium transition hover:opacity-90 ${props.accountType === "individual" ? `${styles.primary} ${styles.individualPrimary}` : ""}`}>
         {props.busy ? "Creating…" : "Create Account"}
       </button></>}
 
       {props.mode === "import" && props.accountType === "business" && <div className="space-y-4">
         <div className="grid gap-6 xl:grid-cols-[1fr_520px]">
           <div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-50 text-purple-700 ring-1 ring-[#AC00FF]/30">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl admin-accent-surface admin-accent ring-1 ring-[#AC00FF]/30">
               <FileSpreadsheet size={22} />
             </div>
             <h3 className="mt-4 text-2xl font-semibold">Bulk Company Import</h3>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+            <p className="mt-2 max-w-2xl text-sm leading-6 admin-muted">
               Imports companies and staff together from Excel or CSV. Company-scoped staff import is planned; billing is not configured here.
             </p>
           </div>
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button type="button" onClick={props.downloadExcelTemplate} className="flex h-14 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 text-sm font-medium transition hover:bg-white/15">
+              <button type="button" onClick={props.downloadExcelTemplate} className="flex h-14 items-center justify-center gap-2 rounded-2xl border admin-border admin-surface-secondary px-5 text-sm font-medium transition admin-hover">
                 <Download size={18} />
                 Download Template
               </button>
-              <label className="flex h-14 cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-pink-600 to-purple-700 text-white px-5 text-sm font-medium">
+              <label className="flex h-14 cursor-pointer items-center justify-center gap-2 rounded-2xl admin-primary px-5 text-sm font-medium">
                 <UploadCloud size={18} />
                 {props.importingFile ? "Importing..." : "Upload Company File"}
                 <input type="file" accept=".csv,.xlsx,.xls" disabled={props.importingFile} className="sr-only" onChange={(e) => {
@@ -912,38 +912,38 @@ function AddClientSection(props: {
       </div>}
 
       {props.mode === "import" && props.accountType === "business" && props.reviewImport && (
-        <div className="mt-8 rounded-3xl border border-[#AC00FF]/25 bg-slate-50/55 p-6">
+        <div className="mt-8 rounded-3xl border admin-border admin-surface-secondary p-6">
           <div className="flex items-start justify-between gap-6">
             <div>
               <h3 className="text-2xl font-semibold">Review Import</h3>
-              <p className="mt-2 text-sm text-slate-500">Review and edit staff users before anything is saved.</p>
+              <p className="mt-2 text-sm admin-muted">Review and edit staff users before anything is saved.</p>
             </div>
             <div className="flex gap-3">
-              <button disabled={props.importingFile} onClick={props.cancelImport} className="rounded-2xl bg-slate-50 px-5 py-3 text-sm font-medium">Cancel Import</button>
-              <button disabled={props.importingFile} onClick={props.confirmImport} className="rounded-2xl bg-gradient-to-r from-pink-600 to-purple-700 text-white px-5 py-3 text-sm font-medium">Confirm Import</button>
+              <button disabled={props.importingFile} onClick={props.cancelImport} className="rounded-2xl admin-surface-secondary px-5 py-3 text-sm font-medium">Cancel Import</button>
+              <button disabled={props.importingFile} onClick={props.confirmImport} className="rounded-2xl admin-primary px-5 py-3 text-sm font-medium">Confirm Import</button>
             </div>
           </div>
           <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
             {props.importCompanies.map((company) => (
-              <div key={company.company} className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-xs text-slate-500">Company name</p>
+              <div key={company.company} className="rounded-2xl border admin-border admin-surface p-4">
+                <p className="text-xs admin-muted">Company name</p>
                 <p className="mt-1 font-medium">{company.company}</p>
-                <p className="mt-3 text-xs text-slate-500">First staff user</p>
-                <p className="mt-1 text-sm text-slate-600">{company.primaryContact}</p>
+                <p className="mt-3 text-xs admin-muted">First staff user</p>
+                <p className="mt-1 text-sm admin-secondary">{company.primaryContact}</p>
               </div>
             ))}
           </div>
-          <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200">
+          <div className="mt-6 overflow-x-auto rounded-2xl border admin-border">
             <table className={styles.importTable}>
-              <thead className="bg-white text-left text-slate-500">
+              <thead className="admin-surface text-left admin-muted">
                 <tr>{importHeaders.map((header) => <th key={header} className="p-3 capitalize">{header.replace("_", " ")}</th>)}</tr>
               </thead>
               <tbody>
                 {props.importRows.map((row, index) => (
-                  <tr key={`${row.company_name}-${row.email}-${index}`} className="border-t border-slate-100">
+                  <tr key={`${row.company_name}-${row.email}-${index}`} className="border-t admin-border">
                     {(importHeaders as (keyof ImportRow)[]).map((field) => (
                       <td key={field} data-label={field.replaceAll("_", " ")} className="p-2">
-                        <input aria-label={`Row ${index + 1} ${field.replaceAll("_", " ")}`} disabled={props.importingFile} value={row[field] || ""} onChange={(e) => props.updateImportRow(index, field, e.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-[#AC00FF]" />
+                        <input aria-label={`Row ${index + 1} ${field.replaceAll("_", " ")}`} disabled={props.importingFile} value={row[field] || ""} onChange={(e) => props.updateImportRow(index, field, e.target.value)} className="h-11 w-full rounded-xl border admin-border admin-surface-secondary px-3 text-sm outline-none focus:border-[var(--admin-focus)]" />
                       </td>
                     ))}
                   </tr>
@@ -966,7 +966,7 @@ function ClientSection({ title, description, count, onViewFullList, filters, chi
   children: React.ReactNode;
 }) {
   return (
-    <div className="mb-8 rounded-3xl border border-slate-200 bg-white">
+    <div className="mb-8 rounded-3xl border admin-border admin-surface">
       <SectionHeader title={title} description={description} count={count} onViewFullList={onViewFullList} />
       {filters}
       <div className="max-h-[520px] overflow-y-auto">{children}</div>
@@ -985,20 +985,20 @@ function IndividualFilters(props: {
   setStatus: (value: string) => void;
 }) {
   return (
-    <div className="border-b border-slate-200 p-6">
+    <div className="border-b admin-border p-6">
       <div className={styles.filters}>
         <input aria-label="Search people, company or email" placeholder="Search" value={props.search} onChange={(e) => props.setSearch(e.target.value)} className={styles.input} />
         <FilterSelect value={props.plan} onChange={props.setPlan} label="All Plans" options={["free", "pro"]} />
         <FilterSelect value={props.billing} onChange={props.setBilling} label="All Billing" options={["paid", "trial", "overdue", "cancelled"]} />
         <FilterSelect value={props.status} onChange={props.setStatus} label="All Statuses" options={["active", "pending", "suspended"]} />
       </div>
-      <p className="mt-3 text-xs text-slate-500">Legacy plan and billing labels are informational; Stripe controls access. Use Suspend/Reactivate for account status.</p>
+      <p className="mt-3 text-xs admin-muted">Legacy plan and billing labels are informational; Stripe controls access. Use Suspend/Reactivate for account status.</p>
     </div>
   );
 }
 
 function BusinessFilters(props: { search: string; setSearch: (value: string) => void; status: string; setStatus: (value: string) => void }) {
-  return <div className="border-b border-slate-200 p-6"><div className={styles.filters}>
+  return <div className="border-b admin-border p-6"><div className={styles.filters}>
     <input aria-label="Search company, contact or email" placeholder="Search company, contact or email" value={props.search} onChange={e => props.setSearch(e.target.value)} className={styles.input} />
     <FilterSelect value={props.status} onChange={props.setStatus} label="All Statuses" options={["active", "pending", "suspended"]} />
   </div></div>;
@@ -1011,19 +1011,19 @@ function IndividualTable(props: {
   toggleClientStatus: (client: Client) => void;
 }) {
   return (
-    <table className={styles.inventoryTable}>
-      <thead className="sticky top-0 z-30 border-b border-slate-200 bg-slate-50">
-        <tr className="text-left text-slate-600">
+    <table className={`${styles.inventoryTable} ${styles.compactInventory} ${styles.individualInventory}`}>
+      <thead className="sticky top-0 z-30 border-b admin-border admin-surface-secondary">
+        <tr className="text-left admin-secondary">
           <th className="p-5">Client</th><th className="p-5">Email</th><th className="p-5">Plan</th><th className="p-5">Cards</th><th className="p-5">Status</th><th className="p-5">Manage</th>
         </tr>
       </thead>
       <tbody>
         {props.loading ? <TableMessage message="Loading individual clients..." /> : props.clients.length === 0 ? <TableMessage message="No matching individual clients found." /> : props.clients.map((client) => (
-          <tr key={client.id} className="border-t border-slate-100 hover:bg-white">
+          <tr key={client.id} className="border-t admin-border admin-hover">
             <td data-label="Client" className="p-5 font-medium">{client.full_name}</td>
-            <td data-label="Email" className="p-5 text-slate-600">{client.email}</td>
-            <td data-label="Plan (display label)" className="p-5 capitalize text-slate-600">{individualPlanLabel(client.subscription_plan)}</td>
-            <td data-label="Cards" className="p-5 text-slate-600">{client.card_count ?? 0}</td>
+            <td data-label="Email" className="p-5 admin-secondary">{client.email}</td>
+            <td data-label="Plan (display label)" className="p-5 capitalize admin-secondary">{individualPlanLabel(client.subscription_plan)}</td>
+            <td data-label="Cards" className="p-5 admin-secondary">{client.card_count ?? 0}</td>
             <td data-label="Status" className="p-5"><StatusBadge status={client.status} /></td>
             <td data-label="Manage" className="p-5"><ClientActions client={client} onView={props.openClientDetails} onToggle={props.toggleClientStatus} /></td>
           </tr>
@@ -1062,9 +1062,9 @@ function BusinessTable(props: {
   deleteClientUser: (user: ClientUser) => void;
 }) {
   return (
-    <><table className={styles.inventoryTable}>
-      <thead className="sticky top-0 z-30 border-b border-slate-200 bg-slate-50">
-        <tr className="text-left text-slate-600">
+    <><table className={`${styles.inventoryTable} ${styles.compactInventory} ${styles.businessInventory}`}>
+      <thead className="sticky top-0 z-30 border-b admin-border admin-surface-secondary">
+        <tr className="text-left admin-secondary">
           <th className="p-5">Company</th><th className="p-5">Primary Contact</th><th className="p-5">People</th><th className="p-5">Cards</th><th className="p-5">Status</th><th className="p-5">Manage</th>
         </tr>
       </thead>
@@ -1073,15 +1073,15 @@ function BusinessTable(props: {
           const companyCardCount = company.card_count ?? 0;
           return (
             <tbody key={company.id}>
-              <tr className="border-t border-slate-100 hover:bg-white">
-                <td data-label="Company" className="p-5 font-medium">{company.company_name || company.full_name}{company.account_type === "enterprise" && <span className="ml-2 text-xs text-slate-500">Legacy Enterprise</span>}</td>
-                <td data-label="Primary Contact" className="p-5 text-slate-600">{company.full_name}</td>
-                <td data-label="People" className="p-5 text-slate-600">{users.length}</td>
-                <td data-label="Cards" className="p-5 text-slate-600">{companyCardCount}</td>
+              <tr className="border-t admin-border admin-hover">
+                <td data-label="Company" className="p-5 font-medium">{company.company_name || company.full_name}{company.account_type === "enterprise" && <span className="ml-2 text-xs admin-muted">Legacy Enterprise</span>}</td>
+                <td data-label="Primary Contact" className="p-5 admin-secondary">{company.full_name}</td>
+                <td data-label="People" className="p-5 admin-secondary">{users.length}</td>
+                <td data-label="Cards" className="p-5 admin-secondary">{companyCardCount}</td>
                 <td data-label="Status" className="p-5"><StatusBadge status={company.status} /></td>
                 <td data-label="Manage" className="p-5">
                   <div className="flex gap-3">
-                    <button onClick={(e) => { e.stopPropagation(); props.toggleCompany(company.id); }} className="text-sm text-purple-700 hover:text-purple-800">Manage</button>
+                    <button onClick={(e) => { e.stopPropagation(); props.toggleCompany(company.id); }} className="text-sm admin-accent ">Manage</button>
 
                   </div>
                 </td>
@@ -1096,16 +1096,16 @@ function BusinessTable(props: {
       return <AdminClientSheet key={company.id} title={company.company_name || company.full_name} busy={props.busy} onClose={() => props.onCloseManagement?.()} notice={props.notice}>
         {props.error && <p role="alert" className={styles.error}>{props.error}</p>}
         <fieldset disabled={props.busy}>
-                    <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5">
+                    <div className="space-y-5 rounded-2xl border admin-border admin-surface p-5">
                       <button disabled={props.busy} onClick={() => props.toggleClientStatus(company)}>{company.status === "suspended" ? "Reactivate Client" : "Suspend Client"}</button>
-                      <div className="rounded-2xl border border-[#AC00FF]/25 bg-slate-50/60 p-5">
+                      <div className="rounded-2xl border admin-border admin-surface-secondary p-5">
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <span className="rounded-full border border-[#AC00FF]/30 bg-purple-50 px-3 py-1 text-xs font-medium text-purple-700">Client Admin</span>
+                            <span className="rounded-full border admin-border admin-accent-surface px-3 py-1 text-xs font-medium admin-accent">Client Admin</span>
                             <h3 className="mt-3 text-lg font-semibold">Client Admin / Main Contact</h3>
-                            <p className="mt-1 text-sm text-slate-500">This is the company contact responsible for onboarding and staff data.</p>
+                            <p className="mt-1 text-sm admin-muted">This is the company contact responsible for onboarding and staff data.</p>
                           </div>
-                          <button type="button" onClick={() => props.openAdminContactDetails(company)} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700">Edit Admin Contact</button>
+                          <button type="button" onClick={() => props.openAdminContactDetails(company)} className="rounded-2xl border admin-border admin-surface-secondary px-4 py-2 text-sm font-medium admin-text">Edit Admin Contact</button>
                         </div>
                         <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
                           <AdminContactDetail label="Contact Name" value={company.full_name || "-"} />
@@ -1119,7 +1119,7 @@ function BusinessTable(props: {
                         <input aria-label="Job title" placeholder="Job title" value={props.staffJobTitle} onChange={(e) => props.setStaffJobTitle(e.target.value)} className={styles.input} />
                         <input aria-label="Email" placeholder="Email" value={props.staffEmail} onChange={(e) => props.setStaffEmail(e.target.value)} className={styles.input} />
                         <input aria-label="Phone" placeholder="Phone" value={props.staffPhone} onChange={(e) => props.setStaffPhone(e.target.value)} className={styles.input} />
-                        <button onClick={() => props.createClientUser(company)} className="rounded-2xl bg-gradient-to-r from-pink-600 to-purple-700 text-white px-5 text-sm font-medium">Add User</button>
+                        <button onClick={() => props.createClientUser(company)} className="rounded-2xl admin-primary px-5 text-sm font-medium">Add User</button>
                       </div>
                       <StaffUsersTable users={users} companyId={company.id} findCardsForUser={props.findCardsForUser} openStaffDetails={props.openStaffDetails} openCardPreview={props.openCardPreview} deleteClientUser={props.deleteClientUser} />
                     </div>
@@ -1180,16 +1180,16 @@ function StaffUsersTable(props: {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="font-semibold">Users / Staff</h3>
-          <p className="mt-1 text-sm text-slate-500">Staff users under this company account.</p>
+          <p className="mt-1 text-sm admin-muted">Staff users under this company account.</p>
         </div>
-        <span className="rounded-full bg-slate-50 px-3 py-1 text-xs text-slate-600">{props.users.length} users</span>
+        <span className="rounded-full admin-surface-secondary px-3 py-1 text-xs admin-secondary">{props.users.length} users</span>
       </div>
       {props.users.length === 0 ? (
-        <p className="mt-5 text-sm text-slate-500">No users added yet. Add users here or import them later.</p>
+        <p className="mt-5 text-sm admin-muted">No users added yet. Add users here or import them later.</p>
       ) : (
-        <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+        <div className="mt-5 overflow-hidden rounded-2xl border admin-border">
           <table className={styles.inventoryTable}>
-            <thead className="bg-white text-left text-slate-500">
+            <thead className="admin-surface text-left admin-muted">
               <tr><th className="p-4">Full Name</th><th className="p-4">Job Title</th><th className="p-4">Email</th><th className="p-4">Phone</th><th className="p-4">Status</th><th className="p-4">Cards</th><th className="p-4">Card Status</th><th className="p-4">Actions</th></tr>
             </thead>
             <tbody>
@@ -1197,18 +1197,18 @@ function StaffUsersTable(props: {
                 const userCards = props.findCardsForUser(props.companyId, user);
                 const cardStatus = userCards.length ? userCards.some((card) => card.is_published) ? "published" : "draft" : "unpublished";
                 return (
-                  <tr key={user.id} className="border-t border-slate-100">
+                  <tr key={user.id} className="border-t admin-border">
                     <td data-label="Name" className="p-4">{user.full_name || user.name || "Unnamed user"}</td>
-                    <td data-label="Job title" className="p-4 text-slate-600">{user.job_title || "-"}</td>
-                    <td data-label="Email" className="p-4 text-slate-600">{user.email || "-"}</td>
-                    <td data-label="Phone" className="p-4 text-slate-600">{user.phone || "-"}</td>
+                    <td data-label="Job title" className="p-4 admin-secondary">{user.job_title || "-"}</td>
+                    <td data-label="Email" className="p-4 admin-secondary">{user.email || "-"}</td>
+                    <td data-label="Phone" className="p-4 admin-secondary">{user.phone || "-"}</td>
                     <td data-label="Status" className="p-4"><StatusBadge status={user.status || "active"} /></td>
-                    <td data-label="Cards" className="p-4 text-slate-600">{userCards.length}</td>
+                    <td data-label="Cards" className="p-4 admin-secondary">{userCards.length}</td>
                     <td data-label="Card status" className="p-4"><CardStatusBadge status={cardStatus} /></td>
                     <td data-label="Actions" className="p-4">
-                      <button onClick={() => props.openStaffDetails(user)} className="mr-4 text-sm text-purple-700 hover:text-purple-800">View</button>
-                      {userCards.length > 0 && <button onClick={() => props.openCardPreview(userCards, user)} className="mr-4 text-sm text-emerald-800 hover:text-green-200">Card Preview</button>}
-                      <button onClick={() => props.deleteClientUser(user)} className="text-sm text-red-700 hover:text-red-800">Delete</button>
+                      <button onClick={() => props.openStaffDetails(user)} className="mr-4 text-sm admin-accent ">View</button>
+                      {userCards.length > 0 && <button onClick={() => props.openCardPreview(userCards, user)} className="mr-4 text-sm admin-success-text ">Card Preview</button>}
+                      <button onClick={() => props.deleteClientUser(user)} className="text-sm admin-danger-text ">Delete</button>
                     </td>
                   </tr>
                 );
@@ -1223,21 +1223,21 @@ function StaffUsersTable(props: {
 
 function SectionHeader({ title, description, count, onViewFullList }: { title: string; description: string; count: number; onViewFullList: () => void }) {
   return (
-    <div className="flex items-center justify-between border-b border-slate-200 p-6">
+    <div className="flex items-center justify-between border-b admin-border p-6">
       <div>
         <h2 className="text-2xl font-semibold">{title}</h2>
-        <p className="mt-1 text-sm text-slate-500">{description}</p>
+        <p className="mt-1 text-sm admin-muted">{description}</p>
       </div>
       <div className="flex items-center gap-3">
-        <span className="rounded-full border border-[#AC00FF]/30 bg-purple-50 px-3 py-1 text-xs font-medium text-purple-700">{count} shown</span>
-        <button type="button" onClick={onViewFullList} className="rounded-2xl bg-slate-50 px-4 py-2 text-xs font-medium text-slate-600 transition hover:bg-white/15 hover:text-purple-800">{title.includes("Companies") ? "View All Companies" : "View All Clients"}</button>
+        <span className="rounded-full border admin-border admin-accent-surface px-3 py-1 text-xs font-medium admin-accent">{count} shown</span>
+        <button type="button" onClick={onViewFullList} className="rounded-2xl admin-surface-secondary px-4 py-2 text-xs font-medium admin-secondary transition admin-hover ">{title.includes("Companies") ? "View All Companies" : "View All Clients"}</button>
       </div>
     </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="block"><span className="mb-2 block text-sm font-medium text-slate-600">{label}</span>{children}</label>;
+  return <label className="block"><span className="mb-2 block text-sm font-medium admin-secondary">{label}</span>{children}</label>;
 }
 
 function FilterSelect({ value, onChange, label, options }: { value: string; onChange: (value: string) => void; label: string; options: string[] }) {
@@ -1250,11 +1250,11 @@ function FilterSelect({ value, onChange, label, options }: { value: string; onCh
 }
 
 function ImportStatus({ label, value }: { label: string; value: string }) {
-  return <div className="min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-3"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 truncate text-sm font-medium text-slate-700">{value}</p></div>;
+  return <div className="min-w-0 rounded-2xl border admin-border admin-surface px-4 py-3"><p className="text-xs admin-muted">{label}</p><p className="mt-1 truncate text-sm font-medium admin-text">{value}</p></div>;
 }
 
 function AdminContactDetail({ label, value, emphasized = false }: { label: string; value: string; emphasized?: boolean }) {
-  return <div className="min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-3"><p className="text-xs text-slate-500">{label}</p><p className={`mt-1 truncate text-sm font-medium ${emphasized ? "text-purple-700" : "text-slate-700"}`}>{value}</p></div>;
+  return <div className="min-w-0 rounded-2xl border admin-border admin-surface px-4 py-3"><p className="text-xs admin-muted">{label}</p><p className={`mt-1 truncate text-sm font-medium ${emphasized ? "admin-accent" : "admin-text"}`}>{value}</p></div>;
 }
 
 function UserDetailsModal({ busy, error, notice, onStatus, modal, form, editMode, onChange, onClose, onEdit, onCancel, onSave }: {
@@ -1279,7 +1279,7 @@ function UserDetailsModal({ busy, error, notice, onStatus, modal, form, editMode
   return (
     <AdminClientSheet title={modal.type === "staff" ? "Manage Staff" : "Manage Client"} busy={busy} onClose={onClose} notice={notice}>
       {error && <p role="alert" className={styles.error}>{error}</p>}
-      {modal.type !== "client" && <p className="mb-4 text-sm text-slate-500">Plan and billing labels are informational, not entitlement grants.</p>}
+      {modal.type !== "client" && <p className="mb-4 text-sm admin-muted">Plan and billing labels are informational, not entitlement grants.</p>}
       <div className={styles.headerActions}>
         {!editMode && <button disabled={busy} className={styles.primary} onClick={onEdit}>Edit details</button>}
         {modal.type === "admin" && <button disabled={busy} onClick={onStatus}>{form.status === "suspended" ? "Reactivate Client" : "Suspend Client"}</button>}
@@ -1288,14 +1288,14 @@ function UserDetailsModal({ busy, error, notice, onStatus, modal, form, editMode
         <div className={modal.type === "client" ? styles.clientDetails : "flex-1 overflow-y-auto p-6"}>
           <div className={modal.type === "client" ? styles.detailStack : "grid grid-cols-1 sm:grid-cols-2 gap-3"}>
             {fields.map(([field, label]) => (
-              <div key={field} className={modal.type === "client" ? styles.detailRow : "rounded-2xl border border-slate-200 bg-white p-3"}>
-                <p className="text-xs uppercase tracking-[0.14em] text-slate-500">{label}</p>
-                {editMode && !(modal.type === "client" && ["subscription_plan", "billing_status", "status"].includes(field)) ? <ModalEditField label={label} modalType={modal.type} field={field} value={form[field] || ""} form={form} onChange={onChange} /> : <p className="mt-3 break-words text-sm text-slate-700">{form[field] || "-"}</p>}
+              <div key={field} className={modal.type === "client" ? styles.detailRow : "rounded-2xl border admin-border admin-surface p-3"}>
+                <p className="text-xs uppercase tracking-[0.14em] admin-muted">{label}</p>
+                {editMode && !(modal.type === "client" && ["subscription_plan", "billing_status", "status"].includes(field)) ? <ModalEditField label={label} modalType={modal.type} field={field} value={form[field] || ""} form={form} onChange={onChange} /> : <p className="mt-3 break-words text-sm admin-text">{form[field] || "-"}</p>}
               </div>
             ))}
           </div>
         </div>
-        {editMode && <div className="flex justify-end gap-3 border-t border-slate-200 p-5"><button disabled={busy} onClick={onCancel} className="rounded-2xl bg-slate-50 px-5 py-3 text-sm font-medium">Cancel</button><button disabled={busy} onClick={onSave} className={`rounded-2xl bg-gradient-to-r from-pink-600 to-purple-700 text-white px-5 py-3 text-sm font-medium ${modal.type === "client" ? `${styles.primary} ${styles.individualPrimary}` : ""}`}>{busy ? "Saving…" : "Save Changes"}</button></div>}
+        {editMode && <div className="flex justify-end gap-3 border-t admin-border p-5"><button disabled={busy} onClick={onCancel} className="rounded-2xl admin-surface-secondary px-5 py-3 text-sm font-medium">Cancel</button><button disabled={busy} onClick={onSave} className={`rounded-2xl admin-primary px-5 py-3 text-sm font-medium ${modal.type === "client" ? `${styles.primary} ${styles.individualPrimary}` : ""}`}>{busy ? "Saving…" : "Save Changes"}</button></div>}
       </fieldset>
       {modal.type === "client" && <>
         <dl className={styles.clientSummary} aria-label="Client summary">
@@ -1314,7 +1314,7 @@ function UserDetailsModal({ busy, error, notice, onStatus, modal, form, editMode
 }
 
 function ModalEditField({ label, modalType, field, value, form, onChange }: { label: string; modalType: "client" | "admin" | "staff"; field: string; value: string; form: Record<string, string>; onChange: (field: string, value: string) => void }) {
-  const inputClass = "mt-2 h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none transition focus:border-[#AC00FF]";
+  const inputClass = "mt-2 h-10 w-full rounded-xl border admin-border admin-surface-secondary px-3 text-sm outline-none transition focus:border-[var(--admin-focus)]";
   if (field === "status") {
     const options = modalType === "staff" ? ["active", "suspended"] : ["active", "pending", "suspended"];
     return <select aria-label={label} value={value} onChange={(e) => onChange(field, e.target.value)} className={inputClass}>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select>;
@@ -1334,7 +1334,7 @@ function ModalEditField({ label, modalType, field, value, form, onChange }: { la
 }
 
 function TableMessage({ message }: { message: string }) {
-  return <tr><td colSpan={6} className="p-5 text-slate-500">{message}</td></tr>;
+  return <tr><td colSpan={6} className="p-5 admin-muted">{message}</td></tr>;
 }
 
 function PublishedCardPreviewModal({ cards, user, currentIndex, templates, onPrevious, onNext, onClose, onDeleteCard }: {
@@ -1352,22 +1352,22 @@ function PublishedCardPreviewModal({ cards, user, currentIndex, templates, onPre
   const data = user ? { ...card, full_name: user.full_name || user.name || card.full_name, job_title: user.job_title || card.job_title, email: user.email || card.email, phone: user.phone || card.phone, website: user.website || card.website, address: user.address || card.address, whatsapp: user.whatsapp || card.whatsapp, linkedin: user.linkedin || card.linkedin, instagram: user.instagram || card.instagram, facebook: user.facebook || card.facebook, youtube: user.youtube || card.youtube, booking_link: user.booking_link || card.booking_link, custom_url: user.custom_url || card.custom_url } : card;
   return (
     <AdminClientSheet title="Card Preview" onClose={onClose}>
-        <div className="flex items-start justify-between gap-6 border-b border-slate-200 p-6">
-          <div><h2 className="text-2xl font-semibold">Card Preview</h2><p className="mt-1 text-sm text-slate-500">{card.card_name || card.name || "Digital card"} · {template?.name || "Template unavailable"}</p></div>
+        <div className="flex items-start justify-between gap-6 border-b admin-border p-6">
+          <div><h2 className="text-2xl font-semibold">Card Preview</h2><p className="mt-1 text-sm admin-muted">{card.card_name || card.name || "Digital card"} · {template?.name || "Template unavailable"}</p></div>
           <div className="flex items-center gap-3">
-            {cards.length > 1 && <><button onClick={onPrevious} className="rounded-2xl bg-slate-50 px-4 py-2.5 text-sm">←</button><span className="rounded-full border border-[#AC00FF]/30 bg-purple-50 px-3 py-1 text-xs font-medium text-purple-700">Card {currentIndex + 1} of {cards.length}</span><button onClick={onNext} className="rounded-2xl bg-slate-50 px-4 py-2.5 text-sm">→</button></>}
-            <button onClick={() => onDeleteCard(card)} className="rounded-2xl bg-red-50 px-5 py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-500/25">Delete Card</button>
-            <button onClick={onClose} className="rounded-2xl bg-slate-50 px-5 py-2.5 text-sm font-medium">Close</button>
+            {cards.length > 1 && <><button onClick={onPrevious} className="rounded-2xl admin-surface-secondary px-4 py-2.5 text-sm">←</button><span className="rounded-full border admin-border admin-accent-surface px-3 py-1 text-xs font-medium admin-accent">Card {currentIndex + 1} of {cards.length}</span><button onClick={onNext} className="rounded-2xl admin-surface-secondary px-4 py-2.5 text-sm">→</button></>}
+            <button onClick={() => onDeleteCard(card)} className="rounded-2xl admin-status-danger px-5 py-2.5 text-sm font-medium admin-danger-text transition admin-hover">Delete Card</button>
+            <button onClick={onClose} className="rounded-2xl admin-surface-secondary px-5 py-2.5 text-sm font-medium">Close</button>
           </div>
         </div>
         <div className="max-h-[calc(85vh-104px)] overflow-y-auto p-6">
-          <p className="mb-4 text-center text-xs text-slate-500">
+          <p className="mb-4 text-center text-xs admin-muted">
             Admin deletion is for support and enterprise management only.
           </p>
           {template ? (
             <div className={`mx-auto max-w-md ${styles.mediaPreview}`}><CardRenderer mode="preview" showActions={template.supports_save_contact ?? true} template={template} cardData={data} /></div>
           ) : (
-            <div className="mx-auto max-w-md rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm leading-6 text-slate-600">
+            <div className="mx-auto max-w-md rounded-2xl border border-dashed admin-border admin-surface p-6 text-center text-sm leading-6 admin-secondary">
               This card references a template that is not currently published.
             </div>
           )}
@@ -1381,11 +1381,11 @@ function ClientActions({ client, onView }: { client: Client; onView: (client: Cl
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const styles = status === "active" ? "bg-emerald-50 text-emerald-800" : status === "pending" ? "bg-amber-50 text-amber-800" : "bg-red-50 text-red-700";
+  const styles = status === "active" ? "admin-status-success" : status === "pending" ? "admin-status-warning" : "admin-status-danger";
   return <span className={`rounded-full px-3 py-1 text-xs capitalize ${styles}`}>{status}</span>;
 }
 
 function CardStatusBadge({ status }: { status: string }) {
-  const styles = status === "published" ? "bg-emerald-50 text-emerald-800" : status === "draft" ? "bg-amber-50 text-amber-800" : "bg-slate-50 text-slate-500";
+  const styles = status === "published" ? "admin-status-success" : status === "draft" ? "admin-status-warning" : "admin-status-neutral";
   return <span className={`rounded-full px-3 py-1 text-xs capitalize ${styles}`}>{status}</span>;
 }

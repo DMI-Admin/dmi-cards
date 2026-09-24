@@ -99,7 +99,7 @@ assert.match(css,/stackedFields.*grid-template-columns:minmax\(0,1fr\)/);
 assert.match(css,/detailStack.*grid-template-columns:minmax\(0,1fr\)/);
 assert.match(css,/paginationPill.*border-radius:999px/);
 assert.match(css,/paginationPill:disabled.*background:/);
-assert.match(css,/primary.*color:#fff!important/);
+assert.match(css,/primary.*color:var\(--admin-on-primary\)!important/);
 console.log('PASS: Individual stacked create/manage/edit, lower Account Actions, explicit white primary text, Search placeholder and shaped disabled pagination.');
 
 const compactEdit=render('individual',{detailsModal:clientDetail,detailsEditMode:true,detailsForm:{full_name:'Person 0',status:'active'}}).split('<dialog')[1];
@@ -108,3 +108,12 @@ assert.deepEqual([...compactEdit.matchAll(/aria-label="(Full Name|Email|Phone Nu
 assert.match(compactEdit,/aria-label="Client summary"/);
 assert.match(compactEdit,/<dt>Plan<\/dt>/);assert.match(compactEdit,/<dt>Cards<\/dt>/);assert.match(compactEdit,/<dt>Status<\/dt>/);
 console.log('PASS: Individual contact-only editor and compact display-only Plan/Cards/Status summary.');
+
+for(const area of ['individual','business']){
+ const pattern=new RegExp('class="inventoryTable compactInventory '+area+'Inventory"');
+ assert.match(render(area),pattern);assert.match(render(area,{fullListMode:area}),pattern);
+}
+assert.match(css,/@media \(min-width:1024px\)/);
+assert.match(css,/compactInventory td.*padding:6px 12px; font-size:13px/);
+assert.match(css,/compactInventory td button.*min-height:44px/);
+console.log('PASS: Recent/View All share scoped desktop density and column variants; touch targets retained.');

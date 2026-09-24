@@ -15,6 +15,8 @@ import {
   Space_Mono,
   Syne,
 } from "next/font/google";
+import { AdminAppearanceInitializer } from "@/components/admin/AdminAppearance";
+import { adminAppearanceBootstrap } from "@/lib/admin-appearance";
 import ThemeInitializer from "@/components/ThemeInitializer";
 import "./globals.css";
 
@@ -115,8 +117,10 @@ export default function RootLayout({
         data-theme="system"
         suppressHydrationWarning
       >
+        <head><script dangerouslySetInnerHTML={{ __html: adminAppearanceBootstrap }} /></head>
         <body className="min-h-full flex flex-col">
           <ThemeInitializer />
+          <AdminAppearanceInitializer />
           {children}
         </body>
       </html>

@@ -1,0 +1,181 @@
+/* Admin-only tokens. Client Portal data-theme and storage remain independent. */
+:root[data-admin-appearance] {
+  color-scheme: light;
+  --admin-page: #f5f4f9;
+  --admin-sidebar: #ffffff;
+  --admin-surface: #ffffff;
+  --admin-surface-secondary: #eeeef5;
+  --admin-card: #ffffff;
+  --admin-border: #dcd9e6;
+  --admin-border-control: #85849a;
+  --admin-text: #17213b;
+  --admin-text-secondary: #4c5369;
+  --admin-muted: #62697b;
+  --admin-input: #ffffff;
+  --admin-table-header: #eeeef5;
+  --admin-table-row: #ffffff;
+  --admin-hover: #f2eef8;
+  --admin-drawer: #ffffff;
+  --admin-dialog: #ffffff;
+  --admin-overlay: #10142688;
+  --admin-disabled-bg: #e6e4ed;
+  --admin-disabled-text: #5a6173;
+  --admin-success-bg: #e5f5ed;
+  --admin-success-text: #15623f;
+  --admin-warning-bg: #fff1d6;
+  --admin-warning-text: #80500c;
+  --admin-danger-bg: #fce9ee;
+  --admin-danger-text: #a01c38;
+  --admin-danger-solid: #af203b;
+  --admin-accent: #8224b6;
+  --admin-accent-soft: #f3eafa;
+  --admin-focus: #8426c7;
+  --admin-shadow: #17213b25;
+  --admin-on-primary: #ffffff;
+  --admin-gradient: linear-gradient(110deg,#bf226f,#7721b8);
+  --bg-primary: var(--admin-page);
+  --bg-secondary: var(--admin-surface);
+  --bg-tertiary: var(--admin-surface-secondary);
+  --bg-card: var(--admin-card);
+  --bg-card-hover: var(--admin-hover);
+  --bg-surface: var(--admin-surface-secondary);
+  --bg-glass: var(--admin-surface);
+  --text-primary: var(--admin-text);
+  --text-secondary: var(--admin-text-secondary);
+  --text-muted: var(--admin-muted);
+  --text-accent: var(--admin-accent);
+  --text-inverse: var(--admin-on-primary);
+  --border-default: var(--admin-border);
+  --border-subtle: var(--admin-border);
+  --border-strong: var(--admin-border-control);
+  --border-accent: var(--admin-accent);
+  --button-secondary-bg: var(--admin-surface);
+  --button-secondary-text: var(--admin-text);
+  --button-hover-bg: var(--admin-hover);
+  --input-bg: var(--admin-input);
+  --input-text: var(--admin-text);
+  --input-border: var(--admin-border-control);
+  --input-focus: var(--admin-focus);
+  --disabled-bg: var(--admin-disabled-bg);
+  --disabled-text: var(--admin-disabled-text);
+  --success: var(--admin-success-text);
+  --success-bg: var(--admin-success-bg);
+  --warning: var(--admin-warning-text);
+  --warning-bg: var(--admin-warning-bg);
+  --error: var(--admin-danger-text);
+  --error-bg: var(--admin-danger-bg);
+  --info: var(--admin-accent);
+  --info-bg: var(--admin-accent-soft);
+  --badge-neutral-bg: var(--admin-surface-secondary);
+  --badge-neutral-text: var(--admin-text-secondary);
+  --badge-pro-bg: var(--admin-accent-soft);
+  --badge-pro-text: var(--admin-accent);
+  --badge-brand-text: var(--admin-accent);
+  --brand-gradient: var(--admin-gradient);
+  --brand-gradient-hover: var(--admin-gradient);
+  --brand-glow: 0 4px 18px var(--admin-shadow);
+  --shadow-sm: 0 4px 18px var(--admin-shadow);
+  --shadow-md: 0 4px 18px var(--admin-shadow);
+  --shadow-lg: 0 4px 18px var(--admin-shadow);
+  --shadow-xl: 0 4px 18px var(--admin-shadow);
+}
+:root[data-admin-appearance="dark"] {
+  color-scheme: dark;
+  --admin-page: #111320;
+  --admin-sidebar: #191c2e;
+  --admin-surface: #1e2235;
+  --admin-surface-secondary: #292d42;
+  --admin-card: #1e2235;
+  --admin-border: #454b65;
+  --admin-border-control: #7c86a5;
+  --admin-text: #f5f6fc;
+  --admin-text-secondary: #d2d6e7;
+  --admin-muted: #b0b8d0;
+  --admin-input: #191d30;
+  --admin-table-header: #292d42;
+  --admin-table-row: #1e2235;
+  --admin-hover: #32364e;
+  --admin-drawer: #1e2235;
+  --admin-dialog: #1e2235;
+  --admin-overlay: #060816b3;
+  --admin-disabled-bg: #30364c;
+  --admin-disabled-text: #b0b8d0;
+  --admin-success-bg: #173e32;
+  --admin-success-text: #9de7bb;
+  --admin-warning-bg: #48381a;
+  --admin-warning-text: #f5d18a;
+  --admin-danger-bg: #482534;
+  --admin-danger-text: #ffb4c7;
+  --admin-danger-solid: #af203b;
+  --admin-accent: #efafff;
+  --admin-accent-soft: #382544;
+  --admin-focus: #eea4ff;
+  --admin-shadow: #00000066;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-admin-appearance="system"] {
+    color-scheme: dark;
+  --admin-page: #111320;
+  --admin-sidebar: #191c2e;
+  --admin-surface: #1e2235;
+  --admin-surface-secondary: #292d42;
+  --admin-card: #1e2235;
+  --admin-border: #454b65;
+  --admin-border-control: #7c86a5;
+  --admin-text: #f5f6fc;
+  --admin-text-secondary: #d2d6e7;
+  --admin-muted: #b0b8d0;
+  --admin-input: #191d30;
+  --admin-table-header: #292d42;
+  --admin-table-row: #1e2235;
+  --admin-hover: #32364e;
+  --admin-drawer: #1e2235;
+  --admin-dialog: #1e2235;
+  --admin-overlay: #060816b3;
+  --admin-disabled-bg: #30364c;
+  --admin-disabled-text: #b0b8d0;
+  --admin-success-bg: #173e32;
+  --admin-success-text: #9de7bb;
+  --admin-warning-bg: #48381a;
+  --admin-warning-text: #f5d18a;
+  --admin-danger-bg: #482534;
+  --admin-danger-text: #ffb4c7;
+  --admin-danger-solid: #af203b;
+  --admin-accent: #efafff;
+  --admin-accent-soft: #382544;
+  --admin-focus: #eea4ff;
+  --admin-shadow: #00000066;
+  }
+}
+
+/* Semantic utilities for Admin surfaces, independent of Tailwind's fixed palette.
+   Specificity bridges the existing global legacy !important overrides. */
+:root[data-admin-appearance] body .admin-surface { background:var(--admin-surface)!important; }
+:root[data-admin-appearance] body .admin-surface-secondary { background:var(--admin-surface-secondary)!important; }
+:root[data-admin-appearance] body .admin-border { border-color:var(--admin-border)!important; }
+:root[data-admin-appearance] body .admin-text { color:var(--admin-text)!important; }
+:root[data-admin-appearance] body .admin-secondary { color:var(--admin-text-secondary)!important; }
+:root[data-admin-appearance] body .admin-muted { color:var(--admin-muted)!important; }
+:root[data-admin-appearance] body .admin-accent { color:var(--admin-accent)!important; }
+:root[data-admin-appearance] body .admin-accent-surface { background:var(--admin-accent-soft)!important; color:var(--admin-accent)!important; }
+:root[data-admin-appearance] body .admin-primary { background:var(--admin-gradient)!important; color:var(--admin-on-primary)!important; border-color:transparent!important; }
+:root[data-admin-appearance] body .admin-hover:hover { background:var(--admin-hover)!important; }
+:root[data-admin-appearance] body .admin-status-success { color:var(--admin-success-text)!important; background:var(--admin-success-bg)!important; }
+:root[data-admin-appearance] body .admin-status-warning { color:var(--admin-warning-text)!important; background:var(--admin-warning-bg)!important; }
+:root[data-admin-appearance] body .admin-status-danger { color:var(--admin-danger-text)!important; background:var(--admin-danger-bg)!important; }
+:root[data-admin-appearance] body .admin-danger-text { color:var(--admin-danger-text)!important; }
+:root[data-admin-appearance] body .admin-success-text { color:var(--admin-success-text)!important; }
+:root[data-admin-appearance] body .admin-status-neutral { color:var(--admin-muted)!important; background:var(--admin-surface-secondary)!important; }
+:root[data-admin-appearance] body .admin-sidebar { background:var(--admin-sidebar)!important; border-color:var(--admin-border)!important; }
+:root[data-admin-appearance] .admin-sidebar > div { flex-shrink:0; border-color:var(--admin-border); }
+:root[data-admin-appearance] .admin-sidebar nav { min-height:0; }
+:root[data-admin-appearance] .admin-appearance-control { display:grid; gap:6px; min-width:0; margin-bottom:16px; }
+:root[data-admin-appearance] .admin-appearance-control label { font-size:12px; font-weight:600; color:var(--admin-muted); }
+:root[data-admin-appearance] .admin-appearance-control select { min-height:44px; width:100%; min-width:0; border:1px solid var(--admin-border-control); border-radius:10px; padding:8px 12px; background:var(--admin-input); color:var(--admin-text); }
+:root[data-admin-appearance] .admin-appearance-control select:focus-visible,
+:root[data-admin-appearance] .admin-sidebar :is(a,button):focus-visible { outline:3px solid var(--admin-focus); outline-offset:2px; }
+:root[data-admin-appearance] body :is(.admin-primary,.admin-surface,.admin-surface-secondary):disabled { background:var(--admin-disabled-bg)!important; color:var(--admin-disabled-text)!important; opacity:1; }
+
+/* Theme colors switch together; do not interpolate text against a new surface. */
+:root[data-admin-appearance] body { transition:none; }
+:root[data-admin-appearance] .admin-sidebar a { transition-property:box-shadow,transform; }

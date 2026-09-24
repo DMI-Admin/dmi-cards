@@ -1,5 +1,6 @@
 "use client";
 
+import AdminAppearanceControl from "./admin/AdminAppearance";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -76,7 +77,7 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="dmi-sidebar sticky top-0 flex h-screen w-72 shrink-0 flex-col border-r">
+    <aside className="dmi-sidebar admin-sidebar sticky top-0 flex h-dvh w-72 shrink-0 flex-col border-r">
       <div className="border-b px-6 py-8">
         <div className="rounded-[var(--radius-lg)] border border-[var(--border-brand)] bg-[image:var(--brand-gradient-subtle)] p-4">
           <div className="flex items-center gap-3">
@@ -138,6 +139,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="border-t p-4">
+        <AdminAppearanceControl />
         <button
           type="button"
           onClick={handleSignOut}

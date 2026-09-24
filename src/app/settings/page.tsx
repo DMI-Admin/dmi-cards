@@ -1,4 +1,4 @@
-import ThemeSelector from "@/components/ThemeSelector";
+import AdminAppearanceControl from "@/components/admin/AdminAppearance";
 
 export default function SettingsPage() {
   return (
@@ -6,7 +6,7 @@ export default function SettingsPage() {
       <h1 className="text-3xl font-bold">Settings</h1>
       <p className="mt-2 text-white/60">Admin settings placeholder page.</p>
       <div className="mt-8 max-w-3xl">
-        <ThemeSelector />
+        <AdminAppearanceControl />
       </div>
     </main>
   );

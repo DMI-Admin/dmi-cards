@@ -1,6 +1,7 @@
 // Fixture-only browser regression: no real auth, database or application mutations.
 // Run after npm run build; browser tooling is supplied externally, not added to app dependencies.
 // node scripts/validate-admin-clients-responsive.mjs --esbuild-module=/path/to/esbuild --playwright-module=/path/to/playwright
+import {runAdminThemeChecks, adminAppearanceBootstrap} from './validate-admin-appearance.mjs';
 import {createRequire} from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,7 +12,8 @@ const require=createRequire(import.meta.url);
 const option=name=>process.argv.find(arg=>arg.startsWith(name+'='))?.slice(name.length+1);
 const esbuildPath=option('--esbuild-module'), playwrightPath=option('--playwright-module');
 assert.ok(esbuildPath && playwrightPath,'Supply external esbuild and playwright module paths; no app dependencies are changed.');
-const esbuild=require(esbuildPath), {chromium}=require(playwrightPath);
+const esbuild=require(esbuildPath), engines=require(playwrightPath);
+const engine=option('--browser') || 'chromium';
 const root=process.cwd(), tmp=fs.mkdtempSync(path.join(os.tmpdir(),'dmi-admin-responsive-'));
 const mocks={
 '@clerk/nextjs':"export const useAuth=()=>({getToken:async()=>{window.events.push('token');return 'fixture-token';}});export const useClerk=()=>({signOut:async()=>{}});",
@@ -21,7 +23,7 @@ const mocks={
 '@/components/CardRenderer':"export default function CardRenderer(){return null;}",
 '@/lib/templates':"export const getAdminTemplates=async()=>[];",
 '@/lib/admin-card-mutations':"export const mutateAdminCard=async()=>{};",
-'@/lib/admin-inventory':"export const getAdminInventory=async type=>{await new Promise(r=>setTimeout(r,10));return type==='clients'?window.records:[]};",
+'@/lib/admin-inventory':"export const getAdminInventory=async type=>{await new Promise(r=>setTimeout(r,location.search.includes('loading')?800:10));if(location.search.includes('empty'))return [];return type==='clients'?window.records:[]};",
 '@/lib/admin-client-contract':`
 export async function getAdminClientCounts(){return {summary:{},areas:{individualCards:0,businessCards:0,businessPeople:0,businessActivatedUsers:0},staffCards:{},cardCounts:{}}}
 export async function mutateAdminClient(url,method,body,token){
@@ -36,8 +38,10 @@ export async function mutateAdminClient(url,method,body,token){
 fs.writeFileSync(path.join(tmp,'entry.jsx'),`
 import React from 'react';import {createRoot} from 'react-dom/client';
 import Page from '${root}/src/components/admin/AdminClientsPage.tsx';
+import {AdminAppearanceInitializer} from '${root}/src/components/admin/AdminAppearance.tsx';
+import ThemeInitializer from '${root}/src/components/ThemeInitializer.tsx';
 window.events=[];window.records=Array.from({length:30},(_,i)=>({id:'fixture-'+i,full_name:'Alex Customer '+i,company_name:i>=15?'Company '+i:null,email:'alex'+i+'@example.invalid',account_type:i>=15?'business':'individual',status:i%5===0?'suspended':'active',subscription_plan:'free',created_at:new Date(2026,0,i+1).toISOString()}));
-createRoot(document.getElementById('root')).render(<Page area={location.pathname.includes('business')?'business':'individual'}/>);
+createRoot(document.getElementById('root')).render(<><ThemeInitializer/><AdminAppearanceInitializer/><Page area={location.pathname.includes('business')?'business':'individual'}/></>);
 `);
 await esbuild.build({entryPoints:[path.join(tmp,'entry.jsx')],bundle:true,outfile:path.join(tmp,'app.js'),nodePaths:[root+'/node_modules'],jsx:'automatic',loader:{'.css':'local-css'},plugins:[{name:'fixture',setup(build){
 build.onResolve({filter:/.*/},args=>{
@@ -52,18 +56,41 @@ const server=http.createServer((req,res)=>{
  const files={'/app.js':[tmp+'/app.js','text/javascript'],'/app.css':[tmp+'/app.css','text/css'],'/dmi-cards-logo.svg':[root+'/public/dmi-cards-logo.svg','image/svg+xml']};
  if(req.url==='/base.css'){res.setHeader('Content-Type','text/css');res.end(css);return;}
  if(files[req.url]){res.setHeader('Content-Type',files[req.url][1]);res.end(fs.readFileSync(files[req.url][0]));return;}
- res.setHeader('Content-Type','text/html');res.end('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/base.css"><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script src="/app.js"></script></body></html>');
+ res.setHeader('Content-Type','text/html');res.end('<!doctype html><html data-theme="system"><head><script>'+adminAppearanceBootstrap+'</script><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/base.css"><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script src="/app.js"></script></body></html>');
 });
+async function checkInventoryDensity(table,width){
+ const m=await table.evaluate(table=>{
+  const row=table.querySelector('tbody tr'),cells=[...row.cells],heads=[...table.querySelectorAll('thead th')];
+  return {height:row.getBoundingClientRect().height,display:getComputedStyle(row).display,headDisplay:getComputedStyle(table.querySelector('thead')).display,
+   widths:heads.map(n=>n.getBoundingClientRect().width),font:cells.map(n=>getComputedStyle(n).fontSize),padding:getComputedStyle(cells[0]).paddingTop,
+   weight:getComputedStyle(cells[0]).fontWeight,headerFont:getComputedStyle(heads[0]).fontSize,
+   controls:[...row.querySelectorAll('button')].map(n=>({height:n.getBoundingClientRect().height,font:getComputedStyle(n).fontSize})),
+   spans:[...row.querySelectorAll('span')].map(n=>getComputedStyle(n).fontSize),
+   lines:cells.slice(0,2).map(n=>{const range=document.createRange();range.selectNodeContents(n);return range.getBoundingClientRect().height/parseFloat(getComputedStyle(n).lineHeight)}),
+   contained:[...table.querySelectorAll('td[data-label="Status"] > span, td[data-label="Manage"] button')].every(n=>{const cell=n.closest('td'),c=cell.getBoundingClientRect(),r=n.getBoundingClientRect(),style=getComputedStyle(cell);return r.left>=c.left+parseFloat(style.paddingLeft)-1&&r.right<=c.right-parseFloat(style.paddingRight)+1&&n.getClientRects().length===1;}),
+   overflow:table.scrollWidth>table.clientWidth+1};
+ });
+ assert.equal(m.overflow,false,'inventory overflow');
+ if(width>=1024){
+  assert.equal(m.contained,true,'status/actions stay on one line within cells');
+  assert.ok(m.height<=58&&m.height>=44,'compact row '+JSON.stringify(m));assert.equal(m.padding,'6px');
+  assert.ok(m.font.every(f=>f==='13px'));assert.ok(m.spans.every(f=>f==='13px'));assert.ok(Number(m.weight)>=600);assert.equal(m.headerFont,'11px');
+  assert.ok(m.controls.every(c=>c.height>=44&&c.font==='13px'));assert.ok(m.widths[3]<=57);
+  assert.ok(m.widths[0]>m.widths[2]*2&&m.widths[1]>m.widths[2]*2);
+  assert.ok(m.widths[4]<=105&&m.widths[5]<=101);assert.ok(m.lines.every(n=>n<1.3),'ordinary contact text fits one line');
+ }else if(width<640){assert.equal(m.display,'grid');assert.equal(m.headDisplay,'none');assert.equal(m.padding,'0px');}
+}
 (async()=>{
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
  const origin='http://127.0.0.1:'+server.address().port;
- const browser=await chromium.launch({headless:true});
+ const browser=await engines[engine].launch({headless:true});
  const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/*',route=>route.request().url().startsWith(origin+'/')?route.continue():route.abort());
- for(const area of ['individual','business'])for(const width of [1920,1440,1024,768,540,390,320]){
+ for(const area of ['individual','business'])for(const width of [1920,1440,1280,1200,1024,768,540,390,320]){
   await page.setViewportSize({width,height:900});
   await page.goto(origin+'/clients/'+area);
   await page.getByRole('button',{name:area==='individual'?'Manage Alex Customer 14':'Manage',exact:area==='business'}).first().waitFor();
+  await checkInventoryDensity(page.locator('table[class*="compactInventory"]').first(),width);
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
   assert.equal(overflow,false,area+' overflow '+width);
   if(width===390||width===1440)await page.screenshot({path:tmp+'/'+area+'-'+width+'.png',fullPage:true});
@@ -76,7 +103,8 @@ const server=http.createServer((req,res)=>{
   const box=await page.locator('dialog[open]').boundingBox();
   assert.ok(box.width<=width,area+' dialog fits '+width);
   if(width<640)assert.equal(Math.round(box.width),width);
-  for(let i=0;i<8;i++){await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>Boolean(document.activeElement.closest('dialog[open]'))),true);}
+  // WebKit on macOS uses Option-Tab to include buttons/links in keyboard navigation.
+  for(let i=0;i<8;i++){await page.keyboard.press(engine==='webkit'?'Alt+Tab':'Tab');assert.equal(await page.evaluate(()=>Boolean(document.activeElement.closest('dialog[open]'))),true);}
   await page.keyboard.press('Escape');assert.equal(await page.locator('dialog[open]').count(),0);
   if(area==='individual'){
    await page.getByRole('button',{name:'Manage Alex Customer 14',exact:true}).click();
@@ -171,10 +199,11 @@ const server=http.createServer((req,res)=>{
  await page.getByRole('dialog',{name:'DMI Cards Admin',exact:true}).waitFor();
  await page.keyboard.press('Escape');
  assert.equal(await page.locator('dialog[open]').count(),0);
+ if(process.argv.includes('--theme')){await runAdminThemeChecks(page,origin,tmp,checkInventoryDensity);await page.goto(origin+'/clients/business');}
  await page.emulateMedia({reducedMotion:'reduce'});
  assert.equal(await page.getByRole('button',{name:'+ Add Business',exact:true}).evaluate(node=>getComputedStyle(node).animationName),'none');
  assert.equal(errors.length,0,errors.join('\n'));
- console.log('PASS: 14 responsive viewports, no page overflow, drawer width/Escape, create → success → exact-ID manage, cancelled status sends nothing, failure stays open, fresh-token retry after explicit action, successful suspend.');
+ console.log('PASS: 18 responsive viewports, no page overflow, drawer width/Escape, create → success → exact-ID manage, cancelled status sends nothing, failure stays open, fresh-token retry after explicit action, successful suspend.');
  console.log('Screenshots:',tmp);
  await browser.close();server.close();
 })().catch(e=>{console.error(e);process.exitCode=1;server.close();process.exit(1)});
