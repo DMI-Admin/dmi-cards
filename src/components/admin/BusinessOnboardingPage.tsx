@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import Sidebar from "@/components/Sidebar";
 import { accessTypes, onboardingStatuses, statusLabels, textFields, validateOnboarding, type OnboardingRecord } from "@/lib/business-onboarding-contract";
+import BusinessEntitlementPanel from "./BusinessEntitlementPanel";
 import styles from "./BusinessOnboardingPage.module.css";
 type Form = Record<string,string>;
 type Summary = { inProgress:number; awaitingInformation:number; awaitingPayment:number; trialComplimentary:number; readyToActivate:number };
@@ -17,6 +18,7 @@ export default function BusinessOnboardingPage(){
  const {getToken}=useAuth();
  const [menu,setMenu]=useState(false),[open,setOpen]=useState(false),[record,setRecord]=useState<OnboardingRecord|null>(null);
  const [form,setForm]=useState<Form>(blank),[baseline,setBaseline]=useState(()=>JSON.stringify(blank()));
+ const [commercialLocked,setCommercialLocked]=useState(true);
  const [requestId,setRequestId]=useState(""); const [busy,setBusy]=useState(false);const pending=useRef(false);
  const [error,setError]=useState(""),[notice,setNotice]=useState("");
  const [items,setItems]=useState<OnboardingRecord[]>([]),[total,setTotal]=useState(0),[summary,setSummary]=useState<Summary|null>(null);
@@ -51,9 +53,9 @@ export default function BusinessOnboardingPage(){
   },200);
   return ()=>{clearTimeout(timer);abort.abort();};
  },[search,status,access,page,refresh]);
- function start(){if(!askLeave())return;const f=blank();setForm(f);setBaseline(JSON.stringify(f));setRecord(null);setRequestId(crypto.randomUUID());setError("");setNotice("");setOpen(true);}
+ function start(){if(!askLeave())return;setCommercialLocked(false);const f=blank();setForm(f);setBaseline(JSON.stringify(f));setRecord(null);setRequestId(crypto.randomUUID());setError("");setNotice("");setOpen(true);}
  async function manage(id:string){
-  if(!askLeave())return;pending.current=true;setBusy(true);setError("");
+  if(!askLeave())return;setCommercialLocked(true);pending.current=true;setBusy(true);setError("");
   try{const {record:saved}=await read<{record:OnboardingRecord}>(`/api/admin/business-onboardings/${id}`);const f=formFor(saved);setRecord(saved);setForm(f);setBaseline(JSON.stringify(f));setOpen(true);setNotice("");setRequestId(saved.create_request_id);}
   catch(e){setError(e instanceof Error?e.message:"Could not open onboarding.");}finally{pending.current=false;setBusy(false);}
  }
@@ -86,18 +88,21 @@ export default function BusinessOnboardingPage(){
     <form onSubmit={e=>{e.preventDefault();void save();}}>
      <fieldset disabled={busy} className={styles.sections}>
       {groups.map(group=><section key={group.title}><h3>{group.title}</h3><div className={styles.fields}>{group.fields.map(([key,label])=>field(key,label,key==="contact_email"?"email":key==="website"?"url":"text"))}</div></section>)}
-      <section><h3>Commercial Setup</h3><div className={styles.fields}>
+      <section><h3>Proposed Commercial Terms</h3><p className={styles.explainer}>Dates use 00:00 UTC. End / expiry is exclusive. Saving proposals grants no commercial entitlement.</p>{commercialLocked&&record&&<p className={styles.explainer}>Saved commercial terms are locked while checking approval or after activation. Use explicit commercial actions below.</p>}<fieldset className={styles.fields} disabled={busy||commercialLocked}>
        {field("requested_seats","Requested Seats","number")}
        <label>Access Type<select value={form.access_type} onChange={e=>update("access_type",e.target.value)}><option value="">Not specified</option>{accessTypes.map(v=><option key={v} value={v}>{v[0].toUpperCase()+v.slice(1)}</option>)}</select></label>
        {field("contract_start","Contract Start","date")}{field("contract_end","Contract End / Expiry","date")}
        {form.access_type==="invoice"&&<label>Billing Frequency<select value={form.billing_frequency} onChange={e=>update("billing_frequency",e.target.value)}><option value="">Not specified</option><option value="annual">Annual</option><option value="quarterly">Quarterly</option></select></label>}
        {field("invoice_reference","Invoice Reference")}{field("po_reference","PO Reference")}
        <label>Onboarding Method<input value="DMI Managed" readOnly/></label>
-      </div></section>
-      <section><h3>Onboarding Status</h3><label>Status<select value={form.status} onChange={e=>update("status",e.target.value)}>{onboardingStatuses.map(v=><option key={v} value={v}>{statusLabels[v]}</option>)}</select></label><p className={styles.explainer}>Ready to Activate records preparation only. Activation is a separate future phase.</p></section>
+      </fieldset></section>
+      <section><h3>Onboarding Status</h3><label>Status<select value={form.status} onChange={e=>update("status",e.target.value)}>{onboardingStatuses.map(v=><option key={v} value={v}>{statusLabels[v]}</option>)}</select></label><p className={styles.explainer}>Ready to Activate records commercial preparation only. Business Portal activation is a separate future phase.</p></section>
       <button type="submit" className={styles.primary}>{busy?"Saving…":"Save Onboarding"}</button>
      </fieldset>
     </form>
+    {record&&<BusinessEntitlementPanel key={record.id} record={record} disabled={busy||dirty} onLocked={setCommercialLocked} onBusy={value=>{pending.current=value;setBusy(value);}} onCommitted={async()=>{
+     const {record:saved}=await read<{record:OnboardingRecord}>(`/api/admin/business-onboardings/${record.id}`);const f=formFor(saved);setRecord(saved);setForm(f);setBaseline(JSON.stringify(f));setRefresh(n=>n+1);
+    }}/>}
    </section>}
    <section className={styles.pipeline} aria-label="Saved Business Onboardings"><h2>Saved Business Onboardings</h2>
     <div className={styles.filters}>

@@ -75,3 +75,7 @@ try{
  await assert.rejects(pg.exec(sql),/Browser privilege path remains/);await pg.exec('rollback');assert.equal((await pg.query("select to_regclass('public.business_onboardings') t")).rows[0].t,null);
  console.log('PASS PostgreSQL '+version+': migration COMMIT, untouched existing ACL/RLS/policies, service writes, browser denial, constraints and inherited-default-grant rollback');
 }finally{await pg.close();}
+
+// Activated proposals cannot bypass the explicit commercial command path.
+assert.match(fs.readFileSync('src/lib/business-onboarding-server.ts','utf8'),/BUSINESS_TERMS_LOCKED/);
+assert.match(fs.readFileSync('src/components/admin/BusinessOnboardingPage.tsx','utf8'),/BusinessEntitlementPanel/);

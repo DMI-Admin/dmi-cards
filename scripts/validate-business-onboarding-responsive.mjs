@@ -25,11 +25,21 @@ fs.writeFileSync(path.join(tmp,'entry.jsx'),`
 import React from 'react';import {createRoot} from 'react-dom/client';
 import Page from '${root}/src/components/admin/BusinessOnboardingPage.tsx';
 import {AdminAppearanceInitializer} from '${root}/src/components/admin/AdminAppearance.tsx';
-window.events=[];window.tokens=0;window.saved=null;
+window.events=[];window.tokens=0;window.saved=null;window.entitlement=null;window.historyEvents=[];
 window.fetch=async(url,options={})=>{
  window.events.push({url,method:options.method||'GET',body:options.body,headers:options.headers});
  await new Promise(r=>setTimeout(r,80));
  const respond=(data,status=200)=>new Response(JSON.stringify(data),{status});
+ if(url.includes('/entitlement?'))return respond({workspace:window.entitlement?{id:'20000000-0000-4000-8000-000000000001',client_id:null}:null,entitlement:window.entitlement,effective_status:window.entitlement?.status||'absent',effective_seat_allowance:window.entitlement?.status==='active'?window.entitlement.seat_limit:0,evaluated_at:new Date().toISOString(),history:window.historyEvents,history_total:window.historyEvents.length,page:1,page_size:25});
+ if(options.method==='POST'&&(url.endsWith('/activate')||url.endsWith('/actions'))){
+  const b=JSON.parse(options.body);
+  if(b.expected_onboarding_revision!==window.saved.revision||b.expected_entitlement_revision!==(window.entitlement?.revision||0))return respond({error:'Fixture stale commercial review'},409);
+  if(window.failCommercial){window.failCommercial=false;return respond({error:'Fixture command failure'},503)}
+  window.entitlement=window.entitlement?{...window.entitlement,...('seat_limit' in b?{seat_limit:b.seat_limit}:{}),...('ends_at' in b?{ends_at:b.ends_at}:{}),...('contract_reference' in b?{contract_reference:b.contract_reference}:{}),status:b.action==='suspend'?'suspended':b.action==='reactivate'?'active':b.action==='revoke'?'revoked':window.entitlement.status,revision:window.entitlement.revision+1}:{id:'30000000-0000-4000-8000-000000000001',workspace_id:'20000000-0000-4000-8000-000000000001',source:window.saved.access_type,status:'active',seat_limit:window.saved.requested_seats,starts_at:window.saved.contract_start+'T00:00:00Z',ends_at:window.saved.contract_end+'T00:00:00Z',invoice_reference:window.saved.invoice_reference,billing_frequency:window.saved.billing_frequency,contract_reference:b.contract_reference||null,revision:1};
+  window.saved={...window.saved,status:'ready_to_activate',revision:window.saved.revision+1};
+  window.historyEvents.unshift({...window.entitlement,id:b.operation_id,event_type:b.action,reason:b.reason,actor_clerk_user_id:'user_fixture',created_at:new Date().toISOString()});
+  return respond({result:{entitlement_id:window.entitlement.id}});
+ }
  if(options.method){if(window.failNext){window.failNext=false;return respond({error:'Fixture conflict: reload saved version'},409)}const body=JSON.parse(options.body);window.saved={...body,id:'10000000-0000-4000-8000-000000000001',revision:(body.revision||0)+1,created_at:new Date().toISOString(),updated_at:new Date().toISOString(),onboarding_method:'dmi_managed'};return respond({record:window.saved})}
  if(url.endsWith('/summary'))return respond({summary:{inProgress:30,awaitingInformation:1,awaitingPayment:2,trialComplimentary:3,readyToActivate:4}});
  if(url.includes('?'))return respond({items:[window.saved||{id:'10000000-0000-4000-8000-000000000001',company_name:'Prospective company with longer trading name',contact_email:'contact@example.invalid',requested_seats:200,status:'draft',access_type:'invoice',updated_at:new Date().toISOString()}],total:30});
@@ -84,5 +94,39 @@ try{
  await page.getByRole('button',{name:'Save Onboarding',exact:true}).click();await page.getByText('Onboarding saved successfully.',{exact:true}).waitFor();
  const mutations=await page.evaluate(()=>events.filter(e=>e.method==='PATCH'));assert.ok(mutations.every(e=>e.url.endsWith('/10000000-0000-4000-8000-000000000001')&&e.headers.Authorization==='Bearer fixture-token'));
  await page.getByLabel('Search',{exact:true}).fill('needle');await page.waitForTimeout(350);assert.ok(await page.evaluate(()=>events.some(e=>e.url.includes('search=needle'))));
- assert.deepEqual(errors,[]);console.log('PASS '+engine+': 32 viewport/theme cases, embedded workspace, no overflow, token failure, duplicate-save lock, save stays open, conflict preserves data, unsaved warning, search. Screenshots: '+tmp);
+
+ // Commercial confirmation against the actual embedded panel; mock persistence only.
+ for(const source of ['invoice','trial','complimentary']){
+  await page.goto(origin+'/business-onboarding');await page.getByRole('button',{name:'Manage',exact:true}).waitFor();
+  await page.evaluate(source=>{window.saved={id:'10000000-0000-4000-8000-000000000001',company_name:'Commercial fixture',contact_name:null,contact_email:null,contact_phone:null,company_website:null,country:null,company_address:null,invoice_reference:source==='invoice'?'INV-TEST':null,po_reference:null,requested_seats:100,contract_start:'2026-01-01',contract_end:'2027-01-01',billing_frequency:source==='invoice'?'quarterly':null,access_type:source,status:'draft',revision:1,notes:null,onboarding_method:'dmi_managed',created_at:new Date().toISOString(),updated_at:new Date().toISOString()};},source);
+  await page.getByRole('button',{name:'Manage',exact:true}).click();
+  const action=source==='invoice'?'Mark Payment Received':source==='trial'?'Activate Trial':'Activate Complimentary Access';
+  await page.getByRole('button',{name:action,exact:true}).click();
+  const form=page.getByRole('form',{name:'Confirm commercial action'});await form.waitFor();
+  await form.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal(await page.evaluate(()=>events.filter(e=>e.url.endsWith('/activate')).length),0);
+  await page.getByRole('button',{name:action,exact:true}).click();
+  await page.getByLabel('Admin reason / confirmation reference').fill('Reviewed fixture');
+  await page.evaluate(()=>window.noToken=true);await form.getByRole('button',{name:'Confirm '+action,exact:true}).click();await page.getByText('Please sign in again. No commercial command was sent.').waitFor();
+  assert.equal(await page.evaluate(()=>events.filter(e=>e.url.endsWith('/activate')).length),0);
+  await page.evaluate(()=>{window.noToken=false;window.failCommercial=true;});await form.getByRole('button',{name:'Confirm '+action,exact:true}).click();await page.getByText('Fixture command failure').waitFor();
+  await form.getByRole('button',{name:'Confirm '+action,exact:true}).dblclick();await page.getByText('Commercial approval recorded. No portal, staff, cards or employee seats were created.',{exact:true}).waitFor();
+  const commands=await page.evaluate(()=>events.filter(e=>e.url.endsWith('/activate')));assert.equal(commands.length,2);assert.equal(JSON.parse(commands[0].body).operation_id,JSON.parse(commands[1].body).operation_id);assert.equal(commands[1].headers.Authorization,'Bearer fixture-token');
+  assert.equal(await page.getByLabel('Requested Seats',{exact:true}).isDisabled(),true);
+  await page.getByText('Confirmed Seat Allowance',{exact:true}).waitFor();
+  for(const width of [1440,1024,768,540,390,320])for(const scheme of ['light','dark']){
+   await page.setViewportSize({width,height:width<600?640:800});await page.evaluate(m=>{document.documentElement.dataset.adminAppearance=m},scheme);
+   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,source+' commercial overflow '+width);
+   if(source==='invoice'&&width===320&&scheme==='dark')await page.screenshot({path:tmp+'/commercial-mobile-dark.png',fullPage:true});
+  }
+  await page.setViewportSize({width:1280,height:720});
+  await page.getByRole('button',{name:'Amend Commercial Terms',exact:true}).click();await page.getByLabel('Confirmed seat allowance',{exact:true}).fill('120');await page.getByLabel('Admin reason / confirmation reference').fill('Seat correction');
+  await form.getByRole('button',{name:'Confirm Amend Commercial Terms',exact:true}).click();await form.waitFor({state:'hidden'});
+  const amendment=await page.evaluate(()=>JSON.parse(events.filter(e=>e.url.endsWith('/actions')).at(-1).body));assert.equal(amendment.seat_limit,120);assert.equal('ends_at' in amendment,false,'unchanged timestamp not rewritten');
+  await page.getByRole('button',{name:'Suspend Entitlement',exact:true}).click();await page.getByLabel('Admin reason / confirmation reference').fill('Suspend reviewed revision');
+  await page.evaluate(()=>{window.saved.revision++;window.entitlement.revision++;});await page.getByRole('button',{name:'Refresh status',exact:true}).click();await page.waitForTimeout(150);
+  await form.getByRole('button',{name:'Confirm Suspend Entitlement',exact:true}).click();await page.getByText('Fixture stale commercial review',{exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>window.entitlement.status),'active','stale review did not mutate');
+ }
+
+ assert.deepEqual(errors,[]);console.log('PASS '+engine+': 32 viewport/theme cases, embedded workspace, no overflow, token failure, duplicate-save lock, save stays open, conflict preserves data, unsaved warning, search; three commercial sources, confirmation/cancel, retry UUID, fresh-token and duplicate protection, stale reviewed revisions, lossless amendments, commercial responsive light/dark. Screenshots: '+tmp);
 }finally{await browser.close();await new Promise(r=>server.close(r));}

@@ -33,7 +33,7 @@ for (const userId of ['user_owner', 'user_second']) assert.equal((await requireA
 for (const userId of [null, undefined, '', 'user_other', 'USER_OWNER', 'user_ow', ' user_owner']) {
   await denied({ userId, email: 'owner@example.test', sessionClaims: { email: 'owner@example.test' }, role: 'admin', username: 'user_owner' });
 }
-const boundaries = ['src/middleware.ts', 'src/app/admin/page.tsx', 'src/lib/admin-card-mutations-server.ts', 'src/lib/admin-inventory-server.ts', 'src/app/api/admin/templates/route.ts', 'src/app/api/admin/templates/[templateId]/route.ts', 'src/app/api/admin/system-health/route.ts'];
+const boundaries = ['src/lib/business-entitlement-server.ts', 'src/middleware.ts', 'src/app/admin/page.tsx', 'src/lib/admin-card-mutations-server.ts', 'src/lib/admin-inventory-server.ts', 'src/app/api/admin/templates/route.ts', 'src/app/api/admin/templates/[templateId]/route.ts', 'src/app/api/admin/system-health/route.ts'];
 for (const file of boundaries) {
   const source = fs.readFileSync(file, 'utf8');
   assert.match(source, /requireAdminAccess\((?:await auth\(\)|adminAuth)\)/, file);

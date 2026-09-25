@@ -40,3 +40,17 @@
 @media(max-width:900px){ .fields,.filters { grid-template-columns:minmax(0,1fr); }.pipeline thead { display:none; }.pipeline table,.pipeline tbody { display:block; }.pipeline tr { display:grid; grid-template-columns:1fr 1fr; padding:12px; gap:12px; border-bottom:1px solid var(--admin-border); }.pipeline td { display:block; min-width:0; padding:0; border:0; }.pipeline td::before { content:attr(data-label); display:block; color:var(--admin-muted); font-size:11px; margin-bottom:4px; }.pipeline td:first-child,.pipeline td:nth-child(2),.pipeline td[colspan] { grid-column:1/-1; } }
 @media(max-width:639px){ .content { padding:16px; }.workspace,.pipeline { padding:16px; }.header h1 { font-size:24px; }.metrics { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }.metrics>div { padding:12px; } }
 @media(prefers-reduced-motion:reduce){ .page * { scroll-behavior:auto!important; transition:none!important; } }
+
+.commercial { border-top:1px solid var(--admin-border); margin-top:28px; padding-top:24px; min-width:0; }
+.entitlementSummary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin-block:20px; }
+.entitlementSummary div { min-width:0; overflow-wrap:anywhere; }
+.entitlementSummary dt { font-size:12px; color:var(--admin-muted); }
+.entitlementSummary dd { margin:4px 0 0; font-size:14px; font-weight:600; }
+.commercialActions { display:flex; flex-wrap:wrap; gap:12px; margin-block:18px; }
+.confirmation { background:var(--admin-surface-secondary); border:1px solid var(--admin-border); border-radius:14px; padding:20px; margin-block:20px; }
+.fields { border:0; padding:0; margin:0; }
+.history { padding:0; list-style:none; }
+.history li { padding-block:16px; border-bottom:1px solid var(--admin-border); overflow-wrap:anywhere; }
+.history p { font-size:13px; color:var(--admin-muted); margin-top:6px; }
+.page .destructive { color:var(--admin-danger-text); background:var(--admin-danger-bg); }
+@media(max-width:639px){ .entitlementSummary { grid-template-columns:minmax(0,1fr); }.confirmation { padding:14px; }.commercialActions button { width:100%; } }

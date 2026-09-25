@@ -70,6 +70,7 @@ export async function businessOnboardingRequest(request: Request, operation: Ope
     if(!data) throw new OnboardingError("This onboarding changed or is unavailable. Reload it before saving; your inputs have been preserved.",409);
     return NextResponse.json({record:data},{headers});
   } catch(error) {
+    if((error as {message?:string})?.message === "BUSINESS_TERMS_LOCKED_USE_COMMERCIAL_ACTION") error = new OnboardingError("Commercial terms are already approved. Reload and use an explicit commercial action; other inputs have been preserved.",409);
     return NextResponse.json({error:error instanceof OnboardingError ? error.message : "Onboarding operation was not confirmed. Keep your inputs and retry safely."},{status:error instanceof OnboardingError ? error.status : 503,headers});
   }
 }

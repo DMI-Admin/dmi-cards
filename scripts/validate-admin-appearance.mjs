@@ -117,3 +117,9 @@ export async function runAdminThemeChecks(page,origin,tmp,checkDensity=async()=>
  assert.equal(await page.getByRole('button',{name:'Open Admin navigation',exact:true}).evaluate(n=>n===document.activeElement),true);
  console.log('PASS: 72 theme/area/viewport combinations; OS tracking, overrides, persistence, contrast ≥4.5, dialogs, errors, empty/loading, mobile navigation/focus and Client preference isolation.');
 }
+
+// Commercial workspace uses the existing Admin semantic theme; no client theme changes.
+assert.equal(exports.isAdminAppearancePath('/business-onboarding'),true);
+const commercialCss=fs.readFileSync('src/components/admin/BusinessOnboardingPage.module.css','utf8');
+assert.match(commercialCss,/entitlementSummary/);
+assert.match(commercialCss,/var\(--admin-/);
