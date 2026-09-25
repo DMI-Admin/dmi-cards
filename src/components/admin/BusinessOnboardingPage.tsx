@@ -25,6 +25,7 @@ export default function BusinessOnboardingPage(){
  const [loading,setLoading]=useState(true),[listError,setListError]=useState("");
  const [search,setSearch]=useState(""),[status,setStatus]=useState(""),[access,setAccess]=useState(""),[page,setPage]=useState(1),[refresh,setRefresh]=useState(0);
  const panel=useRef<HTMLElement>(null);const dirty=open && JSON.stringify(form)!==baseline;
+ const commercialDirty=Boolean(record&&["requested_seats","access_type","contract_start","contract_end","billing_frequency","invoice_reference","po_reference"].some(key=>form[key]!==String(record[key as keyof OnboardingRecord]??"")));
  const askLeave=useCallback(()=>!pending.current && (!dirty || window.confirm("Discard unsaved onboarding changes?")),[dirty]);
  useEffect(()=>{
   if(!dirty&&!busy)return;
@@ -61,10 +62,22 @@ export default function BusinessOnboardingPage(){
  }
  useEffect(()=>{if(open)panel.current?.focus();},[open,record?.id]);
  function update(key:string,value:string){setNotice("");setForm(f=>({...f,[key]:value,...(key==="access_type"&&value!=="invoice"?{billing_frequency:""}:{})}));}
- async function save(){
+ async function save(element:HTMLFormElement){
   if(pending.current)return;pending.current=true;setBusy(true);setError("");setNotice("");
   try{
-   const payload=validateOnboarding({...form,requested_seats:form.requested_seats===""?null:Number(form.requested_seats)});
+   // Read the browser's canonical date value before awaiting auth. A native
+   // picker/blur can finish without React observing the same event sequence.
+   // Empty stays empty; locked proposal dates continue using saved state.
+   const draft={...form};
+   for(const key of ["contract_start","contract_end"]){
+    const input=element.elements.namedItem(key);
+    if(input instanceof HTMLInputElement&&!input.matches(":disabled")){
+     if(input.validity.badInput)throw Error("Complete or clear the contract date before saving.");
+     draft[key]=input.value;
+    }
+   }
+   setForm(draft);
+   const payload=validateOnboarding({...draft,requested_seats:draft.requested_seats===""?null:Number(draft.requested_seats)});
    const token=await getToken({skipCache:true});if(!token?.trim())throw Error("Please sign in again before saving. Your inputs are preserved.");
    const r=await fetch(record?`/api/admin/business-onboardings/${record.id}`:"/api/admin/business-onboardings",{method:record?"PATCH":"POST",credentials:"same-origin",cache:"no-store",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({...payload,...(record?{revision:record.revision}:{create_request_id:requestId})})});
    const result=await r.json();if(!r.ok)throw Error(result.error || "Save was not confirmed. Retry without changing the inputs.");
@@ -72,7 +85,7 @@ export default function BusinessOnboardingPage(){
   }catch(e){setError(e instanceof Error?e.message:"Save was not confirmed. Keep your inputs and retry.");}
   finally{pending.current=false;setBusy(false);}
  }
- const field=(key:string,label:string,type="text")=><label key={key}>{label}{key==="address"?<textarea rows={3} maxLength={2000} value={form[key]} onChange={e=>update(key,e.target.value)}/>:<input type={type} maxLength={key==="contact_email"?254:2000} min={key==="requested_seats"?1:undefined} step={key==="requested_seats"?1:undefined} value={form[key]} onChange={e=>update(key,e.target.value)}/>}</label>;
+ const field=(key:string,label:string,type="text")=><label key={key}>{label}{key==="address"?<textarea rows={3} maxLength={2000} value={form[key]} onChange={e=>update(key,e.target.value)}/>:<input type={type} name={key} aria-label={label} aria-describedby={type==="date"?key+"-value":undefined} onInput={type==="date"?e=>update(key,e.currentTarget.value):undefined} onBlur={type==="date"?e=>update(key,e.currentTarget.value):undefined} maxLength={key==="contact_email"?254:2000} min={key==="requested_seats"?1:undefined} step={key==="requested_seats"?1:undefined} value={form[key]} onChange={e=>update(key,e.target.value)}/>} {type==="date"&&<small id={key+"-value"}>{form[key]?"Selected date: "+form[key]:"No date selected"}</small>}</label>;
  return <div className={styles.page}>
   <div className={`${styles.sidebar} ${menu?styles.menuOpen:""}`}><Sidebar/></div>
   <main className={styles.content}>
@@ -85,9 +98,9 @@ export default function BusinessOnboardingPage(){
     <p className={styles.explainer}>Proposed information only. Saving does not activate a business, confirm payment or allocate seats.</p>
     {notice && <p role="status" className={styles.success}>{notice}</p>}
     {record && <button disabled={busy} onClick={()=>void manage(record.id)}>Reload saved version</button>}
-    <form onSubmit={e=>{e.preventDefault();void save();}}>
+    <form onSubmit={e=>{e.preventDefault();void save(e.currentTarget);}}>
      <fieldset disabled={busy} className={styles.sections}>
-      {groups.map(group=><section key={group.title}><h3>{group.title}</h3><div className={styles.fields}>{group.fields.map(([key,label])=>field(key,label,key==="contact_email"?"email":key==="website"?"url":"text"))}</div></section>)}
+      {groups.map(group=><section key={group.title}><h3>{group.title}</h3><div className={styles.fields}>{group.fields.map(([key,label])=>field(key,label,key==="contact_email"?"email":"text"))}</div></section>)}
       <section><h3>Proposed Commercial Terms</h3><p className={styles.explainer}>Dates use 00:00 UTC. End / expiry is exclusive. Saving proposals grants no commercial entitlement.</p>{commercialLocked&&record&&<p className={styles.explainer}>Saved commercial terms are locked while checking approval or after activation. Use explicit commercial actions below.</p>}<fieldset className={styles.fields} disabled={busy||commercialLocked}>
        {field("requested_seats","Requested Seats","number")}
        <label>Access Type<select value={form.access_type} onChange={e=>update("access_type",e.target.value)}><option value="">Not specified</option>{accessTypes.map(v=><option key={v} value={v}>{v[0].toUpperCase()+v.slice(1)}</option>)}</select></label>
@@ -100,7 +113,7 @@ export default function BusinessOnboardingPage(){
       <button type="submit" className={styles.primary}>{busy?"Saving…":"Save Onboarding"}</button>
      </fieldset>
     </form>
-    {record&&<BusinessEntitlementPanel key={record.id} record={record} disabled={busy||dirty} onLocked={setCommercialLocked} onBusy={value=>{pending.current=value;setBusy(value);}} onCommitted={async()=>{
+    {record&&<BusinessEntitlementPanel key={record.id} record={record} disabled={busy||dirty} commercialDirty={commercialDirty} onLocked={setCommercialLocked} onBusy={value=>{pending.current=value;setBusy(value);}} onCommitted={async()=>{
      const {record:saved}=await read<{record:OnboardingRecord}>(`/api/admin/business-onboardings/${record.id}`);const f=formFor(saved);setRecord(saved);setForm(f);setBaseline(JSON.stringify(f));setRefresh(n=>n+1);
     }}/>}
    </section>}

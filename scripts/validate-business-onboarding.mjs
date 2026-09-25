@@ -11,6 +11,13 @@ const contract=load('src/lib/business-onboarding-contract.ts');
 const base={company_name:'Prospective company',status:'draft'};
 assert.equal(contract.validateOnboarding(base).requested_seats,null);
 for(const patch of [{status:'active'},{status:'completed'},{requested_seats:0},{requested_seats:1.5},{company_name:' '},{company_name:'a'.repeat(2001)},{contact_email:'bad'},{website:'javascript:bad'},{website:'https://user:pass@example.com'},{contract_start:'2026-02-30'},{contract_start:'2026-09-02',contract_end:'2026-09-01'},{billing_frequency:'annual'},{created_by_clerk_user_id:'user_spoof'},{client_id:'fake'}])assert.throws(()=>contract.validateOnboarding({...base,...patch}));
+for(const [input,expected] of [['test.co.uk','https://test.co.uk'],['www.test.co.uk','https://www.test.co.uk'],['https://test.co.uk','https://test.co.uk'],['https://www.test.co.uk','https://www.test.co.uk']])assert.equal(contract.validateOnboarding({...base,website:input}).website,expected);
+for(const website of ['javascript:alert(1)','data:text/plain,test','ftp://test.co.uk','https://user:pass@test.co.uk','//test.co.uk'])assert.throws(()=>contract.validateOnboarding({...base,website}));
+for(const access_type of ['trial','complimentary','invoice']){
+ const dates=contract.validateOnboarding({...base,access_type,contract_start:'2026-09-25',contract_end:'2027-09-25'});
+ assert.equal(dates.contract_start,'2026-09-25');assert.equal(dates.contract_end,'2027-09-25');
+ assert.equal(contract.validateOnboarding({...base,access_type,contract_start:'',contract_end:'2027-09-25'}).contract_start,null);
+}
 for(const status of contract.onboardingStatuses)assert.equal(contract.validateOnboarding({...base,status}).status,status);
 const options=contract.onboardingListOptions('https://fixture.test/?page=2&status=draft&access_type=trial&search=a%22%2Cb%25');
 assert.equal(options.page,2);assert.equal(options.pageSize,25);assert.ok(options.operand.startsWith('"%'));assert.ok(options.operand.includes('\\"'));assert.ok(options.operand.includes('\\%'));
@@ -40,6 +47,13 @@ assert.equal((await request('create',{...payload,status:'active'})).status,400);
 assert.equal((await request('read',undefined,'/invalid')).status,400);
 await request('list',undefined,'?page=2&status=draft&access_type=trial&search=hello');assert.ok(calls.some(c=>c.range?.[0]===25&&c.range[1]===49&&c.orders.length===2));assert.ok(calls.some(c=>c.or?.includes('company_name.ilike.')));
 const summary=await (await request('summary')).json();assert.equal(summary.summary.inProgress,1);assert.equal(summary.summary.awaitingPayment,0);
+// Dates and normalized website survive the real server create/update/read mapper.
+for(const access_type of ['trial','complimentary','invoice']){
+ const create=await request('create',{...base,access_type,website:'www.test.co.uk',contract_start:'2026-09-25',contract_end:'2027-09-25',create_request_id:crypto.randomUUID()});assert.equal(create.status,201);
+ const created=(await create.json()).record;assert.equal(created.contract_start,'2026-09-25');assert.equal(created.contract_end,'2027-09-25');assert.equal(created.website,'https://www.test.co.uk');
+ const updated=await request('update',{...base,access_type,contract_start:'2026-09-26',contract_end:'2027-09-25',revision:created.revision},'/'+created.id);assert.equal(updated.status,200);
+ const reloaded=(await (await request('read',undefined,'/'+created.id)).json()).record;assert.equal(reloaded.contract_start,'2026-09-26');assert.equal(reloaded.contract_end,'2027-09-25');
+}
 const sql=source('supabase/migrations/20260925090000_create_business_onboardings.sql');
 assert.ok(!/public\.(clients|client_users|cards|billing|subscriptions)\b/i.test(sql));
 for(const file of ['src/components/admin/BusinessOnboardingPage.tsx','src/lib/business-onboarding-server.ts'])assert.ok(!/from\(["'](?:clients|client_users|cards|subscriptions)["']\)|auth\.admin|stripe\./.test(source(file)));

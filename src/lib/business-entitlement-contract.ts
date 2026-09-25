@@ -1,4 +1,4 @@
-import { OnboardingError, objectBody, uuidPattern } from "@/lib/business-onboarding-contract";
+import { OnboardingError, objectBody, uuidPattern, type OnboardingInput } from "@/lib/business-onboarding-contract";
 export const activationActions = ["activate_invoice", "activate_trial", "activate_complimentary"] as const;
 export const amendmentActions = ["amend", "suspend", "reactivate", "revoke"] as const;
 export const commercialLabels: Record<string,string> = {
@@ -42,4 +42,23 @@ export function validateCommercialCommand(value:unknown, activation:boolean):Com
  if("ends_at" in b){const d=b.ends_at;if(typeof d!=="string"||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(d)||!Number.isFinite(Date.parse(d))||new Date(d).toISOString()!==d.replace(/Z$/,d.includes(".")?"Z":".000Z"))throw new OnboardingError("Expiry must be a valid UTC timestamp.");}
  if(b.action==="amend"&&!["seat_limit","ends_at","contract_reference"].some(k=>k in b))throw new OnboardingError("Supply an explicit commercial amendment.");
  return {...b,reason:b.reason.trim(),...("contract_reference" in b?{contract_reference:typeof b.contract_reference==="string"?b.contract_reference.trim()||null:null}:{})} as CommercialCommand;
+}
+
+// UX readiness only: the RPC remains authoritative for database time and revisions.
+export function businessActivationReadiness(record:OnboardingInput,action:string):string|null {
+ const missing:string[]=[];
+ if(!Number.isInteger(record.requested_seats)||!record.requested_seats||record.requested_seats<1)missing.push("Requested Seats");
+ if(!activationActions.some(a=>a===action)||action!=="activate_"+record.access_type)missing.push("Access Type");
+ const date=(v:string|null)=>Boolean(v&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v);
+ if(!date(record.contract_start))missing.push("Contract Start date");
+ if(!date(record.contract_end))missing.push("Contract End / Expiry date");
+ if(action==="activate_invoice"){
+  if(!["annual","quarterly"].includes(record.billing_frequency||""))missing.push("Billing Frequency");
+  if(!record.invoice_reference?.trim())missing.push("Invoice Reference");
+ }
+ if(missing.length===1)return `Save a ${missing[0]} before activating this Business entitlement.`;
+ if(missing.length)return `Save the required commercial terms before activation: ${missing.join(", ")}.`;
+ if(record.contract_end!<=record.contract_start!)return "Save a Contract End / Expiry date after Contract Start before activating this Business entitlement.";
+ if(record.status==="awaiting_information")return "Resolve Awaiting Customer Information and save before activating this Business entitlement.";
+ return null;
 }

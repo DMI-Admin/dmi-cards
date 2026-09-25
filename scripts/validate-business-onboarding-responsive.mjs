@@ -62,7 +62,7 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const origin='http://127.0.0.1:'+server.address().port;
 const browser=await engines[engine].launch({headless:true});
 try{
- const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const page=await browser.newPage({locale:"en-GB"});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/*',r=>r.request().url().startsWith(origin+'/')?r.continue():r.abort());
  for(const width of [1920,1440,1280,1024,768,540,390,320])for(const [mode,osMode] of [['system','light'],['system','dark'],['light','dark'],['dark','light']]){
   await page.setViewportSize({width,height:width<600?640:800});await page.emulateMedia({colorScheme:osMode});
@@ -95,6 +95,48 @@ try{
  const mutations=await page.evaluate(()=>events.filter(e=>e.method==='PATCH'));assert.ok(mutations.every(e=>e.url.endsWith('/10000000-0000-4000-8000-000000000001')&&e.headers.Authorization==='Bearer fixture-token'));
  await page.getByLabel('Search',{exact:true}).fill('needle');await page.waitForTimeout(350);assert.ok(await page.evaluate(()=>events.some(e=>e.url.includes('search=needle'))));
 
+
+ // Actual native controls -> React state -> POST/PATCH -> saved response -> reload.
+ // Chromium auto-advances date segments; WebKit uses Tab between UK date segments.
+ async function keyboardDate(input,year){
+  await input.fill('');await input.click({position:{x:18,y:20}});
+  const segments=['25','09',String(year)];
+  for(let i=0;i<segments.length;i++){for(const digit of segments[i])await page.keyboard.press(digit);if(engine==='webkit'&&i<2)await page.keyboard.press('Tab');}
+  await page.getByLabel('Company / Trading Name',{exact:true}).click();
+  assert.equal(await input.inputValue(),year+'-09-25');
+ }
+ for(const source of ['trial','complimentary','invoice']){
+  await page.goto(origin+'/business-onboarding');await page.getByRole('button',{name:'+ New Business Onboarding',exact:true}).click();
+  await page.getByLabel('Company / Trading Name',{exact:true}).fill('Date persistence '+source);
+  await page.getByLabel('Website',{exact:true}).fill('test.co.uk');
+  await page.getByLabel('Requested Seats',{exact:true}).fill('25');await page.getByLabel('Access Type').first().selectOption(source);
+  if(source==='invoice'){await page.getByLabel('Billing Frequency').first().selectOption('quarterly');await page.getByLabel('Invoice Reference',{exact:true}).fill('INV-DATE');}
+  const start=page.getByLabel('Contract Start',{exact:true}),end=page.getByLabel('Contract End / Expiry',{exact:true});
+  const save=page.getByRole('button',{name:'Save Onboarding',exact:true}),reload=page.getByRole('button',{name:'Reload saved version',exact:true});
+  const activation=page.getByRole('button',{name:source==='invoice'?'Mark Payment Received':source==='trial'?'Activate Trial':'Activate Complimentary Access',exact:true});
+  assert.equal(await start.inputValue(),'');assert.equal(await page.getByText('No date selected',{exact:true}).count(),2);
+  await start.fill('2026-09-25');await end.fill('2027-09-25');await end.press('Tab');
+  await save.click();await page.getByText('Onboarding saved successfully.',{exact:true}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>[window.saved.contract_start,window.saved.contract_end,window.saved.website]),['2026-09-25','2027-09-25','https://test.co.uk']);
+  await reload.click();await page.waitForFunction(()=>!document.querySelector('input[name="contract_start"]').matches(':disabled'));
+  assert.equal(await start.inputValue(),'2026-09-25');assert.equal(await end.inputValue(),'2027-09-25');
+  await keyboardDate(start,2026);await keyboardDate(end,2027);await save.click();await page.getByText('Onboarding saved successfully.',{exact:true}).waitFor();
+  await reload.click();await page.waitForFunction(()=>!document.querySelector('input[name="contract_start"]').matches(':disabled'));
+  assert.equal(await start.inputValue(),'2026-09-25');assert.equal(await end.inputValue(),'2027-09-25');
+  await start.fill('2026-09-26');await page.getByText('Save your commercial changes before activating the entitlement.',{exact:true}).waitFor();assert.equal(await activation.isDisabled(),true);
+  assert.equal(await page.getByRole('form',{name:'Confirm commercial action'}).count(),0);
+  await save.click();await page.getByText('Onboarding saved successfully.',{exact:true}).waitFor();await activation.click();
+  const confirm=page.getByRole('form',{name:'Confirm commercial action'});await confirm.waitFor();await confirm.getByText('2026-09-26 00:00 UTC',{exact:true}).waitFor();await confirm.getByRole('button',{name:'Cancel',exact:true}).click();
+  await start.fill('');await save.click();await page.getByText('Onboarding saved successfully.',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>window.saved.contract_start),null);
+  await activation.click();await page.getByText('Save a Contract Start date before activating this Business entitlement.',{exact:true}).waitFor();assert.equal(await confirm.count(),0);
+  // Native value present but no input/change event: blur/save must not silently send NULL.
+  await start.evaluate(input=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'2026-09-25');});
+  await save.click();await page.getByText('Onboarding saved successfully.',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>window.saved.contract_start),'2026-09-25');
+  await reload.click();await page.waitForFunction(()=>!document.querySelector('input[name="contract_start"]').matches(':disabled'));assert.equal(await start.inputValue(),'2026-09-25');
+  await activation.click();await confirm.waitFor();await confirm.getByRole('button',{name:'Cancel',exact:true}).click();
+  assert.equal(await page.evaluate(()=>events.filter(e=>e.url.endsWith('/activate')).length),0,'readiness tests never activate');
+  const saves=await page.evaluate(()=>events.filter(e=>e.method==='POST'||e.method==='PATCH').map(e=>JSON.parse(e.body)));assert.ok(saves.some(v=>v.revision),'PATCH covered');assert.ok(saves.some(v=>v.create_request_id),'POST covered');
+ }
  // Commercial confirmation against the actual embedded panel; mock persistence only.
  for(const source of ['invoice','trial','complimentary']){
   await page.goto(origin+'/business-onboarding');await page.getByRole('button',{name:'Manage',exact:true}).waitFor();
@@ -128,5 +170,5 @@ try{
   assert.equal(await page.evaluate(()=>window.entitlement.status),'active','stale review did not mutate');
  }
 
- assert.deepEqual(errors,[]);console.log('PASS '+engine+': 32 viewport/theme cases, embedded workspace, no overflow, token failure, duplicate-save lock, save stays open, conflict preserves data, unsaved warning, search; three commercial sources, confirmation/cancel, retry UUID, fresh-token and duplicate protection, stale reviewed revisions, lossless amendments, commercial responsive light/dark. Screenshots: '+tmp);
+ assert.deepEqual(errors,[]);console.log('PASS '+engine+': native date control and keyboard POST/PATCH/reload, cleared start and dirty readiness for all three sources, website normalization; 32 viewport/theme cases, embedded workspace, no overflow, token failure, duplicate-save lock, save stays open, conflict preserves data, unsaved warning, search; three commercial sources, confirmation/cancel, retry UUID, fresh-token and duplicate protection, stale reviewed revisions, lossless amendments, commercial responsive light/dark. Screenshots: '+tmp);
 }finally{await browser.close();await new Promise(r=>server.close(r));}

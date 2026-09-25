@@ -2,12 +2,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import type { OnboardingRecord } from "@/lib/business-onboarding-contract";
-import { commercialLabels, type CommercialCommand, type EntitlementView } from "@/lib/business-entitlement-contract";
+import { businessActivationReadiness, commercialLabels, type CommercialCommand, type EntitlementView } from "@/lib/business-entitlement-contract";
 import styles from "./BusinessOnboardingPage.module.css";
 const displayUTC=(value:string)=>new Date(value).toISOString().replace("T"," ").replace(/\.\d{3}Z$/," UTC");
 const labels:Record<string,string>={activate_invoice:"Mark Payment Received",activate_trial:"Activate Trial",activate_complimentary:"Activate Complimentary Access",amend:"Amend Commercial Terms",suspend:"Suspend Entitlement",reactivate:"Reactivate Entitlement",revoke:"Revoke Entitlement"};
-type Props={record:OnboardingRecord;disabled:boolean;onBusy:(value:boolean)=>void;onLocked:(value:boolean)=>void;onCommitted:()=>Promise<void>};
-export default function BusinessEntitlementPanel({record,disabled,onBusy,onLocked,onCommitted}:Props){
+type Props={record:OnboardingRecord;disabled:boolean;commercialDirty:boolean;onBusy:(value:boolean)=>void;onLocked:(value:boolean)=>void;onCommitted:()=>Promise<void>};
+export default function BusinessEntitlementPanel({record,disabled,commercialDirty,onBusy,onLocked,onCommitted}:Props){
  const {getToken}=useAuth();
  const [view,setView]=useState<EntitlementView|null>(null),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [reviewed,setReviewed]=useState<{record:OnboardingRecord;view:EntitlementView}|null>(null);
@@ -21,15 +21,18 @@ export default function BusinessEntitlementPanel({record,disabled,onBusy,onLocke
    .then(async r=>{const j=await r.json();if(!r.ok)throw Error(j.error||"Could not load commercial approval.");if(!abort.signal.aborted){setView(j);onLocked(Boolean(j.entitlement));setError("");}})
    .catch(e=>{if(!abort.signal.aborted){setView(null);setError(e.message);onLocked(true);}});
   return ()=>abort.abort();
- },[record.id,record.revision,page,refresh,onLocked]);
+ },[record,page,refresh,onLocked]);
  function choose(next:string){
-  if(!view)return;setReviewed({record,view});setAction(next);setReason("");setNotice("");setError("");setReference(view?.entitlement?.contract_reference||"");
+  if(!view||disabled||pending.current)return;
+  if(next.startsWith("activate_")){const issue=businessActivationReadiness(record,next);if(issue){setError(issue);return;}}
+  setReviewed({record,view});setAction(next);setReason("");setNotice("");setError("");setReference(view?.entitlement?.contract_reference||"");
   setSeats(String(view?.entitlement?.seat_limit||record.requested_seats||""));setExpiry(view?.entitlement?.ends_at?new Date(view.entitlement.ends_at).toISOString().slice(0,16):"");retry.current=null;
  }
  async function submit(){
   if(pending.current||disabled||!view||!reviewed)return;
   pending.current=true;setBusy(true);onBusy(true);setError("");setNotice("");let committed=false;
   try{
+   if(action.startsWith("activate_")){const issue=businessActivationReadiness(reviewed.record,action);if(issue)throw Error(issue);}
    const previous=reviewed.view.entitlement;
    const amendment=action==="amend"?{
     ...(Number(seats)!==previous?.seat_limit?{seat_limit:Number(seats)}:{}),
@@ -67,7 +70,7 @@ export default function BusinessEntitlementPanel({record,disabled,onBusy,onLocke
      <button className={styles.destructive} disabled={disabled||busy} onClick={()=>choose("revoke")}>Revoke Entitlement</button>
     </>}
    </div>}
-   {disabled&&!busy&&<p className={styles.explainer}>Save or reload onboarding changes before a commercial command.</p>}
+   {disabled&&!busy&&<p className={styles.explainer}>{commercialDirty?"Save your commercial changes before activating the entitlement.":"Save or reload onboarding changes before a commercial command."}</p>}
    {action&&reviewed&&<form className={styles.confirmation} aria-label="Confirm commercial action" onSubmit={e=>{e.preventDefault();void submit();}}>
     <h3>{labels[action]}</h3>
     <p><strong>{reviewed.record.company_name}</strong></p>

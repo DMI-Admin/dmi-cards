@@ -26,6 +26,9 @@ export function validateOnboarding(value: unknown): OnboardingInput {
   if (result.country_code && !/^[A-Z]{2}$/.test(result.country_code)) throw new OnboardingError("Country must be a two-letter uppercase country code, e.g. GB.");
   if (result.contact_email && (result.contact_email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(result.contact_email))) throw new OnboardingError("Enter a valid work email.");
   if (result.website) {
+    // Add a scheme only to a scheme-less hostname. Existing schemes still pass
+    // through the same HTTP(S)/credentials validation below.
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(result.website) && !result.website.startsWith("//")) result.website = "https://" + result.website;
     try { const u = new URL(result.website); if (!["http:", "https:"].includes(u.protocol) || !u.hostname || u.username || u.password) throw Error(); }
     catch { throw new OnboardingError("Website must be an HTTP(S) URL without credentials."); }
   }

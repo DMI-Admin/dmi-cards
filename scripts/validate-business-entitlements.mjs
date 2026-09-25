@@ -14,6 +14,16 @@ const valid={operation_id:randomUUID(),action:'activate_trial',expected_onboardi
 assert.equal(contract.validateCommercialCommand(valid,true).action,'activate_trial');
 for(const patch of [{confirmed:false},{reason:''},{actor:'user_spoof'},{source:'invoice'},{expected_onboarding_revision:0},{expected_entitlement_revision:1},{operation_id:'bad'},{payment_received_date:'2026-09-01'},{seat_limit:100}])assert.throws(()=>contract.validateCommercialCommand({...valid,...patch},true));
 assert.throws(()=>contract.validateCommercialCommand({...valid,action:'activate_invoice'},true));
+for(const access_type of ['invoice','trial','complimentary']){
+ const record={access_type,requested_seats:25,contract_start:'2026-09-25',contract_end:'2027-09-25',billing_frequency:access_type==='invoice'?'quarterly':null,invoice_reference:access_type==='invoice'?'INV-TEST':null,status:'draft'};
+ const action='activate_'+access_type;
+ assert.equal(contract.businessActivationReadiness(record,action),null);
+ for(const [key,label] of [['requested_seats','Requested Seats'],['contract_start','Contract Start'],['contract_end','Contract End'],['access_type','Access Type']])assert.ok(contract.businessActivationReadiness({...record,[key]:null},action).includes(label));
+ assert.match(contract.businessActivationReadiness({...record,contract_start:'2026-02-30'},action),/Contract Start/);
+ assert.match(contract.businessActivationReadiness({...record,contract_end:record.contract_start},action),/after Contract Start/);
+ assert.match(contract.businessActivationReadiness({...record,status:'awaiting_information'},action),/Awaiting Customer Information/);
+ if(access_type==='invoice')for(const key of ['billing_frequency','invoice_reference'])assert.ok(contract.businessActivationReadiness({...record,[key]:null},action));
+}
 let authorized=false,calls=[];
 const server=load('src/lib/business-entitlement-server.ts',{'server-only':{},'@clerk/nextjs/server':{auth:async()=>({userId:'user_verified'})},'@/lib/admin-auth':{requireAdminAccess:async()=>({authorized,userId:'user_verified',error:'Admin access is required.'})},'next/server':{NextResponse:Response},'@/lib/supabase-admin':{createSupabaseAdminClient:()=>({rpc:async(name,args)=>{calls.push({name,args});return {data:{fixture:true},error:null}}})},'@/lib/business-onboarding-contract':onboarding,'@/lib/business-entitlement-contract':contract});
 const recordId=randomUUID();
