@@ -5,6 +5,7 @@ export const adminRoutePatterns = [
   "/admin(.*)",
   "/dashboard(.*)",
   "/clients(.*)",
+  "/business-onboarding(.*)",
   "/templates(.*)",
   "/cards(.*)",
   "/public-pages(.*)",

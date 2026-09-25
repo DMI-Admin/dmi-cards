@@ -1,7 +1,7 @@
 // Appearance routing only. This is not an authorization boundary.
 export const adminAppearanceKey = "dmi-admin-appearance";
 export type AdminAppearance = "system" | "light" | "dark";
-export const adminAppearancePaths = ["admin", "dashboard", "clients", "templates", "cards", "public-pages", "qr-codes", "subscriptions", "finance", "analytics", "uploads", "support", "audit-logs", "system-health", "settings", "security"];
+export const adminAppearancePaths = ["business-onboarding", "admin", "dashboard", "clients", "templates", "cards", "public-pages", "qr-codes", "subscriptions", "finance", "analytics", "uploads", "support", "audit-logs", "system-health", "settings", "security"];
 export function isAdminAppearancePath(pathname: string) {
   return adminAppearancePaths.includes(pathname.split("/")[1]);
 }
