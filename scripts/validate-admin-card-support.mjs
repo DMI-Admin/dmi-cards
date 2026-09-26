@@ -78,7 +78,7 @@ assert.equal(contract.supportPublicPath(raw,{status:'draft',is_published:false})
 assert.equal(contract.supportPublicPath(raw,null),null);
 const projection=server.projectSupportCard({...raw,public_url:'https://evil.invalid'});assert.equal(projection.publicPath,'/u/alex-card');assert.equal(projection.accountType,'individual');
 assert.equal(server.projectSupportCard({...raw,user_id:null,company_name:'Business text is not identity'}).accountType,'unknown');
-const source=fs.readFileSync('src/app/cards/page.tsx','utf8');assert.doesNotMatch(source,/supabase|mutateAdminCard|LegacyBusinessCards|method: "(?:POST|PATCH|PUT|DELETE)"/);
+const source=fs.readFileSync('src/app/cards/page.tsx','utf8');assert.doesNotMatch(source,/supabase|LegacyBusinessCards|method: "(?:POST|PATCH|PUT|DELETE)"/);
 assert.match(source,/method: "GET"/);assert.match(source,/target="_blank" rel="noopener noreferrer"/);assert.match(source,/useAdminDialog\(onClose\)/);
 assert.match(source,/overflow-x-auto/);assert.match(source,/max-h-\[90dvh\]/);assert.match(source,/md:hidden/);assert.doesNotMatch(source,/(?:bg|text)-(?:white|black)(?:\s|"|$)/);
 const sidebar=fs.readFileSync('src/components/Sidebar.tsx','utf8');
@@ -92,7 +92,9 @@ console.log('PASS: actual Clerk ID authorization and GET-only route; real Supaba
 // Execute the page's real read lifecycle and handlers without mounting external APIs.
 const jsx=(type,props)=>({type,props});
 let slots=[],cursor=0,effects=[],pending=[],uiTree;
+let confirmation=true, confirmationCalls=0, writes=[], writeError=null, writeWait=null, downloads=[];
 const react={
+ useRef(initial){const i=cursor++;if(!(i in slots))slots[i]={current:initial};return slots[i];},
  useState(initial){const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],next=>{slots[i]=typeof next==='function'?next(slots[i]):next;}];},
  useEffect(fn,deps){const i=cursor++,previous=slots[i];if(previous&&deps.every((v,n)=>v===previous.deps[n]))return;previous?.cleanup?.();slots[i]={deps};effects.push(()=>{slots[i].cleanup=fn();});},
 };
@@ -101,7 +103,7 @@ const page={};
 vm.runInNewContext(ts.transpileModule(pageCode,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{
  exports:page,URLSearchParams,AbortController,document:{body:{}},console,
  fetch:(url,options)=>{assert.equal(options.method,'GET');assert.equal(options.cache,'no-store');assert.equal(options.credentials,'same-origin');return new Promise(resolve=>pending.push({url,options,resolve}));},
- require(name){const deps={'./cards.module.css':{default:{inventory:'inventory',filters:'filters'}},react,'react/jsx-runtime':{jsx,jsxs:jsx,Fragment:'fragment'},'react-dom':{createPortal:node=>node},'@/components/Sidebar':{default:()=>null},'@/hooks/useAdminDialog':{useAdminDialog:()=>({role:'dialog','aria-modal':true,tabIndex:-1})}};assert.ok(name in deps,name);return deps[name];},
+ require(name){const deps={'@/components/AdminInteractionDialog':{useAdminInteraction:()=>({confirm:async()=>{confirmationCalls++;return confirmation;},dialog:null})},'@/lib/admin-card-mutations':{mutateAdminCard:async(...args)=>{writes.push(args);if(writeWait)await writeWait;if(writeError)throw writeError;}},'@/lib/admin-company-report':{downloadCompanyReport:report=>downloads.push(report)},'./cards.module.css':{default:{inventory:'inventory',filters:'filters'}},react,'react/jsx-runtime':{jsx,jsxs:jsx,Fragment:'fragment'},'react-dom':{createPortal:node=>node},'@/components/Sidebar':{default:()=>null},'@/hooks/useAdminDialog':{useAdminDialog:()=>({role:'dialog','aria-modal':true,tabIndex:-1})}};assert.ok(name in deps,name);return deps[name];},
 });
 function nodes(node){if(Array.isArray(node))return Array.from(node).flatMap(nodes);if(!node||typeof node!=='object')return [];return [node,...nodes(node.props?.children)];}
 const textOf=node=>Array.isArray(node)?node.map(textOf).join(''):typeof node==='string'||typeof node==='number'?String(node):node?.props?textOf(node.props.children):'';
@@ -129,6 +131,32 @@ control(n=>n.type==='button'&&textOf(n)==='Retry').props.onClick();render();asse
 control(n=>n.type==='input').props.onChange({target:{value:'  Alex  '}});render();control(n=>n.type==='form').props.onSubmit({preventDefault(){}});render();
 const searched=new URL(pending[4].url,'http://local');assert.equal(searched.searchParams.get('search'),'Alex');assert.equal(searched.searchParams.get('page'),'1');assert.equal(searched.searchParams.get('account'),'business');
 pending[4].resolve({ok:true,json:async()=>({...sample,cards:[],total:0})});await flush();assert.ok(uiTree.some(n=>textOf(n).includes('No cards found')));
+
+// Actual new handlers: no mutation on cancel/unpublished, synchronous duplicate guard,
+// exact UUID operation, refresh on success/unknown outcome, company-only CSV scope.
+slots=[]; pending=[]; render();
+const businessCard={...projection,clientId:'company-id',accountType:'business',company:'Example Company'};
+pending[0].resolve({ok:true,json:async()=>({...sample,cards:[businessCard]})});await flush();
+const unpublishButton=()=>control(n=>n.props?.['aria-label']==='Unpublish: Primary');
+confirmation=false;await unpublishButton().props.onClick();await flush();assert.equal(writes.length,0);assert.equal(confirmationCalls,1);
+confirmation=true;let finishWrite;writeWait=new Promise(resolve=>finishWrite=resolve);
+unpublishButton().props.onClick();unpublishButton().props.onClick();await flush();assert.equal(writes.length,1);assert.equal(unpublishButton().props.disabled,true);
+assert.deepEqual(plain(writes[0]),['/api/admin/cards/card','PATCH',{operation:'unpublish'}]);
+finishWrite();await flush();render();assert.equal(pending.length,2);
+pending[1].resolve({ok:true,json:async()=>({...sample,cards:[{...businessCard,published:false,publicPath:null}]})});await flush();
+assert.ok(!uiTree.some(n=>n.props?.['aria-label']==='Unpublish: Primary'));
+const exportButton=()=>control(n=>n.props?.['aria-label']==='Export company CSV: Example Company');
+confirmation=false;exportButton().props.onClick();await flush();assert.equal(pending.length,2);
+confirmation=true;exportButton().props.onClick();exportButton().props.onClick();await flush();assert.equal(pending.length,3);
+const exportUrl=new URL(pending[2].url,'http://local');assert.equal(exportUrl.pathname,'/api/admin/cards/support/export');assert.equal(exportUrl.searchParams.get('clientId'),'company-id');assert.equal(exportUrl.searchParams.get('search'),'');assert.equal(exportUrl.searchParams.has('page'),false);
+pending[2].resolve({ok:true,json:async()=>({csv:'fixture',filename:'company.csv',count:1})});await flush();assert.equal(downloads.length,1);
+exportButton().props.onClick();await flush();pending[3].resolve({ok:false,json:async()=>({error:'Export failed'})});await flush();assert.equal(downloads.length,1);assert.ok(uiTree.some(n=>n.props?.role==='alert'&&textOf(n)==='Export failed'));
+// Restore a published card and exercise an uncertain mutation outcome.
+slots=[];pending=[];render();pending[0].resolve({ok:true,json:async()=>sample});await flush();
+writeWait=null;writeError=Error('Network unavailable');unpublishButton().props.onClick();await flush();render();assert.equal(pending.length,2);assert.ok(uiTree.some(n=>n.props?.role==='alert'&&textOf(n).includes('Refresh the inventory')));
+assert.ok(!uiTree.some(n=>String(n.props?.['aria-label']||'').startsWith('Export company CSV:')));
+console.log('PASS: unpublish cancel/duplicate guard/exact UUID/refresh/error; published-only action; company CSV cancel/duplicate guard/scope/download/error; no individual export.');
+
 console.log('PASS: actual support UI loading/error/retry/empty lifecycle; stale requests ignored; filter changes reset pagination; GET-only search/page requests; details open/close; metadata-only modal; same-origin new-tab links and disabled unavailable actions.');
 
 // One responsive inventory: no duplicated mobile handlers or hidden data branch.

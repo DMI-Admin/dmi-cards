@@ -33,6 +33,7 @@
 .inventory [data-support-actions] {
   display: flex;
   align-items: flex-start;
+  flex-wrap: wrap;
   gap: 0.375rem;
 }
 

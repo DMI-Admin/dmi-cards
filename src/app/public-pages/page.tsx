@@ -5,6 +5,7 @@ import Sidebar from "@/components/Sidebar";
 import { mutateAdminCard } from "@/lib/admin-card-mutations";
 import { getAdminInventory } from "@/lib/admin-inventory";
 import { getAdminTemplates } from "@/lib/templates";
+import { companyReport, downloadCompanyReport as downloadReport } from "@/lib/admin-company-report";
 import { buildPublicCardUrl } from "@/lib/public-url";
 
 type Client = {
@@ -174,36 +175,7 @@ export default function PublicPagesPage() {
   }
 
   function downloadCompanyReport(group: CompanyGroup) {
-    const headers = [
-      "company name",
-      "staff name",
-      "email",
-      "public URL",
-      "views",
-      "saves",
-      "shares",
-      "status",
-    ];
-    const rows = group.cards.map((card) => [
-      group.companyName,
-      card.full_name || card.card_name || "",
-      card.email || "",
-      card.slug ? publicUrl(card.slug) : "",
-      "0",
-      "0",
-      "0",
-      card.is_published ? "published" : "unpublished",
-    ]);
-    const csv = [headers, ...rows]
-      .map((row) => row.map(csvCell).join(","))
-      .join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = `${slugify(group.companyName)}-public-pages-report.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadReport(companyReport(group.companyName, group.cards));
   }
 
   return (
@@ -718,16 +690,4 @@ function StatsModal({
 
 function publicUrl(slug: string) {
   return buildPublicCardUrl(slug);
-}
-
-function csvCell(value: string) {
-  return `"${value.replaceAll('"', '""')}"`;
-}
-
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
 }
