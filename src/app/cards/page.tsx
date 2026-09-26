@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Sidebar from "@/components/Sidebar";
+import styles from "./cards.module.css";
 import { useAdminDialog } from "@/hooks/useAdminDialog";
 import type { SupportCard, SupportInventory } from "@/lib/admin-card-support";
 
@@ -53,7 +54,7 @@ export default function CardsPage() {
           </div>
           {summary && summary.total > summary.business + summary.individual && <p className="mt-2 text-xs text-[var(--dmi-muted)]">{summary.total - summary.business - summary.individual} cards have unknown account linkage and remain visible under All or Unknown linkage.</p>}
         </section>
-        <form className="dmi-card grid items-end gap-3 p-4 lg:grid-cols-[minmax(180px,1fr)_180px_180px_auto]" onSubmit={event => { event.preventDefault(); setFilters(current => ({ ...current, search: searchDraft.trim(), page: 1 })); }}>
+        <form className={`${styles.filters} dmi-card grid items-end gap-3 p-4 lg:grid-cols-[minmax(180px,1fr)_180px_180px_auto]`} onSubmit={event => { event.preventDefault(); setFilters(current => ({ ...current, search: searchDraft.trim(), page: 1 })); }}>
           <label className="text-sm">Search<input className={`${control} mt-1`} value={searchDraft} maxLength={80} onChange={event => setSearchDraft(event.target.value)} placeholder="Card name, owner name, company or slug" /></label>
           <label className="text-sm">Account type<select className={`${control} mt-1`} value={filters.account} onChange={event => setFilters(current => ({ ...current, account: event.target.value, page: 1 }))}><option value="all">All</option><option value="individual">Individual</option><option value="business">Business</option><option value="unknown">Unknown linkage</option></select></label>
           <label className="text-sm">Publication<select className={`${control} mt-1`} value={filters.publication} onChange={event => setFilters(current => ({ ...current, publication: event.target.value, page: 1 }))}><option value="all">All</option><option value="published">Published</option><option value="unpublished">Draft / Unpublished</option></select></label>
@@ -61,15 +62,15 @@ export default function CardsPage() {
         </form>
         {error && <div role="alert" className="dmi-card p-4"><p>{error}</p><button className={`${button} mt-3`} onClick={() => setRetry(value => value + 1)}>Retry</button></div>}
         {loading ? <p role="status">Loading cards…</p> : !error && inventory && <>
-          <div className="dmi-card overflow-hidden"><div className="overflow-x-auto" role="region" aria-label="Card support inventory" tabIndex={0}>
-            <table className="w-full min-w-[1100px] text-left text-sm"><caption className="sr-only">Read-only card support inventory</caption>
-              <thead className="bg-[var(--dmi-surface-soft)] text-xs text-[var(--dmi-muted)]"><tr>{['Card Owner / Name','Company','Account Type','Template','Status','Published state','Public URL / slug','Last Updated','Actions'].map(label => <th scope="col" key={label} className="px-3 py-3">{label}</th>)}</tr></thead>
-              <tbody>{inventory.cards.map(card => <tr key={card.id} className="border-t border-[var(--dmi-border)] align-top">
-                <td className="max-w-52 break-words px-3 py-4"><p className="font-medium">{card.ownerName || "Owner name not recorded"}</p><p className="mt-1 text-xs text-[var(--dmi-muted)]">{card.name}</p></td>
-                <td className="max-w-44 break-words px-3 py-4">{card.company || "—"}</td><td className="px-3 py-4">{accountLabel(card.accountType)}</td><td className="max-w-40 break-words px-3 py-4">{card.templateName || "Unavailable"}</td>
-                <td className="px-3 py-4">{card.status || "Not recorded"}</td><td className="px-3 py-4"><span className="rounded-full bg-[var(--dmi-surface-soft)] px-2 py-1 text-xs">{card.published ? "Published" : "Unpublished"}</span></td>
-                <td className="max-w-48 break-all px-3 py-4"><code className="text-xs">{card.publicPath || card.slug || "No slug"}</code></td><td className="px-3 py-4 text-xs">{date(card.updatedAt)}</td>
-                <td className="px-3 py-4"><div className="flex flex-col items-start gap-2"><PublicAction card={card} /><button className={button} onClick={() => setSelected(card)} aria-label={`View Details: ${card.name}`}>View Details</button></div></td>
+          <div className={`${styles.inventory} dmi-card overflow-hidden`}><div className="overflow-x-auto" role="region" aria-label="Card support inventory" tabIndex={0}>
+            <table role="table"><caption className="sr-only">Read-only card support inventory</caption>
+              <thead role="rowgroup" className="bg-[var(--dmi-surface-soft)] text-xs text-[var(--dmi-muted)]"><tr role="row">{['Card Owner / Name','Company','Account Type','Template','Status','Published state','Public URL / slug','Last Updated','Actions'].map(label => <th role="columnheader" scope="col" key={label}>{label}</th>)}</tr></thead>
+              <tbody role="rowgroup">{inventory.cards.map(card => <tr role="row" key={card.id} className="border-t border-[var(--dmi-border)] align-top">
+                <td role="cell" data-label="Card Owner / Name" className="max-w-52 break-words"><p className="font-medium">{card.ownerName || "Owner name not recorded"}</p><p className="mt-1 text-xs text-[var(--dmi-muted)]">{card.name}</p></td>
+                <td role="cell" data-label="Company" className="max-w-44 break-words">{card.company || "—"}</td><td role="cell" data-label="Account Type">{accountLabel(card.accountType)}</td><td role="cell" data-label="Template" className="max-w-40 break-words">{card.templateName || "Unavailable"}</td>
+                <td role="cell" data-label="Status">{card.status || "Not recorded"}</td><td role="cell" data-label="Published state"><span data-publication-badge className="rounded-full bg-[var(--dmi-surface-soft)] text-xs">{card.published ? "Published" : "Unpublished"}</span></td>
+                <td role="cell" data-label="Public URL / slug" className="max-w-48 break-all"><code data-public-slug className="text-xs">{card.publicPath || card.slug || "No slug"}</code></td><td role="cell" data-label="Last Updated" className="text-xs">{date(card.updatedAt)}</td>
+                <td role="cell" data-label="Actions"><div data-support-actions><PublicAction card={card} /><button className={button} onClick={() => setSelected(card)} aria-label={`View Details: ${card.name}`}>View Details</button></div></td>
               </tr>)}</tbody>
             </table>
           </div>{inventory.cards.length === 0 && <p className="p-6 text-center text-sm text-[var(--dmi-muted)]">No cards found for this page and these filters.</p>}</div>

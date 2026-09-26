@@ -101,7 +101,7 @@ const page={};
 vm.runInNewContext(ts.transpileModule(pageCode,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{
  exports:page,URLSearchParams,AbortController,document:{body:{}},console,
  fetch:(url,options)=>{assert.equal(options.method,'GET');assert.equal(options.cache,'no-store');assert.equal(options.credentials,'same-origin');return new Promise(resolve=>pending.push({url,options,resolve}));},
- require(name){const deps={react,'react/jsx-runtime':{jsx,jsxs:jsx,Fragment:'fragment'},'react-dom':{createPortal:node=>node},'@/components/Sidebar':{default:()=>null},'@/hooks/useAdminDialog':{useAdminDialog:()=>({role:'dialog','aria-modal':true,tabIndex:-1})}};assert.ok(name in deps,name);return deps[name];},
+ require(name){const deps={'./cards.module.css':{default:{inventory:'inventory',filters:'filters'}},react,'react/jsx-runtime':{jsx,jsxs:jsx,Fragment:'fragment'},'react-dom':{createPortal:node=>node},'@/components/Sidebar':{default:()=>null},'@/hooks/useAdminDialog':{useAdminDialog:()=>({role:'dialog','aria-modal':true,tabIndex:-1})}};assert.ok(name in deps,name);return deps[name];},
 });
 function nodes(node){if(Array.isArray(node))return Array.from(node).flatMap(nodes);if(!node||typeof node!=='object')return [];return [node,...nodes(node.props?.children)];}
 const textOf=node=>Array.isArray(node)?node.map(textOf).join(''):typeof node==='string'||typeof node==='number'?String(node):node?.props?textOf(node.props.children):'';
@@ -130,3 +130,26 @@ control(n=>n.type==='input').props.onChange({target:{value:'  Alex  '}});render(
 const searched=new URL(pending[4].url,'http://local');assert.equal(searched.searchParams.get('search'),'Alex');assert.equal(searched.searchParams.get('page'),'1');assert.equal(searched.searchParams.get('account'),'business');
 pending[4].resolve({ok:true,json:async()=>({...sample,cards:[],total:0})});await flush();assert.ok(uiTree.some(n=>textOf(n).includes('No cards found')));
 console.log('PASS: actual support UI loading/error/retry/empty lifecycle; stale requests ignored; filter changes reset pagination; GET-only search/page requests; details open/close; metadata-only modal; same-origin new-tab links and disabled unavailable actions.');
+
+// One responsive inventory: no duplicated mobile handlers or hidden data branch.
+const density = fs.readFileSync('src/app/cards/cards.module.css', 'utf8');
+assert.match(source, /styles\.inventory/);
+assert.match(source, /styles\.filters/);
+assert.equal((source.match(/inventory\.cards\.map/g)||[]).length,1);
+assert.match(density, /font-size: 0\.875rem/);
+assert.match(density, /padding: 0\.5rem 0\.625rem/);
+assert.match(density, /text-overflow: ellipsis/);
+assert.match(density, /white-space: nowrap/);
+assert.match(density, /@media \(max-width: 767px\)/);
+assert.match(density, /min-width: 0/);
+assert.match(density, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+assert.match(density, /content: attr\(data-label\)/);
+assert.match(density, /overflow-wrap: anywhere/);
+assert.match(density, /min-height: 2\.75rem/);
+assert.match(source, /<table role="table">/);
+assert.deepEqual([...source.matchAll(/data-label="([^"]+)"/g)].map(m=>m[1]), ['Card Owner / Name','Company','Account Type','Template','Status','Published state','Public URL / slug','Last Updated','Actions']);
+assert.match(source, /<code data-public-slug[^>]*>\{card\.publicPath \|\| card\.slug \|\| "No slug"\}/);
+assert.match(source, /\["Public route", card\.publicPath\], \["Stored slug", card\.slug\]/);
+assert.match(source, /<p className="font-medium">\{card\.ownerName/);
+assert.match(source, /<p className="mt-1 text-xs text-\[var\(--dmi-muted\)\]">\{card\.name\}/);
+console.log('PASS: compact desktop cell spacing and badges; single labelled mobile card grid; retained full slug and details; desktop action sizing and 44px mobile targets; theme tokens and explicit table semantics. Source/handler verification, not browser visual measurement.');
