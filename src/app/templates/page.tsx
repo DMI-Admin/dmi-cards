@@ -1,8 +1,36 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { builderLayouts, getTemplateLayout } from "@/lib/template-layouts";
-import { templateEditPatch } from "@/lib/admin-template-write";
+import { builderLayouts, getTemplateLayout, canCreateTemplateLayout } from "@/lib/template-layouts";
+import { templateEditPatch, templateUuid } from "@/lib/admin-template-write";
+import { reconcileClientCard, clientFieldOrder as resolveClientFieldOrder } from "@/lib/client-template-view";
+import { cardFontKey } from "@/lib/card-typography";
+import { useAdminInteraction } from "@/components/AdminInteractionDialog";
+
+import { useAdminDialog } from "@/hooks/useAdminDialog";
+
+import {
+  Briefcase,
+  ClipboardList,
+  Gamepad2,
+  Globe,
+  Image as ImageIcon,
+  Layers,
+  Music,
+  Palette,
+  Phone,
+  Plus,
+  Share2,
+  type LucideIcon,
+} from "lucide-react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import CardRenderer, {
   type CardRendererData,
@@ -18,9 +46,12 @@ import {
   findDevice,
   previewFrameDimensions,
 } from "@/components/card-builder/ClientCardEditor";
+import ToggleSwitch from "@/components/card-builder/ToggleSwitch";
 import {
   getAdminTemplates,
   normalizeColourPalette,
+  normalizeTemplate,
+  publishAdminTemplate,
   saveAdminTemplate,
   type SharedTemplate,
 } from "@/lib/templates";
@@ -28,7 +59,6 @@ import {
   actionLabelIsConfigurable,
   cardActionDefinitions,
   defaultLabelForActionType,
-  effectiveCardActionConfig,
   isStepThreeOwnedTemplateField,
   normalizeTemplateAllowedActions,
   type CardActionConfig,
@@ -38,6 +68,7 @@ import {
 import {
   defaultLeadCaptureSettings,
   normalizeLeadCaptureSettings,
+  type CardFieldOrder,
   type LeadCaptureSettings,
   type SharedClientCard,
 } from "@/lib/services/card-payload";
@@ -45,7 +76,7 @@ import {
 type Template = {
   id: string;
   name: string;
-  slug: string;
+  slug: string | null;
   layout_type: string | null;
   access_level: string | null;
   status?: "draft" | "published" | null;
@@ -90,9 +121,17 @@ type Template = {
 };
 
 type LogoSize = "compact" | "standard" | "large" | "banner";
-type SectionKey = "personal" | "company" | "contact" | "social";
+type SectionKey = string;
 type CustomFields = Partial<Record<SectionKey, string[]>>;
 type DraggedField = { section: SectionKey; field: string } | null;
+type ContentSection = {
+  key: SectionKey;
+  title: string;
+  description: string;
+  fields: string[];
+  custom?: boolean;
+};
+type DraggedSection = SectionKey | null;
 type TemplatePayload = Record<
   string,
   | string
@@ -107,10 +146,19 @@ type TemplatePayload = Record<
 >;
 
 type ActionPermissionDraft = {
+  id: string;
   type: CardActionType;
   enabled: boolean;
   default_visible: boolean;
   default_label: string;
+  custom_action?: boolean;
+  action_name?: string;
+  destination_type?: "url" | "email" | "phone" | "card_field";
+  destination_field?: string;
+};
+type TemplateSaveResult = {
+  template: Template;
+  published: boolean;
 };
 
 type TemplateBuilderStep = "setup" | "design" | "content" | "actions" | "review";
@@ -123,16 +171,13 @@ type TemplateFieldConfig = {
   sections: Record<string, string[]>;
   default_visibility: Record<string, boolean>;
   required_fields: string[];
+  section_order?: string[];
+  section_labels?: Record<string, string>;
 };
 
 const cardHeaderFields = ["title", "first_name", "last_name"];
 
-const sectionFieldGroups: {
-  key: SectionKey;
-  title: string;
-  description: string;
-  fields: string[];
-}[] = [
+const sectionFieldGroups: ContentSection[] = [
   {
     key: "personal",
     title: "Personal Details",
@@ -158,6 +203,7 @@ const sectionFieldGroups: {
     fields: [],
   },
 ];
+const defaultContentSections = sectionFieldGroups;
 
 const freeFields = [
   "title",
@@ -194,25 +240,123 @@ const paidFields = [
   "phone",
 ];
 
-const defaultFreeColourPalette = [
-  "#AC00FF",
-  "#101935",
-  "#2563EB",
-  "#059669",
-  "#DC2626",
-  "#0F172A",
-];
-const defaultTextColourPalette = ["#FFFFFF", "#0F172A"];
-const modernMinimalColourPalette = [
-  "#FFFFFF",
-  "#F8FAFC",
-  "#EEF2FF",
-  "#FDF2F8",
-  "#ECFEFF",
-  "#101935",
-];
-const modernMinimalTextColours = ["#101935", "#334155", "#FFFFFF"];
 const modernMinimalFonts = ["Inter", "DM Sans", "Poppins", "Montserrat"];
+const defaultTemplateBackgroundColour = "#000000";
+const defaultTemplateGradientEnd = "#FFFFFF";
+const defaultTemplateTextColour = "#FFFFFF";
+type GradientDirection =
+  | "to_bottom"
+  | "to_top"
+  | "to_right"
+  | "to_left"
+  | "to_bottom_right"
+  | "to_bottom_left";
+const defaultGradientDirection: GradientDirection = "to_bottom_right";
+const gradientDirectionOptions: Array<{
+  value: GradientDirection;
+  label: string;
+}> = [
+  { value: "to_bottom", label: "Top to Bottom" },
+  { value: "to_top", label: "Bottom to Top" },
+  { value: "to_right", label: "Left to Right" },
+  { value: "to_left", label: "Right to Left" },
+  { value: "to_bottom_right", label: "Top Left to Bottom Right" },
+  { value: "to_bottom_left", label: "Top Right to Bottom Left" },
+];
+const builderWorkspaceClass =
+  "rounded-[24px] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-4 shadow-[0_24px_80px_color-mix(in_srgb,var(--brand-navy)_12%,transparent)] sm:rounded-[28px] sm:p-6";
+const builderPanelClass =
+  "rounded-[24px] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-4 shadow-[0_18px_50px_color-mix(in_srgb,var(--brand-navy)_8%,transparent)] sm:p-5";
+const builderPanelHeadingClass =
+  "text-lg font-semibold text-[var(--text-primary)]";
+const builderPanelDescriptionClass =
+  "mt-1 text-sm leading-6 text-[var(--dmi-muted)]";
+const builderSelectClass =
+  "inputStyle bg-[var(--input-bg)] text-[var(--input-text)] focus:border-[var(--border-brand)] focus:shadow-[0_0_0_4px_color-mix(in_srgb,var(--brand-secondary)_16%,transparent)]";
+const builderPrimaryButtonClass =
+  "inline-flex items-center justify-center rounded-2xl bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-secondary))] px-5 py-3 text-sm font-semibold !text-white shadow-[0_14px_34px_color-mix(in_srgb,var(--brand-secondary)_24%,transparent)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_42px_color-mix(in_srgb,var(--brand-secondary)_30%,transparent)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-secondary)] focus:ring-offset-2 focus:ring-offset-[var(--background)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 [&_*]:!text-white [&_svg]:!text-white";
+const builderSecondaryButtonClass =
+  "inline-flex items-center justify-center rounded-2xl border border-[var(--dmi-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-semibold text-[var(--button-secondary-text)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-secondary)] focus:ring-offset-2 focus:ring-offset-[var(--background)]";
+const builderModalPanelClass =
+  "w-full max-w-md rounded-[24px] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-5 text-[var(--text-primary)] shadow-[0_28px_90px_color-mix(in_srgb,var(--brand-navy)_24%,transparent)] sm:p-6";
+const actionCategoryCardClass =
+  "rounded-[24px] border border-[var(--dmi-border)] bg-[var(--dmi-surface)] shadow-[0_18px_50px_color-mix(in_srgb,var(--brand-navy)_8%,transparent)]";
+const actionCategoryHeaderClass =
+  "flex w-full flex-col gap-3 px-4 py-4 text-left sm:flex-row sm:items-center sm:justify-between";
+const actionCategoryBodyClass =
+  "space-y-2.5 border-t border-[var(--dmi-border)] p-3 sm:p-4";
+const actionRowClass =
+  "grid gap-4 rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-3 transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] sm:p-4 md:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_220px_220px_auto] 2xl:items-center";
+type MediaSlotKey = "profile" | "logo" | "banner";
+type TemplateMediaSupport = "unsupported" | "optional" | "required";
+type TemplateMediaDefinition = Record<MediaSlotKey, TemplateMediaSupport>;
+
+const templateMediaDefinitions: Record<string, TemplateMediaDefinition> = {
+  classic: {
+    profile: "optional",
+    logo: "unsupported",
+    banner: "unsupported",
+  },
+  classic_free: {
+    profile: "optional",
+    logo: "unsupported",
+    banner: "unsupported",
+  },
+  profile_free: {
+    profile: "optional",
+    logo: "unsupported",
+    banner: "unsupported",
+  },
+  modern_minimal: {
+    profile: "optional",
+    logo: "optional",
+    banner: "optional",
+  },
+  executive_paid: {
+    profile: "optional",
+    logo: "optional",
+    banner: "unsupported",
+  },
+  brand_paid: {
+    profile: "optional",
+    logo: "optional",
+    banner: "optional",
+  },
+};
+
+const defaultMediaDefinition: TemplateMediaDefinition = {
+  profile: "optional",
+  logo: "optional",
+  banner: "optional",
+};
+
+const optionalMediaDefaults: Record<string, Partial<Record<MediaSlotKey, boolean>>> = {
+  classic: {
+    profile: true,
+  },
+  classic_free: {
+    profile: true,
+  },
+  profile_free: {
+    profile: true,
+  },
+  modern_minimal: {
+    profile: false,
+    logo: true,
+    banner: false,
+  },
+  executive_paid: {
+    profile: true,
+    logo: true,
+    banner: false,
+  },
+  brand_paid: {
+    profile: true,
+    logo: true,
+    banner: true,
+  },
+};
+
 const defaultTemplateExampleValues: TemplateExampleValues = {
   title: "",
   first_name: "Alex",
@@ -229,11 +373,21 @@ const defaultTemplateExampleValues: TemplateExampleValues = {
 };
 const defaultTemplateActionPermissions: ActionPermissionDraft[] =
   cardActionDefinitions.map((definition) => ({
+    id: definition.type,
     type: definition.type,
     enabled: true,
     default_visible: definition.type === "save_contact",
     default_label: definition.label,
   }));
+
+const actionGroupOrder = [
+  "Contact",
+  "Web & Meetings",
+  "Social",
+  "Video & Music",
+  "Gaming & Community",
+  "Work & Developer",
+] as const;
 
 const fontChoices = [
   "Inter",
@@ -273,27 +427,62 @@ function sanitizeAllowedFonts(fonts: unknown): string[] {
   return cleanFonts.length > 0 ? cleanFonts : defaultAllowedFonts;
 }
 
+function mediaDefinitionForLayout(layoutType: string): TemplateMediaDefinition {
+  return templateMediaDefinitions[layoutType] || defaultMediaDefinition;
+}
+
+function mediaEnabledForDefinition(
+  support: TemplateMediaSupport,
+  defaultEnabled = false
+) {
+  if (support === "unsupported") return false;
+  if (support === "required") return true;
+  return defaultEnabled;
+}
+
+function templateNameForLayout(layoutType: string) {
+  return getTemplateLayout(layoutType)?.displayName || layoutType || "Unknown layout";
+}
+
+// Only UI-owned fields can change. There are no slug, tier, layout or font/colour
+// permission controls in edit mode; defaults must never expand those permissions.
+function existingEditPatch(payload: Record<string, unknown>, baseline: { payload: Record<string, unknown>; stored: Record<string, unknown> }) {
+  const patch = templateEditPatch(payload, baseline.payload, baseline.stored);
+  delete patch.slug;
+  for (const key of ["layout_type", "access_level", "allowed_fonts", "free_colour_palette", "colour_palette", "text_colours", "custom_colour_allowed", "custom_text_colour_allowed"]) delete patch[key];
+  return patch;
+}
+
 export default function TemplatesPage() {
+  const interaction = useAdminInteraction();
+  const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(
     null
   );
+  const [templateName, setTemplateName] = useState("");
+  const [editBaseline, setEditBaseline] = useState<{ id: string; payload: Record<string, unknown>; stored: Record<string, unknown> } | null>(null);
+  const pendingEdit = useRef<Template | null>(null);
+  const saveLock = useRef(false);
+  const [editTargetMissing, setEditTargetMissing] = useState(false);
   const appliedEditTemplateIdRef = useRef<string | null>(null);
   const editTemplateRef = useRef<(template: Template) => void>(() => undefined);
+  const resetBuilderRef = useRef<() => void>(() => undefined);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateMessage, setTemplateMessage] = useState("");
   const [templateError, setTemplateError] = useState("");
+  const [showLiveTemplateConfirm, setShowLiveTemplateConfirm] = useState(false);
+  const [templateSaveResult, setTemplateSaveResult] =
+    useState<TemplateSaveResult | null>(null);
+  const [publishingTemplate, setPublishingTemplate] = useState(false);
+  const [publishError, setPublishError] = useState("");
   const [activeBuilderStep, setActiveBuilderStep] =
     useState<TemplateBuilderStep>("setup");
+  const [templateSelectionConfirmed, setTemplateSelectionConfirmed] =
+    useState(false);
   const [clientPreviewOpen, setClientPreviewOpen] = useState(false);
   const [clientPreviewStep, setClientPreviewStep] = useState<ClientPreviewStep>(0);
-  const [previewSelectedColour, setPreviewSelectedColour] = useState(
-    defaultFreeColourPalette[0]
-  );
-  const [previewSelectedTextColour, setPreviewSelectedTextColour] = useState(
-    defaultTextColourPalette[0]
-  );
-  const [previewSelectedFont, setPreviewSelectedFont] = useState("");
+  const [previewSelectedFont, setPreviewSelectedFont] = useState("Inter");
   const [previewFieldOrder, setPreviewFieldOrder] =
     useState<Required<CustomFields>>(defaultCustomFields);
   const [previewActionConfig, setPreviewActionConfig] =
@@ -304,10 +493,10 @@ export default function TemplatesPage() {
   const [previewEditedFields, setPreviewEditedFields] = useState<string[]>([]);
   const [previewLeadSettings, setPreviewLeadSettings] =
     useState<LeadCaptureSettings>(defaultLeadCaptureSettings);
+  const [collapsedActionGroups, setCollapsedActionGroups] = useState<
+    Record<string, boolean>
+  >({});
 
-  const editBaseline = useRef<{ id: string; payload: TemplatePayload; stored: Template } | null>(null);
-  const pendingEdit = useRef<Template | null>(null);
-  const [name, setName] = useState("");
   const [accessLevel, setAccessLevel] = useState("free");
   const [layoutType, setLayoutType] = useState("classic_free");
 
@@ -322,30 +511,29 @@ export default function TemplatesPage() {
   const [bannerDefaultEnabled, setBannerDefaultEnabled] = useState(false);
   const [requiresBanner, setRequiresBanner] = useState(false);
   const [gradientEnabled, setGradientEnabled] = useState(true);
-  const [customColourAllowed, setCustomColourAllowed] = useState(false);
-  const [customTextColourAllowed, setCustomTextColourAllowed] = useState(false);
-  const [freeColourPalette, setFreeColourPalette] = useState<string[]>(
-    defaultFreeColourPalette
-  );
-  const [textColourPalette, setTextColourPalette] = useState<string[]>(
-    defaultTextColourPalette
-  );
+  const [gradientDirection, setGradientDirection] =
+    useState<GradientDirection>(defaultGradientDirection);
   const [allowedFonts, setAllowedFonts] =
     useState<string[]>(defaultAllowedFonts);
-  const [defaultFont, setDefaultFont] = useState("");
+  const [defaultFont, setDefaultFont] = useState("Inter");
   const [allowedFields, setAllowedFields] = useState<string[]>(freeFields);
   const [actionPermissions, setActionPermissions] = useState<
     ActionPermissionDraft[]
   >(defaultTemplateActionPermissions);
   const [customFields, setCustomFields] =
     useState<CustomFields>(defaultCustomFields);
+  const [contentSections, setContentSections] =
+    useState<ContentSection[]>(defaultContentSections);
+  const [disabledContentSections, setDisabledContentSections] = useState<string[]>(
+    []
+  );
   const [exampleValues, setExampleValues] = useState<TemplateExampleValues>(
     defaultTemplateExampleValues
   );
 
-  const [primaryColor, setPrimaryColor] = useState("#AC00FF");
-  const [secondaryColor, setSecondaryColor] = useState("#101935");
-  const [textColor, setTextColor] = useState("#FFFFFF");
+  const [primaryColor, setPrimaryColor] = useState(defaultTemplateBackgroundColour);
+  const [secondaryColor, setSecondaryColor] = useState(defaultTemplateGradientEnd);
+  const [textColor, setTextColor] = useState(defaultTemplateTextColour);
   const [buttonColor, setButtonColor] = useState("#FFFFFF");
   const [buttonTextColor, setButtonTextColor] = useState("#0F0E38");
   const [showPersonalSection, setShowPersonalSection] = useState(true);
@@ -353,15 +541,24 @@ export default function TemplatesPage() {
   const [showContactSection, setShowContactSection] = useState(true);
   const [showSocialSection, setShowSocialSection] = useState(false);
   const [draggedField, setDraggedField] = useState<DraggedField>(null);
+  const [draggedSection, setDraggedSection] = useState<DraggedSection>(null);
 
+  const currentMediaDefinition = mediaDefinitionForLayout(layoutType);
   const layoutOptions = builderLayouts(accessLevel).map(layout => ({ value: layout.id, label: layout.displayName }));
+  const selectedTemplateName = templateName;
 
   const hydrateTemplateFromUrl = useCallback((loadedTemplates: Template[]) => {
     if (typeof window === "undefined") return;
 
     const editTemplateId = new URLSearchParams(window.location.search).get("edit");
 
-    if (!editTemplateId || appliedEditTemplateIdRef.current === editTemplateId) {
+    if (!editTemplateId) {
+      appliedEditTemplateIdRef.current = null;
+      resetBuilderRef.current();
+      return;
+    }
+
+    if (appliedEditTemplateIdRef.current === editTemplateId) {
       return;
     }
 
@@ -369,29 +566,17 @@ export default function TemplatesPage() {
       (template) => template.id === editTemplateId
     );
 
-    if (!templateToEdit) return;
+    if (!templateToEdit || !templateUuid.test(editTemplateId)) {
+      setEditTargetMissing(true);
+      setTemplateSelectionConfirmed(false);
+      setTemplateError("The exact template UUID could not be loaded. Return to Current Templates and retry.");
+      return;
+    }
+    setEditTargetMissing(false);
 
     editTemplateRef.current(templateToEdit);
     appliedEditTemplateIdRef.current = editTemplateId;
   }, []);
-
-  async function fetchTemplates() {
-    try {
-      const loadedTemplates = await getAdminTemplates({ raw: true });
-      const normalizedTemplates = loadedTemplates as Template[];
-      setTemplates(normalizedTemplates);
-      hydrateTemplateFromUrl(normalizedTemplates);
-      setTemplateError("");
-    } catch (error) {
-      console.error("Template load failed", error);
-      setTemplateError(
-        error instanceof Error
-          ? error.message
-          : "Templates could not be loaded from Supabase."
-      );
-      setTemplates([]);
-    }
-  }
 
   useEffect(() => {
     let ignore = false;
@@ -404,8 +589,8 @@ export default function TemplatesPage() {
 
         const normalizedTemplates = loadedTemplates as Template[];
         setTemplates(normalizedTemplates);
-        hydrateTemplateFromUrl(normalizedTemplates);
         setTemplateError("");
+        hydrateTemplateFromUrl(normalizedTemplates);
       } catch (error) {
         if (ignore) return;
 
@@ -426,44 +611,39 @@ export default function TemplatesPage() {
   }, [hydrateTemplateFromUrl]);
 
   function resetBuilder() {
+    setEditBaseline(null);
     pendingEdit.current = null;
-    editBaseline.current = null;
+    setTemplateName("");
+    setEditTargetMissing(false);
+    setShowLiveTemplateConfirm(false);
+    setTemplateSaveResult(null);
+    setPublishError("");
+    setPublishingTemplate(false);
     setEditingTemplateId(null);
+    setTemplateSelectionConfirmed(false);
     setActiveBuilderStep("setup");
-    setName("");
     setAccessLevel("free");
     setLayoutType("classic_free");
-    setProfileImageAllowed(true);
-    setProfileImageDefaultEnabled(true);
-    setRequiresProfileImage(true);
-    setLogoAllowed(false);
-    setLogoDefaultEnabled(false);
-    setRequiresLogo(false);
-    setBannerAllowed(false);
-    setBannerDefaultEnabled(false);
-    setRequiresBanner(false);
-    setGradientEnabled(true);
-    setCustomColourAllowed(false);
-    setCustomTextColourAllowed(false);
-    setFreeColourPalette(defaultFreeColourPalette);
-    setTextColourPalette(defaultTextColourPalette);
-    setAllowedFonts(defaultAllowedFonts);
-    setDefaultFont("");
+    applyMediaDefinition("classic_free");
+    setGradientEnabled(false);
+    setGradientDirection(defaultGradientDirection);
+    setAllowedFonts(["Inter"]);
+    setDefaultFont("Inter");
     setAllowedFields(freeFields);
     setActionPermissions(defaultTemplateActionPermissions);
     setCustomFields(defaultCustomFields);
-    setPrimaryColor("#AC00FF");
-    setSecondaryColor("#101935");
-    setTextColor("#FFFFFF");
-    setButtonColor("#FFFFFF");
-    setButtonTextColor("#0F0E38");
+    setContentSections(defaultContentSections);
+    setDisabledContentSections([]);
+    setPrimaryColor(defaultTemplateBackgroundColour);
+    setSecondaryColor(defaultTemplateGradientEnd);
+    setTextColor(defaultTemplateTextColour);
+    setButtonColor(defaultTemplateGradientEnd);
+    setButtonTextColor(defaultTemplateBackgroundColour);
     setShowPersonalSection(true);
     setShowCompanySection(true);
     setShowContactSection(true);
     setShowSocialSection(false);
-    setPreviewSelectedColour(defaultFreeColourPalette[0]);
-    setPreviewSelectedTextColour(defaultTextColourPalette[0]);
-    setPreviewSelectedFont("");
+    setPreviewSelectedFont("Inter");
     setPreviewFieldOrder(defaultCustomFields);
     setPreviewActionConfig(null);
     setPreviewCardOverrides({});
@@ -472,37 +652,87 @@ export default function TemplatesPage() {
     setExampleValues(defaultTemplateExampleValues);
   }
 
+  function applyTemplateLayout(nextLayoutType: string) {
+    setLayoutType(nextLayoutType);
+    applyMediaDefinition(nextLayoutType);
+  }
+
+  function applyMediaDefinition(nextLayoutType: string) {
+    const definition = mediaDefinitionForLayout(nextLayoutType);
+    const defaults = optionalMediaDefaults[nextLayoutType] || {};
+
+    const profileEnabled = mediaEnabledForDefinition(
+      definition.profile,
+      defaults.profile
+    );
+    const logoEnabled = mediaEnabledForDefinition(definition.logo, defaults.logo);
+    const bannerEnabled = mediaEnabledForDefinition(
+      definition.banner,
+      defaults.banner
+    );
+
+    setProfileImageAllowed(profileEnabled);
+    setProfileImageDefaultEnabled(profileEnabled);
+    setRequiresProfileImage(definition.profile === "required");
+    setLogoAllowed(logoEnabled);
+    setLogoDefaultEnabled(logoEnabled);
+    setRequiresLogo(definition.logo === "required");
+    setBannerAllowed(bannerEnabled);
+    setBannerDefaultEnabled(bannerEnabled);
+    setRequiresBanner(definition.banner === "required");
+  }
+
+  function updateMediaCapability(slot: MediaSlotKey, enabled: boolean) {
+    const support = currentMediaDefinition[slot];
+
+    if (support === "unsupported") return;
+
+    const nextEnabled = support === "required" ? true : enabled;
+    const nextRequired = support === "required";
+
+    if (slot === "profile") {
+      setProfileImageAllowed(nextEnabled);
+      setProfileImageDefaultEnabled(nextEnabled);
+      setRequiresProfileImage(nextRequired);
+      return;
+    }
+
+    if (slot === "logo") {
+      setLogoAllowed(accessLevel === "paid" && nextEnabled);
+      setLogoDefaultEnabled(accessLevel === "paid" && nextEnabled);
+      setRequiresLogo(accessLevel === "paid" && nextRequired);
+      return;
+    }
+
+    setBannerAllowed(accessLevel === "paid" && nextEnabled);
+    setBannerDefaultEnabled(accessLevel === "paid" && nextEnabled);
+    setRequiresBanner(accessLevel === "paid" && nextRequired);
+  }
+
   function applyAccessLevel(value: string) {
     setAccessLevel(value);
 
     if (value === "free") {
-      setLayoutType("classic_free");
-      setProfileImageAllowed(true);
-      setProfileImageDefaultEnabled(true);
-      setRequiresProfileImage(true);
-      setLogoAllowed(false);
-      setLogoDefaultEnabled(false);
-      setRequiresLogo(false);
-      setBannerAllowed(false);
-      setBannerDefaultEnabled(false);
-      setRequiresBanner(false);
+      applyTemplateLayout("classic_free");
       setGradientEnabled(false);
-      setCustomColourAllowed(false);
-      setCustomTextColourAllowed(false);
-      setFreeColourPalette(defaultFreeColourPalette);
-      setTextColourPalette(defaultTextColourPalette);
-      setAllowedFonts(defaultAllowedFonts);
-      setDefaultFont("");
+      setGradientDirection(defaultGradientDirection);
+      setAllowedFonts(["Inter"]);
+      setDefaultFont("Inter");
+      setPrimaryColor(defaultTemplateBackgroundColour);
+      setSecondaryColor(defaultTemplateGradientEnd);
+      setTextColor(defaultTemplateTextColour);
+      setButtonColor(defaultTemplateGradientEnd);
+      setButtonTextColor(defaultTemplateBackgroundColour);
       setAllowedFields(freeFields);
       setActionPermissions(defaultTemplateActionPermissions);
       setCustomFields(defaultCustomFields);
+      setContentSections(defaultContentSections);
+      setDisabledContentSections([]);
       setShowPersonalSection(true);
       setShowCompanySection(true);
       setShowContactSection(true);
       setShowSocialSection(false);
-      setPreviewSelectedColour(defaultFreeColourPalette[0]);
-      setPreviewSelectedTextColour(defaultTextColourPalette[0]);
-      setPreviewSelectedFont("");
+      setPreviewSelectedFont("Inter");
       setPreviewFieldOrder(defaultCustomFields);
       setPreviewActionConfig(null);
       setPreviewCardOverrides({});
@@ -512,31 +742,26 @@ export default function TemplatesPage() {
     }
 
     if (value === "paid") {
-      setLayoutType(builderLayouts("paid")[0].id);
-      setProfileImageAllowed(true);
-      setProfileImageDefaultEnabled(true);
-      setRequiresProfileImage(true);
-      setLogoAllowed(true);
-      setLogoDefaultEnabled(true);
-      setRequiresLogo(true);
-      setBannerAllowed(true);
-      setBannerDefaultEnabled(true);
-      setRequiresBanner(true);
-      setGradientEnabled(true);
-      setCustomColourAllowed(true);
-      setCustomTextColourAllowed(true);
+      applyTemplateLayout("modern_minimal");
+      setGradientEnabled(false);
+      setGradientDirection(defaultGradientDirection);
       setAllowedFonts([...fontChoices]);
-      setDefaultFont("");
+      setDefaultFont("DM Sans");
+      setPrimaryColor(defaultTemplateBackgroundColour);
+      setSecondaryColor(defaultTemplateGradientEnd);
+      setTextColor(defaultTemplateTextColour);
+      setButtonColor(defaultTemplateGradientEnd);
+      setButtonTextColor(defaultTemplateBackgroundColour);
       setAllowedFields(paidFields);
       setActionPermissions(defaultTemplateActionPermissions);
       setCustomFields(defaultCustomFields);
+      setContentSections(defaultContentSections);
+      setDisabledContentSections([]);
       setShowPersonalSection(true);
       setShowCompanySection(true);
       setShowContactSection(true);
       setShowSocialSection(false);
-      setPreviewSelectedColour(defaultFreeColourPalette[0]);
-      setPreviewSelectedTextColour(defaultTextColourPalette[0]);
-      setPreviewSelectedFont("");
+      setPreviewSelectedFont("DM Sans");
       setPreviewFieldOrder(defaultCustomFields);
       setPreviewActionConfig(null);
       setPreviewCardOverrides({});
@@ -554,6 +779,7 @@ export default function TemplatesPage() {
       const enabled = allowedTypes.includes(definition.type);
 
       return {
+        id: definition.type,
         type: definition.type,
         enabled,
         default_visible: enabled && defaultTypes.includes(definition.type),
@@ -563,36 +789,30 @@ export default function TemplatesPage() {
   }
 
   function applyPaidLayoutDefaults(nextLayoutType: string) {
-    setLayoutType(nextLayoutType);
+    if (nextLayoutType === "executive_paid" || nextLayoutType === "brand_paid") {
+      applyAccessLevel("paid");
+      applyTemplateLayout(nextLayoutType);
+      return;
+    }
+
+    applyTemplateLayout(nextLayoutType);
 
     if (nextLayoutType !== "modern_minimal") return;
 
-    setProfileImageAllowed(false);
-    setProfileImageDefaultEnabled(false);
-    setRequiresProfileImage(false);
-    setLogoAllowed(true);
-    setLogoDefaultEnabled(true);
-    setRequiresLogo(false);
-    setBannerAllowed(false);
-    setBannerDefaultEnabled(false);
-    setRequiresBanner(false);
     setGradientEnabled(false);
-    setCustomColourAllowed(true);
-    setCustomTextColourAllowed(true);
-    setFreeColourPalette(modernMinimalColourPalette);
-    setTextColourPalette(modernMinimalTextColours);
+    setGradientDirection(defaultGradientDirection);
     setAllowedFonts(modernMinimalFonts);
     setDefaultFont("DM Sans");
-    setPrimaryColor("#FFFFFF");
-    setSecondaryColor("#F8FAFC");
-    setTextColor("#101935");
-    setButtonColor("#F8FAFC");
-    setButtonTextColor("#101935");
+    setPrimaryColor(defaultTemplateBackgroundColour);
+    setSecondaryColor(defaultTemplateGradientEnd);
+    setTextColor(defaultTemplateTextColour);
+    setButtonColor(defaultTemplateGradientEnd);
+    setButtonTextColor(defaultTemplateBackgroundColour);
     setAllowedFields(paidFields);
     setCustomFields(defaultCustomFields);
+    setContentSections(defaultContentSections);
+    setDisabledContentSections([]);
     setPreviewFieldOrder(defaultCustomFields);
-    setPreviewSelectedColour(modernMinimalColourPalette[0]);
-    setPreviewSelectedTextColour(modernMinimalTextColours[0]);
     setPreviewSelectedFont("DM Sans");
     setActionPermissions(
       actionPermissionsForTypes(
@@ -606,6 +826,33 @@ export default function TemplatesPage() {
     setExampleValues(defaultTemplateExampleValues);
   }
 
+  function selectAccessLevel(value: string) {
+    if (editingTemplateId || editTargetMissing) return;
+    setTemplateSelectionConfirmed(false);
+    setTemplateName("");
+    applyAccessLevel(value);
+  }
+
+  function selectLayout(value: string) {
+    if (editingTemplateId || editTargetMissing || !canCreateTemplateLayout({ layout_type: value, access_level: accessLevel })) return;
+    setEditBaseline(null);
+    setTemplateSelectionConfirmed(true);
+    setTemplateName(templateNameForLayout(value));
+    if (accessLevel === "paid") applyPaidLayoutDefaults(value);
+    else applyTemplateLayout(value);
+  }
+
+  function handleBuilderStepChange(step: TemplateBuilderStep) {
+    if (step !== "setup" && !templateSelectionConfirmed) {
+      setTemplateError("Choose a template before continuing.");
+      setActiveBuilderStep("setup");
+      return;
+    }
+
+    setTemplateError("");
+    setActiveBuilderStep(step);
+  }
+
   function toggleAllowedField(field: string) {
     if (isStepThreeOwnedTemplateField(field)) return;
 
@@ -616,11 +863,11 @@ export default function TemplatesPage() {
     }
   }
 
-  function toggleActionPermission(type: CardActionType) {
+  function toggleActionPermission(actionId: string) {
     setPreviewActionConfig(null);
     setActionPermissions((current) =>
       current.map((action) =>
-        action.type === type
+        action.id === actionId
           ? {
               ...action,
               enabled: !action.enabled,
@@ -631,28 +878,96 @@ export default function TemplatesPage() {
     );
   }
 
-  function toggleActionDefault(type: CardActionType) {
+  function toggleActionDefault(actionId: string) {
     setPreviewActionConfig(null);
     setActionPermissions((current) =>
       current.map((action) =>
-        action.type === type && action.enabled
+        action.id === actionId && action.enabled
           ? { ...action, default_visible: !action.default_visible }
           : action
       )
     );
   }
 
-  function updateActionDefaultLabel(type: CardActionType, label: string) {
+  function updateActionDefaultLabel(actionId: string, label: string) {
     setPreviewActionConfig(null);
     setActionPermissions((current) =>
       current.map((action) =>
-        action.type === type ? { ...action, default_label: label } : action
+        action.id === actionId ? { ...action, default_label: label } : action
       )
     );
   }
 
-  function addCustomField(section: SectionKey) {
-    const fieldName = window.prompt("Field name");
+  async function addCustomAction() {
+    const actionName = await interaction.prompt("Action name");
+    const normalizedName = actionName?.trim();
+
+    if (!normalizedName) return;
+
+    const buttonLabel = (await interaction.prompt("Button label", normalizedName))?.trim();
+    const destinationType = (await interaction.prompt("Destination type: URL, Email, Phone, or Card field", "URL"))
+      ?.trim()
+      .toLowerCase()
+      .replace(/\s+/g, "_");
+    const safeDestinationType =
+      destinationType === "email" ||
+      destinationType === "phone" ||
+      destinationType === "card_field"
+        ? destinationType
+        : "url";
+    const destinationField =
+      safeDestinationType === "card_field"
+        ? (await interaction.prompt("Card field key", "custom_url"))?.trim() || "custom_url"
+        : undefined;
+    const baseId = `custom_action_${slugifyKey(normalizedName)}`;
+    let id = baseId;
+    let count = 2;
+
+    while (actionPermissions.some((action) => action.id === id)) {
+      id = `${baseId}_${count}`;
+      count += 1;
+    }
+
+    setPreviewActionConfig(null);
+    setActionPermissions((current) => [
+      ...current,
+      {
+        id,
+        type: "custom_link",
+        enabled: true,
+        default_visible: false,
+        default_label: buttonLabel || normalizedName,
+        custom_action: true,
+        action_name: normalizedName,
+        destination_type: safeDestinationType,
+        destination_field: destinationField,
+      },
+    ]);
+  }
+
+  async function deleteCustomAction(actionId: string) {
+    const action = actionPermissions.find((item) => item.id === actionId);
+
+    if (!action?.custom_action) return;
+    if (!(await interaction.confirm(`Delete the "${action.action_name || action.default_label}" action?`))) {
+      return;
+    }
+
+    setPreviewActionConfig(null);
+    setActionPermissions((current) =>
+      current.filter((item) => item.id !== actionId)
+    );
+  }
+
+  function toggleActionGroup(group: string) {
+    setCollapsedActionGroups((current) => ({
+      ...current,
+      [group]: !current[group],
+    }));
+  }
+
+  async function addCustomField(section: SectionKey) {
+    const fieldName = await interaction.prompt("Field name");
     const normalized = fieldName?.trim();
 
     if (!normalized) return;
@@ -660,7 +975,11 @@ export default function TemplatesPage() {
     const key = customFieldKey(section, normalized);
 
     setCustomFields((current) => {
-      const existingFields = orderedSectionFields(section, current);
+      const existingFields = orderedSectionFields(
+        section,
+        current,
+        contentSections
+      );
       const duplicate = existingFields.some(
         (field) =>
           field.toLowerCase() === key.toLowerCase() ||
@@ -678,13 +997,17 @@ export default function TemplatesPage() {
     setAllowedFields((current) =>
       current.includes(key) ? current : [...current, key]
     );
+    setExampleValues((current) => ({
+      ...current,
+      [key]: `${normalized} details`,
+    }));
   }
 
   function reorderField(section: SectionKey, dragged: string, target: string) {
     if (dragged === target) return;
 
     setCustomFields((current) => {
-      const fields = orderedSectionFields(section, current);
+      const fields = orderedSectionFields(section, current, contentSections);
       const currentIndex = fields.indexOf(dragged);
       const targetIndex = fields.indexOf(target);
 
@@ -715,7 +1038,7 @@ export default function TemplatesPage() {
 
     setCustomFields((current) => ({
       ...current,
-      [section]: orderedSectionFields(section, current).filter(
+      [section]: orderedSectionFields(section, current, contentSections).filter(
         (item) => item !== field
       ),
     }));
@@ -732,98 +1055,18 @@ export default function TemplatesPage() {
     setPreviewEditedFields([]);
   }
 
-  function updateFreePaletteColour(index: number, value: string) {
-    setFreeColourPalette((current) =>
-      sanitizeFreeColourPalette(current).map((colour, colourIndex) =>
-        colourIndex === index ? value : colour
-      )
-    );
-  }
-
-  function updateTextPaletteColour(index: number, value: string) {
-    setTextColourPalette((current) =>
-      sanitizeFreeColourPalette(current).map((colour, colourIndex) =>
-        colourIndex === index ? value : colour
-      )
-    );
-  }
-
   function updateDefaultSolidColour(value: string) {
     setPrimaryColor(value);
-
-    if (accessLevel === "paid") {
-      setPreviewSelectedColour(value);
-    }
   }
 
   function updateDefaultTextColour(value: string) {
     setTextColor(value);
-
-    if (accessLevel === "paid") {
-      setPreviewSelectedTextColour(value);
-    }
-  }
-
-  function addFreePaletteColour() {
-    setFreeColourPalette((current) => {
-      const palette = sanitizeFreeColourPalette(current);
-
-      if (palette.length >= 6) return palette;
-
-      return [...palette, "#AC00FF"];
-    });
-  }
-
-  function addTextPaletteColour() {
-    setTextColourPalette((current) => {
-      const palette = sanitizeFreeColourPalette(current);
-
-      if (palette.length >= 6) return palette;
-
-      return [...palette, "#0F172A"];
-    });
-  }
-
-  function removeFreePaletteColour(index: number) {
-    setFreeColourPalette((current) => {
-      const palette = sanitizeFreeColourPalette(current).filter(
-        (_, colourIndex) => colourIndex !== index
-      );
-
-      return palette.length ? palette : ["#AC00FF"];
-    });
-  }
-
-  function removeTextPaletteColour(index: number) {
-    setTextColourPalette((current) => {
-      const palette = sanitizeFreeColourPalette(current).filter(
-        (_, colourIndex) => colourIndex !== index
-      );
-
-      return palette.length ? palette : defaultTextColourPalette;
-    });
-  }
-
-  function toggleAllowedFont(font: string) {
-    setAllowedFonts((current) => {
-      const next = current.includes(font)
-        ? current.filter((item) => item !== font)
-        : [...current, font];
-      const sanitized = sanitizeTemplateFonts(next);
-
-      if (defaultFont && !sanitized.includes(defaultFont)) {
-        setDefaultFont(sanitized[0] || "Inter");
-      }
-
-      return sanitized;
-    });
   }
 
   function selectDefaultFont(font: string) {
     setDefaultFont(font);
-    setAllowedFonts((current) =>
-      current.includes(font) ? current : sanitizeTemplateFonts([...current, font])
-    );
+    setPreviewSelectedFont(font);
+    if (!editingTemplateId) setAllowedFonts(accessLevel === "paid" ? allowedFonts : [font]);
   }
 
   function sectionState(section: string) {
@@ -848,16 +1091,144 @@ export default function TemplatesPage() {
       };
     }
 
+    if (section === "social") {
+      return {
+        enabled: showSocialSection,
+        onChange: setShowSocialSection,
+      };
+    }
+
     return {
-      enabled: showSocialSection,
-      onChange: setShowSocialSection,
+      enabled: !disabledContentSections.includes(section),
+      onChange: (enabled: boolean) => {
+        setDisabledContentSections((current) =>
+          enabled
+            ? current.filter((item) => item !== section)
+            : current.includes(section)
+            ? current
+            : [...current, section]
+        );
+      },
     };
+  }
+
+  async function addContentSection() {
+    const sectionName = await interaction.prompt("Section name");
+    const normalized = sectionName?.trim();
+
+    if (!normalized) return;
+
+    const baseKey = `custom_section:${slugifyKey(normalized)}`;
+    let key = baseKey;
+    let count = 2;
+
+    while (contentSections.some((section) => section.key === key)) {
+      key = `${baseKey}-${count}`;
+      count += 1;
+    }
+
+    setContentSections((current) => [
+      ...current,
+      {
+        key,
+        title: normalized,
+        description: "Custom content section.",
+        fields: [],
+        custom: true,
+      },
+    ]);
+    setCustomFields((current) => ({ ...current, [key]: [] }));
+    setDisabledContentSections((current) => current.filter((item) => item !== key));
+  }
+
+  function updateContentSectionTitle(sectionKey: SectionKey, title: string) {
+    setContentSections((current) =>
+      current.map((section) =>
+        section.key === sectionKey
+          ? { ...section, title: title.trimStart() }
+          : section
+      )
+    );
+  }
+
+  function dropContentSection(targetSection: SectionKey) {
+    if (!draggedSection || draggedSection === targetSection) return;
+
+    setContentSections((current) => {
+      const currentIndex = current.findIndex((section) => section.key === draggedSection);
+      const targetIndex = current.findIndex((section) => section.key === targetSection);
+
+      if (currentIndex < 0 || targetIndex < 0) return current;
+
+      const reordered = [...current];
+      const [movedSection] = reordered.splice(currentIndex, 1);
+      reordered.splice(targetIndex, 0, movedSection);
+
+      return reordered;
+    });
+    setDraggedSection(null);
+  }
+
+  async function deleteContentSection(sectionKey: SectionKey) {
+    const section = contentSections.find((item) => item.key === sectionKey);
+
+    if (!section?.custom) return;
+
+    const confirmed = await interaction.confirm(
+      `Delete the "${section.title || "custom"}" section and all of its fields?`
+    );
+
+    if (!confirmed) return;
+
+    const sectionFields = orderedSectionFields(
+      sectionKey,
+      customFields,
+      contentSections
+    );
+
+    setContentSections((current) =>
+      current.filter((item) => item.key !== sectionKey)
+    );
+    setCustomFields((current) => {
+      const next = { ...current };
+      delete next[sectionKey];
+      return next;
+    });
+    setPreviewFieldOrder((current) => {
+      const next = { ...current };
+      delete next[sectionKey];
+      return next;
+    });
+    setDisabledContentSections((current) =>
+      current.filter((item) => item !== sectionKey)
+    );
+    setAllowedFields((current) =>
+      current.filter((field) => !sectionFields.includes(field))
+    );
+    setExampleValues((current) => {
+      const next = { ...current };
+
+      sectionFields.forEach((field) => {
+        delete next[field];
+      });
+
+      return next;
+    });
+
+    if (draggedSection === sectionKey) setDraggedSection(null);
+    if (draggedField?.section === sectionKey) setDraggedField(null);
   }
 
   function editTemplate(template: Template) {
     pendingEdit.current = template;
+    setTemplateName(template.name);
+    setEditBaseline(null);
+    setShowLiveTemplateConfirm(false);
+    setTemplateSaveResult(null);
+    setPublishError("");
+    setPublishingTemplate(false);
     setEditingTemplateId(template.id);
-    setName(template.name);
+    setTemplateSelectionConfirmed(true);
     const normalizedAccessLevel = template.access_level === "free" ? "free" : "paid";
     setAccessLevel(normalizedAccessLevel);
     setLayoutType(template.layout_type || "");
@@ -891,57 +1262,42 @@ export default function TemplatesPage() {
       normalizedAccessLevel === "paid" && (template.requires_banner ?? false)
     );
     setGradientEnabled(template.gradient_enabled ?? normalizedAccessLevel === "paid");
-    setCustomColourAllowed(
-      template.custom_colour_allowed ?? normalizedAccessLevel === "paid"
-    );
-    setCustomTextColourAllowed(
-      template.custom_text_colour_allowed ?? normalizedAccessLevel === "paid"
-    );
-    setFreeColourPalette(
-      sanitizeFreeColourPalette(template.free_colour_palette)
-    );
-    setTextColourPalette(
-      sanitizeTextColourPalette(template.text_colours, template.text_color)
-    );
+    setGradientDirection(readTemplateGradientDirection(template.renderer_options));
     const normalizedAllowedFonts = sanitizeAllowedFonts(
       template.allowed_fonts || defaultAllowedFonts
     );
-    setAllowedFonts(normalizedAllowedFonts);
-    setDefaultFont(
+    const nextDefaultFont =
       template.default_font && normalizedAllowedFonts.includes(template.default_font)
         ? template.default_font
-        : ""
-    );
+        : normalizedAccessLevel === "paid"
+        ? "DM Sans"
+        : "Inter";
+    setAllowedFonts(normalizedAllowedFonts);
+    setDefaultFont(nextDefaultFont);
     setAllowedFields(sanitizeAllowedFields(template.allowed_fields || freeFields));
     setActionPermissions(actionPermissionsFromTemplate(template));
-    const normalizedCustomFields = normalizeCustomFields(template.custom_fields);
+    const nextContentSections = readTemplateContentSections(
+      template.field_config,
+      template.custom_fields
+    );
+    const normalizedCustomFields = normalizeCustomFields(
+      readTemplateSectionFields(template.field_config, template.custom_fields),
+      nextContentSections
+    );
     setCustomFields(normalizedCustomFields);
+    setContentSections(nextContentSections);
+    setDisabledContentSections(readTemplateDisabledSections(template.field_config));
     setPreviewFieldOrder(normalizedCustomFields);
-    setPrimaryColor(template.primary_color || "#AC00FF");
-    setSecondaryColor(template.secondary_color || "#101935");
-    setTextColor(template.text_color || "#FFFFFF");
+    setPrimaryColor(template.primary_color || defaultTemplateBackgroundColour);
+    setSecondaryColor(template.secondary_color || defaultTemplateGradientEnd);
+    setTextColor(template.text_color || defaultTemplateTextColour);
     setButtonColor(template.button_color || "#FFFFFF");
     setButtonTextColor(template.button_text_color || "#0F0E38");
     setShowPersonalSection(template.show_personal_section ?? true);
     setShowCompanySection(template.show_company_section ?? true);
     setShowContactSection(template.show_contact_section ?? true);
     setShowSocialSection(template.show_social_section ?? false);
-    setPreviewSelectedColour(
-      normalizedAccessLevel === "paid"
-        ? template.primary_color || "#AC00FF"
-        : sanitizeFreeColourPalette(template.free_colour_palette)[0] || "#AC00FF"
-    );
-    setPreviewSelectedTextColour(
-      normalizedAccessLevel === "paid"
-        ? template.text_color || "#FFFFFF"
-        : sanitizeTextColourPalette(template.text_colours, template.text_color)[0] ||
-            "#FFFFFF"
-    );
-    setPreviewSelectedFont(
-      template.default_font && normalizedAllowedFonts.includes(template.default_font)
-        ? template.default_font
-        : ""
-    );
+    setPreviewSelectedFont(nextDefaultFont);
     setExampleValues(
       readTemplateExampleValues(template.renderer_options, defaultTemplateExampleValues)
     );
@@ -955,18 +1311,13 @@ export default function TemplatesPage() {
 
   useEffect(() => {
     editTemplateRef.current = editTemplate;
+    resetBuilderRef.current = resetBuilder;
   });
 
   function currentDraftPayload() {
-    const slug = name
-      .toLowerCase()
-      .trim()
-      .replaceAll(" ", "-")
-      .replace(/[^a-z0-9-]/g, "");
-
     return buildTemplatePayload({
-      name,
-      slug,
+      name: templateName,
+      slug: templateName.toLowerCase().trim().replaceAll(" ", "-").replace(/[^a-z0-9-]/g, ""),
       layout_type: layoutType,
       access_level: accessLevel,
       primary_color: primaryColor,
@@ -974,7 +1325,7 @@ export default function TemplatesPage() {
       text_color: textColor,
       button_color: buttonColor,
       button_text_color: buttonTextColor,
-      text_colours: sanitizeTextColourPalette(textColourPalette, textColor),
+      text_colours: [textColor],
       requires_profile_image: requiresProfileImage,
       requires_logo: accessLevel === "paid" && requiresLogo,
       requires_banner: accessLevel === "paid" && requiresBanner,
@@ -984,22 +1335,30 @@ export default function TemplatesPage() {
       logo_default_enabled: accessLevel === "paid" && logoDefaultEnabled,
       banner_allowed: accessLevel === "paid" && bannerAllowed,
       banner_default_enabled: accessLevel === "paid" && bannerDefaultEnabled,
-      custom_colour_allowed: customColourAllowed,
-      custom_text_colour_allowed: customTextColourAllowed,
+      custom_colour_allowed: accessLevel === "paid",
+      custom_text_colour_allowed: accessLevel === "paid",
       gradient_enabled: accessLevel === "paid" && gradientEnabled,
-      free_colour_palette: sanitizeFreeColourPalette(freeColourPalette),
+      free_colour_palette: [primaryColor],
       allowed_fonts:
-        accessLevel === "paid" ? sanitizeTemplateFonts(allowedFonts) : defaultAllowedFonts,
-      default_font: accessLevel === "paid" ? defaultFont || null : "Inter",
+        accessLevel === "paid" ? sanitizeTemplateFonts(allowedFonts) : [defaultFont || "Inter"],
+      default_font: defaultFont || "Inter",
       allowed_fields: allowedFields,
       allowed_actions: buildTemplateAllowedActions(actionPermissions),
       custom_fields: customFields,
-      field_config: buildTemplateFieldConfig(allowedFields, customFields),
+      field_config: buildTemplateFieldConfig(
+        allowedFields,
+        customFields,
+        contentSections,
+        disabledContentSections
+      ),
       renderer_options: buildTemplateRendererOptions(
         layoutType,
         exampleValues,
         primaryColor,
-        secondaryColor
+        secondaryColor,
+        gradientDirection,
+        accessLevel,
+        accessLevel === "paid" && gradientEnabled ? "gradient" : "solid"
       ),
       show_personal_section: showPersonalSection,
       show_company_section: showCompanySection,
@@ -1009,52 +1368,76 @@ export default function TemplatesPage() {
 
   }
 
-  // Capture the UI projection after hydration, before the user edits anything.
+  const draftSnapshot = JSON.stringify(currentDraftPayload());
   useEffect(() => {
     const stored = pendingEdit.current;
     if (stored && stored.id === editingTemplateId) {
-      editBaseline.current = { id: stored.id, payload: currentDraftPayload(), stored };
+      setEditBaseline({ id: stored.id, payload: JSON.parse(draftSnapshot), stored: { ...stored } });
       pendingEdit.current = null;
     }
-  });
+  }, [editingTemplateId, draftSnapshot]);
 
-  async function saveTemplate() {
-    if (savingTemplate) return;
+  async function saveTemplate(confirmLiveUpdate = false) {
+    if (savingTemplate || saveLock.current || editTargetMissing) return;
 
-    if (!name.trim()) {
-      setTemplateError("Template name is required.");
+    const requestedId = new URLSearchParams(window.location.search).get("edit");
+    if (requestedId && (requestedId !== editingTemplateId || !templateUuid.test(requestedId))) {
+      setTemplateError("Reload the exact template before saving."); return;
+    }
+    if (!templateSelectionConfirmed) {
+      setTemplateError("Choose a template before saving.");
+      setActiveBuilderStep("setup");
       return;
     }
 
+    const existingTemplate = templates.find(
+      (template) => template.id === editingTemplateId
+    );
+
+    if (
+      (existingTemplate?.is_published || existingTemplate?.status === "published") &&
+      !confirmLiveUpdate
+    ) {
+      setShowLiveTemplateConfirm(true);
+      return;
+    }
+
+    if (!templateName.trim()) { setTemplateError("Template name is required."); return; }
     const payload = currentDraftPayload();
+    const baseline = editBaseline;
+    if (editingTemplateId && (!baseline || baseline.id !== editingTemplateId)) {
+      setTemplateError("Reload the exact template before saving."); return;
+    }
+    const patch = editingTemplateId && baseline
+      ? existingEditPatch(payload, baseline)
+      : { ...payload, is_published: false, status: "draft" };
 
     try {
       setSavingTemplate(true);
       setTemplateError("");
       setTemplateMessage("");
+      setPublishError("");
+      setTemplateSaveResult(null);
 
-      const baseline = editBaseline.current;
-      if (editingTemplateId && baseline?.id !== editingTemplateId) throw new Error("Reload the exact template before saving.");
-      const patch = editingTemplateId && baseline
-        ? templateEditPatch(payload, baseline.payload, baseline.stored)
-        : { ...payload, is_published: false, status: "draft" as const };
-      // No slug/layout/access edit action exists in this committed Builder.
-      if (editingTemplateId) {
-        delete patch.slug;
-        delete patch.layout_type;
-        delete patch.access_level;
-      }
+      setShowLiveTemplateConfirm(false);
+      saveLock.current = true;
       const result = await saveAdminTemplate(patch as Partial<SharedTemplate>, editingTemplateId);
-      const savedTemplate = result.template as Template;
+      // Retain raw stored permissions; normalized read defaults must not become writes.
+      const stored = { ...(baseline?.stored || {}), ...patch, id: result.template.id };
+      const savedTemplate = stored as unknown as Template;
+      setEditBaseline({ id: savedTemplate.id, payload, stored });
+      const savedIsPublished =
+        savedTemplate.is_published || savedTemplate.status === "published";
 
       setTemplates((current) => {
         const withoutSaved = current.filter((template) => template.id !== savedTemplate.id);
         return [savedTemplate, ...withoutSaved];
       });
-
-      resetBuilder();
-      await fetchTemplates();
-      setTemplateMessage("Template saved successfully.");
+      setEditingTemplateId(savedTemplate.id);
+      setTemplateSaveResult({
+        template: savedTemplate,
+        published: Boolean(savedIsPublished),
+      });
     } catch (error) {
       console.error("Template save failed", error);
       setTemplateError(
@@ -1063,7 +1446,36 @@ export default function TemplatesPage() {
           : "Template could not be saved. Your current edits are still on screen."
       );
     } finally {
+      saveLock.current = false;
       setSavingTemplate(false);
+    }
+  }
+
+  function goToCurrentTemplates() {
+    router.push("/templates/current");
+  }
+
+  async function publishSavedTemplate() {
+    if (!templateSaveResult || publishingTemplate) return;
+
+    try {
+      setPublishingTemplate(true);
+      setPublishError("");
+
+      await publishAdminTemplate(
+        templateSaveResult.template as unknown as SharedTemplate,
+        true
+      );
+      goToCurrentTemplates();
+    } catch (error) {
+      console.error("Template publish failed", error);
+      setPublishError(
+        error instanceof Error
+          ? `The template was saved, but publication failed: ${error.message}`
+          : "The template was saved, but publication failed. Please try again."
+      );
+    } finally {
+      setPublishingTemplate(false);
     }
   }
 
@@ -1077,147 +1489,68 @@ export default function TemplatesPage() {
   const currentPublicationStatus = currentEditingTemplate?.is_published
     ? "Published"
     : "Draft";
-  const enabledSections = sectionFieldGroups
-    .filter((section) => sectionState(section.key).enabled)
-    .map((section) => section.title);
+  const effectiveExampleValues = useMemo(
+    () => sanitizeTemplateExampleValues(exampleValues),
+    [exampleValues]
+  );
+  const contentReviewSections = contentSections
+    .map((section) => {
+      const sectionEnabled = sectionState(section.key).enabled;
+      const fields = orderedSectionFields(
+        section.key,
+        customFields,
+        contentSections
+      ).map((field) => ({
+        key: field,
+        label: formatFieldLabel(field),
+        enabled: allowedFields.includes(field),
+        example: effectiveExampleValues[field]?.trim() || "",
+      }));
+
+      return {
+        key: section.key,
+        title: section.title.trim() || formatFieldLabel(section.key),
+        custom: section.custom === true,
+        enabled: sectionEnabled,
+        fields,
+      };
+    })
+    .filter((section) => !section.custom || section.fields.length > 0);
+  const enabledContentFieldCount = contentReviewSections.reduce(
+    (count, section) =>
+      section.enabled
+        ? count + section.fields.filter((field) => field.enabled).length
+        : count,
+    0
+  );
   const allowedActionCount = actionPermissions.filter((action) => action.enabled).length;
   const defaultActionCount = actionPermissions.filter(
     (action) => action.enabled && action.default_visible
   ).length;
-  const availablePreviewColours = sanitizeFreeColourPalette(freeColourPalette);
-  const availablePreviewTextColours = sanitizeTextColourPalette(
-    textColourPalette,
-    textColor
-  );
   const effectivePreviewSelectedColour =
-    accessLevel === "paid"
-      ? previewSelectedColour || primaryColor
-      : availablePreviewColours.includes(previewSelectedColour)
-      ? previewSelectedColour
-      : availablePreviewColours[0] || "#AC00FF";
+    primaryColor || defaultTemplateBackgroundColour;
   const effectivePreviewSelectedTextColour =
-    accessLevel === "paid"
-      ? previewSelectedTextColour || textColor
-      : availablePreviewTextColours.includes(previewSelectedTextColour)
-      ? previewSelectedTextColour
-      : availablePreviewTextColours[0] || "#FFFFFF";
+    textColor || defaultTemplateTextColour;
   const availablePreviewFonts =
     accessLevel === "paid"
       ? sanitizeTemplateFonts(allowedFonts)
-      : defaultAllowedFonts;
+      : [defaultFont || "Inter"];
   const effectivePreviewSelectedFont = availablePreviewFonts.includes(
     previewSelectedFont
   )
     ? previewSelectedFont
     : defaultFont || availablePreviewFonts[0] || "Inter";
-  const previewProfileImageEnabled =
-    profileImageAllowed && (requiresProfileImage || profileImageDefaultEnabled);
-  const previewLogoEnabled =
-    accessLevel === "paid" && logoAllowed && (requiresLogo || logoDefaultEnabled);
-  const previewBannerEnabled =
-    accessLevel === "paid" &&
-    bannerAllowed &&
-    (requiresBanner || bannerDefaultEnabled);
-  const effectiveExampleValues = useMemo(
-    () => sanitizeTemplateExampleValues(exampleValues),
-    [exampleValues]
+  const draftPayload = currentDraftPayload();
+  const previewTemplate = normalizeTemplate({
+    ...(editBaseline?.stored || {}),
+    ...(editBaseline ? existingEditPatch(draftPayload, editBaseline) : draftPayload),
+    id: editingTemplateId || "admin-preview-template",
+  } as unknown as SharedTemplate);
+  const previewClientTemplate = previewTemplate;
+  const previewDefaultActionConfig = useMemo(
+    () => buildPreviewDefaultActionConfig(actionPermissions),
+    [actionPermissions]
   );
-  const previewTemplate = useMemo(
-    () => ({
-      id: editingTemplateId || "admin-preview-template",
-      name: name || "Admin Preview Template",
-      slug: "admin-preview-template",
-      status: "draft" as const,
-      is_published: false,
-      layout_type: layoutType,
-      logo_size: "standard",
-      access_level: accessLevel,
-      requires_profile_image: previewProfileImageEnabled,
-      requires_logo: previewLogoEnabled,
-      requires_banner: previewBannerEnabled,
-      profile_image_allowed: profileImageAllowed,
-      profile_image_default_enabled: profileImageDefaultEnabled,
-      logo_allowed: accessLevel === "paid" && logoAllowed,
-      logo_default_enabled: accessLevel === "paid" && logoDefaultEnabled,
-      banner_allowed: accessLevel === "paid" && bannerAllowed,
-      banner_default_enabled: accessLevel === "paid" && bannerDefaultEnabled,
-      custom_colour_allowed: customColourAllowed,
-      custom_text_colour_allowed: customTextColourAllowed,
-      gradient_enabled: accessLevel === "paid" && gradientEnabled,
-      free_colour_palette: sanitizeFreeColourPalette(freeColourPalette),
-      text_colours: sanitizeTextColourPalette(textColourPalette, textColor),
-      allowed_fonts:
-        accessLevel === "paid"
-          ? sanitizeTemplateFonts(allowedFonts)
-          : defaultAllowedFonts,
-      default_font: accessLevel === "paid" ? defaultFont || null : "Inter",
-      supports_bio: true,
-      supports_save_contact: actionPermissionEnabled(
-        actionPermissions,
-        "save_contact"
-      ),
-      allowed_fields: allowedFields,
-      allowed_actions: buildTemplateAllowedActions(actionPermissions),
-      custom_fields: customFields,
-      primary_color: primaryColor,
-      secondary_color: secondaryColor,
-      text_color: textColor,
-      button_color: buttonColor,
-      button_text_color: buttonTextColor,
-      renderer_options: buildTemplateRendererOptions(
-        layoutType,
-        effectiveExampleValues,
-        primaryColor,
-        secondaryColor
-      ),
-      show_personal_section: showPersonalSection,
-      show_company_section: showCompanySection,
-      show_contact_section: showContactSection,
-      show_social_section: showSocialSection,
-    }),
-    [
-      accessLevel,
-      actionPermissions,
-      allowedFields,
-      allowedFonts,
-      buttonColor,
-      buttonTextColor,
-      bannerAllowed,
-      bannerDefaultEnabled,
-      customFields,
-      customColourAllowed,
-      customTextColourAllowed,
-      defaultFont,
-      editingTemplateId,
-      effectiveExampleValues,
-      freeColourPalette,
-      gradientEnabled,
-      layoutType,
-      logoAllowed,
-      logoDefaultEnabled,
-      name,
-      primaryColor,
-      profileImageAllowed,
-      profileImageDefaultEnabled,
-      previewBannerEnabled,
-      previewLogoEnabled,
-      previewProfileImageEnabled,
-      secondaryColor,
-      showCompanySection,
-      showContactSection,
-      showPersonalSection,
-      showSocialSection,
-      textColor,
-      textColourPalette,
-    ]
-  );
-  const previewClientTemplate = {
-    ...previewTemplate,
-    default_font:
-      accessLevel === "paid"
-        ? effectivePreviewSelectedFont || defaultFont || null
-        : effectivePreviewSelectedFont || "Inter",
-  };
   const previewCardData = {
     title: effectiveExampleValues.title || "",
     first_name: effectiveExampleValues.first_name || "Alex",
@@ -1229,8 +1562,8 @@ export default function TemplatesPage() {
     job_title: effectiveExampleValues.job_title || "Creative Director",
     bio: effectiveExampleValues.bio || defaultTemplateExampleValues.bio,
     company_name: effectiveExampleValues.company_name || "DevMaster Inc",
-    company_logo_url: previewLogoEnabled ? "/logo.png" : null,
-    company_banner_url: previewBannerEnabled ? "" : null,
+    company_logo_url: null,
+    company_banner_url: null,
     department: effectiveExampleValues.department || "Creative Department",
     email: effectiveExampleValues.email || "alex@devmasterinc.com",
     phone: effectiveExampleValues.phone || "+44 7000 000000",
@@ -1243,19 +1576,22 @@ export default function TemplatesPage() {
     youtube: "youtube.com/@devmasterinc",
     booking_link: "devmasterinc.com/book",
     custom_url: "devmasterinc.com",
-    selected_colour: effectivePreviewSelectedColour,
-    selected_text_colour: effectivePreviewSelectedTextColour,
+    selected_colour:
+      accessLevel === "paid" ? effectivePreviewSelectedColour : undefined,
+    selected_text_colour:
+      accessLevel === "paid" ? effectivePreviewSelectedTextColour : undefined,
     selected_background_mode:
       accessLevel === "paid" && gradientEnabled ? "gradient" : "solid",
     selected_gradient_start: primaryColor,
     selected_gradient_end: secondaryColor,
-    action_config: effectiveCardActionConfig(
-      { action_config: null, field_visibility: {}, hidden_fields: [] },
-      previewTemplate
-    ),
+    action_config: previewDefaultActionConfig,
     hidden_fields: [],
     field_visibility: {},
-    custom_fields: previewCustomFieldValues(customFields),
+    custom_fields: previewCustomFieldValues(
+      customFields,
+      effectiveExampleValues,
+      contentSections
+    ),
   };
   const clientExampleFields = Object.keys(effectiveExampleValues).filter(
     (field) => !previewEditedFields.includes(field)
@@ -1271,38 +1607,20 @@ export default function TemplatesPage() {
     card_slot: 1,
     ...previewCardData,
     ...previewCardOverrides,
-    selected_colour: effectivePreviewSelectedColour,
-    selected_text_colour: effectivePreviewSelectedTextColour,
-    selected_background_mode:
-      previewCardOverrides.selected_background_mode ||
-      previewCardData.selected_background_mode,
-    selected_gradient_start:
-      previewCardOverrides.selected_gradient_start ||
-      previewCardData.selected_gradient_start,
-    selected_gradient_end:
-      previewCardOverrides.selected_gradient_end ||
-      previewCardData.selected_gradient_end,
     example_fields: clientExampleFields,
     action_config:
       previewActionConfig ||
-      effectiveCardActionConfig(
-        { action_config: null, field_visibility: {}, hidden_fields: [] },
-        previewTemplate
-      ),
-    custom_fields: previewCustomFieldValues(previewFieldOrder),
-    field_order: previewFieldOrder,
+      previewDefaultActionConfig,
+    custom_fields: {
+      ...previewCustomFieldValues(previewFieldOrder, effectiveExampleValues, contentSections),
+      [cardFontKey]: effectivePreviewSelectedFont,
+      ...previewCardOverrides.custom_fields,
+    },
+    field_order: clientFieldOrder(previewFieldOrder),
     lead_capture_settings: previewLeadSettings,
   };
 
   function updatePreviewCard(field: keyof SharedClientCard, value: string) {
-    if (field === "selected_colour") {
-      setPreviewSelectedColour(value);
-    }
-
-    if (field === "selected_text_colour") {
-      setPreviewSelectedTextColour(value);
-    }
-
     if (field in defaultTemplateExampleValues) {
       setPreviewEditedFields((current) =>
         current.includes(field) ? current : [...current, String(field)]
@@ -1355,7 +1673,7 @@ export default function TemplatesPage() {
     position: "before" | "after" = "before"
   ) {
     setPreviewFieldOrder((current) => {
-      const fields = [...current[section]];
+      const fields = [...(current[section] || [])];
       const fromIndex = fields.indexOf(draggedField);
       const toIndex = fields.indexOf(targetField);
 
@@ -1378,6 +1696,13 @@ export default function TemplatesPage() {
     const step = templateBuilderSteps[index];
     if (!step) return;
 
+    if (step.key !== "setup" && !templateSelectionConfirmed) {
+      setTemplateError("Choose a template before continuing.");
+      setActiveBuilderStep("setup");
+      return;
+    }
+
+    setTemplateError("");
     setActiveBuilderStep(step.key);
   }
 
@@ -1386,64 +1711,58 @@ export default function TemplatesPage() {
       return (
         <StepPanel
           title="Setup"
-          description="Name the template, choose who can use it, and define media capabilities."
+          description="Choose who can use this template and which layout it is based on."
         >
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field label="Template Name">
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Classic"
-                className="inputStyle"
-              />
-            </Field>
+          <div className={builderPanelClass}>
+            <div>
+              <h3 className={builderPanelHeadingClass}>Template Selection</h3>
+              <p className={builderPanelDescriptionClass}>
+                Choose the access level and template to build.
+              </p>
+            </div>
 
-            <Field label="Access Level">
-              <select
-                value={accessLevel}
-                disabled={Boolean(editingTemplateId)}
-                onChange={(e) => applyAccessLevel(e.target.value)}
-                className="inputStyle"
-              >
-                <option value="free">Free</option>
-                <option value="paid">Paid</option>
-              </select>
+            <Field label="Template name">
+              <input aria-label="Template name" className={builderSelectClass} value={templateName} onChange={(event) => setTemplateName(event.target.value)} />
             </Field>
+            {editingTemplateId && <p className="mt-3 text-sm text-[var(--dmi-muted)]">Editing this saved template. Layout, access and slug are preserved.</p>}
+            <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Field label="Access Level">
+                <select
+                  disabled={Boolean(editingTemplateId) || editTargetMissing}
+                  value={accessLevel}
+                  onChange={(e) => selectAccessLevel(e.target.value)}
+                  className={builderSelectClass}
+                >
+                  <option value="free">Free</option>
+                  <option value="paid">Paid</option>
+                </select>
+              </Field>
 
-            <Field label="Layout Style">
-              <select
-                value={layoutType}
-                disabled={Boolean(editingTemplateId)}
-                onChange={(e) => applyPaidLayoutDefaults(e.target.value)}
-                className="inputStyle"
-              >
-                {editingTemplateId && !getTemplateLayout(layoutType) && <option value={layoutType}>{layoutType || "Unspecified legacy layout"} (existing only)</option>}
-                {layoutOptions.map((layout) => (
-                  <option key={layout.value} value={layout.value}>
-                    {layout.label}
+              <Field label="Template">
+                <select
+                  disabled={Boolean(editingTemplateId) || editTargetMissing}
+                  value={templateSelectionConfirmed ? layoutType : ""}
+                  onChange={(e) => selectLayout(e.target.value)}
+                  className={builderSelectClass}
+                >
+                  <option value="" disabled>
+                    Select a template
                   </option>
-                ))}
-              </select>
-            </Field>
-
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <span className="mb-2 block text-sm font-medium text-white/55">
-                Publication
-              </span>
-              <p className="text-sm font-semibold text-white">
-                {currentPublicationStatus}
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-white/45">
-                Save changes from Review. Publishing controls remain explicit
-                on saved templates.
-              </p>
+                  {editingTemplateId && !getTemplateLayout(layoutType) && <option value={layoutType}>{layoutType || "Unknown layout"} (preserved)</option>}
+                  {layoutOptions.map((layout) => (
+                    <option key={layout.value} value={layout.value}>
+                      {layout.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
             </div>
           </div>
 
-          <div className="mt-6 rounded-3xl border border-white/10 bg-[#101935]/50 p-5 shadow-[0_22px_70px_rgba(0,0,0,0.24)]">
+          <div className={`mt-6 ${builderPanelClass}`}>
             <div>
-              <h3 className="text-lg font-semibold">Images &amp; Branding</h3>
-              <p className="mt-1 text-sm text-white/45">
+              <h3 className={builderPanelHeadingClass}>Images &amp; Branding</h3>
+              <p className={builderPanelDescriptionClass}>
                 Choose which media elements are available for clients to use.
               </p>
             </div>
@@ -1452,41 +1771,30 @@ export default function TemplatesPage() {
               <MediaCapabilityRow
                 title="Profile Picture"
                 description="Allow clients to upload a profile photo. Clients can choose to show or hide it."
+                support={currentMediaDefinition.profile}
                 enabled={profileImageAllowed}
-                disabled={false}
                 onEnabledChange={(value) => {
-                  setProfileImageAllowed(value);
-                  setRequiresProfileImage(false);
-                  setProfileImageDefaultEnabled(value);
+                  updateMediaCapability("profile", value);
                 }}
               />
               <MediaCapabilityRow
                 title="Company Logo"
                 description="Allow clients to upload a company logo. Modern Minimal displays it as a watermark."
-                disabled={accessLevel !== "paid"}
+                support={currentMediaDefinition.logo}
                 enabled={accessLevel === "paid" && logoAllowed}
                 onEnabledChange={(value) => {
-                  setLogoAllowed(value);
-                  setRequiresLogo(false);
-                  setLogoDefaultEnabled(value);
+                  updateMediaCapability("logo", value);
                 }}
               />
               <MediaCapabilityRow
                 title="Banner Image"
                 description="Allow clients to upload a banner image. Clients can choose to show or hide it."
-                disabled={accessLevel !== "paid"}
+                support={currentMediaDefinition.banner}
                 enabled={accessLevel === "paid" && bannerAllowed}
                 onEnabledChange={(value) => {
-                  setBannerAllowed(value);
-                  setRequiresBanner(false);
-                  setBannerDefaultEnabled(value);
+                  updateMediaCapability("banner", value);
                 }}
               />
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-[#AC00FF]/15 bg-[#AC00FF]/10 px-4 py-3 text-xs leading-5 text-purple-100/80">
-              These settings only control whether media options are available.
-              Clients control visibility for enabled media on each card they create.
             </div>
           </div>
         </StepPanel>
@@ -1499,103 +1807,93 @@ export default function TemplatesPage() {
           title="Design"
           description={
             accessLevel === "paid"
-              ? "Set paid template startup colours and typography. Clients can choose any branding colours later."
-              : "Configure approved colour choices and typography for this free template."
+              ? "Set the paid template background, text colour and typography defaults."
+              : "Set the fixed default colours and typography for this free template."
           }
         >
-          {accessLevel === "free" ? (
-            <>
-              <div className="grid gap-4 md:grid-cols-2">
-                <ContractToggle
-                  label="Custom card colours"
-                  description="Free templates remain restricted unless this legacy flag is enabled."
-                  enabled={customColourAllowed}
-                  onToggle={setCustomColourAllowed}
-                />
-                <ContractToggle
-                  label="Custom text colours"
-                  description="Free templates remain restricted unless this legacy flag is enabled."
-                  enabled={customTextColourAllowed}
-                  onToggle={setCustomTextColourAllowed}
-                />
+          <DesignPanel
+            title="Colours"
+            description={
+              accessLevel === "paid"
+                ? "Choose the paid template background mode and unrestricted default text colour."
+                : "Choose the fixed card and text colours for this free template."
+            }
+          >
+            {accessLevel === "paid" && (
+              <div className="mb-5 grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setGradientEnabled(false)}
+                  className={`rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
+                    !gradientEnabled
+                      ? "border-[var(--border-brand)] bg-[color-mix(in_srgb,var(--brand-secondary)_14%,var(--dmi-surface))] text-[var(--text-primary)] shadow-[0_12px_28px_color-mix(in_srgb,var(--brand-secondary)_12%,transparent)]"
+                      : "border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] text-[var(--dmi-muted)] hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  Solid
+                  <span className="mt-1 block text-xs font-normal text-[var(--dmi-muted)]">
+                    One clean card colour.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGradientEnabled(true)}
+                  className={`rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
+                    gradientEnabled
+                      ? "border-[var(--border-brand)] bg-[color-mix(in_srgb,var(--brand-secondary)_14%,var(--dmi-surface))] text-[var(--text-primary)] shadow-[0_12px_28px_color-mix(in_srgb,var(--brand-secondary)_12%,transparent)]"
+                      : "border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] text-[var(--dmi-muted)] hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  Gradient
+                  <span className="mt-1 block text-xs font-normal text-[var(--dmi-muted)]">
+                    Two-colour premium background.
+                  </span>
+                </button>
               </div>
+            )}
 
-              <ColourPalette
-                title="Predefined Colour Choices"
-                description="Approved card colour choices. The first colour remains the default background."
-                colours={freeColourPalette}
-                addLabel="Add Colour"
-                itemLabel="Colour"
-                onChange={updateFreePaletteColour}
-                onAdd={addFreePaletteColour}
-                onRemove={removeFreePaletteColour}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <ColourPicker
+                label={
+                  accessLevel === "paid" && gradientEnabled
+                    ? "Card Colour 1"
+                    : "Card Colour"
+                }
+                value={primaryColor}
+                onChange={updateDefaultSolidColour}
+                showHexInput={false}
               />
-              <ColourPalette
-                title="Text Colour Options"
-                description="Approved text colours for card name and main card text."
-                colours={textColourPalette}
-                addLabel="Add Text Colour"
-                itemLabel="Text"
-                onChange={updateTextPaletteColour}
-                onAdd={addTextPaletteColour}
-                onRemove={removeTextPaletteColour}
+              <ColourPicker
+                label="Text Colour"
+                value={textColor}
+                onChange={updateDefaultTextColour}
+                showHexInput={false}
               />
-            </>
-          ) : (
-            <>
-              <div className="rounded-3xl border border-white/10 bg-white/[0.045] p-5">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold">Paid Colour Defaults</h3>
-                    <p className="mt-1 text-sm text-white/45">
-                      These values seed new cards only. Paid clients can choose any
-                      solid, gradient and text colours in the Client Builder.
-                    </p>
-                  </div>
-                  <select
-                    value={gradientEnabled ? "gradient" : "solid"}
-                    onChange={(event) =>
-                      setGradientEnabled(event.target.value === "gradient")
-                    }
-                    className="inputStyle min-w-[12rem]"
-                    aria-label="Default background mode"
-                  >
-                    <option value="solid">Default solid</option>
-                    <option value="gradient">Default gradient</option>
-                  </select>
-                </div>
-
-                <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              {accessLevel === "paid" && gradientEnabled && (
+                <>
                   <ColourPicker
-                    label="Default solid colour"
-                    value={primaryColor}
-                    onChange={updateDefaultSolidColour}
-                    helperText="Also used as gradient colour 1."
-                    className="[--dmi-surface-soft:rgba(255,255,255,0.05)] [--dmi-surface:rgba(255,255,255,0.08)] [--dmi-border:rgba(255,255,255,0.12)] [--input-bg:#101935] [--input-border:rgba(255,255,255,0.12)] [--input-text:#FFFFFF] [--text-primary:#FFFFFF] [--text-secondary:rgba(255,255,255,0.55)]"
-                  />
-                  <ColourPicker
-                    label="Default gradient colour 2"
+                    label="Card Colour 2"
                     value={secondaryColor}
                     onChange={setSecondaryColor}
-                    className="[--dmi-surface-soft:rgba(255,255,255,0.05)] [--dmi-surface:rgba(255,255,255,0.08)] [--dmi-border:rgba(255,255,255,0.12)] [--input-bg:#101935] [--input-border:rgba(255,255,255,0.12)] [--input-text:#FFFFFF] [--text-primary:#FFFFFF] [--text-secondary:rgba(255,255,255,0.55)]"
+                    showHexInput={false}
                   />
-                  <ColourPicker
-                    label="Default text colour"
-                    value={textColor}
-                    onChange={updateDefaultTextColour}
-                    className="[--dmi-surface-soft:rgba(255,255,255,0.05)] [--dmi-surface:rgba(255,255,255,0.08)] [--dmi-border:rgba(255,255,255,0.12)] [--input-bg:#101935] [--input-border:rgba(255,255,255,0.12)] [--input-text:#FFFFFF] [--text-primary:#FFFFFF] [--text-secondary:rgba(255,255,255,0.55)]"
+                  <GradientDirectionCard
+                    value={gradientDirection}
+                    onChange={setGradientDirection}
                   />
-                </div>
-              </div>
+                </>
+              )}
+            </div>
+          </DesignPanel>
 
-              <TypographyControls
-                allowedFonts={allowedFonts}
-                defaultFont={defaultFont}
-                onToggleFont={toggleAllowedFont}
-                onSelectDefaultFont={selectDefaultFont}
-              />
-            </>
-          )}
+          <div className="mt-5">
+            <TypographyPicker
+              accessLevel={accessLevel}
+              selectedFont={defaultFont || "Inter"}
+              fonts={editingTemplateId ? [...new Set([...allowedFonts, defaultFont])] : fontChoices}
+              onSelectFont={selectDefaultFont}
+            />
+          </div>
         </StepPanel>
       );
     }
@@ -1615,8 +1913,9 @@ export default function TemplatesPage() {
               onUpdateExampleValue={updateExampleValue}
             />
 
-            {sectionFieldGroups.map((section) => {
+            {contentSections.map((section) => {
               const { enabled, onChange } = sectionState(section.key);
+              const sectionDragging = draggedSection === section.key;
 
               return (
                 <SectionControl
@@ -1624,17 +1923,30 @@ export default function TemplatesPage() {
                   section={section.key}
                   title={section.title}
                   description={section.description}
-                  fields={orderedSectionFields(section.key, customFields)}
+                  fields={orderedSectionFields(
+                    section.key,
+                    customFields,
+                    contentSections
+                  )}
                   builtInFields={section.fields}
+                  customSection={section.custom === true}
                   enabled={enabled}
                   allowedFields={allowedFields}
                   exampleValues={effectiveExampleValues}
                   onToggleSection={() => onChange(!enabled)}
+                  onUpdateSectionTitle={(title) =>
+                    updateContentSectionTitle(section.key, title)
+                  }
                   onToggleField={toggleAllowedField}
                   onUpdateExampleValue={updateExampleValue}
                   onAddField={() => addCustomField(section.key)}
+                  onDeleteSection={() => deleteContentSection(section.key)}
                   onDeleteField={(field) => deleteCustomField(section.key, field)}
                   draggedField={draggedField}
+                  sectionDragging={sectionDragging}
+                  onSectionDragStart={() => setDraggedSection(section.key)}
+                  onSectionDragEnd={() => setDraggedSection(null)}
+                  onSectionDrop={() => dropContentSection(section.key)}
                   onDragStart={(field) =>
                     setDraggedField({ section: section.key, field })
                   }
@@ -1643,6 +1955,13 @@ export default function TemplatesPage() {
                 />
               );
             })}
+            <button
+              type="button"
+              onClick={addContentSection}
+              className="w-full rounded-2xl border border-dashed border-[var(--border-brand)] bg-[color-mix(in_srgb,var(--brand-secondary)_10%,var(--dmi-surface))] px-4 py-3 text-sm font-semibold text-[var(--text-accent)] transition hover:bg-[color-mix(in_srgb,var(--brand-secondary)_14%,var(--dmi-surface))] focus:outline-none focus:ring-2 focus:ring-[var(--brand-secondary)] focus:ring-offset-2 focus:ring-offset-[var(--background)]"
+            >
+              + Add Section
+            </button>
           </div>
         </StepPanel>
       );
@@ -1656,9 +1975,13 @@ export default function TemplatesPage() {
         >
           <ActionButtonsControl
             actions={actionPermissions}
+            collapsedGroups={collapsedActionGroups}
             onToggleAction={toggleActionPermission}
             onToggleDefault={toggleActionDefault}
             onUpdateDefaultLabel={updateActionDefaultLabel}
+            onToggleGroup={toggleActionGroup}
+            onAddCustomAction={addCustomAction}
+            onDeleteCustomAction={deleteCustomAction}
           />
         </StepPanel>
       );
@@ -1667,23 +1990,37 @@ export default function TemplatesPage() {
     return (
       <StepPanel
         title="Review"
-        description="Check the template contract and visual preview before saving."
+        description="Final check before saving or updating this template."
       >
         <div className="grid gap-4 xl:grid-cols-2">
           <ReviewCard
+            icon={ClipboardList}
             title="Setup"
             items={[
-              ["Template", name || "Untitled template"],
-              ["Access", accessLevel === "free" ? "Free" : "Paid"],
+              ["Template", selectedTemplateName],
               [
-                "Layout",
-                layoutOptions.find((layout) => layout.value === layoutType)?.label ||
-                  layoutType,
+                "Access",
+                <ReviewBadge
+                  key="access"
+                  tone={accessLevel === "free" ? "neutral" : "accent"}
+                >
+                  {accessLevel === "free" ? "Free" : "Paid"}
+                </ReviewBadge>,
               ],
-              ["Status", currentPublicationStatus],
+              ["Layout", selectedTemplateName],
+              [
+                "Status",
+                <ReviewBadge
+                  key="status"
+                  tone={currentPublicationStatus === "Published" ? "accent" : "neutral"}
+                >
+                  {currentPublicationStatus}
+                </ReviewBadge>,
+              ],
             ]}
           />
           <ReviewCard
+            icon={ImageIcon}
             title="Media"
             items={[
               [
@@ -1713,43 +2050,59 @@ export default function TemplatesPage() {
             ]}
           />
           <ReviewCard
+            icon={Palette}
             title="Design"
             items={[
               accessLevel === "paid"
                 ? ["Default background", gradientEnabled ? "Gradient" : "Solid"]
-                : ["Colours", `${sanitizeFreeColourPalette(freeColourPalette).length} predefined`],
+                : ["Card colour", <ReviewColourValue key="card-colour" colour={primaryColor} />],
               accessLevel === "paid"
-                ? ["Default solid", primaryColor]
-                : [
-                    "Text colours",
-                    `${sanitizeTextColourPalette(textColourPalette, textColor).length} options`,
-                  ],
+                ? [
+                    gradientEnabled ? "Gradient colours" : "Solid colour",
+                    gradientEnabled ? (
+                      <ReviewGradientValue
+                        key="gradient-colours"
+                        start={primaryColor}
+                        end={secondaryColor}
+                      />
+                    ) : (
+                      <ReviewColourValue key="solid-colour" colour={primaryColor} />
+                    ),
+                  ]
+                : ["Text colour", <ReviewColourValue key="text-colour" colour={textColor} />],
               accessLevel === "paid"
-                ? ["Default text", textColor]
-                : ["Custom colours", customColourAllowed ? "Allowed" : "Not allowed"],
+                ? [
+                    "Gradient direction",
+                    gradientEnabled ? gradientDirectionLabel(gradientDirection) : "Not used",
+                  ]
+                : ["Typography", defaultFont || "Inter"],
               accessLevel === "paid"
-                ? ["Paid client colours", "Unrestricted"]
-                : [
-                    "Custom text colours",
-                    customTextColourAllowed ? "Allowed" : "Not allowed",
-                  ],
+                ? ["Text colour", <ReviewColourValue key="paid-text-colour" colour={textColor} />]
+                : ["Client colour controls", "Not exposed"],
+              accessLevel === "paid"
+                ? ["Typography", `${defaultFont || "Inter"} default · client-selectable later`]
+                : ["Client typography controls", "Not exposed"],
+            ]}
+          />
+          <ReviewCard
+            icon={Layers}
+            title="Content"
+            items={[
               [
-                "Typography",
-                `${sanitizeTemplateFonts(allowedFonts).length} fonts · ${
-                  defaultFont || "No custom default"
-                }`,
+                "Summary",
+                `${contentReviewSections.length} sections · ${enabledContentFieldCount} enabled fields`,
+              ],
+              [
+                "Configuration",
+                <ContentReviewSummary
+                  key="content-review-summary"
+                  sections={contentReviewSections}
+                />,
               ],
             ]}
           />
           <ReviewCard
-            title="Content"
-            items={[
-              ["Sections", enabledSections.length ? enabledSections.join(", ") : "None"],
-              ["Fields", `${sanitizeAllowedFields(allowedFields).length} allowed`],
-              ["Field defaults", "Stored in contract metadata; client behavior unchanged"],
-            ]}
-          />
-          <ReviewCard
+            icon={Share2}
             title="Actions"
             items={[
               ["Allowed actions", String(allowedActionCount)],
@@ -1763,13 +2116,16 @@ export default function TemplatesPage() {
   }
 
   return (
-    <main className="flex min-h-screen bg-[#070B1A] text-white">
+    <main className="dmi-app-shell flex min-h-screen">
       <Sidebar />
+      {interaction.dialog}
 
-      <section className="flex-1 p-10">
+      <section className="dmi-page">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold">Template Builder</h1>
-          <p className="mt-2 text-white/50">
+          <h1 className="text-4xl font-bold text-[var(--text-primary)]">
+            Template Builder
+          </h1>
+          <p className="mt-2 text-[var(--dmi-muted)]">
             Create and edit reusable card layouts. Clients will customise
             colours and content later.
           </p>
@@ -1782,20 +2138,20 @@ export default function TemplatesPage() {
         )}
 
         {templateError && (
-          <div className="mb-6 rounded-2xl border border-yellow-400/20 bg-yellow-500/10 px-5 py-4 text-sm text-yellow-100">
+          <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm font-medium text-amber-950 dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-100">
             {templateError}
           </div>
         )}
 
-        <div className="mb-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-start">
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <div className="flex items-start justify-between gap-4">
+        <div className="mb-10 grid gap-6 2xl:grid-cols-[minmax(0,1fr)_420px] 2xl:items-start">
+          <div className={builderWorkspaceClass}>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="text-2xl font-semibold">
+                <h2 className="text-2xl font-semibold text-[var(--text-primary)]">
                   {editingTemplateId ? "Edit Template" : "Template Builder"}
                 </h2>
 
-                <p className="mt-1 text-sm text-white/45">
+                <p className="mt-1 text-sm text-[var(--dmi-muted)]">
                   {editingTemplateId
                     ? "Update this template and save your changes."
                     : "Choose sensible defaults by access level, then manually tune the template rules."}
@@ -1804,8 +2160,8 @@ export default function TemplatesPage() {
 
               {editingTemplateId && (
                 <button
-                  onClick={resetBuilder}
-                  className="rounded-2xl bg-white/10 px-4 py-2 text-sm hover:bg-white/15"
+                  onClick={goToCurrentTemplates}
+                  className={builderSecondaryButtonClass}
                 >
                   Cancel Edit
                 </button>
@@ -1815,65 +2171,74 @@ export default function TemplatesPage() {
             <TemplateStepNavigation
               steps={templateBuilderSteps}
               activeStep={activeBuilderStep}
-              onStepChange={setActiveBuilderStep}
+              onStepChange={handleBuilderStepChange}
             />
 
             {renderBuilderStep()}
 
-            <div className="mt-8 flex flex-col gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
-              <button
-                type="button"
-                onClick={() => goToBuilderStep(activeStepIndex - 1)}
-                disabled={activeStepIndex === 0}
-                className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-medium transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Back
-              </button>
+            <div className="mt-8 flex flex-col gap-3 border-t border-[var(--dmi-border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-h-11">
+                {activeStepIndex > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => goToBuilderStep(activeStepIndex - 1)}
+                    className={`${builderSecondaryButtonClass} w-full justify-center sm:w-auto`}
+                  >
+                    Back
+                  </button>
+                )}
+              </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 {activeBuilderStep !== "review" && (
                   <button
                     type="button"
                     onClick={() => goToBuilderStep(activeStepIndex + 1)}
-                    className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-medium transition hover:bg-white/15"
+                    className={`${builderPrimaryButtonClass} w-full justify-center sm:w-auto`}
                   >
                     Next
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => void saveTemplate()}
-                  disabled={savingTemplate}
-                  className="rounded-2xl bg-[#AC00FF] px-6 py-3 font-medium transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {savingTemplate
-                    ? "Saving..."
-                    : editingTemplateId
-                    ? "Save Changes"
-                    : "Create Template"}
-                </button>
+                {activeBuilderStep === "review" && (
+                  <button
+                    type="button"
+                    onClick={() => void saveTemplate()}
+                    disabled={savingTemplate}
+                    className={`${builderPrimaryButtonClass} w-full justify-center px-6 py-3.5 sm:w-auto sm:min-w-44`}
+                  >
+                    {savingTemplate
+                      ? "Saving..."
+                      : editingTemplateId
+                      ? "Update Template"
+                      : "Save New Template"}
+                  </button>
+                )}
               </div>
             </div>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_28px_90px_rgba(0,0,0,0.24)] lg:sticky lg:top-6 lg:self-start">
+          <div className={`${builderWorkspaceClass} mx-auto w-full max-w-[560px] 2xl:sticky 2xl:top-6 2xl:max-w-none 2xl:self-start`}>
             <div className="mb-6">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div>
-                  <h2 className="text-2xl font-semibold">Live Preview</h2>
-                  <p className="mt-1 text-sm text-white/45">
+                  <h2 className="text-2xl font-semibold text-[var(--text-primary)]">
+                    Live Preview
+                  </h2>
+                  <p className="mt-1 text-sm text-[var(--dmi-muted)]">
                     Current Admin draft rendered by the existing CardRenderer.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
-                    setPreviewFieldOrder(normalizeCustomFields(customFields));
+                    setPreviewFieldOrder(
+                      normalizeCustomFields(customFields, contentSections)
+                    );
                     setPreviewActionConfig(null);
                     setClientPreviewOpen(true);
                   }}
-                  className="rounded-2xl border border-[#AC00FF]/35 bg-[#AC00FF]/15 px-4 py-2.5 text-sm font-semibold text-purple-100 transition hover:border-[#AC00FF]/60 hover:bg-[#AC00FF]/25 focus:outline-none focus:ring-2 focus:ring-[#AC00FF]/60"
+                  className={builderSecondaryButtonClass}
                 >
                   Preview Client Experience
                 </button>
@@ -1900,14 +2265,179 @@ export default function TemplatesPage() {
                 onMoveField={movePreviewField}
                 leadSettings={previewLeadSettings}
                 onLeadSettingsChange={setPreviewLeadSettings}
-                onSelectFont={setPreviewSelectedFont}
+                onSelectFont={(font) => updatePreviewCustomField(cardFontKey, font)}
               />
             )}
           </div>
         </div>
 
+        {showLiveTemplateConfirm && (
+          <LiveTemplateUpdateModal
+            saving={savingTemplate}
+            onCancel={() => setShowLiveTemplateConfirm(false)}
+            onConfirm={() => void saveTemplate(true)}
+          />
+        )}
+        {templateSaveResult && (
+          <TemplateSaveResultModal
+            result={templateSaveResult}
+            publishing={publishingTemplate}
+            error={publishError}
+            onNotNow={goToCurrentTemplates}
+            onPublishNow={() => void publishSavedTemplate()}
+            onGoToCurrentTemplates={goToCurrentTemplates}
+          />
+        )}
       </section>
     </main>
+  );
+}
+
+function LiveTemplateUpdateModal({
+  saving,
+  onCancel,
+  onConfirm,
+}: {
+  saving: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const dialog = useAdminDialog(onCancel, !saving);
+  return (
+    <div
+      {...dialog}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="live-template-update-title"
+    >
+      <div className={builderModalPanelClass}>
+        <h2
+          id="live-template-update-title"
+          className="text-xl font-semibold text-[var(--text-primary)]"
+        >
+          Update live template?
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-[var(--dmi-muted)]">
+          This template is currently published and available to clients.
+          Confirm that these are the final changes you want to apply.
+        </p>
+        <div className="mt-6 flex flex-col justify-end gap-3 sm:flex-row">
+          <button
+            type="button"
+            data-dialog-initial-focus onClick={onCancel}
+            disabled={saving}
+            className={builderSecondaryButtonClass}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={saving}
+            className={builderPrimaryButtonClass}
+          >
+            {saving ? "Updating..." : "Update Template"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TemplateSaveResultModal({
+  result,
+  publishing,
+  error,
+  onNotNow,
+  onPublishNow,
+  onGoToCurrentTemplates,
+}: {
+  result: TemplateSaveResult;
+  publishing: boolean;
+  error: string;
+  onNotNow: () => void;
+  onPublishNow: () => void;
+  onGoToCurrentTemplates: () => void;
+}) {
+  const dialog = useAdminDialog(result.published ? undefined : onNotNow, !result.published && !publishing);
+  if (result.published) {
+    return (
+      <div
+        {...dialog}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="template-updated-title"
+      >
+        <div className={builderModalPanelClass}>
+          <h2
+            id="template-updated-title"
+            className="text-xl font-semibold text-[var(--text-primary)]"
+          >
+            Template updated
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-[var(--dmi-muted)]">
+            Your changes have been saved to this live template.
+          </p>
+          <div className="mt-6 flex justify-end">
+            <button
+              type="button"
+              data-dialog-initial-focus onClick={onGoToCurrentTemplates}
+              className={builderPrimaryButtonClass}
+            >
+              Go to Current Templates
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      {...dialog}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="publish-template-title"
+    >
+      <div className={builderModalPanelClass}>
+        <h2
+          id="publish-template-title"
+          className="text-xl font-semibold text-[var(--text-primary)]"
+        >
+          Publish template?
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-[var(--dmi-muted)]">
+          The template has been saved successfully. Would you like to publish it
+          now and make it available to clients?
+        </p>
+        {error && (
+          <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+            {error}
+          </div>
+        )}
+        <div className="mt-6 flex flex-col justify-end gap-3 sm:flex-row">
+          <button
+            type="button"
+            data-dialog-initial-focus onClick={onNotNow}
+            disabled={publishing}
+            className={builderSecondaryButtonClass}
+          >
+            Not Now
+          </button>
+          <button
+            type="button"
+            onClick={onPublishNow}
+            disabled={publishing}
+            className={builderPrimaryButtonClass}
+          >
+            {publishing ? "Publishing..." : "Publish Now"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1920,7 +2450,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-medium text-white/55">
+      <span className="mb-2 block text-sm font-medium text-[var(--dmi-muted)]">
         {label}
       </span>
       {children}
@@ -1949,7 +2479,7 @@ function ClientExperiencePreview({
   onClose: () => void;
   template: SharedTemplate;
   cardData: SharedClientCard;
-  fieldOrder: Required<CustomFields>;
+  fieldOrder: CustomFields;
   onActionConfigChange: (config: CardActionConfig) => void;
   onUpdateCard: (field: keyof SharedClientCard, value: string) => void;
   onUpdateCustomField: (field: string, value: string) => void;
@@ -1964,6 +2494,7 @@ function ClientExperiencePreview({
   onLeadSettingsChange: (settings: LeadCaptureSettings) => void;
   onSelectFont: (font: string) => void;
 }) {
+  const { ref: previewDialogRef } = useAdminDialog(onClose, true, true);
   const [devicePreview, setDevicePreview] = useState("iphone_15");
   const [deviceSearch, setDeviceSearch] = useState("");
   const [devicePickerOpen, setDevicePickerOpen] = useState(false);
@@ -1990,15 +2521,19 @@ function ClientExperiencePreview({
   const selectedDevice = findDevice(devicePreview as Parameters<typeof findDevice>[0]);
   const filteredDeviceGroups = filterDeviceGroups(deviceSearch);
   const previewDimensions = previewFrameDimensions(selectedDevice);
+  const plan = template.access_level === "paid" ? "pro" : "free";
+  const previewCard = reconcileClientCard({ ...cardData, field_order: resolveClientFieldOrder(template, plan, clientFieldOrder(fieldOrder)) }, template, plan).card;
   const previewTemplate = {
     ...template,
-    custom_fields: fieldOrder,
+    custom_fields: previewCard.field_order,
+    field_config: { ...template.field_config, sections: previewCard.field_order },
   };
 
   return (
+    <div ref={previewDialogRef}>
     <CardEditorModalShell
       title="Client Experience Preview"
-      description={`Previewing ${template.name || "current Admin draft"} with local sample data.`}
+      description={`Previewing ${template.name || "current Admin draft"} with local sample data. Changes here do not save. Publishing requirements are not checked.`}
       ariaLabel="Client experience preview"
       actionBar={
         <EditorStepNavigation
@@ -2016,8 +2551,8 @@ function ClientExperiencePreview({
         <EditorPanel
           key={step}
           activeStep={step}
-          draftCard={cardData}
-          fieldOrder={fieldOrder}
+          draftCard={previewCard}
+          fieldOrder={previewCard.field_order || clientFieldOrder({})}
           template={template}
           templates={[template]}
           currentPlan={template.access_level === "paid" ? "pro" : "free"}
@@ -2031,7 +2566,7 @@ function ClientExperiencePreview({
           onToggleFieldVisibility={onToggleFieldVisibility}
           onMoveField={onMoveField}
           onSelectFont={onSelectFont}
-          showTemplateContractControls
+          enforceClientContract
           saveStatus="idle"
           saveMessage=""
           saveError=""
@@ -2041,7 +2576,7 @@ function ClientExperiencePreview({
           <div className="client-portal-panel sticky top-0 p-5">
             <PreviewPanelContent
               title="Live Edit Preview"
-              previewCard={cardData}
+              previewCard={previewCard}
               previewTemplate={previewTemplate}
               selectedDevice={selectedDevice}
               selectedKey={devicePreview as Parameters<typeof findDevice>[0]}
@@ -2063,6 +2598,7 @@ function ClientExperiencePreview({
         </aside>
       </div>
     </CardEditorModalShell>
+    </div>
   );
 }
 
@@ -2074,11 +2610,23 @@ function AdminLivePhonePreview({
   cardData: CardRendererData;
 }) {
   return (
-    <div className="flex min-h-[620px] items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-black/20 p-5">
-      <div className="relative w-full max-w-[360px] rounded-[2.7rem] bg-gradient-to-br from-black via-[#101016] to-[#1B1230] p-2.5 shadow-2xl shadow-[#AC00FF]/20">
+    <div className="flex min-h-[520px] items-center justify-center overflow-hidden rounded-[24px] border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-3 sm:min-h-[620px] sm:p-5">
+      <div className="relative w-full max-w-[360px] rounded-[2.7rem] bg-gradient-to-br from-black via-[#101016] to-[#1B1230] p-2.5 shadow-[0_22px_60px_color-mix(in_srgb,var(--brand-navy)_28%,transparent)]">
         <div className="pointer-events-none absolute left-1/2 top-[18px] z-20 h-7 w-24 -translate-x-1/2 rounded-full bg-black shadow-inner shadow-white/10" />
-        <div className="h-[560px] overflow-y-auto overflow-x-hidden rounded-[2rem] bg-[#070B1A] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <CardRenderer mode="preview" template={template} cardData={cardData} />
+        <div
+          className="h-[460px] overflow-y-auto overflow-x-hidden rounded-[2rem] bg-[#070B1A] [-ms-overflow-style:none] [scrollbar-width:none] sm:h-[560px] [&::-webkit-scrollbar]:hidden"
+          style={{
+            // Island top + height - shell padding, measured from the screen's top.
+            "--card-viewport-safe-top": "calc(18px + 1.75rem - 0.625rem)",
+          } as React.CSSProperties}
+        >
+          <CardRenderer
+            mode="preview"
+            template={template}
+            cardData={cardData}
+            showMediaPlaceholders
+            previewActionDestinations
+          />
         </div>
       </div>
     </div>
@@ -2095,25 +2643,27 @@ function TemplateStepNavigation({
   onStepChange: (step: TemplateBuilderStep) => void;
 }) {
   return (
-    <div className="mt-6 rounded-3xl border border-white/10 bg-[#101935]/45 p-3">
-      <ol className="grid gap-2 md:grid-cols-5">
+    <div className="mt-6 overflow-x-auto rounded-[24px] border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <ol className="flex min-w-max gap-2 md:grid md:min-w-0 md:grid-cols-5">
         {steps.map((step, index) => {
           const selected = step.key === activeStep;
 
           return (
-            <li key={step.key}>
+            <li key={step.key} className="w-36 shrink-0 md:w-auto">
               <button
                 type="button"
                 onClick={() => onStepChange(step.key)}
-                className={`flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-left text-sm transition ${
+                className={`flex h-12 w-full items-center gap-2 rounded-[18px] px-3 text-left text-sm transition ${
                   selected
-                    ? "bg-[#AC00FF] text-white shadow-[0_0_22px_rgba(172,0,255,0.24)]"
-                    : "bg-white/5 text-white/55 hover:bg-white/10 hover:text-white"
+                    ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-secondary))] !text-white shadow-[0_10px_28px_color-mix(in_srgb,var(--brand-secondary)_24%,transparent)] [&_*]:!text-white [&_svg]:!text-white"
+                    : "bg-[var(--dmi-surface)] text-[var(--dmi-muted)] hover:bg-[var(--button-hover-bg)] hover:text-[var(--foreground)]"
                 }`}
               >
                 <span
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                    selected ? "bg-white text-[#101935]" : "bg-white/10 text-white/60"
+                    selected
+                      ? "bg-white/20 !text-white ring-1 ring-white/35"
+                      : "bg-[var(--dmi-surface-soft)] text-[var(--dmi-muted)]"
                   }`}
                 >
                   {index + 1}
@@ -2135,13 +2685,17 @@ function StepPanel({
 }: {
   title: string;
   description: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div className="mt-6">
-      <div className="mb-5">
-        <h3 className="text-xl font-semibold">{title}</h3>
-        <p className="mt-1 text-sm leading-6 text-white/45">{description}</p>
+      <div className="mb-6">
+        <h3 className="text-2xl font-semibold tracking-[-0.01em] text-[var(--text-primary)]">
+          {title}
+        </h3>
+        <p className="mt-2 text-sm leading-6 text-[var(--dmi-muted)]">
+          {description}
+        </p>
       </div>
       {children}
     </div>
@@ -2151,40 +2705,62 @@ function StepPanel({
 function MediaCapabilityRow({
   title,
   description,
+  support,
   enabled,
-  disabled = false,
   onEnabledChange,
 }: {
   title: string;
   description: string;
+  support: TemplateMediaSupport;
   enabled: boolean;
-  disabled?: boolean;
   onEnabledChange: (value: boolean) => void;
 }) {
+  const unsupported = support === "unsupported";
+  const required = support === "required";
+  const disabled = unsupported || required;
+  const stateLabel = unsupported
+    ? "Unsupported"
+    : required
+    ? "Required"
+    : enabled
+    ? "Enabled"
+    : "Disabled";
+  const stateEnabled = required || (!unsupported && enabled);
+  const iconLabel = title
+    .split(" ")
+    .map((word) => word[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <div
-      className={`grid gap-4 rounded-2xl border border-white/10 bg-white/[0.045] p-4 transition md:grid-cols-[minmax(0,1fr)_auto] md:items-center ${
-        disabled ? "opacity-55" : ""
+      className={`grid min-h-[96px] gap-4 rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-4 transition lg:grid-cols-[minmax(0,1fr)_180px] lg:items-center ${
+        disabled ? "opacity-70" : ""
       }`}
     >
       <div className="flex gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/10 text-white/65">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] text-[var(--text-accent)]">
           <span className="text-[10px] font-bold uppercase tracking-[0.14em]">
-            IMG
+            {iconLabel}
           </span>
         </div>
-        <div>
-          <p className="font-semibold">{title}</p>
-          <p className="mt-1 text-xs leading-relaxed text-white/55">
+        <div className="min-w-0">
+          <p className="font-semibold text-[var(--text-primary)]">{title}</p>
+          <p className="mt-1 text-xs leading-relaxed text-[var(--dmi-muted)]">
             {description}
           </p>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <TogglePill
-          label={enabled ? "Enabled" : "Disabled"}
-          enabled={enabled}
+      <div className="flex min-w-0 items-center justify-start gap-3 lg:justify-end">
+        <span className="w-[96px] text-right text-sm font-semibold text-[var(--dmi-muted)]">
+          {stateLabel}
+        </span>
+        <ToggleSwitch
+          checked={stateEnabled}
           disabled={disabled}
+          ariaLabel={`${title} media capability`}
+          focusRingOffsetClass="focus:ring-offset-[var(--dmi-surface)]"
           onToggle={() => onEnabledChange(!enabled)}
         />
       </div>
@@ -2192,84 +2768,139 @@ function MediaCapabilityRow({
   );
 }
 
-function ContractToggle({
-  label,
+function DesignPanel({
+  title,
   description,
-  enabled,
-  onToggle,
+  children,
 }: {
-  label: string;
+  title: string;
   description: string;
-  enabled: boolean;
-  onToggle: (value: boolean) => void;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="font-semibold">{label}</p>
-          <p className="mt-1 text-xs leading-relaxed text-white/45">
-            {description}
-          </p>
-        </div>
-        <TogglePill
-          label={enabled ? "Allowed" : "Not allowed"}
-          enabled={enabled}
-          onToggle={() => onToggle(!enabled)}
-        />
+    <div className={builderPanelClass}>
+      <div>
+        <h3 className={builderPanelHeadingClass}>{title}</h3>
+        <p className={builderPanelDescriptionClass}>{description}</p>
       </div>
+      <div className="mt-5">{children}</div>
     </div>
   );
 }
 
-function TogglePill({
-  label,
-  enabled,
-  disabled = false,
-  onToggle,
+function GradientDirectionCard({
+  value,
+  onChange,
 }: {
-  label: string;
-  enabled: boolean;
-  disabled?: boolean;
-  onToggle: () => void;
+  value: GradientDirection;
+  onChange: (value: GradientDirection) => void;
 }) {
-  const enabledStyle = label === "Required"
-    ? "border-amber-300/50 bg-amber-400/20 text-amber-100 shadow-[0_0_0_2px_rgba(251,191,36,0.12)]"
-    : label === "Default enabled"
-    ? "border-sky-300/50 bg-sky-400/20 text-sky-100 shadow-[0_0_0_2px_rgba(56,189,248,0.12)]"
-    : "border-[#AC00FF]/55 bg-[#AC00FF]/25 text-white shadow-[0_0_0_2px_rgba(172,0,255,0.14)]";
-
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onToggle}
-      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-        enabled
-          ? enabledStyle
-          : "border-white/10 bg-white/5 text-white/55 hover:border-white/20 hover:bg-white/10 hover:text-white/75"
-      } disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-white/10 disabled:hover:bg-white/5`}
+    <label
+      className="block rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-3"
     >
-      {label}
-    </button>
+      <span className="mb-2 block text-sm font-semibold text-[var(--text-primary)]">
+        Gradient Direction
+      </span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value as GradientDirection)}
+        className="h-12 w-full rounded-2xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 text-sm font-semibold text-[var(--input-text)] outline-none transition focus:border-[var(--input-focus)] focus:ring-4 focus:ring-[var(--input-focus-ring)]"
+      >
+        {gradientDirectionOptions.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function TypographyPicker({
+  fonts,
+  accessLevel,
+  selectedFont,
+  onSelectFont,
+}: {
+  fonts: readonly string[];
+  accessLevel: string;
+  selectedFont: string;
+  onSelectFont: (font: string) => void;
+}) {
+  return (
+    <DesignPanel
+      title="Typography"
+      description={
+        accessLevel === "paid"
+          ? "Choose the default font. Client choices follow the saved font permissions."
+          : "Choose the saved font for this free template. Free clients do not receive typography controls."
+      }
+    >
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(135px,1fr))] gap-3">
+        {fonts.map((font) => {
+          const selected = selectedFont === font;
+
+          return (
+            <button
+              key={font}
+              type="button"
+              onClick={() => onSelectFont(font)}
+              className={`relative rounded-2xl border p-4 text-left transition ${
+                selected
+                  ? "border-[var(--border-brand)] bg-[color-mix(in_srgb,var(--brand-secondary)_14%,var(--dmi-surface))] text-[var(--text-primary)] shadow-[0_12px_28px_color-mix(in_srgb,var(--brand-secondary)_12%,transparent)]"
+                  : "border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] text-[var(--dmi-muted)] hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] hover:text-[var(--foreground)]"
+              }`}
+            >
+              {selected && (
+                <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-md bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-secondary))] text-xs !text-white">
+                  ✓
+                </span>
+              )}
+              <p className="pr-7 text-sm font-semibold">{font}</p>
+              <p
+                className="mt-5 text-3xl font-semibold leading-none"
+                style={{ fontFamily: font }}
+              >
+                Aa
+              </p>
+            </button>
+          );
+        })}
+      </div>
+    </DesignPanel>
   );
 }
 
 function ReviewCard({
+  icon: Icon,
   title,
   items,
 }: {
+  icon: LucideIcon;
   title: string;
-  items: [string, string][];
+  items: [string, ReactNode][];
 }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-[#101935]/50 p-5">
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <dl className="mt-4 space-y-3">
+    <div className={builderPanelClass}>
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] text-[var(--text-accent)]">
+          <Icon className="h-4 w-4" />
+        </span>
+        <h3 className={builderPanelHeadingClass}>{title}</h3>
+      </div>
+      <dl className="mt-5 space-y-3">
         {items.map(([label, value]) => (
-          <div key={`${title}-${label}`} className="flex gap-4 text-sm">
-            <dt className="w-32 shrink-0 text-white/45">{label}</dt>
-            <dd className="min-w-0 flex-1 text-white">{value}</dd>
+          <div
+            key={`${title}-${label}`}
+            className="grid gap-1 rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-4 py-3 text-sm sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] sm:gap-4"
+          >
+            <dt className="min-w-0 break-words text-[var(--dmi-muted)]">
+              {label}
+            </dt>
+            <dd className="min-w-0 break-words font-semibold text-[var(--text-primary)]">
+              {value}
+            </dd>
           </div>
         ))}
       </dl>
@@ -2277,269 +2908,490 @@ function ReviewCard({
   );
 }
 
+function ContentReviewSummary({
+  sections,
+}: {
+  sections: Array<{
+    key: string;
+    title: string;
+    custom: boolean;
+    enabled: boolean;
+    fields: Array<{
+      key: string;
+      label: string;
+      enabled: boolean;
+      example: string;
+    }>;
+  }>;
+}) {
+  if (sections.length === 0) {
+    return <span className="text-[var(--dmi-muted)]">No content sections configured.</span>;
+  }
+
+  return (
+    <div className="space-y-2 font-normal">
+      {sections.map((section) => (
+        <div
+          key={section.key}
+          className="rounded-xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-3"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-[var(--text-primary)]">
+              {section.title}
+            </span>
+            <ReviewBadge tone={section.enabled ? "accent" : "neutral"}>
+              {section.enabled ? "Enabled" : "Disabled"}
+            </ReviewBadge>
+            <ReviewBadge>{section.custom ? "Custom" : "Built-in"}</ReviewBadge>
+          </div>
+
+          {section.fields.length > 0 ? (
+            <ul className="mt-3 space-y-2">
+              {section.fields.map((field) => (
+                <li
+                  key={`${section.key}-${field.key}`}
+                  className="rounded-lg border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-3 py-2"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-[var(--text-primary)]">
+                      {field.label}
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        field.enabled
+                          ? "bg-[color-mix(in_srgb,var(--brand-secondary)_10%,var(--dmi-surface))] text-[var(--text-accent)]"
+                          : "bg-[var(--dmi-surface)] text-[var(--dmi-muted)]"
+                      }`}
+                    >
+                      {field.enabled ? "Enabled" : "Disabled"}
+                    </span>
+                  </div>
+                  {field.example && (
+                    <p className="mt-1 break-words text-xs font-normal text-[var(--dmi-muted)]">
+                      Example: {field.example}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-xs font-normal text-[var(--dmi-muted)]">
+              No fields configured.
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReviewBadge({
+  children,
+  tone = "neutral",
+}: {
+  children: ReactNode;
+  tone?: "neutral" | "accent";
+}) {
+  return (
+    <span
+      className={`inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${
+        tone === "accent"
+          ? "border-[var(--border-brand)] bg-[color-mix(in_srgb,var(--brand-secondary)_10%,var(--dmi-surface))] text-[var(--text-accent)]"
+          : "border-[var(--dmi-border)] bg-[var(--dmi-surface)] text-[var(--text-primary)]"
+      }`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function ReviewColourValue({ colour }: { colour: string }) {
+  return (
+    <span className="inline-flex max-w-full items-center gap-2">
+      <span
+        className="h-4 w-4 shrink-0 rounded-full border border-[var(--dmi-border)]"
+        style={{ backgroundColor: colour }}
+      />
+      <span className="min-w-0 break-all">{colour}</span>
+    </span>
+  );
+}
+
+function ReviewGradientValue({
+  start,
+  end,
+}: {
+  start: string;
+  end: string;
+}) {
+  return (
+    <span className="flex min-w-0 flex-col gap-1">
+      <ReviewColourValue colour={start} />
+      <ReviewColourValue colour={end} />
+    </span>
+  );
+}
+
 function ActionButtonsControl({
   actions,
+  collapsedGroups,
   onToggleAction,
   onToggleDefault,
   onUpdateDefaultLabel,
+  onToggleGroup,
+  onAddCustomAction,
+  onDeleteCustomAction,
 }: {
   actions: ActionPermissionDraft[];
-  onToggleAction: (type: CardActionType) => void;
-  onToggleDefault: (type: CardActionType) => void;
-  onUpdateDefaultLabel: (type: CardActionType, label: string) => void;
+  collapsedGroups: Record<string, boolean>;
+  onToggleAction: (actionId: string) => void;
+  onToggleDefault: (actionId: string) => void;
+  onUpdateDefaultLabel: (actionId: string, label: string) => void;
+  onToggleGroup: (group: string) => void;
+  onAddCustomAction: () => void;
+  onDeleteCustomAction: (actionId: string) => void;
 }) {
   const enabledCount = actions.filter((action) => action.enabled).length;
   const defaultCount = actions.filter(
     (action) => action.enabled && action.default_visible
   ).length;
+  const actionById = new Map(actions.map((action) => [action.id, action]));
+  const builtInGroups = actionGroupOrder.map((group) => ({
+    group,
+    actions: cardActionDefinitions
+      .filter((definition) => definition.group === group)
+      .map((definition) => actionById.get(definition.type))
+      .filter((action): action is ActionPermissionDraft => Boolean(action)),
+  }));
+  const customActions = actions.filter((action) => action.custom_action);
 
   return (
-    <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-5">
+    <div className={builderPanelClass}>
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h3 className="text-lg font-semibold">Action Buttons</h3>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-white/45">
+          <h3 className={builderPanelHeadingClass}>Action Buttons</h3>
+          <p className={`${builderPanelDescriptionClass} max-w-2xl`}>
             Choose which visitor actions clients can add to cards using this
             template. Defaults apply only when a new card is created.
           </p>
         </div>
-        <span className="w-fit rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/10 px-3 py-1 text-xs font-semibold text-purple-100">
+        <span className="w-fit rounded-full border border-[var(--border-brand)] bg-[color-mix(in_srgb,var(--brand-secondary)_10%,var(--dmi-surface))] px-3 py-1 text-xs font-semibold text-[var(--text-accent)]">
           {enabledCount} allowed · {defaultCount} default
         </span>
       </div>
 
-      <div className="mt-5 space-y-2.5">
-        {actions.map((action) => {
-          const definition = cardActionDefinitions.find(
-            (item) => item.type === action.type
-          );
-          const destinationLabel =
-            definition?.destination === "file"
-              ? "Stored file metadata"
-              : definition?.destination === "scalar"
-              ? "Uses card field"
-              : "No destination required";
-          const configurable = actionLabelIsConfigurable(action.type);
+      <div className="mt-5 space-y-3">
+        {builtInGroups.map(({ group, actions: groupActions }) => (
+          <ActionGroupPanel
+            key={group}
+            title={group}
+            actions={groupActions}
+            collapsed={collapsedGroups[group] === true}
+            onToggleGroup={() => onToggleGroup(group)}
+            onToggleAction={onToggleAction}
+            onToggleDefault={onToggleDefault}
+            onUpdateDefaultLabel={onUpdateDefaultLabel}
+          />
+        ))}
 
-          return (
-            <div
-              key={action.type}
-              className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center"
+        <div className={actionCategoryCardClass}>
+          <ActionCategoryHeader
+            icon={Plus}
+            title="Custom Actions"
+            description="Add reusable template actions with stable generated IDs."
+          >
+            <button
+              type="button"
+              onClick={onAddCustomAction}
+              className={builderSecondaryButtonClass}
             >
-              <div className="min-w-0">
-                <p className="font-semibold">
-                  {definition?.label || defaultLabelForActionType(action.type)}
-                </p>
-                <p className="mt-1 text-xs text-white/45">
-                  {destinationLabel}
-                  {action.type === "download_pdf"
-                    ? " · upload/storage is not enabled in this phase"
-                    : ""}
-                </p>
-                {configurable && (
-                  <label className="mt-3 block max-w-sm">
-                    <span className="mb-1 block text-xs font-medium text-white/45">
-                      Default label
-                    </span>
-                    <input
-                      value={action.default_label}
-                      onChange={(event) =>
-                        onUpdateDefaultLabel(action.type, event.target.value)
-                      }
-                      className="inputStyle h-10"
-                    />
-                  </label>
-                )}
-              </div>
+              + Add Custom Action
+            </button>
+          </ActionCategoryHeader>
 
-              <button
-                type="button"
-                onClick={() => onToggleAction(action.type)}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                  action.enabled
-                    ? "bg-[#AC00FF] text-white"
-                    : "bg-white/10 text-white/50 hover:bg-white/15"
-                }`}
-              >
-                {action.enabled ? "Allowed" : "Not allowed"}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onToggleDefault(action.type)}
-                disabled={!action.enabled}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                  action.enabled && action.default_visible
-                    ? "bg-[#AC00FF]/25 text-purple-100"
-                    : "bg-white/10 text-white/50 hover:bg-white/15"
-                } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white/10`}
-              >
-                {action.default_visible ? "Default" : "Not default"}
-              </button>
+          {customActions.length > 0 && (
+            <div className={actionCategoryBodyClass}>
+              {customActions.map((action) => (
+                <ActionControlRow
+                  key={action.id}
+                  action={action}
+                  onToggleAction={onToggleAction}
+                  onToggleDefault={onToggleDefault}
+                  onUpdateDefaultLabel={onUpdateDefaultLabel}
+                  onDeleteCustomAction={onDeleteCustomAction}
+                />
+              ))}
             </div>
-          );
-        })}
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function ColourPalette({
+function ActionGroupPanel({
   title,
-  description,
-  colours,
-  addLabel,
-  itemLabel,
-  onChange,
-  onAdd,
-  onRemove,
+  actions,
+  collapsed,
+  onToggleGroup,
+  onToggleAction,
+  onToggleDefault,
+  onUpdateDefaultLabel,
 }: {
   title: string;
-  description: string;
-  colours: string[];
-  addLabel: string;
-  itemLabel: string;
-  onChange: (index: number, value: string) => void;
-  onAdd: () => void;
-  onRemove: (index: number) => void;
+  actions: ActionPermissionDraft[];
+  collapsed: boolean;
+  onToggleGroup: () => void;
+  onToggleAction: (actionId: string) => void;
+  onToggleDefault: (actionId: string) => void;
+  onUpdateDefaultLabel: (actionId: string, label: string) => void;
 }) {
-  const palette = sanitizeFreeColourPalette(colours);
+  const enabledCount = actions.filter((action) => action.enabled).length;
+  const Icon = actionGroupIcon(title);
 
   return (
-    <div className="mt-8 rounded-3xl border border-white/10 bg-[#101935]/50 p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold">{title}</h3>
-          <p className="mt-1 text-sm text-white/45">{description}</p>
-        </div>
-
+    <div className={actionCategoryCardClass}>
+      <ActionCategoryHeader
+        icon={Icon}
+        title={title}
+        description={`${enabledCount} of ${actions.length} available`}
+      >
         <button
           type="button"
-          onClick={onAdd}
-          disabled={palette.length >= 6}
-          className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-medium transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-45"
+          onClick={onToggleGroup}
+          className="shrink-0 rounded-full border border-[var(--dmi-border)] bg-[var(--button-secondary-bg)] px-3 py-1 text-xs font-semibold text-[var(--button-secondary-text)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-secondary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
         >
-          {addLabel}
+          {collapsed ? "Expand" : "Collapse"}
         </button>
-      </div>
+      </ActionCategoryHeader>
 
-      <div className="mt-4 grid grid-cols-3 gap-3">
-        {palette.map((colour, index) => (
-          <div
-            key={`${title}-${index}`}
-            className="rounded-2xl border border-white/10 bg-white/5 p-3"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-xs font-medium text-white/50">
-                {itemLabel} {index + 1}
-                {index === 0 ? " · Default" : ""}
-              </span>
-              {palette.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => onRemove(index)}
-                  className="text-xs text-red-300 hover:text-red-200"
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-            <div className="mt-3 flex items-center gap-3">
-              <input
-                type="color"
-                value={colour}
-                onChange={(event) => onChange(index, event.target.value)}
-                className="h-10 w-12 cursor-pointer rounded-xl border border-white/10 bg-transparent"
-              />
-              <input
-                value={colour}
-                onChange={(event) => onChange(index, event.target.value)}
-                className="min-w-0 flex-1 rounded-xl border border-white/10 bg-[#070B1A] px-3 py-2 text-sm outline-none transition focus:border-[#AC00FF]"
-              />
-            </div>
-          </div>
-        ))}
-      </div>
+      {!collapsed && (
+        <div className={actionCategoryBodyClass}>
+          {actions.map((action) => (
+            <ActionControlRow
+              key={action.id}
+              action={action}
+              onToggleAction={onToggleAction}
+              onToggleDefault={onToggleDefault}
+              onUpdateDefaultLabel={onUpdateDefaultLabel}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function TypographyControls({
-  allowedFonts,
-  defaultFont,
-  onToggleFont,
-  onSelectDefaultFont,
+function ActionCategoryHeader({
+  icon: Icon,
+  title,
+  description,
+  children,
 }: {
-  allowedFonts: string[];
-  defaultFont: string;
-  onToggleFont: (font: string) => void;
-  onSelectDefaultFont: (font: string) => void;
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  children: ReactNode;
 }) {
   return (
-    <div className="mt-8 rounded-3xl border border-white/10 bg-[#101935]/50 p-5">
-      <div>
-        <h3 className="text-lg font-semibold">Typography (Paid Templates Only)</h3>
-        <p className="mt-1 text-sm text-white/45">
-          Select allowed fonts, then choose the default font for this paid card
-          preview.
-        </p>
-      </div>
-
-      <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(135px,1fr))] gap-3">
-        {fontChoices.map((font) => {
-          const enabled = allowedFonts.includes(font);
-          const isDefault = defaultFont === font;
-
-          return (
-            <div
-              key={font}
-              className={`relative rounded-2xl border p-4 transition ${
-                isDefault
-                  ? "border-[#AC00FF] bg-[#AC00FF]/18 shadow-[0_0_28px_rgba(172,0,255,0.22)]"
-                  : enabled
-                  ? "border-[#AC00FF]/45 bg-[#AC00FF]/10 shadow-[0_0_18px_rgba(172,0,255,0.10)]"
-                  : "border-white/10 bg-white/5 text-white/50 hover:border-white/20 hover:text-white/80"
-              }`}
-            >
-              {isDefault && (
-                <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-md bg-[#AC00FF] text-xs text-white">
-                  ✓
-                </span>
-              )}
-
-              <button
-                type="button"
-                onClick={() => onSelectDefaultFont(font)}
-                className="block w-full text-left"
-              >
-                <p className="pr-7 text-sm font-semibold text-white">{font}</p>
-                <p
-                  className="mt-5 text-3xl font-semibold leading-none text-white"
-                  style={{ fontFamily: font }}
-                >
-                  Aa
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onToggleFont(font)}
-                className={`mt-4 w-full rounded-xl px-3 py-2 text-xs font-medium transition ${
-                  isDefault
-                    ? "bg-[#AC00FF] text-white hover:opacity-90"
-                    : enabled
-                    ? "bg-white/10 text-purple-100 hover:bg-white/15"
-                    : "bg-white/5 text-white/45 hover:bg-white/10 hover:text-white/70"
-                }`}
-              >
-                {isDefault ? "Default" : enabled ? "Allowed" : "Allow Font"}
-              </button>
-            </div>
-          );
-        })}
-      </div>
+    <div className={actionCategoryHeaderClass}>
+      <span className="flex min-w-0 items-center gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] text-[var(--text-accent)]">
+          <Icon className="h-4 w-4" />
+        </span>
+        <span className="min-w-0">
+          <span className="block font-semibold text-[var(--text-primary)]">
+            {title}
+          </span>
+          <span className="mt-1 block text-xs leading-relaxed text-[var(--dmi-muted)]">
+            {description}
+          </span>
+        </span>
+      </span>
+      <span className="shrink-0">{children}</span>
     </div>
   );
+}
+
+function ActionControlRow({
+  action,
+  onToggleAction,
+  onToggleDefault,
+  onUpdateDefaultLabel,
+  onDeleteCustomAction,
+}: {
+  action: ActionPermissionDraft;
+  onToggleAction: (actionId: string) => void;
+  onToggleDefault: (actionId: string) => void;
+  onUpdateDefaultLabel: (actionId: string, label: string) => void;
+  onDeleteCustomAction?: (actionId: string) => void;
+}) {
+  const definition = cardActionDefinitions.find(
+    (item) => item.type === action.type
+  );
+  const configurable = actionLabelIsConfigurable(action.type) || action.custom_action;
+  const actionName =
+    action.action_name ||
+    definition?.label ||
+    defaultLabelForActionType(action.type);
+  const description =
+    action.custom_action
+      ? customActionDescription(action)
+      : definition?.description || "Template-controlled action.";
+
+  return (
+    <div className={actionRowClass}>
+      <div className="min-w-0 md:col-span-2 2xl:col-span-1">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] text-[var(--text-accent)]">
+            <ActionTypeIcon type={action.type} />
+          </span>
+          <span className="min-w-0">
+            <p className="font-semibold text-[var(--text-primary)]">
+              {actionName}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--dmi-muted)]">
+              {description}
+            </p>
+          </span>
+        </div>
+        {configurable && (
+          <label className="mt-3 block max-w-sm">
+            <span className="mb-1 block text-xs font-medium text-[var(--dmi-muted)]">
+              Button label
+            </span>
+            <input
+              value={action.default_label}
+              onChange={(event) =>
+                onUpdateDefaultLabel(action.id, event.target.value)
+              }
+              className="inputStyle h-10"
+            />
+          </label>
+        )}
+      </div>
+
+      <ActionToggle
+        label="Available to client"
+        checked={action.enabled}
+        onToggle={() => onToggleAction(action.id)}
+      />
+      <ActionToggle
+        label="Enabled by default"
+        checked={action.enabled && action.default_visible}
+        disabled={!action.enabled}
+        onToggle={() => onToggleDefault(action.id)}
+      />
+      {action.custom_action && onDeleteCustomAction ? (
+        <button
+          type="button"
+          onClick={() => onDeleteCustomAction(action.id)}
+          className="w-fit rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-500 transition hover:bg-red-500/15 disabled:opacity-50 md:col-span-2 2xl:col-span-1"
+        >
+          Delete
+        </button>
+      ) : (
+        <span className="hidden 2xl:block" aria-hidden="true" />
+      )}
+    </div>
+  );
+}
+
+function ActionToggle({
+  label,
+  checked,
+  disabled = false,
+  onToggle,
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] px-3 py-2">
+      <span className="text-xs font-semibold text-[var(--text-primary)]">
+        {label}
+      </span>
+      <ToggleSwitch
+        checked={checked}
+        disabled={disabled}
+        ariaLabel={label}
+        focusRingOffsetClass="focus:ring-offset-[var(--dmi-surface)]"
+        onToggle={onToggle}
+      />
+    </div>
+  );
+}
+
+function actionGroupIcon(group: string): LucideIcon {
+  if (group === "Contact") return Phone;
+  if (group === "Web & Meetings") return Globe;
+  if (group === "Social") return Share2;
+  if (group === "Video & Music") return Music;
+  if (group === "Gaming & Community") return Gamepad2;
+  if (group === "Work & Developer") return Briefcase;
+  return Plus;
+}
+
+function ActionTypeIcon({ type }: { type: CardActionType }) {
+  if (type === "call" || type === "sms" || type === "whatsapp") {
+    return <Phone className="h-4 w-4" />;
+  }
+
+  if (type === "email") return <Share2 className="h-4 w-4" />;
+
+  if (
+    type === "website" ||
+    type === "book_meeting" ||
+    type === "maps_directions" ||
+    type === "custom_link"
+  ) {
+    return <Globe className="h-4 w-4" />;
+  }
+
+  if (
+    type === "youtube" ||
+    type === "vimeo" ||
+    type === "twitch" ||
+    type === "spotify" ||
+    type === "apple_music" ||
+    type === "soundcloud"
+  ) {
+    return <Music className="h-4 w-4" />;
+  }
+
+  if (
+    type === "discord" ||
+    type === "steam" ||
+    type === "xbox" ||
+    type === "playstation" ||
+    type === "epic_games" ||
+    type === "battle_net"
+  ) {
+    return <Gamepad2 className="h-4 w-4" />;
+  }
+
+  if (
+    type === "slack" ||
+    type === "microsoft_teams" ||
+    type === "github" ||
+    type === "gitlab"
+  ) {
+    return <Briefcase className="h-4 w-4" />;
+  }
+
+  return <Share2 className="h-4 w-4" />;
+}
+
+function customActionDescription(action: ActionPermissionDraft) {
+  const destination = action.destination_type
+    ? action.destination_type.replace("_", " ")
+    : "url";
+
+  return `Custom ${destination} action${
+    action.destination_field ? ` using ${action.destination_field}` : ""
+  }.`;
 }
 
 function SectionControl({
@@ -2548,15 +3400,22 @@ function SectionControl({
   description,
   fields,
   builtInFields,
+  customSection,
   enabled,
   allowedFields,
   exampleValues,
   onToggleSection,
+  onUpdateSectionTitle,
   onToggleField,
   onUpdateExampleValue,
   onAddField,
+  onDeleteSection,
   onDeleteField,
   draggedField,
+  sectionDragging,
+  onSectionDragStart,
+  onSectionDragEnd,
+  onSectionDrop,
   onDragStart,
   onDragEnd,
   onDropField,
@@ -2566,48 +3425,99 @@ function SectionControl({
   description: string;
   fields: string[];
   builtInFields: string[];
+  customSection: boolean;
   enabled: boolean;
   allowedFields: string[];
   exampleValues: TemplateExampleValues;
   onToggleSection: () => void;
+  onUpdateSectionTitle: (title: string) => void;
   onToggleField: (field: string) => void;
   onUpdateExampleValue: (field: string, value: string) => void;
   onAddField: () => void;
+  onDeleteSection: () => void;
   onDeleteField: (field: string) => void;
   draggedField: DraggedField;
+  sectionDragging: boolean;
+  onSectionDragStart: () => void;
+  onSectionDragEnd: () => void;
+  onSectionDrop: () => void;
   onDragStart: (field: string) => void;
   onDragEnd: () => void;
   onDropField: (field: string) => void;
 }) {
   return (
     <div
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        onSectionDragStart();
+      }}
+      onDragEnd={onSectionDragEnd}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        onSectionDrop();
+      }}
       className={`rounded-3xl border p-5 transition ${
-        enabled
-          ? "border-[#AC00FF]/35 bg-[#AC00FF]/10"
-          : "border-white/10 bg-white/5"
+        sectionDragging
+          ? "border-[var(--border-brand)] bg-[color-mix(in_srgb,var(--brand-secondary)_16%,var(--dmi-surface))] shadow-[0_12px_28px_color-mix(in_srgb,var(--brand-secondary)_12%,transparent)]"
+          : enabled
+          ? builderPanelClass
+          : "border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] opacity-75"
       }`}
     >
-      <button
-        type="button"
-        onClick={onToggleSection}
-        className="flex w-full items-center justify-between gap-4 text-left"
-      >
-        <span>
-          <span className="block font-semibold">{title}</span>
-          <span className="mt-1 block text-xs leading-relaxed text-white/45">
+      <div className="flex w-full flex-col gap-4 text-left sm:flex-row sm:items-center sm:justify-between">
+        <span className="flex min-w-0 flex-1 items-start gap-3">
+          <span className="mt-1 shrink-0 cursor-grab select-none text-sm tracking-[-0.2em] text-[var(--dmi-muted)]">
+            ::
+          </span>
+          <span className="min-w-0 flex-1">
+          {customSection ? (
+            <input
+              value={title}
+              onDragStart={(event) => event.preventDefault()}
+              onChange={(event) => onUpdateSectionTitle(event.target.value)}
+              className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm font-semibold text-[var(--input-text)] outline-none transition placeholder:text-[var(--dmi-muted)] focus:border-[var(--input-focus)] focus:ring-2 focus:ring-[var(--input-focus-ring)]"
+              aria-label="Section title"
+            />
+          ) : (
+            <span className="block font-semibold text-[var(--text-primary)]">
+              {title}
+            </span>
+          )}
+          <span className="mt-1 block text-xs leading-relaxed text-[var(--dmi-muted)]">
             {description}
           </span>
         </span>
-        <span
-          className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${
-            enabled
-              ? "bg-[#AC00FF] text-white"
-              : "bg-white/10 text-white/45"
-          }`}
-        >
-          {enabled ? "On" : "Off"}
         </span>
-      </button>
+        <span className="flex shrink-0 flex-wrap items-center gap-2">
+          {customSection && (
+            <button
+              type="button"
+              onDragStart={(event) => event.preventDefault()}
+              onClick={onDeleteSection}
+              className="rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-1 text-xs font-semibold text-red-500 transition hover:bg-red-500/15"
+            >
+              Delete Section
+            </button>
+          )}
+          <button
+            type="button"
+            onDragStart={(event) => event.preventDefault()}
+            onClick={onToggleSection}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              enabled
+                ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-secondary))] !text-white"
+                : "bg-[var(--dmi-surface-soft)] text-[var(--dmi-muted)]"
+            }`}
+          >
+            {enabled ? "On" : "Off"}
+          </button>
+        </span>
+      </div>
 
       {enabled && (
         <>
@@ -2635,42 +3545,36 @@ function SectionControl({
                     event.preventDefault();
                     onDropField(field);
                   }}
-                  className={`grid cursor-grab gap-3 rounded-2xl border px-4 py-3 transition active:cursor-grabbing sm:grid-cols-[auto_minmax(0,1fr)_minmax(180px,260px)_auto_auto] sm:items-center ${
+	                  className={`grid cursor-grab gap-3 rounded-2xl border px-4 py-3 transition active:cursor-grabbing lg:grid-cols-[auto_minmax(0,1fr)_minmax(180px,260px)_auto_auto] lg:items-center ${
                     dragging
-                      ? "border-[#AC00FF] bg-[#AC00FF]/20 shadow-lg shadow-[#AC00FF]/10"
-                      : "border-white/10 bg-white/5 hover:border-[#AC00FF]/30 hover:bg-white/[0.07]"
+                      ? "border-[var(--border-brand)] bg-[color-mix(in_srgb,var(--brand-secondary)_16%,var(--dmi-surface))] shadow-[0_12px_28px_color-mix(in_srgb,var(--brand-secondary)_12%,transparent)]"
+                      : "border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)]"
                   }`}
                 >
-                  <span className="shrink-0 select-none text-sm tracking-[-0.2em] text-white/30">
+                  <span className="shrink-0 select-none text-sm tracking-[-0.2em] text-[var(--dmi-muted)]">
                     ::
                   </span>
-                  <span className="min-w-0 flex-1 text-sm font-medium capitalize">
+                  <span className="min-w-0 flex-1 text-sm font-medium capitalize text-[var(--text-primary)]">
                     {formatFieldLabel(field)}
                   </span>
-                  {field in defaultTemplateExampleValues ? (
-                    <input
-                      type="text"
-                      value={exampleValues[field] || ""}
-                      onDragStart={(event) => event.preventDefault()}
-                      onChange={(event) =>
-                        onUpdateExampleValue(field, event.target.value)
-                      }
-                      placeholder="Example value"
-                      className="min-w-0 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60 focus:ring-2 focus:ring-[#AC00FF]/20"
-                    />
-                  ) : (
-                    <span className="hidden text-xs text-white/30 sm:block">
-                      Custom field
-                    </span>
-                  )}
+                  <input
+                    type="text"
+                    value={exampleValues[field] || ""}
+                    onDragStart={(event) => event.preventDefault()}
+                    onChange={(event) =>
+                      onUpdateExampleValue(field, event.target.value)
+                    }
+                    placeholder="Example value"
+                    className="min-w-0 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-xs text-[var(--input-text)] outline-none transition placeholder:text-[var(--dmi-muted)] focus:border-[var(--input-focus)] focus:ring-2 focus:ring-[var(--input-focus-ring)]"
+                  />
                   <button
                     type="button"
                     onDragStart={(event) => event.preventDefault()}
                     onClick={() => onToggleField(field)}
                     className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                       active
-                        ? "bg-[#AC00FF] text-white"
-                        : "bg-white/10 text-white/45"
+                        ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-secondary))] !text-white"
+                        : "bg-[var(--dmi-surface-soft)] text-[var(--dmi-muted)]"
                     }`}
                   >
                     {active ? "On" : "Off"}
@@ -2680,7 +3584,7 @@ function SectionControl({
                     onDragStart={(event) => event.preventDefault()}
                     onClick={() => onDeleteField(field)}
                     disabled={!custom || builtInFields.includes(field)}
-                    className="rounded-lg bg-white/10 px-3 py-1 text-xs text-red-200 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:text-white/25 disabled:hover:bg-white/10"
+                    className="rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-1 text-xs font-semibold text-red-500 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:border-[var(--dmi-border)] disabled:bg-[var(--dmi-surface-soft)] disabled:text-[var(--dmi-muted)] disabled:opacity-50"
                   >
                     Delete
                   </button>
@@ -2692,7 +3596,7 @@ function SectionControl({
           <button
             type="button"
             onClick={onAddField}
-            className="mt-3 w-full rounded-2xl border border-dashed border-[#AC00FF]/35 bg-[#AC00FF]/10 px-4 py-2 text-sm font-medium text-purple-100 transition hover:border-[#AC00FF]/60 hover:bg-[#AC00FF]/15"
+            className="mt-3 w-full rounded-2xl border border-dashed border-[var(--border-brand)] bg-[color-mix(in_srgb,var(--brand-secondary)_10%,var(--dmi-surface))] px-4 py-2 text-sm font-semibold text-[var(--text-accent)] transition hover:bg-[color-mix(in_srgb,var(--brand-secondary)_14%,var(--dmi-surface))] focus:outline-none focus:ring-2 focus:ring-[var(--brand-secondary)] focus:ring-offset-2 focus:ring-offset-[var(--background)]"
           >
             Add Field
           </button>
@@ -2716,15 +3620,17 @@ function CardHeaderControl({
   onUpdateExampleValue: (field: string, value: string) => void;
 }) {
   return (
-    <div className="rounded-3xl border border-[#AC00FF]/35 bg-[#AC00FF]/10 p-5">
-      <div className="flex w-full items-start justify-between gap-4 text-left">
+    <div className={builderPanelClass}>
+      <div className="flex w-full flex-col gap-4 text-left sm:flex-row sm:items-start sm:justify-between">
         <span>
-          <span className="block font-semibold">Card Header</span>
-          <span className="mt-1 block text-xs leading-relaxed text-white/45">
+          <span className="block font-semibold text-[var(--text-primary)]">
+            Card Header
+          </span>
+          <span className="mt-1 block text-xs leading-relaxed text-[var(--dmi-muted)]">
             Controls the name shown under the profile image.
           </span>
         </span>
-        <span className="shrink-0 rounded-full bg-[#AC00FF] px-3 py-1 text-xs font-medium text-white">
+        <span className="shrink-0 rounded-full bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-secondary))] px-3 py-1 text-xs font-semibold !text-white">
           Fixed
         </span>
       </div>
@@ -2736,9 +3642,9 @@ function CardHeaderControl({
           return (
             <div
               key={`header-${field}`}
-              className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 transition hover:border-[#AC00FF]/30 hover:bg-white/[0.07] sm:grid-cols-[minmax(0,1fr)_minmax(180px,260px)_auto] sm:items-center"
+	              className="grid gap-3 rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] px-4 py-3 transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] lg:grid-cols-[minmax(0,1fr)_minmax(180px,260px)_auto] lg:items-center"
             >
-              <span className="min-w-0 flex-1 text-sm font-medium capitalize">
+              <span className="min-w-0 flex-1 text-sm font-medium capitalize text-[var(--text-primary)]">
                 {formatFieldLabel(field)}
               </span>
               <input
@@ -2748,15 +3654,15 @@ function CardHeaderControl({
                   onUpdateExampleValue(field, event.target.value)
                 }
                 placeholder="Example value"
-                className="min-w-0 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none transition placeholder:text-white/25 focus:border-[#AC00FF]/60 focus:ring-2 focus:ring-[#AC00FF]/20"
+                className="min-w-0 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-xs text-[var(--input-text)] outline-none transition placeholder:text-[var(--dmi-muted)] focus:border-[var(--input-focus)] focus:ring-2 focus:ring-[var(--input-focus-ring)]"
               />
               <button
                 type="button"
                 onClick={() => onToggleField(field)}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                   active
-                    ? "bg-[#AC00FF] text-white"
-                    : "bg-white/10 text-white/45"
+                    ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-secondary))] !text-white"
+                    : "bg-[var(--dmi-surface-soft)] text-[var(--dmi-muted)]"
                 }`}
               >
                 {active ? "On" : "Off"}
@@ -2777,12 +3683,19 @@ function isCustomFieldKey(field: string) {
   return field.startsWith("custom:");
 }
 
-function orderedSectionFields(section: SectionKey, customFields: CustomFields) {
-  return normalizeCustomFields(customFields)[section];
+function orderedSectionFields(
+  section: SectionKey,
+  customFields: CustomFields,
+  sections: ContentSection[] = defaultContentSections
+) {
+  return normalizeCustomFields(customFields, sections)[section] || [];
 }
 
-function normalizeCustomFields(customFields?: CustomFields | null) {
-  return sectionFieldGroups.reduce<Required<CustomFields>>(
+function normalizeCustomFields(
+  customFields?: CustomFields | null,
+  sections: ContentSection[] = defaultContentSections
+) {
+  return sections.reduce<Record<string, string[]>>(
     (normalized, section) => {
       const defaultFields = section.fields;
       const incomingFields = customFields?.[section.key] || [];
@@ -2794,7 +3707,7 @@ function normalizeCustomFields(customFields?: CustomFields | null) {
           (field) =>
             section.key !== "social" || !isStepThreeOwnedTemplateField(field)
         )
-        .map((field) => normalizeSectionField(section.key, field))
+        .map((field) => normalizeSectionField(section.key, field, sections))
         .filter((field) => {
           const key = field.toLowerCase();
 
@@ -2807,34 +3720,68 @@ function normalizeCustomFields(customFields?: CustomFields | null) {
       normalized[section.key] = fields;
       return normalized;
     },
-    {
-      personal: [],
-      company: [],
-      contact: [],
-      social: [],
-    }
+    {}
   );
 }
 
-function normalizeSectionField(section: SectionKey, field: string) {
+function normalizeSectionField(
+  section: SectionKey,
+  field: string,
+  sections: ContentSection[] = defaultContentSections
+) {
   const builtInFields =
-    sectionFieldGroups.find((group) => group.key === section)?.fields || [];
+    sections.find((group) => group.key === section)?.fields || [];
+  const builtInField = builtInFields.find(
+    (builtIn) =>
+      builtIn === field ||
+      builtIn.toLowerCase() === field.toLowerCase() ||
+      formatFieldLabel(builtIn).toLowerCase() === field.toLowerCase()
+  );
 
-  if (builtInFields.includes(field) || isCustomFieldKey(field)) {
+  if (builtInField) {
+    return builtInField;
+  }
+
+  if (isCustomFieldKey(field)) {
     return field;
   }
 
   return customFieldKey(section, field);
 }
 
-function previewCustomFieldValues(customFields: CustomFields) {
-  return Object.values(customFields)
-    .flat()
-    .filter((field) => isCustomFieldKey(field))
-    .reduce<Record<string, string>>((values, label) => {
-      values[formatFieldLabel(label)] = `${formatFieldLabel(label)} details`;
-      return values;
-    }, {});
+function previewCustomFieldValues(
+  customFields: CustomFields,
+  exampleValues: TemplateExampleValues,
+  sections: ContentSection[] = defaultContentSections
+) {
+  const normalized = normalizeCustomFields(customFields, sections);
+
+  return Object.entries(normalized).reduce<
+    Record<string, string | Record<string, string>>
+  >((values, [section, fields]) => {
+    const sectionValues: Record<string, string> = {};
+
+    fields
+      .filter((field) => isCustomFieldKey(field))
+      .forEach((field) => {
+        const label = formatFieldLabel(field);
+        const rawLabel = field.split(":").at(-1) || label;
+        const value = exampleValues[field] || `${label} details`;
+
+        values[field] = value;
+        values[label] = value;
+        sectionValues[field] = value;
+        sectionValues[label] = value;
+        sectionValues[label.toLowerCase()] = value;
+        sectionValues[rawLabel] = value;
+      });
+
+    if (Object.keys(sectionValues).length > 0) {
+      values[section] = sectionValues;
+    }
+
+    return values;
+  }, {});
 }
 
 function formatFieldLabel(field: string) {
@@ -2843,6 +3790,14 @@ function formatFieldLabel(field: string) {
   }
 
   return field.replaceAll("_", " ");
+}
+
+function slugifyKey(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "section";
 }
 
 function buildTemplatePayload({
@@ -2917,7 +3872,7 @@ function buildTemplatePayload({
   show_social_section: boolean;
 }): TemplatePayload {
   return {
-    name: name.trim(),
+    name,
     slug,
     layout_type,
     access_level,
@@ -2940,7 +3895,7 @@ function buildTemplatePayload({
     banner_default_enabled,
     custom_colour_allowed,
     custom_text_colour_allowed,
-    gradient_enabled,
+      gradient_enabled,
     free_colour_palette: sanitizeFreeColourPalette(free_colour_palette),
     colour_palette: sanitizeFreeColourPalette(free_colour_palette),
     allowed_fonts: sanitizeTemplateFonts(allowed_fonts),
@@ -2952,7 +3907,10 @@ function buildTemplatePayload({
     ),
     allowed_fields: sanitizeAllowedFields(allowed_fields),
     allowed_actions: sanitizeTemplateAllowedActions(allowed_actions),
-    custom_fields: sanitizeCustomFields(custom_fields),
+    custom_fields: sanitizeCustomFields(
+      custom_fields,
+      readTemplateContentSections(field_config, custom_fields)
+    ),
     field_config,
     renderer_options,
     template_contract_version: 1,
@@ -2981,16 +3939,34 @@ function actionPermissionsFromTemplate(
 ): ActionPermissionDraft[] {
   const configured = normalizeTemplateAllowedActions(template.allowed_actions);
   const configuredByType = new Map(
-    configured?.actions.map((action) => [action.type, action]) || []
+    configured?.actions
+      .filter((action) => !action.custom_action)
+      .map((action) => [action.type, action]) || []
   );
+  const customActions =
+    configured?.actions
+      .filter((action) => action.custom_action)
+      .map((action) => ({
+        id: action.id || `custom_action_${action.type}`,
+        type: action.type,
+        enabled: action.enabled !== false,
+        default_visible: action.default_visible === true,
+        default_label:
+          action.default_label || action.action_name || defaultLabelForActionType(action.type),
+        custom_action: true,
+        action_name: action.action_name,
+        destination_type: action.destination_type,
+        destination_field: action.destination_field,
+      })) || [];
 
-  return cardActionDefinitions.map((definition) => {
+  const builtInActions = cardActionDefinitions.map((definition) => {
     const configuredAction = configuredByType.get(definition.type);
     const legacySaveContactDisabled =
       !configured && definition.type === "save_contact" &&
       template.supports_save_contact === false;
 
     return {
+      id: definition.type,
       type: definition.type,
       enabled: configured ? Boolean(configuredAction) : !legacySaveContactDisabled,
       default_visible:
@@ -3001,6 +3977,8 @@ function actionPermissionsFromTemplate(
         defaultLabelForActionType(definition.type),
     };
   });
+
+  return [...builtInActions, ...customActions];
 }
 
 function buildTemplateAllowedActions(
@@ -3011,28 +3989,74 @@ function buildTemplateAllowedActions(
     actions: permissions
       .filter((action) => action.enabled)
       .map((action) => ({
+        id: action.id,
         type: action.type,
         enabled: true,
         default_visible: action.default_visible,
         default_label: actionLabelIsConfigurable(action.type)
           ? action.default_label
           : undefined,
+        custom_action: action.custom_action || undefined,
+        action_name: action.custom_action ? action.action_name : undefined,
+        destination_type: action.custom_action ? action.destination_type : undefined,
+        destination_field: action.custom_action
+          ? action.destination_field
+          : undefined,
+      })),
+  };
+}
+
+function buildPreviewDefaultActionConfig(
+  permissions: ActionPermissionDraft[]
+): CardActionConfig {
+  return {
+    version: 1,
+    actions: permissions
+      .filter((action) => action.enabled && action.default_visible)
+      .map((action, index) => ({
+        id: action.id || action.type,
+        type: action.type,
+        visible: true,
+        order: index,
+        label:
+          actionLabelIsConfigurable(action.type) || action.custom_action
+            ? action.default_label || defaultLabelForActionType(action.type)
+            : undefined,
       })),
   };
 }
 
 function buildTemplateFieldConfig(
   allowedFields: string[],
-  customFields: CustomFields
+  customFields: CustomFields,
+  contentSections: ContentSection[] = defaultContentSections,
+  disabledSections: string[] = []
 ): TemplateFieldConfig {
-  const sections = normalizeCustomFields(customFields);
+  const sections = normalizeCustomFields(customFields, contentSections);
+  const sectionOrder = contentSections.map((section) => section.key);
+  const sectionLabels = contentSections.reduce<Record<string, string>>(
+    (labels, section) => {
+      labels[section.key] = section.title.trim() || formatFieldLabel(section.key);
+      return labels;
+    },
+    {}
+  );
+  const sectionVisibility = contentSections.reduce<Record<string, boolean>>(
+    (visibility, section) => {
+      visibility[`section:${section.key}`] = !disabledSections.includes(section.key);
+      return visibility;
+    },
+    {}
+  );
 
   return {
     version: 1,
     allowed_fields: sanitizeAllowedFields(allowedFields),
     sections,
-    default_visibility: {},
+    default_visibility: sectionVisibility,
     required_fields: [],
+    section_order: sectionOrder,
+    section_labels: sectionLabels,
   };
 }
 
@@ -3040,7 +4064,10 @@ function buildTemplateRendererOptions(
   layoutType: string,
   exampleValues: TemplateExampleValues,
   gradientStart: string,
-  gradientEnd: string
+  gradientEnd: string,
+  gradientDirection: GradientDirection,
+  accessLevel: string,
+  backgroundMode: "solid" | "gradient"
 ): Record<string, unknown> {
   return {
     version: 1,
@@ -3049,6 +4076,12 @@ function buildTemplateRendererOptions(
     gradient_defaults: {
       start: gradientStart,
       end: gradientEnd,
+      direction: gradientDirection,
+    },
+    design_contract: {
+      version: 1,
+      access_level: accessLevel === "free" ? "free" : "paid",
+      background_mode: backgroundMode,
     },
   };
 }
@@ -3057,20 +4090,22 @@ function sanitizeTemplateExampleValues(
   values?: TemplateExampleValues | null
 ): TemplateExampleValues {
   const source = values || {};
+  const keys = new Set([
+    ...Object.keys(defaultTemplateExampleValues),
+    ...Object.keys(source),
+  ]);
 
-  return Object.keys(defaultTemplateExampleValues).reduce<TemplateExampleValues>(
-    (sanitized, field) => {
-      const value = source[field];
+  return Array.from(keys).reduce<TemplateExampleValues>((sanitized, field) => {
+    const value = source[field];
 
-      sanitized[field] =
-        typeof value === "string"
-          ? value.trim().slice(0, field === "bio" ? 500 : 160)
-          : defaultTemplateExampleValues[field] || "";
+    if (typeof value === "string") {
+      sanitized[field] = value.trim().slice(0, field === "bio" ? 500 : 160);
+    } else if (field in defaultTemplateExampleValues) {
+      sanitized[field] = defaultTemplateExampleValues[field] || "";
+    }
 
-      return sanitized;
-    },
-    {}
-  );
+    return sanitized;
+  }, {});
 }
 
 function readTemplateExampleValues(
@@ -3091,6 +4126,39 @@ function readTemplateExampleValues(
     ...fallback,
     ...(rawExamples as TemplateExampleValues),
   });
+}
+
+function isGradientDirection(value: unknown): value is GradientDirection {
+  return gradientDirectionOptions.some((option) => option.value === value);
+}
+
+function readTemplateGradientDirection(
+  rendererOptions: Record<string, unknown> | null | undefined
+): GradientDirection {
+  if (!rendererOptions || typeof rendererOptions !== "object") {
+    return defaultGradientDirection;
+  }
+
+  const gradientDefaults = rendererOptions.gradient_defaults;
+
+  if (
+    !gradientDefaults ||
+    typeof gradientDefaults !== "object" ||
+    Array.isArray(gradientDefaults)
+  ) {
+    return defaultGradientDirection;
+  }
+
+  const direction = (gradientDefaults as Record<string, unknown>).direction;
+
+  return isGradientDirection(direction) ? direction : defaultGradientDirection;
+}
+
+function gradientDirectionLabel(direction: GradientDirection) {
+  return (
+    gradientDirectionOptions.find((option) => option.value === direction)?.label ||
+    "Top Left to Bottom Right"
+  );
 }
 
 function mediaSummary(
@@ -3124,17 +4192,11 @@ function templateAllowedActionsIncludes(
   return allowedActions.actions.some((action) => action.type === type);
 }
 
-function actionPermissionEnabled(
-  permissions: ActionPermissionDraft[],
-  type: CardActionType
-) {
-  return permissions.some((action) => action.type === type && action.enabled);
-}
 
 function sanitizeFreeColourPalette(colours?: unknown) {
   const palette = normalizeColourPalette(colours);
 
-  return palette.length ? palette : ["#AC00FF"];
+  return palette.length ? palette : [defaultTemplateBackgroundColour];
 }
 
 function sanitizeTextColourPalette(colours?: unknown, fallback?: string | null) {
@@ -3142,7 +4204,7 @@ function sanitizeTextColourPalette(colours?: unknown, fallback?: string | null) 
   const fallbackPalette = normalizeColourPalette(fallback);
   const nextPalette = palette.length ? palette : fallbackPalette;
 
-  return nextPalette.length ? nextPalette : defaultTextColourPalette;
+  return nextPalette.length ? nextPalette : [defaultTemplateTextColour];
 }
 
 function sanitizeTemplateFonts(fonts?: string[] | null) {
@@ -3169,15 +4231,99 @@ function sanitizeDefaultFont(defaultFont?: string | null, fonts?: string[] | nul
   return null;
 }
 
-function sanitizeCustomFields(customFields: CustomFields): CustomFields {
-  const normalized = normalizeCustomFields(customFields);
+function readTemplateSectionFields(
+  fieldConfig?: TemplateFieldConfig | null,
+  customFields?: CustomFields | null
+): CustomFields {
+  if (
+    fieldConfig?.sections &&
+    typeof fieldConfig.sections === "object" &&
+    !Array.isArray(fieldConfig.sections)
+  ) {
+    return fieldConfig.sections;
+  }
 
+  return customFields || {};
+}
+
+function readTemplateContentSections(
+  fieldConfig?: TemplateFieldConfig | null,
+  customFields?: CustomFields | null
+): ContentSection[] {
+  const configuredSections = readTemplateSectionFields(fieldConfig, customFields);
+  const sectionKeys = new Set([
+    ...defaultContentSections.map((section) => section.key),
+    ...Object.keys(configuredSections),
+  ]);
+  const configuredOrder = Array.isArray(fieldConfig?.section_order)
+    ? fieldConfig.section_order.filter(
+        (key): key is string => typeof key === "string" && sectionKeys.has(key)
+      )
+    : [];
+  const orderedKeys = [
+    ...configuredOrder,
+    ...Array.from(sectionKeys).filter((key) => !configuredOrder.includes(key)),
+  ];
+  const labels =
+    fieldConfig?.section_labels &&
+    typeof fieldConfig.section_labels === "object" &&
+    !Array.isArray(fieldConfig.section_labels)
+      ? fieldConfig.section_labels
+      : {};
+
+  return orderedKeys.map((key) => {
+    const defaultSection = defaultContentSections.find(
+      (section) => section.key === key
+    );
+
+    return {
+      key,
+      title:
+        typeof labels[key] === "string" && labels[key].trim()
+          ? labels[key].trim()
+          : defaultSection?.title || formatFieldLabel(key),
+      description: defaultSection?.description || "Custom content section.",
+      fields: defaultSection?.fields || [],
+      custom: !defaultSection,
+    };
+  });
+}
+
+function readTemplateDisabledSections(fieldConfig?: TemplateFieldConfig | null) {
+  const visibility = fieldConfig?.default_visibility;
+
+  if (!visibility || typeof visibility !== "object" || Array.isArray(visibility)) {
+    return [];
+  }
+
+  return Object.entries(visibility)
+    .filter(([key, enabled]) => key.startsWith("section:") && enabled === false)
+    .map(([key]) => key.replace(/^section:/, ""));
+}
+
+function sanitizeCustomFields(
+  customFields: CustomFields,
+  contentSections: ContentSection[] = defaultContentSections
+): CustomFields {
+  const normalized = normalizeCustomFields(customFields, contentSections);
+
+  return Object.entries(normalized).reduce<CustomFields>(
+    (sanitized, [section, fields]) => {
+      sanitized[section] = sanitizeAllowedFields(fields).filter(
+        (field) => !(section === "contact" && field === "website")
+      );
+      return sanitized;
+    },
+    {}
+  );
+}
+
+function clientFieldOrder(customFields: CustomFields): CardFieldOrder {
   return {
-    personal: sanitizeAllowedFields(normalized.personal),
-    company: sanitizeAllowedFields(normalized.company),
-    contact: sanitizeAllowedFields(normalized.contact).filter(
-      (field) => field !== "website"
-    ),
-    social: sanitizeAllowedFields(normalized.social),
+    ...customFields,
+    personal: customFields.personal || [],
+    company: customFields.company || [],
+    contact: customFields.contact || [],
+    social: customFields.social || [],
   };
 }

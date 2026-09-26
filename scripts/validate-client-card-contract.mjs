@@ -313,7 +313,8 @@ console.log('PASS: gradient capability/default separation; all media save/reopen
 const builderSource = fs.readFileSync('src/app/templates/page.tsx', 'utf8');
 const builderAst = ts.createSourceFile('builder.tsx', builderSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 assert.doesNotMatch(builderSource, /setSupportsGradient|supports_gradient:/, 'Admin does not introduce independent permission writes without schema support');
-assert.match(builderSource, /setGradientEnabled\(event.target.value === "gradient"\)/, 'existing Solid/Gradient default control remains');
+assert.match(builderSource, /setGradientEnabled\(false\)/);
+assert.match(builderSource, /setGradientEnabled\(true\)/, 'Solid/Gradient default controls remain');
 const payloadFunction = builderAst.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === 'buildTemplatePayload');
 const payloadHelpers = Object.fromEntries(['sanitizeTextColourPalette', 'sanitizeFreeColourPalette', 'sanitizeTemplateFonts', 'sanitizeDefaultFont', 'templateAllowedActionsIncludes', 'sanitizeAllowedFields', 'sanitizeTemplateAllowedActions', 'sanitizeCustomFields', 'readTemplateContentSections'].map(name => [name, value => value]));
 const makeAdminPayload = vm.runInNewContext(ts.transpileModule(payloadFunction.getText(builderAst) + '\nbuildTemplatePayload;', { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, payloadHelpers);
