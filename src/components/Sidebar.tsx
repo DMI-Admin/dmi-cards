@@ -38,11 +38,8 @@ export default function Sidebar() {
       items: [{ name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard }],
     },
     {
-      title: "Management",
+      title: "Card Management",
       items: [
-        { name: "Individual Clients", href: "/clients/individual", icon: UsersRound },
-        { name: "Business Onboarding", href: "/business-onboarding", icon: FileText },
-        { name: "Business Clients", href: "/clients/business", icon: UsersRound },
         { name: "Template Builder", href: "/templates", icon: FileText },
         { name: "Current Templates", href: "/templates/current", icon: ScrollText },
         { name: "Cards", href: "/cards", icon: CreditCard },
@@ -51,16 +48,27 @@ export default function Sidebar() {
       ],
     },
     {
+      title: "Individual",
+      items: [{ name: "Individual Clients", href: "/clients/individual", icon: UsersRound }],
+    },
+    {
       title: "Business",
+      items: [
+        { name: "Business Onboarding", href: "/business-onboarding", icon: FileText },
+        { name: "Business Clients", href: "/clients/business", icon: UsersRound },
+      ],
+    },
+    {
+      title: "Billing",
       items: [
         { name: "Subscriptions", href: "/subscriptions", icon: ScrollText },
         { name: "Finance", href: "/finance", icon: WalletCards },
-        { name: "Analytics", href: "/analytics", icon: BarChart3 },
       ],
     },
     {
       title: "Operations",
       items: [
+        { name: "Analytics", href: "/analytics", icon: BarChart3 },
         { name: "Uploads", href: "/uploads", icon: UploadCloud },
         { name: "Support", href: "/support", icon: Headphones },
         { name: "Audit Logs", href: "/audit-logs", icon: ScrollText },
@@ -122,6 +130,7 @@ export default function Sidebar() {
                   <Link
                     key={item.name}
                     href={item.href}
+                    aria-current={isActive ? "page" : undefined}
                     className={`flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-left text-sm font-medium leading-5 transition-all duration-200 ${
                       isActive
                         ? "dmi-nav-active text-white"

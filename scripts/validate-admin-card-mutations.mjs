@@ -74,5 +74,9 @@ reset();tables.client_users[0].client_id=otherId;assert.equal((await run()).body
 reset();tables.client_users.push({...tables.client_users[0],id:otherId});assert.equal((await run()).body.results[0].status,'ineligible');
 reset();tables.client_users[0].user_id=otherId;assert.equal((await run()).body.results[0].status,'ineligible');
 reset();tables.cards=[1,2,3].map(card_slot=>({id:crypto.randomUUID(),user_id:ownerId,card_slot}));assert.equal((await run()).body.results[0].status,'failed');assert.equal(tables.cards.length,3);
-for(const file of ['cards','clients','public-pages']) {const source=fs.readFileSync(file === 'clients' ? 'src/components/admin/AdminClientsPage.tsx' : `src/app/${file}/page.tsx`,'utf8');assert.doesNotMatch(source, /\.from\(["']cards["']\)[\s\S]{0,160}\.(insert|update|upsert|delete)\(/);assert.ok(source.includes('mutateAdminCard'));}
-console.log('PASS: authorization, bounded payloads, linked/missing/conflicting ownership, mixed batches, slot-capacity handling, lost-response retries, publication preservation, deletion/not-found and all three UI API paths. Slot assignment is simulated; no production writes.');
+for(const file of ['clients','public-pages']) {const source=fs.readFileSync(file === 'clients' ? 'src/components/admin/AdminClientsPage.tsx' : `src/app/${file}/page.tsx`,'utf8');assert.doesNotMatch(source, /\.from\(["']cards["']\)[\s\S]{0,160}\.(insert|update|upsert|delete)\(/);assert.ok(source.includes('mutateAdminCard'));}
+console.log('PASS: authorization, bounded payloads, linked/missing/conflicting ownership, mixed batches, slot-capacity handling, lost-response retries, publication preservation, deletion/not-found and existing Clients/Public Pages API paths. Slot assignment is simulated; no production writes.');
+
+const supportPage=fs.readFileSync("src/app/cards/page.tsx","utf8");
+assert.doesNotMatch(supportPage,/mutateAdminCard|LegacyBusinessCards|supabase/);
+assert.match(fs.readFileSync("src/components/admin/legacy/LegacyBusinessCards.tsx","utf8"),/mutateAdminCard/);

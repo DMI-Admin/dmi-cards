@@ -1,0 +1,1193 @@
+// Preserved legacy workflow. Not imported by any route; retained for dependency review.
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import Sidebar from "@/components/Sidebar";
+import CardRenderer from "@/components/CardRenderer";
+import { cardSeedFields, mutateAdminCard, type CardCreationResult } from "@/lib/admin-card-mutations";
+import { getAdminInventory } from "@/lib/admin-inventory";
+import { getAdminTemplates } from "@/lib/templates";
+
+type Client = {
+  id: string;
+  full_name: string;
+  company_name: string | null;
+  email: string | null;
+  phone: string | null;
+  account_type: string | null;
+  subscription_plan: string | null;
+  billing_status: string | null;
+};
+
+type Template = {
+  id: string;
+  name: string;
+  layout_type: string | null;
+  logo_size?: string | null;
+  access_level: string | null;
+  requires_profile_image?: boolean | null;
+  requires_logo?: boolean | null;
+  supports_bio?: boolean | null;
+  supports_save_contact?: boolean | null;
+  allowed_fields: string[] | null;
+  is_published: boolean;
+};
+
+type Card = {
+  id: string;
+  client_id: string | null;
+  template_id: string | null;
+  card_name: string | null;
+  name?: string | null;
+  full_name: string | null;
+  status: string | null;
+  is_published: boolean | null;
+  job_title?: string | null;
+  company_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  address?: string | null;
+  whatsapp?: string | null;
+  linkedin?: string | null;
+  instagram?: string | null;
+  facebook?: string | null;
+  youtube?: string | null;
+  booking_link?: string | null;
+  custom_url?: string | null;
+  created_at?: string;
+};
+
+type StaffUser = {
+  id: string;
+  client_id: string | null;
+  company_name?: string | null;
+  full_name: string | null;
+  name?: string | null;
+  email: string | null;
+  phone?: string | null;
+  job_title?: string | null;
+  website?: string | null;
+  address?: string | null;
+  whatsapp?: string | null;
+  linkedin?: string | null;
+  instagram?: string | null;
+  facebook?: string | null;
+  youtube?: string | null;
+  booking_link?: string | null;
+  custom_url?: string | null;
+  status?: string | null;
+};
+
+export default function CardsPage() {
+  const selectedCompany = useRef("");
+  const cardsRequest = useRef(0);
+  const usersRequest = useRef(0);
+  const preparationRequest = useRef(0);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [cards, setCards] = useState<Card[]>([]);
+  const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [readError, setReadError] = useState("");
+  const [cardsError, setCardsError] = useState("");
+  const [usersError, setUsersError] = useState("");
+  const [cardsLoading, setCardsLoading] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [mutationError, setMutationError] = useState("");
+  const [creationResults, setCreationResults] = useState<CardCreationResult[]>([]);
+  const [reviewReady, setReviewReady] = useState(false);
+  const [selectedPreparedUser, setSelectedPreparedUser] =
+    useState<StaffUser | null>(null);
+  const [editingPreparedUser, setEditingPreparedUser] =
+    useState<StaffUser | null>(null);
+  const [previewPreparedUser, setPreviewPreparedUser] =
+    useState<StaffUser | null>(null);
+  const [previewActiveCard, setPreviewActiveCard] = useState<Card | null>(null);
+  const [selectedPreparedUserIds, setSelectedPreparedUserIds] = useState<
+    string[]
+  >([]);
+
+  const [clientId, setClientId] = useState("");
+  const [templateId, setTemplateId] = useState("");
+
+  const selectedClient = clients.find((client) => client.id === clientId);
+  const selectedTemplate = templates.find(
+    (template) => template.id === templateId
+  );
+  const businessClients = useMemo(() => {
+    return clients.filter(
+      (client) =>
+        client.account_type === "business" || client.account_type === "enterprise"
+    );
+  }, [clients]);
+  const selectedPreparedUsers = useMemo(() => {
+    const selectedIds = new Set(selectedPreparedUserIds);
+    return staffUsers.filter((user) => selectedIds.has(user.id));
+  }, [staffUsers, selectedPreparedUserIds]);
+  const allPreparedSelected =
+    staffUsers.length > 0 && selectedPreparedUserIds.length === staffUsers.length;
+
+  const activeCards = useMemo(() => {
+    return cards
+      .filter((card) => card.client_id === clientId)
+      .map((card) => {
+        const template = templates.find((item) => item.id === card.template_id);
+
+        return {
+          ...card,
+          templateName: template?.name || "Unknown template",
+        };
+      });
+  }, [cards, clientId, templates]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadAdminData() {
+      setLoading(true);
+
+      try {
+        const [nextClients, nextTemplates] = await Promise.all([
+          getAdminInventory<Client>("clients").catch(() => { throw new Error("Company inventory failed to load. Retry before preparing cards."); }),
+          getAdminTemplates().catch(() => { throw new Error("Template context failed to load. Retry before preparing cards."); }),
+        ]);
+        if (ignore) return;
+        setClients(nextClients.sort((a, b) => a.full_name.localeCompare(b.full_name)));
+        setTemplates(nextTemplates.filter((template) => template.is_published)
+          .map((template) => ({ ...template, layout_type: template.layout_type ?? null, access_level: template.access_level ?? null, is_published: Boolean(template.is_published), allowed_fields: template.allowed_fields ?? null }))
+          .sort((a, b) => a.name.localeCompare(b.name)));
+        setReadError("");
+      } catch (error) {
+        if (!ignore) setReadError(error instanceof Error ? error.message : "Admin inventory could not be loaded.");
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
+    void loadAdminData();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  async function fetchCards(companyId = clientId) {
+    if (companyId !== selectedCompany.current) return false;
+    const request = ++cardsRequest.current;
+    const current = () => request === cardsRequest.current && companyId === selectedCompany.current;
+    setReviewReady(false);
+    if (!companyId) {
+      setCards([]);
+      return false;
+    }
+    setCardsLoading(true);
+
+    try {
+      const data = await getAdminInventory<Card>("cards", companyId);
+      if (!current()) return false;
+      setCardsError("");
+      setCards(data);
+      return true;
+    } catch (error) {
+      if (!current()) return false;
+      setCardsError(error instanceof Error ? error.message : "Admin cards could not be loaded.");
+      return false;
+    } finally {
+      if (current()) setCardsLoading(false);
+    }
+  }
+
+  async function fetchCompanyUsers(companyId = clientId) {
+    if (companyId !== selectedCompany.current) return false;
+    const request = ++usersRequest.current;
+    const current = () => request === usersRequest.current && companyId === selectedCompany.current;
+    setReviewReady(false);
+    if (!companyId) {
+      setStaffUsers([]);
+      setSelectedPreparedUserIds([]);
+      return false;
+    }
+    setUsersLoading(true);
+
+    try {
+      const data = await getAdminInventory<StaffUser>("client-users", companyId);
+      if (!current()) return false;
+      setUsersError("");
+      setStaffUsers(data);
+      setSelectedPreparedUserIds(data.map((user) => user.id));
+      return true;
+    } catch (error) {
+      if (!current()) return false;
+      setUsersError(error instanceof Error ? error.message : "Admin client users could not be loaded.");
+      return false;
+    } finally {
+      if (current()) setUsersLoading(false);
+    }
+  }
+
+  function selectClient(value: string) {
+    selectedCompany.current = value;
+    cardsRequest.current++; usersRequest.current++; preparationRequest.current++;
+    setPreparing(false);
+    setClientId(value);
+    setCreationResults([]);
+    setMutationError("");
+    setCards([]);
+    setCardsError("");
+    setUsersError("");
+    setCardsLoading(false);
+    setUsersLoading(false);
+    setReviewReady(false);
+    setStaffUsers([]);
+    setSelectedPreparedUserIds([]);
+    setPreviewActiveCard(null);
+    void fetchCards(value);
+    void fetchCompanyUsers(value);
+  }
+
+  function selectTemplate(value: string) {
+    cardsRequest.current++; usersRequest.current++; preparationRequest.current++;
+    setPreparing(false); setCardsLoading(false); setUsersLoading(false);
+    setTemplateId(value);
+    setCreationResults([]);
+    setMutationError("");
+    setReviewReady(false);
+    setStaffUsers([]);
+    setSelectedPreparedUserIds([]);
+  }
+
+  async function prepareDigitalCards() {
+    if (!clientId || !templateId || loading || readError || cardsLoading || usersLoading) return;
+
+    const request = ++preparationRequest.current;
+    setReviewReady(false);
+    setPreparing(true);
+    const results = await Promise.all([fetchCompanyUsers(clientId), fetchCards(clientId)]);
+    if (request !== preparationRequest.current) return;
+    setReviewReady(results.every(Boolean));
+    setPreparing(false);
+  }
+
+  async function publishCardsForCompany() {
+    if (!reviewReady || loading || readError || cardsError || usersError || cardsLoading || usersLoading || preparing || !selectedClient || !selectedTemplate || selectedPreparedUsers.length === 0) {
+      return;
+    }
+
+    setPublishing(true);
+
+    setMutationError("");
+    try {
+      const key = `admin-card-batch:${clientId}:${templateId}`;
+      let operationId = sessionStorage.getItem(key);
+      if (!operationId) { operationId = crypto.randomUUID(); sessionStorage.setItem(key, operationId); }
+      const result = await mutateAdminCard("/api/admin/cards", "POST", {
+        clientId, templateId, operationId,
+        staff: selectedPreparedUsers.map(user => ({ staffId: user.id,
+          seed: Object.fromEntries(cardSeedFields.map(field => [field, user[field] || (field === "full_name" ? user.name : "") || ""])) })),
+      });
+      setCreationResults(result.results || []);
+      await fetchCards(selectedClient.id);
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : "Card creation failed.");
+    } finally { setPublishing(false); }
+  }
+
+  function savePreparedUserEdits(updatedUser: StaffUser) {
+    setStaffUsers((current) =>
+      current.map((user) => (user.id === updatedUser.id ? updatedUser : user))
+    );
+    setEditingPreparedUser(null);
+  }
+
+  function togglePreparedUserSelection(userId: string) {
+    setSelectedPreparedUserIds((current) =>
+      current.includes(userId)
+        ? current.filter((id) => id !== userId)
+        : [...current, userId]
+    );
+  }
+
+  function toggleAllPreparedUsers() {
+    setSelectedPreparedUserIds(
+      allPreparedSelected ? [] : staffUsers.map((user) => user.id)
+    );
+  }
+
+  async function togglePublished(card: Card) {
+    const nextPublished = !card.is_published;
+
+    try {
+      await mutateAdminCard(`/api/admin/cards/${card.id}`, "PATCH", { operation: nextPublished ? "publish" : "unpublish" });
+    } catch (error) { setMutationError(error instanceof Error ? error.message : "Publication failed."); return; }
+
+    await fetchCards(card.client_id || clientId);
+  }
+
+  async function deleteCard(card: Card) {
+    const confirmed = window.confirm(
+      "Delete this card permanently? This may affect the client’s card limit and public card URL."
+    );
+
+    if (!confirmed) return;
+
+    try { await mutateAdminCard(`/api/admin/cards/${card.id}`, "DELETE"); }
+    catch (error) { setMutationError(error instanceof Error ? error.message : "Deletion failed."); return; }
+
+    await fetchCards(card.client_id || clientId);
+  }
+
+  return (
+    <main className="flex min-h-screen bg-[#070B1A] text-white">
+      <Sidebar />
+
+      <section className="flex-1 p-10">
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold">Digital Cards</h1>
+          <p className="mt-2 text-white/50">
+            Prepare and manage business or enterprise staff cards from imported
+            client users.
+          </p>
+        </div>
+
+        {mutationError && <p role="alert" className="mb-4 text-red-300">{mutationError}</p>}
+        {creationResults.length > 0 && <div role="status" className="mb-4 rounded-xl border border-white/20 p-4">
+          {creationResults.map(result => <p key={result.staffId} className="break-words">{staffUsers.find(user => user.id === result.staffId)?.full_name || result.staffId}: {result.status} — {result.message}</p>)}
+        </div>}
+        {loading ? <p role="status">Loading companies and published templates…</p> : readError ? (
+          <div role="alert" className="rounded-2xl border border-[var(--error)] bg-[var(--error-bg)] p-5 text-[var(--error)]">
+            {readError}
+            <button type="button" onClick={() => window.location.reload()} className="ml-4 rounded-xl border px-4 py-2">Retry</button>
+          </div>
+        ) : <>
+        {(cardsError || usersError) && (
+          <div role="alert" className="mb-6 rounded-2xl border border-[var(--error)] bg-[var(--error-bg)] p-5 text-[var(--error)]">
+            {[cardsError, usersError].filter(Boolean).join(" ")}
+            <button type="button" onClick={() => { void fetchCards(); void fetchCompanyUsers(); }} className="ml-4 rounded-xl border px-4 py-2">Retry</button>
+          </div>
+        )}
+        {businessClients.length === 0 && <p role="status" className="mb-4">No business or enterprise clients are available. Add a company in Client Onboarding before preparing cards.</p>}
+        {templates.length === 0 && <p role="status" className="mb-4">No published templates are available for card creation.</p>}
+        {(loading || usersLoading) && <p role="status" className="mb-4">Loading Admin inventory...</p>}
+        <div className="mb-8 rounded-3xl border border-white/10 bg-white/5 p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <StepLabel label="Step 1" />
+              <h2 className="mt-2 text-2xl font-semibold">Select Company</h2>
+              <p className="mt-1 text-sm text-white/45">
+                Choose the business or enterprise client before preparing cards.
+              </p>
+            </div>
+
+            <span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/15 px-3 py-1 text-xs font-medium text-purple-100">
+              {businessClients.length} companies
+            </span>
+          </div>
+
+          <div className="mt-6 grid grid-cols-[minmax(280px,420px)_1fr] gap-4">
+            <Field label="Company / Client">
+              <select
+                value={clientId}
+                disabled={publishing}
+                onChange={(event) => selectClient(event.target.value)}
+                className="inputStyle"
+              >
+                <option value="">Select company</option>
+                {businessClients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.company_name || "Unnamed company"}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <div className="grid grid-cols-4 gap-3 rounded-2xl border border-white/10 bg-[#101935]/60 p-4">
+              <DetailPill
+                label="Company"
+                value={
+                  selectedClient?.company_name ||
+                  selectedClient?.full_name ||
+                  "Not selected"
+                }
+              />
+              <DetailPill
+                label="Account"
+                value={selectedClient?.account_type || "Not selected"}
+              />
+              <DetailPill
+                label="Plan"
+                value={selectedClient?.subscription_plan || "Not selected"}
+              />
+              <DetailPill
+                label="Billing"
+                value={selectedClient?.billing_status || "Not selected"}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-8 rounded-3xl border border-white/10 bg-white/5 p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <StepLabel label="Step 2" />
+              <h2 className="mt-2 text-2xl font-semibold">Select Template</h2>
+              <p className="mt-1 text-sm text-white/45">
+                Choose one published template to apply to this company batch.
+              </p>
+            </div>
+
+            <span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/15 px-3 py-1 text-xs font-medium text-purple-100">
+              {templates.length} published
+            </span>
+          </div>
+
+          <div className="mt-6 flex flex-wrap justify-center gap-6">
+            {templates.map((template) => {
+              const selected = template.id === templateId;
+
+              return (
+                <button
+                  key={template.id}
+                  type="button"
+                  disabled={publishing}
+                  onClick={() => selectTemplate(template.id)}
+                  className={`w-[260px] shrink-0 rounded-2xl border p-3 text-left transition ${
+                    selected
+                      ? "border-[#AC00FF] bg-[#AC00FF]/15 shadow-[0_0_0_4px_rgba(172,0,255,0.12)]"
+                      : "border-white/10 bg-white/5 hover:border-[#AC00FF]/35 hover:bg-white/[0.07]"
+                  }`}
+                >
+                  <div className="mb-3 flex h-36 items-start justify-center overflow-hidden rounded-xl bg-[#070B1A]/60">
+                    <div className="mx-auto origin-top scale-[0.28]">
+                      <div className="mx-auto w-[560px]">
+                        <CardRenderer
+                          mode="compact"
+                          template={template}
+                          cardData={{
+                            full_name: template.name,
+                            job_title: `${template.layout_type || "classic"} layout`,
+                            company_name: "DMI Cards",
+                            email: "hello@devmasterinc.com",
+                            phone: "+44 7000 000000",
+                            website: "devmasterinc.com",
+                            address: "London, United Kingdom",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-base font-semibold">
+                        {template.name}
+                      </h3>
+                    </div>
+
+                    <AccessBadge level={template.access_level || "free"} />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mb-8 rounded-3xl border border-white/10 bg-white/5 p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <StepLabel label="Step 3" />
+              <h2 className="mt-2 text-2xl font-semibold">
+                Prepare Digital Cards
+              </h2>
+              <p className="mt-1 text-sm text-white/45">
+                Review imported users before creating final cards. Nothing is
+                created until the final review step.
+              </p>
+            </div>
+
+            <button
+              onClick={prepareDigitalCards}
+              disabled={!clientId || !templateId || preparing || publishing || loading || cardsLoading || usersLoading}
+              className="rounded-2xl bg-[#AC00FF] px-6 py-3 text-sm font-medium transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {preparing ? "Preparing..." : "Prepare Digital Cards"}
+            </button>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-4">
+            <DetailPill
+              label="Selected company"
+              value={
+                selectedClient?.company_name ||
+                selectedClient?.full_name ||
+                "Not selected"
+              }
+            />
+            <DetailPill
+              label="Selected template"
+              value={selectedTemplate?.name || "Not selected"}
+            />
+          </div>
+        </div>
+
+        {reviewReady && (
+          <div className="mb-8 rounded-3xl border border-white/10 bg-white/5">
+            <div className="flex items-center justify-between border-b border-white/10 p-6">
+              <div>
+                <StepLabel label="Step 4" />
+                <h2 className="mt-2 text-2xl font-semibold">
+                  Review Prepared Cards
+                </h2>
+                <p className="mt-1 text-sm text-white/45">
+                  Confirm the prepared staff card records before publishing.
+                </p>
+              </div>
+
+              <span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/15 px-3 py-1 text-xs font-medium text-purple-100">
+                {selectedPreparedUserIds.length} selected
+              </span>
+            </div>
+
+            <div className="p-6">
+              {usersError ? <p role="alert">{usersError}</p> : usersLoading ? <p role="status">Loading client users...</p> : staffUsers.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/15 bg-[#101935]/50 p-8 text-center">
+                  <h3 className="text-lg font-semibold">
+                    No users found for this company.
+                  </h3>
+                  <p className="mt-2 text-sm text-white/45">
+                    Add users in Client Onboarding first.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-2xl border border-white/10">
+                  <div className="border-b border-white/10 bg-[#101935] px-4 py-3">
+                    <h3 className="font-semibold">Prepared Cards</h3>
+                  </div>
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-white/5 text-xs uppercase tracking-[0.14em] text-white/40">
+                      <tr>
+                        <th className="w-12 px-4 py-3 font-medium">
+                          <PremiumCheckbox
+                            checked={allPreparedSelected}
+                            onChange={toggleAllPreparedUsers}
+                            label="Select all prepared cards"
+                          />
+                        </th>
+                        <th className="px-4 py-3 font-medium">Full Name</th>
+                        <th className="px-4 py-3 font-medium">Job Title</th>
+                        <th className="px-4 py-3 font-medium">Email</th>
+                        <th className="px-4 py-3 font-medium">Phone</th>
+                        <th className="px-4 py-3 font-medium">Status</th>
+                        <th className="px-4 py-3 font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/10">
+                      {staffUsers.map((user) => (
+                        <tr key={user.id}>
+                          <td className="px-4 py-3">
+                            <PremiumCheckbox
+                              checked={selectedPreparedUserIds.includes(user.id)}
+                              onChange={() => togglePreparedUserSelection(user.id)}
+                              label={`Select ${user.full_name || user.name || "user"}`}
+                            />
+                          </td>
+                          <td className="px-4 py-3">
+                            {user.full_name || user.name || "Unnamed user"}
+                          </td>
+                          <td className="px-4 py-3 text-white/55">
+                            {user.job_title || "Not set"}
+                          </td>
+                          <td className="px-4 py-3 text-white/55">
+                            {user.email || "No email"}
+                          </td>
+                          <td className="px-4 py-3 text-white/55">
+                            {user.phone || "No phone"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <StatusBadge status={user.status || "ready"} />
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-3">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPreparedUser(user)}
+                                className="text-sm text-blue-300 hover:text-blue-200"
+                              >
+                                View
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingPreparedUser(user)}
+                                className="text-sm text-purple-300 hover:text-purple-200"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewPreparedUser(user)}
+                                className="text-sm text-green-300 hover:text-green-200"
+                              >
+                                Card Preview
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {reviewReady && (
+          <div className="mb-8 rounded-3xl border border-white/10 bg-white/5 p-6">
+            <button type="button" disabled={publishing} className="mb-4 text-sm underline" onClick={async () => {
+              if (window.confirm("Start a new creation batch? This permits additional cards for previously created staff. Only continue after confirming the previous results.")) {
+                sessionStorage.removeItem(`admin-card-batch:${clientId}:${templateId}`); setCreationResults([]); setMutationError("");
+              }
+            }}>Start a new batch</button>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <StepLabel label="Step 5" />
+                <h2 className="mt-2 text-2xl font-semibold">Publish Cards</h2>
+                <p className="mt-1 text-sm text-white/45">
+                  Only staff with verified Client Portal accounts can receive cards. Unlinked staff are reported as not ready; no ownerless cards are created.
+                </p>
+              </div>
+
+                <button
+                onClick={publishCardsForCompany}
+                disabled={selectedPreparedUsers.length === 0 || publishing || !reviewReady || cardsLoading || usersLoading || !!cardsError || !!usersError}
+                className="rounded-2xl bg-[#AC00FF] px-6 py-3 text-sm font-medium transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {publishing ? "Publishing..." : "Publish Cards For Company"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="rounded-3xl border border-white/10 bg-white/5">
+          <div className="flex items-center justify-between border-b border-white/10 p-6">
+            <div>
+              <h2 className="text-2xl font-semibold">
+                Active Cards For Selected Company
+              </h2>
+              <p className="mt-1 text-sm text-white/45">
+                Manage cards already created for this company.
+              </p>
+              <p className="mt-2 text-xs text-white/35">
+                Admin deletion is for support and enterprise management only.
+              </p>
+            </div>
+
+            <span className="rounded-full border border-[#AC00FF]/30 bg-[#AC00FF]/15 px-3 py-1 text-xs font-medium text-purple-100">
+              {activeCards.length} active
+            </span>
+          </div>
+
+          <div className="max-h-[760px] overflow-y-auto p-6">
+            {!clientId ? (
+              <div className="rounded-2xl border border-dashed border-white/15 bg-[#101935]/50 p-8 text-center">
+                <h3 className="text-lg font-semibold">Select a company</h3>
+                <p className="mt-2 text-sm text-white/45">
+                  Active cards will appear here after you choose a company.
+                </p>
+              </div>
+            ) : cardsError ? <p role="alert">{cardsError}</p> : loading || cardsLoading ? (
+              <p className="text-sm text-white/45">Loading cards...</p>
+            ) : activeCards.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/15 bg-[#101935]/50 p-8 text-center">
+                <h3 className="text-lg font-semibold">
+                  No active cards found for this company.
+                </h3>
+                <p className="mt-2 text-sm text-white/45">
+                  Prepare users above before creating final cards.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-2xl border border-white/10">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-[#101935] text-xs uppercase tracking-[0.14em] text-white/40">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Card Name</th>
+                      <th className="px-4 py-3 font-medium">Full Name</th>
+                      <th className="px-4 py-3 font-medium">Template</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                      <th className="px-4 py-3 font-medium">Published</th>
+                      <th className="px-4 py-3 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/10">
+                    {activeCards.map((card) => (
+                      <tr key={card.id} className="hover:bg-white/5">
+                        <td className="px-4 py-3 font-medium">
+                          {card.card_name || card.name || "Untitled card"}
+                        </td>
+                        <td className="px-4 py-3 text-white/60">
+                          {card.full_name || "No full name"}
+                        </td>
+                        <td className="px-4 py-3 text-white/60">
+                          {card.templateName}
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={card.status || "draft"} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs ${
+                              card.is_published
+                                ? "bg-green-500/20 text-green-300"
+                                : "bg-white/10 text-white/50"
+                            }`}
+                          >
+                            {card.is_published ? "Published" : "Draft"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => setPreviewActiveCard(card)}
+                              className="text-sm text-green-300 hover:text-green-200"
+                            >
+                              Preview
+                            </button>
+                            <button
+                              onClick={() => togglePublished(card)}
+                              className="text-sm text-blue-300 hover:text-blue-200"
+                            >
+                              {card.is_published ? "Unpublish" : "Publish"}
+                            </button>
+
+                            <button
+                              onClick={() => deleteCard(card)}
+                              className="text-sm text-red-300 hover:text-red-200"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+        </>}
+      </section>
+
+      {selectedPreparedUser && (
+        <PreparedUserModal
+          user={selectedPreparedUser}
+          companyName={
+            selectedClient?.company_name || selectedClient?.full_name || "-"
+          }
+          templateName={selectedTemplate?.name || "-"}
+          onClose={() => setSelectedPreparedUser(null)}
+        />
+      )}
+
+      {editingPreparedUser && (
+        <EditPreparedUserModal
+          user={editingPreparedUser}
+          onClose={() => setEditingPreparedUser(null)}
+          onSave={savePreparedUserEdits}
+        />
+      )}
+
+      {previewPreparedUser && selectedTemplate && (
+        <CardPreviewModal
+          cardData={{
+            ...previewPreparedUser,
+            full_name:
+              previewPreparedUser.full_name ||
+              previewPreparedUser.name ||
+              "Unnamed User",
+            company_name:
+              selectedClient?.company_name || selectedClient?.full_name || "-",
+          }}
+          template={selectedTemplate}
+          onClose={() => setPreviewPreparedUser(null)}
+        />
+      )}
+
+      {previewActiveCard && (
+        templates.find((template) => template.id === previewActiveCard.template_id) ? (
+          <CardPreviewModal
+            cardData={previewActiveCard}
+            template={
+              templates.find((template) => template.id === previewActiveCard.template_id)!
+            }
+            onClose={() => setPreviewActiveCard(null)}
+          />
+        ) : (
+          <TemplateUnavailableModal onClose={() => setPreviewActiveCard(null)} />
+        )
+      )}
+    </main>
+  );
+}
+
+function StepLabel({ label }: { label: string }) {
+  return (
+    <p className="text-xs font-medium uppercase tracking-[0.18em] text-[#AC00FF]">
+      {label}
+    </p>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-white/55">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function DetailPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-white/5 px-3 py-2">
+      <p className="text-xs text-white/35">{label}</p>
+      <p className="mt-1 truncate text-sm capitalize text-white/80">{value}</p>
+    </div>
+  );
+}
+
+function PremiumCheckbox({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={checked}
+      onClick={onChange}
+      className={`flex h-5 w-5 items-center justify-center rounded-md border transition ${
+        checked
+          ? "border-[#AC00FF] bg-[#AC00FF] shadow-[0_0_16px_rgba(172,0,255,0.35)]"
+          : "border-white/20 bg-white/5 hover:border-[#AC00FF]/60"
+      }`}
+    >
+      {checked && <span className="h-2 w-2 rounded-sm bg-white" />}
+    </button>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const styles =
+    status === "active" || status === "ready"
+      ? "bg-green-500/20 text-green-300"
+      : status === "published"
+      ? "bg-blue-500/20 text-blue-300"
+      : status === "draft"
+      ? "bg-white/10 text-white/50"
+      : "bg-yellow-500/20 text-yellow-300";
+
+  return (
+    <span className={`rounded-full px-2.5 py-1 text-xs capitalize ${styles}`}>
+      {status}
+    </span>
+  );
+}
+
+function AccessBadge({ level }: { level: string }) {
+  const styles =
+    level === "free"
+      ? "bg-white/10 text-white/55"
+      : level === "premium"
+      ? "bg-yellow-500/20 text-yellow-300"
+      : "bg-blue-500/20 text-blue-300";
+
+  return (
+    <span className={`rounded-full px-3 py-1 text-xs capitalize ${styles}`}>
+      {level}
+    </span>
+  );
+}
+
+function PreparedUserModal({
+  user,
+  companyName,
+  templateName,
+  onClose,
+}: {
+  user: StaffUser;
+  companyName: string;
+  templateName: string;
+  onClose: () => void;
+}) {
+  const details = [
+    ["Company", companyName],
+    ["Template", templateName],
+    ["Full Name", user.full_name || user.name || "-"],
+    ["Job Title", user.job_title || "-"],
+    ["Email", user.email || "-"],
+    ["Phone", user.phone || "-"],
+    ["Website", user.website || "-"],
+    ["Address", user.address || "-"],
+    ["WhatsApp", user.whatsapp || "-"],
+    ["LinkedIn", user.linkedin || "-"],
+    ["Instagram", user.instagram || "-"],
+    ["Facebook", user.facebook || "-"],
+    ["YouTube", user.youtube || "-"],
+    ["Booking Link", user.booking_link || "-"],
+    ["Custom URL", user.custom_url || "-"],
+    ["Status", user.status || "ready"],
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
+      <div className="max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/10 bg-[#0F0E38] text-white shadow-2xl shadow-[#AC00FF]/20">
+        <div className="flex items-start justify-between gap-6 border-b border-white/10 bg-[#0F0E38] p-6">
+          <div>
+            <h2 className="text-2xl font-semibold">Prepared Card Details</h2>
+            <p className="mt-1 text-sm text-white/45">
+              Review the user details that will be published into a digital card.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl bg-white/10 px-5 py-2.5 text-sm font-medium transition hover:bg-white/15"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="max-h-[calc(85vh-104px)] overflow-y-auto p-6">
+          <div className="grid grid-cols-2 gap-4">
+            {details.map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-2xl border border-white/10 bg-white/5 p-4"
+              >
+                <p className="text-xs uppercase tracking-[0.14em] text-white/35">
+                  {label}
+                </p>
+                <p className="mt-3 break-words text-sm text-white/80">
+                  {value}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditPreparedUserModal({
+  user,
+  onClose,
+  onSave,
+}: {
+  user: StaffUser;
+  onClose: () => void;
+  onSave: (user: StaffUser) => void;
+}) {
+  const [form, setForm] = useState({
+    full_name: user.full_name || user.name || "",
+    job_title: user.job_title || "",
+    email: user.email || "",
+    phone: user.phone || "",
+    website: user.website || "",
+    address: user.address || "",
+    whatsapp: user.whatsapp || "",
+    linkedin: user.linkedin || "",
+    instagram: user.instagram || "",
+    facebook: user.facebook || "",
+    youtube: user.youtube || "",
+    booking_link: user.booking_link || "",
+    custom_url: user.custom_url || "",
+  });
+  const fields = [
+    ["full_name", "Full Name"],
+    ["job_title", "Job Title"],
+    ["email", "Email"],
+    ["phone", "Phone"],
+    ["website", "Website"],
+    ["address", "Address"],
+    ["whatsapp", "WhatsApp"],
+    ["linkedin", "LinkedIn"],
+    ["instagram", "Instagram"],
+    ["facebook", "Facebook"],
+    ["youtube", "YouTube"],
+    ["booking_link", "Booking Link"],
+    ["custom_url", "Custom URL"],
+  ];
+
+  function updateField(field: string, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function saveEdits() {
+    if (!form.full_name.trim()) {
+      alert("Full name is required.");
+      return;
+    }
+
+    onSave({
+      ...user,
+      full_name: form.full_name,
+      name: form.full_name,
+      job_title: form.job_title,
+      email: form.email,
+      phone: form.phone,
+      website: form.website,
+      address: form.address,
+      whatsapp: form.whatsapp,
+      linkedin: form.linkedin,
+      instagram: form.instagram,
+      facebook: form.facebook,
+      youtube: form.youtube,
+      booking_link: form.booking_link,
+      custom_url: form.custom_url,
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
+      <div className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#0F0E38] text-white shadow-2xl shadow-[#AC00FF]/20">
+        <div className="flex items-start justify-between gap-6 border-b border-white/10 bg-[#0F0E38] p-6">
+          <div>
+            <h2 className="text-2xl font-semibold">Edit Prepared Card</h2>
+            <p className="mt-1 text-sm text-white/45">
+              Make final local edits before publishing. Client Onboarding data is
+              not changed.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl bg-white/10 px-5 py-2.5 text-sm font-medium transition hover:bg-white/15"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="grid grid-cols-2 gap-3">
+            {fields.map(([field, label]) => (
+              <label
+                key={field}
+                className="rounded-2xl border border-white/10 bg-white/5 p-3"
+              >
+                <span className="text-xs uppercase tracking-[0.14em] text-white/35">
+                  {label}
+                </span>
+                <input
+                  value={form[field as keyof typeof form]}
+                  onChange={(event) => updateField(field, event.target.value)}
+                  className="mt-2 h-10 w-full rounded-xl border border-white/10 bg-[#101935] px-3 text-sm outline-none transition focus:border-[#AC00FF]"
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-white/10 bg-[#0F0E38] p-5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl bg-white/10 px-5 py-3 text-sm font-medium transition hover:bg-white/15"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={saveEdits}
+            className="rounded-2xl bg-[#AC00FF] px-5 py-3 text-sm font-medium transition hover:opacity-90"
+          >
+            Save Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CardPreviewModal({
+  cardData,
+  template,
+  onClose,
+}: {
+  cardData: Card | StaffUser;
+  template: Template;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
+      <div className="max-h-[85vh] w-full max-w-5xl overflow-hidden rounded-3xl border border-white/10 bg-[#0F0E38] text-white shadow-2xl shadow-[#AC00FF]/20">
+        <div className="flex items-start justify-between gap-6 border-b border-white/10 bg-[#0F0E38] p-6">
+          <div>
+            <h2 className="text-2xl font-semibold">Card Preview</h2>
+            <p className="mt-1 text-sm text-white/45">
+              {template.name} · {template.layout_type || "classic"} layout
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl bg-white/10 px-5 py-2.5 text-sm font-medium transition hover:bg-white/15"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="max-h-[calc(85vh-104px)] overflow-y-auto p-6">
+          <div className="mx-auto max-w-md">
+            <CardRenderer
+              mode="preview"
+              showActions={template.supports_save_contact ?? true}
+              template={template}
+              cardData={cardData}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TemplateUnavailableModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
+      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0F0E38] p-6 text-white shadow-2xl shadow-[#AC00FF]/20">
+        <h2 className="text-2xl font-semibold">Template unavailable</h2>
+        <p className="mt-3 text-sm leading-6 text-white/55">
+          This card references a template that is not currently published.
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-6 rounded-2xl bg-white/10 px-5 py-2.5 text-sm font-medium"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
