@@ -84,7 +84,7 @@ assert.match(source,/overflow-x-auto/);assert.match(source,/max-h-\[90dvh\]/);as
 const sidebar=fs.readFileSync('src/components/Sidebar.tsx','utf8');
 const sections=[...sidebar.matchAll(/title: "([^"]+)"/g)].map(x=>x[1]);assert.deepEqual(sections,['Overview','Card Management','Individual','Business','Billing','Operations']);
 const cardSection=sidebar.slice(sidebar.indexOf('title: "Card Management"'),sidebar.indexOf('title: "Individual"'));
-assert.deepEqual([...cardSection.matchAll(/name: "([^"]+)"/g)].map(x=>x[1]),['Template Builder','Current Templates','Cards','Public Pages','QR Codes']);
+assert.deepEqual([...cardSection.matchAll(/name: "([^"]+)"/g)].map(x=>x[1]),['Template Builder','Current Templates','Cards']);
 assert.match(fs.readFileSync('src/lib/admin-auth.ts','utf8'),/"\/cards\(\.\*\)"/);
 assert.match(fs.readFileSync('src/components/admin/legacy/LegacyBusinessCards.tsx','utf8'),/mutateAdminCard/);
 console.log('PASS: actual Clerk ID authorization and GET-only route; real Supabase request construction; five bounded read queries; pagination/order/search/combined filters; global counts; individual/business/unknown linkage; OR publication parity; strict metadata projection; public-route gating; fail-closed errors; sidebar structure; read-only responsive/theme source contracts. No external requests/SQL.');

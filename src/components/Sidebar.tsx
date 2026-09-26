@@ -13,7 +13,6 @@ import {
   Headphones,
   LayoutDashboard,
   LogOut,
-  QrCode,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -43,8 +42,6 @@ export default function Sidebar() {
         { name: "Template Builder", href: "/templates", icon: FileText },
         { name: "Current Templates", href: "/templates/current", icon: ScrollText },
         { name: "Cards", href: "/cards", icon: CreditCard },
-        { name: "Public Pages", href: "/public-pages", icon: WalletCards },
-        { name: "QR Codes", href: "/qr-codes", icon: QrCode },
       ],
     },
     {
