@@ -1,3 +1,4 @@
+import { validateAdminTemplateWrite } from "@/lib/admin-template-write";
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import {
@@ -14,7 +15,6 @@ type TemplateWriteResult = {
   data: unknown;
   error: { message: string } | null;
 };
-const criticalTemplatePersistenceColumns = new Set(["allowed_actions"]);
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -91,6 +91,9 @@ export async function POST(request: Request) {
     );
   }
 
+  try { payload = validateAdminTemplateWrite(payload); }
+  catch (error) { return NextResponse.json({ error: (error as Error).message }, { status: 400 }); }
+
   const slug = typeof payload.slug === "string" ? payload.slug.trim() : "";
 
   if (slug) {
@@ -116,7 +119,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const result = await writeTemplateWithSchemaRetry((databasePayload) =>
+  const result = await writeTemplate((databasePayload) =>
     supabaseAdmin
       .from("templates")
       .insert([databasePayload])
@@ -193,36 +196,11 @@ function sanitizeAllowedFields(fields: unknown[]) {
   );
 }
 
-async function writeTemplateWithSchemaRetry(
+async function writeTemplate(
   write: (databasePayload: ReturnType<typeof stripLocalOnlyFields>) => PromiseLike<TemplateWriteResult>,
   payload: TemplatePayload
 ) {
-  let databasePayload = stripLocalOnlyFields(payload);
-  let result = await write(databasePayload);
-  const removedColumns = new Set<string>();
-
-  while (result.error) {
-    const missingColumn = missingColumnFromError(result.error);
-
-    if (!missingColumn || removedColumns.has(missingColumn)) break;
-    if (criticalTemplatePersistenceColumns.has(missingColumn)) break;
-
-    removedColumns.add(missingColumn);
-    const nextPayload = { ...databasePayload };
-    delete nextPayload[missingColumn];
-    databasePayload = nextPayload;
-    result = await write(databasePayload);
-  }
-
-  return result;
-}
-
-function missingColumnFromError(error: { message: string } | null) {
-  const message = error?.message || "";
-  const quotedColumnMatch = message.match(/'([^']+)' column of 'templates'/);
-  const qualifiedColumnMatch = message.match(/column templates\.([a-zA-Z0-9_]+) does not exist/);
-
-  return quotedColumnMatch?.[1] || qualifiedColumnMatch?.[1] || null;
+  return write(stripLocalOnlyFields(payload));
 }
 
 function isDuplicateSlugError(error: { message: string } | null) {

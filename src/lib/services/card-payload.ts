@@ -1,3 +1,4 @@
+import { canSelectTemplateLayout, canResolveExistingTemplate } from "@/lib/template-layouts";
 import { cardFontKey, cardFontOverride } from "@/lib/card-typography";
 import {
   displayName,
@@ -329,7 +330,7 @@ export function normalizeCardTemplates(templates: CardTemplate[]) {
 
       return {
         ...template,
-        access_level: template.access_level === "free" ? "free" : "paid",
+        access_level: template.access_level,
         layout_type: template.layout_type,
         colour_palette: colourPalette.length ? colourPalette : templatePalette,
         free_colour_palette: templatePalette,
@@ -343,15 +344,7 @@ export function visibleTemplatesForPlan(
 ) {
   const published = normalizeCardTemplates(templates);
 
-  if (plan === "free") {
-    return published.filter(
-      (template) => template.access_level === "free" && canSelectTemplate(template, plan)
-    );
-  }
-
-  return published.filter(
-    (template) => template.access_level === "free" || isPaidTemplate(template)
-  );
+  return published.filter(template => canSelectTemplate(template, plan));
 }
 
 export function defaultTemplateForPlan(
@@ -360,7 +353,7 @@ export function defaultTemplateForPlan(
 ) {
   const published = normalizeCardTemplates(templates);
   const freeTemplate =
-    published.find((template) => template.access_level === "free") || null;
+    published.find((template) => template.access_level === "free" && canSelectTemplate(template, plan)) || null;
 
   if (freeTemplate) return freeTemplate;
   if (plan === "free") return null;
@@ -384,7 +377,7 @@ export function templateForCard(
     normalizeCardTemplates(templates).find((item) => item.id === card.template_id) ||
     null;
 
-  if (template && canSelectTemplate(template, plan)) return template;
+  if (template && canResolveExistingTemplate(template, plan)) return template;
 
   return null;
 }
@@ -397,11 +390,7 @@ export function canSelectTemplate(
   template: CardTemplate | CardRendererTemplate,
   plan: ClientCardPlan
 ) {
-  if (!isPaidTemplate(template)) {
-    return ["classic_free", "classic", "profile_free"].includes(template.layout_type || "");
-  }
-
-  return plan !== "free";
+  return canSelectTemplateLayout(template, plan);
 }
 
 export function mapSupabaseCard(

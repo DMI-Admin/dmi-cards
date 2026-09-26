@@ -7,7 +7,7 @@ function load(path, deps) {
   const exports = {};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(path, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
-  }).outputText, { URL, process: { env: diagnosticEnvironment }, exports, require(name) { if (["@/lib/card-typography", "@/lib/card-section-label", "@/lib/client-media-intent", "@/lib/card-media", "@/lib/client-media-request"].includes(name)) return load(name.replace("@/", "src/") + ".ts", {}); assert.ok(name in deps, name); return deps[name]; } });
+  }).outputText, { URL, process: { env: diagnosticEnvironment }, exports, require(name) { if (["@/lib/template-layouts", "@/lib/card-typography", "@/lib/card-section-label", "@/lib/client-media-intent", "@/lib/card-media", "@/lib/client-media-request"].includes(name)) return load(name.replace("@/", "src/") + ".ts", {}); assert.ok(name in deps, name); return deps[name]; } });
   return exports;
 }
 class ApiRouteError extends Error { constructor(status, code, message) { super(message); this.status = status; } }
@@ -312,41 +312,17 @@ console.log('PASS: gradient capability/default separation; all media save/reopen
 // become the capability again when an existing paid template is saved as Solid.
 const builderSource = fs.readFileSync('src/app/templates/page.tsx', 'utf8');
 const builderAst = ts.createSourceFile('builder.tsx', builderSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const permissionExpressions = [];
-let hydratePermission;
-function visitBuilder(node) {
-  if (ts.isPropertyAssignment(node) && node.name.getText(builderAst) === 'supports_gradient') {
-    permissionExpressions.push(node.initializer.getText(builderAst));
-  }
-  if (ts.isCallExpression(node) && node.expression.getText(builderAst) === 'setSupportsGradient' && node.arguments[0]?.getText(builderAst).includes('template.supports_gradient')) {
-    hydratePermission = node.arguments[0].getText(builderAst);
-  }
-  ts.forEachChild(node, visitBuilder);
-}
-visitBuilder(builderAst);
-assert.equal(permissionExpressions.length, 2, 'save and preview carry independent permission');
-assert.ok(hydratePermission, 'existing permission is hydrated');
-for (const allowed of [true, false]) {
-  const supportsGradient = vm.runInNewContext(hydratePermission, { normalizedAccessLevel: 'paid', template: { supports_gradient: allowed, gradient_enabled: !allowed } });
-  assert.equal(supportsGradient, allowed);
-  for (const gradientEnabled of [true, false]) {
-    for (const expression of permissionExpressions) {
-      assert.equal(vm.runInNewContext(expression, { accessLevel: 'paid', supportsGradient, gradientEnabled }), allowed);
-      assert.equal(vm.runInNewContext(expression, { accessLevel: 'free', supportsGradient, gradientEnabled }), false);
-    }
-  }
-}
-assert.match(builderSource, /setGradientEnabled\(event.target.value === "gradient"\)/, 'baseline Solid/Gradient selector changes default only');
-console.log('PASS: Admin hydration preserves permission/denial; Solid/Gradient default changes cannot overwrite it; Free permission stays false.');
+assert.doesNotMatch(builderSource, /setSupportsGradient|supports_gradient:/, 'Admin does not introduce independent permission writes without schema support');
+assert.match(builderSource, /setGradientEnabled\(event.target.value === "gradient"\)/, 'existing Solid/Gradient default control remains');
 const payloadFunction = builderAst.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === 'buildTemplatePayload');
 const payloadHelpers = Object.fromEntries(['sanitizeTextColourPalette', 'sanitizeFreeColourPalette', 'sanitizeTemplateFonts', 'sanitizeDefaultFont', 'templateAllowedActionsIncludes', 'sanitizeAllowedFields', 'sanitizeTemplateAllowedActions', 'sanitizeCustomFields', 'readTemplateContentSections'].map(name => [name, value => value]));
 const makeAdminPayload = vm.runInNewContext(ts.transpileModule(payloadFunction.getText(builderAst) + '\nbuildTemplatePayload;', { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, payloadHelpers);
 for (const supports_gradient of [true, false]) {
   const saved = makeAdminPayload({ name: 'Brand', access_level: 'paid', supports_gradient, gradient_enabled: false });
-  assert.equal(saved.supports_gradient, supports_gradient, 'save serializer carries independent permission');
+  assert.equal(saved.supports_gradient, undefined, 'independent permission is omitted, preserving the stored value');
   assert.equal(saved.gradient_enabled, false, 'solid remains default');
 }
-console.log('PASS: actual Admin payload serializer preserves gradient permission separately from Solid default.');
+console.log('PASS: Admin payload leaves independent gradient permission untouched; existing Solid default remains supported.');
 
 const sectionDisplay = load('src/lib/card-section-label.ts', {});
 for (const [key, label] of Object.entries({ personal: 'Personal Details', company: 'Company Details', contact: 'Contact' })) {

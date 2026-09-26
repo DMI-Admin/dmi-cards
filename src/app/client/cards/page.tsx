@@ -1447,7 +1447,7 @@ export default function ClientCardsPage() {
   }
 
   const readinessGeneration = useMemo(() => ({ cards, adminTemplates, isPaid }), [cards, adminTemplates, isPaid]);
-  const expectedInitialCards = currentDefaultTemplate && !inventoryError && !planError
+  const expectedInitialCards = !inventoryError && !planError
     ? inventoryCardSlots(cards, isPaid).filter(slot => !slot.locked && slot.card).map(slot => slot.card!.id)
     : [];
   const initialInventoryResolved = Boolean(inventoryError || planError) || (!loadingCards && !planLoading);
@@ -1479,7 +1479,7 @@ export default function ClientCardsPage() {
         )}
         {refreshingCards && <p role="status" className="sr-only">Refreshing cards…</p>}
 
-        {loadingCards ? null : !currentDefaultTemplate ? (
+        {loadingCards ? null : !currentDefaultTemplate && cards.length === 0 ? (
           <NoTemplateState templates={visibleTemplates} />
         ) : (
           <>
@@ -1530,7 +1530,7 @@ export default function ClientCardsPage() {
               onDelete={deleteCard}
             />
 
-            {showBuilder && (
+            {showBuilder && draftTemplateRecord && (
               <EditorModal
                 onClose={() => { if (!publishLock.current) setShowBuilder(false); }}
                 actionBar={
@@ -1562,7 +1562,7 @@ export default function ClientCardsPage() {
                     enforceClientContract={currentPlan !== "enterprise"}
                     draftCard={editorCard}
                     fieldOrder={editorCard.field_order || fieldOrder}
-                    template={draftTemplateRecord || currentDefaultTemplate}
+                    template={draftTemplateRecord}
                     templates={visibleTemplates}
                     currentPlan={currentPlan}
                     isPaid={isPaid}

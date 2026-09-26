@@ -1,3 +1,4 @@
+import { resolveRenderingLayout, type LayoutId } from "@/lib/template-layouts";
 import { resolveCardMedia } from "@/lib/card-media";
 
 import CardReadyBoundary from "@/components/CardReadyBoundary";
@@ -353,7 +354,7 @@ export default function CardRenderer({
   showMediaPlaceholders = false,
   previewActionDestinations = false,
 }: CardRendererProps) {
-  const layout = normalizeLayoutType(template.layout_type, template.access_level);
+  const layout = resolveRenderingLayout(template.layout_type, template.access_level);
   const logoSize = normalizeLogoSize(template.logo_size);
   const allowedFields = template.allowed_fields?.length
     ? template.allowed_fields
@@ -487,7 +488,7 @@ export default function CardRenderer({
     ? classicFreeSaveContactStyle
     : saveContactStyle;
 
-  const content = {
+  const layouts = {
     classic_free: (
       <ClassicLayout
         cardData={cardData}
@@ -591,7 +592,8 @@ export default function CardRenderer({
         previewActionDestinations={previewActionDestinations}
       />
     ),
-  }[layout] || null;
+  } satisfies Record<LayoutId, React.ReactElement>;
+  const content = layouts[layout];
 
   const hasMedia = Boolean(content && (
     (content.props.requiresProfileImage && resolveCardMedia(cardData.profile_image_url)) ||
@@ -2807,25 +2809,6 @@ function normalizeLogoSize(size?: string | null): LogoSize {
   }
 
   return "standard";
-}
-
-function normalizeLayoutType(
-  layout?: string | null,
-  accessLevel?: string | null
-) {
-  if (accessLevel === "free") {
-    const freeLayouts = ["classic_free", "profile_free"];
-
-    return layout && freeLayouts.includes(layout) ? layout : "classic_free";
-  }
-
-  const paidLayouts = ["modern_minimal", "executive_paid", "brand_paid"];
-
-  if (layout && paidLayouts.includes(layout)) {
-    return layout;
-  }
-
-  return "modern_minimal";
 }
 
 function sanitizeColourPalette(colours?: string[] | null) {

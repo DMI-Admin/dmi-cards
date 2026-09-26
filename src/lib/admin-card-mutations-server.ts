@@ -1,3 +1,4 @@
+import { canSelectTemplateLayout } from "@/lib/template-layouts";
 import "server-only";
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
@@ -39,10 +40,10 @@ async function bulk(db: DB, body: Body) {
   });
   if (new Set(staff.map(row => row.staffId)).size !== staff.length) throw new Failure("Duplicate staff selection.");
   const company = await db.from("clients").select("id,company_name,full_name,account_type").eq("id", clientId).maybeSingle();
-  const template = await db.from("templates").select("id,is_published,access_level").eq("id", templateId).maybeSingle();
+  const template = await db.from("templates").select("id,is_published,access_level,layout_type").eq("id", templateId).maybeSingle();
   if (company.error || template.error) throw new Failure("Company/template lookup failed.", 500);
   if (!company.data || !["business", "enterprise"].includes(company.data.account_type)) throw new Failure("Select an existing company.");
-  if (!template.data?.is_published) throw new Failure("Select an existing published template.");
+  if (!template.data?.is_published || !canSelectTemplateLayout(template.data, "enterprise")) throw new Failure("Select an existing published template.");
   const results: CardCreationResult[] = [];
   for (const selection of staff) {
     const { staffId, seed } = selection;

@@ -40,25 +40,11 @@ export type TemplateRendererOptions = {
 };
 
 type TemplatePayload = Partial<SharedTemplate> & {
-  name: string;
+  name?: string;
   slug?: string | null;
 };
 
-const templateContractFields = [
-  "profile_image_allowed",
-  "profile_image_default_enabled",
-  "logo_allowed",
-  "logo_default_enabled",
-  "banner_allowed",
-  "banner_default_enabled",
-  "custom_colour_allowed",
-  "custom_text_colour_allowed",
-  "field_config",
-  "renderer_options",
-  "template_contract_version",
-] as const;
-
-export async function getAdminTemplates() {
+export async function getAdminTemplates(options?: { raw?: boolean }) {
   const response = await fetch(`/api/admin/templates?ts=${Date.now()}`, {
     method: "GET",
     cache: "no-store",
@@ -75,7 +61,8 @@ export async function getAdminTemplates() {
     throw new Error(message);
   }
 
-  return normalizeTemplates((result.templates || []) as SharedTemplate[]);
+  const templates = (result.templates || []) as SharedTemplate[];
+  return options?.raw ? templates : normalizeTemplates(templates);
 }
 
 export async function getPublishedTemplates() {
@@ -135,13 +122,9 @@ export async function saveAdminTemplate(
   payload: TemplatePayload,
   editingTemplateId?: string | null
 ) {
-  const normalizedPayload = normalizeTemplate({
-    ...payload,
-    id: editingTemplateId || payload.id || "",
-    is_published: payload.is_published ?? payload.status === "published",
-    status: payload.status || (payload.is_published ? "published" : "draft"),
-  });
-  const requestPayload = templateWritePayload(normalizedPayload, payload);
+  // Never feed display normalization back into persistence.
+  const requestPayload = { ...payload };
+  if (!editingTemplateId) delete requestPayload.id;
   const result = editingTemplateId
     ? await requestAdminTemplate(`/api/admin/templates/${editingTemplateId}`, {
         method: "PATCH",
@@ -162,15 +145,7 @@ export async function publishAdminTemplate(
   template: SharedTemplate,
   published: boolean
 ) {
-  const normalizedPayload = normalizeTemplate({
-      ...template,
-      is_published: published,
-      status: published ? "published" : "draft",
-    });
-  const requestPayload = templateWritePayload(normalizedPayload, {
-    is_published: published,
-    status: published ? "published" : "draft",
-  });
+  const requestPayload = { is_published: published, status: published ? "published" : "draft" };
   const result = await requestAdminTemplate(`/api/admin/templates/${template.id}`, {
     method: "PATCH",
     body: JSON.stringify(requestPayload),
@@ -192,21 +167,6 @@ export async function deleteAdminTemplate(templateId: string) {
 
 export function normalizeTemplates(templates: SharedTemplate[]) {
   return templates.map(normalizeTemplate);
-}
-
-function templateWritePayload(
-  normalizedPayload: SharedTemplate,
-  explicitPayload: Partial<SharedTemplate>
-) {
-  const requestPayload = { ...normalizedPayload } as Record<string, unknown>;
-
-  for (const field of templateContractFields) {
-    if (!(field in explicitPayload)) {
-      delete requestPayload[field];
-    }
-  }
-
-  return requestPayload;
 }
 
 async function requestAdminTemplate(
@@ -259,12 +219,10 @@ export function normalizeTemplate(template: SharedTemplate | TemplatePayload): S
   return {
     ...template,
     id: template.id || "",
-    name: template.name,
-    slug: template.slug || slugify(template.name),
-    access_level: accessLevel,
-    layout_type:
-      template.layout_type ||
-      (accessLevel === "free" ? "classic_free" : "modern_minimal"),
+    name: template.name || "",
+    slug: template.slug ?? null,
+    access_level: template.access_level,
+    layout_type: template.layout_type,
     status: isPublished ? "published" : "draft",
     is_published: isPublished,
     requires_profile_image: requiresProfileImage,
@@ -463,14 +421,6 @@ function sanitizeColourPalette(colours: unknown[]) {
     .map((colour) => colour.trim())
     .filter((colour) => /^#[0-9a-fA-F]{6}$/.test(colour))
     .slice(0, 6);
-}
-
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replaceAll(" ", "-")
-    .replace(/[^a-z0-9-]/g, "");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

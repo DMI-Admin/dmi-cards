@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { builderLayouts, getTemplateLayout } from "@/lib/template-layouts";
+import { templateEditPatch } from "@/lib/admin-template-write";
 import Sidebar from "@/components/Sidebar";
 import CardRenderer, {
   type CardRendererData,
@@ -192,19 +194,6 @@ const paidFields = [
   "phone",
 ];
 
-const freeLayouts = [
-  { value: "classic_free", label: "Classic Free" },
-];
-
-const paidLayouts = [
-  { value: "premium_classic", label: "Premium Classic" },
-  { value: "modern_minimal", label: "Modern Minimal" },
-  { value: "glassmorphism", label: "Glassmorphism" },
-  { value: "banner_card", label: "Banner Card" },
-  { value: "split_card", label: "Split Card" },
-  { value: "monogram_card", label: "Monogram Card" },
-];
-
 const defaultFreeColourPalette = [
   "#AC00FF",
   "#101935",
@@ -316,6 +305,8 @@ export default function TemplatesPage() {
   const [previewLeadSettings, setPreviewLeadSettings] =
     useState<LeadCaptureSettings>(defaultLeadCaptureSettings);
 
+  const editBaseline = useRef<{ id: string; payload: TemplatePayload; stored: Template } | null>(null);
+  const pendingEdit = useRef<Template | null>(null);
   const [name, setName] = useState("");
   const [accessLevel, setAccessLevel] = useState("free");
   const [layoutType, setLayoutType] = useState("classic_free");
@@ -331,7 +322,6 @@ export default function TemplatesPage() {
   const [bannerDefaultEnabled, setBannerDefaultEnabled] = useState(false);
   const [requiresBanner, setRequiresBanner] = useState(false);
   const [gradientEnabled, setGradientEnabled] = useState(true);
-  const [supportsGradient, setSupportsGradient] = useState(true);
   const [customColourAllowed, setCustomColourAllowed] = useState(false);
   const [customTextColourAllowed, setCustomTextColourAllowed] = useState(false);
   const [freeColourPalette, setFreeColourPalette] = useState<string[]>(
@@ -364,7 +354,7 @@ export default function TemplatesPage() {
   const [showSocialSection, setShowSocialSection] = useState(false);
   const [draggedField, setDraggedField] = useState<DraggedField>(null);
 
-  const layoutOptions = accessLevel === "free" ? freeLayouts : paidLayouts;
+  const layoutOptions = builderLayouts(accessLevel).map(layout => ({ value: layout.id, label: layout.displayName }));
 
   const hydrateTemplateFromUrl = useCallback((loadedTemplates: Template[]) => {
     if (typeof window === "undefined") return;
@@ -387,7 +377,7 @@ export default function TemplatesPage() {
 
   async function fetchTemplates() {
     try {
-      const loadedTemplates = await getAdminTemplates();
+      const loadedTemplates = await getAdminTemplates({ raw: true });
       const normalizedTemplates = loadedTemplates as Template[];
       setTemplates(normalizedTemplates);
       hydrateTemplateFromUrl(normalizedTemplates);
@@ -408,7 +398,7 @@ export default function TemplatesPage() {
 
     async function loadTemplates() {
       try {
-        const loadedTemplates = await getAdminTemplates();
+        const loadedTemplates = await getAdminTemplates({ raw: true });
 
         if (ignore) return;
 
@@ -436,6 +426,8 @@ export default function TemplatesPage() {
   }, [hydrateTemplateFromUrl]);
 
   function resetBuilder() {
+    pendingEdit.current = null;
+    editBaseline.current = null;
     setEditingTemplateId(null);
     setActiveBuilderStep("setup");
     setName("");
@@ -451,7 +443,6 @@ export default function TemplatesPage() {
     setBannerDefaultEnabled(false);
     setRequiresBanner(false);
     setGradientEnabled(true);
-    setSupportsGradient(true);
     setCustomColourAllowed(false);
     setCustomTextColourAllowed(false);
     setFreeColourPalette(defaultFreeColourPalette);
@@ -496,7 +487,6 @@ export default function TemplatesPage() {
       setBannerDefaultEnabled(false);
       setRequiresBanner(false);
       setGradientEnabled(false);
-      setSupportsGradient(false);
       setCustomColourAllowed(false);
       setCustomTextColourAllowed(false);
       setFreeColourPalette(defaultFreeColourPalette);
@@ -522,7 +512,7 @@ export default function TemplatesPage() {
     }
 
     if (value === "paid") {
-      setLayoutType("premium_classic");
+      setLayoutType(builderLayouts("paid")[0].id);
       setProfileImageAllowed(true);
       setProfileImageDefaultEnabled(true);
       setRequiresProfileImage(true);
@@ -533,7 +523,6 @@ export default function TemplatesPage() {
       setBannerDefaultEnabled(true);
       setRequiresBanner(true);
       setGradientEnabled(true);
-      setSupportsGradient(true);
       setCustomColourAllowed(true);
       setCustomTextColourAllowed(true);
       setAllowedFonts([...fontChoices]);
@@ -588,7 +577,6 @@ export default function TemplatesPage() {
     setBannerDefaultEnabled(false);
     setRequiresBanner(false);
     setGradientEnabled(false);
-    setSupportsGradient(false);
     setCustomColourAllowed(true);
     setCustomTextColourAllowed(true);
     setFreeColourPalette(modernMinimalColourPalette);
@@ -867,13 +855,12 @@ export default function TemplatesPage() {
   }
 
   function editTemplate(template: Template) {
+    pendingEdit.current = template;
     setEditingTemplateId(template.id);
     setName(template.name);
     const normalizedAccessLevel = template.access_level === "free" ? "free" : "paid";
     setAccessLevel(normalizedAccessLevel);
-    setLayoutType(
-      normalizeTemplateLayout(template.layout_type, normalizedAccessLevel)
-    );
+    setLayoutType(template.layout_type || "");
     setActiveBuilderStep("setup");
     setProfileImageAllowed(template.profile_image_allowed ?? true);
     setProfileImageDefaultEnabled(
@@ -903,7 +890,6 @@ export default function TemplatesPage() {
     setRequiresBanner(
       normalizedAccessLevel === "paid" && (template.requires_banner ?? false)
     );
-    setSupportsGradient(normalizedAccessLevel === "paid" && (template.supports_gradient ?? template.gradient_enabled ?? true));
     setGradientEnabled(template.gradient_enabled ?? normalizedAccessLevel === "paid");
     setCustomColourAllowed(
       template.custom_colour_allowed ?? normalizedAccessLevel === "paid"
@@ -971,24 +957,17 @@ export default function TemplatesPage() {
     editTemplateRef.current = editTemplate;
   });
 
-  async function saveTemplate() {
-    if (savingTemplate) return;
-
-    if (!name.trim()) {
-      setTemplateError("Template name is required.");
-      return;
-    }
-
+  function currentDraftPayload() {
     const slug = name
       .toLowerCase()
       .trim()
       .replaceAll(" ", "-")
       .replace(/[^a-z0-9-]/g, "");
 
-    const payload = buildTemplatePayload({
+    return buildTemplatePayload({
       name,
       slug,
-      layout_type: normalizeTemplateLayout(layoutType, accessLevel),
+      layout_type: layoutType,
       access_level: accessLevel,
       primary_color: primaryColor,
       secondary_color: secondaryColor,
@@ -1007,7 +986,6 @@ export default function TemplatesPage() {
       banner_default_enabled: accessLevel === "paid" && bannerDefaultEnabled,
       custom_colour_allowed: customColourAllowed,
       custom_text_colour_allowed: customTextColourAllowed,
-      supports_gradient: accessLevel === "paid" && supportsGradient,
       gradient_enabled: accessLevel === "paid" && gradientEnabled,
       free_colour_palette: sanitizeFreeColourPalette(freeColourPalette),
       allowed_fonts:
@@ -1029,23 +1007,44 @@ export default function TemplatesPage() {
       show_social_section: showSocialSection,
     });
 
+  }
+
+  // Capture the UI projection after hydration, before the user edits anything.
+  useEffect(() => {
+    const stored = pendingEdit.current;
+    if (stored && stored.id === editingTemplateId) {
+      editBaseline.current = { id: stored.id, payload: currentDraftPayload(), stored };
+      pendingEdit.current = null;
+    }
+  });
+
+  async function saveTemplate() {
+    if (savingTemplate) return;
+
+    if (!name.trim()) {
+      setTemplateError("Template name is required.");
+      return;
+    }
+
+    const payload = currentDraftPayload();
+
     try {
       setSavingTemplate(true);
       setTemplateError("");
       setTemplateMessage("");
 
-      const existingTemplate = templates.find(
-        (template) => template.id === editingTemplateId
-      );
-      const result = await saveAdminTemplate(
-        {
-          ...payload,
-          is_published: existingTemplate?.is_published ?? false,
-          status: existingTemplate?.is_published ? "published" : "draft",
-          usage_count: existingTemplate?.usage_count ?? 0,
-        } as unknown as SharedTemplate,
-        editingTemplateId
-      );
+      const baseline = editBaseline.current;
+      if (editingTemplateId && baseline?.id !== editingTemplateId) throw new Error("Reload the exact template before saving.");
+      const patch = editingTemplateId && baseline
+        ? templateEditPatch(payload, baseline.payload, baseline.stored)
+        : { ...payload, is_published: false, status: "draft" as const };
+      // No slug/layout/access edit action exists in this committed Builder.
+      if (editingTemplateId) {
+        delete patch.slug;
+        delete patch.layout_type;
+        delete patch.access_level;
+      }
+      const result = await saveAdminTemplate(patch as Partial<SharedTemplate>, editingTemplateId);
       const savedTemplate = result.template as Template;
 
       setTemplates((current) => {
@@ -1144,7 +1143,6 @@ export default function TemplatesPage() {
       banner_default_enabled: accessLevel === "paid" && bannerDefaultEnabled,
       custom_colour_allowed: customColourAllowed,
       custom_text_colour_allowed: customTextColourAllowed,
-      supports_gradient: accessLevel === "paid" && supportsGradient,
       gradient_enabled: accessLevel === "paid" && gradientEnabled,
       free_colour_palette: sanitizeFreeColourPalette(freeColourPalette),
       text_colours: sanitizeTextColourPalette(textColourPalette, textColor),
@@ -1194,7 +1192,6 @@ export default function TemplatesPage() {
       effectiveExampleValues,
       freeColourPalette,
       gradientEnabled,
-      supportsGradient,
       layoutType,
       logoAllowed,
       logoDefaultEnabled,
@@ -1404,6 +1401,7 @@ export default function TemplatesPage() {
             <Field label="Access Level">
               <select
                 value={accessLevel}
+                disabled={Boolean(editingTemplateId)}
                 onChange={(e) => applyAccessLevel(e.target.value)}
                 className="inputStyle"
               >
@@ -1415,9 +1413,11 @@ export default function TemplatesPage() {
             <Field label="Layout Style">
               <select
                 value={layoutType}
+                disabled={Boolean(editingTemplateId)}
                 onChange={(e) => applyPaidLayoutDefaults(e.target.value)}
                 className="inputStyle"
               >
+                {editingTemplateId && !getTemplateLayout(layoutType) && <option value={layoutType}>{layoutType || "Unspecified legacy layout"} (existing only)</option>}
                 {layoutOptions.map((layout) => (
                   <option key={layout.value} value={layout.value}>
                     {layout.label}
@@ -2867,7 +2867,6 @@ function buildTemplatePayload({
   banner_default_enabled,
   custom_colour_allowed,
   custom_text_colour_allowed,
-  supports_gradient,
   gradient_enabled,
   free_colour_palette,
   allowed_fonts,
@@ -2903,7 +2902,6 @@ function buildTemplatePayload({
   banner_default_enabled: boolean;
   custom_colour_allowed: boolean;
   custom_text_colour_allowed: boolean;
-  supports_gradient: boolean;
   gradient_enabled: boolean;
   free_colour_palette: string[];
   allowed_fonts: string[];
@@ -2942,7 +2940,6 @@ function buildTemplatePayload({
     banner_default_enabled,
     custom_colour_allowed,
     custom_text_colour_allowed,
-    supports_gradient,
     gradient_enabled,
     free_colour_palette: sanitizeFreeColourPalette(free_colour_palette),
     colour_palette: sanitizeFreeColourPalette(free_colour_palette),
@@ -3170,18 +3167,6 @@ function sanitizeDefaultFont(defaultFont?: string | null, fonts?: string[] | nul
   }
 
   return null;
-}
-
-function normalizeTemplateLayout(layout: string | null | undefined, accessLevel: string) {
-  if (accessLevel === "free") return "classic_free";
-
-  const allowedPaidLayouts = paidLayouts.map((item) => item.value);
-
-  if (layout && allowedPaidLayouts.includes(layout)) {
-    return layout;
-  }
-
-  return "premium_classic";
 }
 
 function sanitizeCustomFields(customFields: CustomFields): CustomFields {

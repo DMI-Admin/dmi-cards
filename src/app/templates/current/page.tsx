@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { compareTemplateLayouts, getTemplateLayout, canCreateTemplateLayout } from "@/lib/template-layouts";
 import Sidebar from "@/components/Sidebar";
 import CardRenderer from "@/components/CardRenderer";
 import {
@@ -26,11 +27,7 @@ export default function CurrentTemplatesPage() {
   const filteredTemplates = useMemo(() => {
     const query = templateSearch.trim().toLowerCase();
 
-    if (!query) return templates;
-
-    return templates.filter((template) =>
-      template.name.toLowerCase().includes(query)
-    );
+    return templates.filter(template => !query || template.name.toLowerCase().includes(query)).sort(compareTemplateLayouts);
   }, [templateSearch, templates]);
 
   async function fetchTemplates() {
@@ -84,12 +81,20 @@ export default function CurrentTemplatesPage() {
   }
 
   async function duplicateTemplate(template: SharedTemplate) {
+    if (!canCreateTemplateLayout(template)) {
+      setTemplateError("Legacy layouts cannot be used for new templates.");
+      return;
+    }
+    const copy = { ...template };
+    delete copy.font_family;
+    delete copy.supports_company_banner;
+    delete copy.supports_gradient; // Independent capability is not a creation setting yet.
     const newName = `${template.name} Copy`;
     const newSlug = `${template.slug || slugify(template.name)}-copy-${Date.now()}`;
 
     try {
       await saveAdminTemplate({
-        ...template,
+        ...copy,
         name: newName,
         slug: newSlug,
         is_published: false,
@@ -248,6 +253,7 @@ export default function CurrentTemplatesPage() {
                       <h2 className="truncate text-base font-semibold">
                         {template.name}
                       </h2>
+                      <p className="text-xs text-white/50">{getTemplateLayout(template.layout_type)?.displayName || `${template.layout_type || "Unspecified"} (existing only)`}</p>
                     </div>
 
                     <AccessBadge level={template.access_level || "free"} />

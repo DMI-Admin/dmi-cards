@@ -9,7 +9,7 @@ function load(file, deps, globals = {}) {
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(file, 'utf8'), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText, { exports, Error, console, process: { env: { DMI_ADMIN_CLERK_USER_IDS: 'admin' } },
-    require: name => { assert.ok(name in deps, name); return deps[name]; }, ...globals });
+    require: name => { if (name === "@/lib/template-layouts") return load("src/lib/template-layouts.ts", {}); assert.ok(name in deps, name); return deps[name]; }, ...globals });
   return exports;
 }
 const authHelper = load('src/lib/admin-auth.ts', {});
@@ -19,7 +19,7 @@ const ids = Array.from({length: 10}, (_, i) => `11111111-1111-4111-a111-${String
 const [clientId, templateId, staffId, ownerId, unlinkedId, operationId, otherId] = ids;
 function reset() {
  identity = {userId:'admin'}; calls=[]; failAfterInsert=false;
- tables={clients:[{id:clientId,account_type:'business',company_name:'Acme'}], templates:[{id:templateId,is_published:true,access_level:'free'}], client_users:[{id:staffId,client_id:clientId,user_id:ownerId,full_name:'Linked'}, {id:unlinkedId,client_id:clientId,user_id:null,full_name:'Unlinked'}],cards:[]};
+ tables={clients:[{id:clientId,account_type:'business',company_name:'Acme'}], templates:[{id:templateId,is_published:true,access_level:'free',layout_type:'classic_free'}], client_users:[{id:staffId,client_id:clientId,user_id:ownerId,full_name:'Linked'}, {id:unlinkedId,client_id:clientId,user_id:null,full_name:'Unlinked'}],cards:[]};
 }
 function database() {
  calls.push('database');

@@ -1,3 +1,4 @@
+import { validateAdminTemplateWrite, templateUuid } from "@/lib/admin-template-write";
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import {
@@ -14,7 +15,6 @@ type TemplateWriteResult = {
   data: unknown;
   error: { message: string } | null;
 };
-const criticalTemplatePersistenceColumns = new Set(["allowed_actions"]);
 
 export async function PATCH(
   request: Request,
@@ -31,7 +31,7 @@ export async function PATCH(
 
   const { templateId } = await context.params;
 
-  if (!templateId) {
+  if (!templateUuid.test(templateId)) {
     return NextResponse.json({ error: "Missing template id." }, { status: 400 });
   }
 
@@ -59,7 +59,14 @@ export async function PATCH(
     );
   }
 
-  const result = await writeTemplateWithSchemaRetry((databasePayload) =>
+  const existing = await supabaseAdmin.from("templates").select("*").eq("id", templateId).maybeSingle();
+  if (existing.error) return NextResponse.json({ error: existing.error.message }, { status: 500 });
+  if (!existing.data) return NextResponse.json({ error: "Template not found." }, { status: 404 });
+  try { payload = validateAdminTemplateWrite(payload, existing.data); }
+  catch (error) { return NextResponse.json({ error: (error as Error).message }, { status: 400 }); }
+  if (!Object.keys(payload).length) return NextResponse.json({ template: existing.data });
+
+  const result = await writeTemplate((databasePayload) =>
     supabaseAdmin
       .from("templates")
       .update(databasePayload)
@@ -174,36 +181,11 @@ function sanitizeAllowedFields(fields: unknown[]) {
   );
 }
 
-async function writeTemplateWithSchemaRetry(
+async function writeTemplate(
   write: (databasePayload: ReturnType<typeof stripLocalOnlyFields>) => PromiseLike<TemplateWriteResult>,
   payload: TemplatePayload
 ) {
-  let databasePayload = stripLocalOnlyFields(payload);
-  let result = await write(databasePayload);
-  const removedColumns = new Set<string>();
-
-  while (result.error) {
-    const missingColumn = missingColumnFromError(result.error);
-
-    if (!missingColumn || removedColumns.has(missingColumn)) break;
-    if (criticalTemplatePersistenceColumns.has(missingColumn)) break;
-
-    removedColumns.add(missingColumn);
-    const nextPayload = { ...databasePayload };
-    delete nextPayload[missingColumn];
-    databasePayload = nextPayload;
-    result = await write(databasePayload);
-  }
-
-  return result;
-}
-
-function missingColumnFromError(error: { message: string } | null) {
-  const message = error?.message || "";
-  const quotedColumnMatch = message.match(/'([^']+)' column of 'templates'/);
-  const qualifiedColumnMatch = message.match(/column templates\.([a-zA-Z0-9_]+) does not exist/);
-
-  return quotedColumnMatch?.[1] || qualifiedColumnMatch?.[1] || null;
+  return write(stripLocalOnlyFields(payload));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

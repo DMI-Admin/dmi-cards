@@ -5,7 +5,7 @@ import {
   normalizeTemplates,
   type SharedTemplate,
 } from "@/lib/templates";
-import { visibleTemplatesForPlan } from "@/lib/services/card-payload";
+import { canResolveExistingTemplate } from "@/lib/template-layouts";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,10 +24,10 @@ export async function GET(request: Request) {
       throw error;
     }
 
-    const templates = visibleTemplatesForPlan(
-      normalizeTemplates((data || []) as SharedTemplate[]),
-      client.plan
-    );
+    // Include published legacy records for existing-card display. New selection
+    // and server card creation independently require canonical registry eligibility.
+    const templates = normalizeTemplates((data || []) as SharedTemplate[])
+      .filter(template => canResolveExistingTemplate(template, client.plan));
 
     return apiSuccess({ templates });
   } catch (error) {
