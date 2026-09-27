@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAdminInteraction } from "@/components/AdminInteractionDialog";
-import { mutateAdminCard } from "@/lib/admin-card-mutations";
 import { downloadCompanyReport } from "@/lib/admin-company-report";
 import Sidebar from "@/components/Sidebar";
 import styles from "./cards.module.css";
@@ -27,19 +26,6 @@ export default function CardsPage() {
   const actionLock = useRef(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ error: boolean; text: string } | null>(null);
-  async function unpublish(card: SupportCard) {
-    if (!card.published || actionLock.current) return;
-    actionLock.current = true; setBusy(true); setFeedback(null);
-    try {
-      if (!await interaction.confirm(`Unpublish ${card.name}? The public card will stop being publicly accessible. The card and its data will not be deleted.`)) return;
-      await mutateAdminCard(`/api/admin/cards/${card.id}`, "PATCH", { operation: "unpublish" });
-      setFeedback({ error: false, text: `${card.name} unpublished. Refreshing inventory…` });
-      setRetry(value => value + 1);
-    } catch (cause) {
-      setFeedback({ error: true, text: `Unpublish could not be confirmed. Refresh the inventory before retrying. ${cause instanceof Error ? cause.message : "Please retry."}` });
-      setRetry(value => value + 1);
-    } finally { actionLock.current = false; setBusy(false); }
-  }
   async function exportCompany(card: SupportCard) {
     if (card.accountType !== "business" || !card.clientId || actionLock.current) return;
     actionLock.current = true; setBusy(true); setFeedback(null);
@@ -81,7 +67,7 @@ export default function CardsPage() {
         <summary className="cursor-pointer font-semibold">Admin navigation</summary><Sidebar />
       </details>
       <section className="dmi-page space-y-6">
-        <header><h1 className="text-3xl font-semibold">Card Management</h1><p className="mt-2 text-sm text-[var(--dmi-muted)]">Locate and inspect cards for support and card administration. Inspect card details, unpublish cards, and export company reports.</p></header>
+        <header><h1 className="text-3xl font-semibold">Card Management</h1><p className="mt-2 text-sm text-[var(--dmi-muted)]">Read-only support workspace to locate and inspect cards and export company reports.</p></header>
         <section aria-label="All cards summary"><p className="mb-2 text-xs text-[var(--dmi-muted)]">All cards — totals are independent of the filters below.</p>
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
             {([['Total Cards', summary?.total], ['Published', summary?.published], ['Draft / Unpublished', summary?.unpublished], ['Business Cards', summary?.business], ['Individual Cards', summary?.individual]] as const).map(([label, value]) => <div key={label} className="dmi-card p-4"><p className="text-xs text-[var(--dmi-muted)]">{label}</p><p className="mt-2 text-2xl font-semibold">{loading ? "…" : value ?? "—"}</p></div>)}
@@ -105,7 +91,7 @@ export default function CardsPage() {
                 <td role="cell" data-label="Company" className="max-w-44 break-words">{card.company || "—"}{card.accountType === "business" && card.clientId && <button className={`${button} mt-2`} disabled={busy} onClick={() => void exportCompany(card)} aria-label={`Export company CSV: ${card.company || card.clientId}`}>Export company CSV</button>}</td><td role="cell" data-label="Account Type">{accountLabel(card.accountType)}</td><td role="cell" data-label="Template" className="max-w-40 break-words">{card.templateName || "Unavailable"}</td>
                 <td role="cell" data-label="Status">{card.status || "Not recorded"}</td><td role="cell" data-label="Published state"><span data-publication-badge className="rounded-full bg-[var(--dmi-surface-soft)] text-xs">{card.published ? "Published" : "Unpublished"}</span></td>
                 <td role="cell" data-label="Public URL / slug" className="max-w-48 break-all"><code data-public-slug className="text-xs">{card.publicPath || card.slug || "No slug"}</code></td><td role="cell" data-label="Last Updated" className="text-xs">{date(card.updatedAt)}</td>
-                <td role="cell" data-label="Actions"><div data-support-actions><PublicAction card={card} /><button className={button} onClick={() => setSelected(card)} aria-label={`View Details: ${card.name}`}>View Details</button>{card.published && <button className={button} disabled={busy} onClick={() => void unpublish(card)} aria-label={`Unpublish: ${card.name}`}>Unpublish</button>}</div></td>
+                <td role="cell" data-label="Actions"><div data-support-actions><PublicAction card={card} /><button className={button} onClick={() => setSelected(card)} aria-label={`View Details: ${card.name}`}>View Details</button></div></td>
               </tr>)}</tbody>
             </table>
           </div>{inventory.cards.length === 0 && <p className="p-6 text-center text-sm text-[var(--dmi-muted)]">No cards found for this page and these filters.</p>}</div>

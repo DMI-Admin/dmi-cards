@@ -78,7 +78,7 @@ for(const file of ['clients','public-pages']) {const source=fs.readFileSync(file
 console.log('PASS: authorization, bounded payloads, linked/missing/conflicting ownership, mixed batches, slot-capacity handling, lost-response retries, publication preservation, deletion/not-found and existing Clients/Public Pages API paths. Slot assignment is simulated; no production writes.');
 
 const supportPage=fs.readFileSync("src/app/cards/page.tsx","utf8");
-assert.doesNotMatch(supportPage,/LegacyBusinessCards|supabase/);
+assert.doesNotMatch(supportPage,/mutateAdminCard|LegacyBusinessCards|supabase/);
 assert.match(fs.readFileSync("src/components/admin/legacy/LegacyBusinessCards.tsx","utf8"),/mutateAdminCard/);
 
-assert.match(supportPage,/mutateAdminCard\(`\/api\/admin\/cards\/\$\{card.id\}`, "PATCH", \{ operation: "unpublish" \}\)/);
+assert.doesNotMatch(supportPage,/operation: "unpublish"|async function unpublish|Unpublish could not be confirmed/);
