@@ -43,3 +43,17 @@ export function constructStripeWebhookEvent({
     getStripeWebhookSecret()
   );
 }
+
+// Read-only account/mode discovery shared by billing and the temporary diagnostic.
+export async function resolveStripeAccountScope() {
+  const stripe = getStripeServerClient();
+  const [account, balance] = await Promise.all([
+    stripe.accounts.retrieve(null),
+    stripe.balance.retrieve(),
+  ]);
+  return {
+    accountId: account.id,
+    livemode: balance.livemode,
+    stripeScope: `${account.id}:${balance.livemode ? "live" : "test"}`,
+  };
+}

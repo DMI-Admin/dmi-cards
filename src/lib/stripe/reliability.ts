@@ -1,7 +1,7 @@
 import "server-only";
 import type Stripe from "stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
-import { getStripeServerClient } from "@/lib/stripe/config";
+import { getStripeServerClient, resolveStripeAccountScope } from "@/lib/stripe/config";
 import { ApiRouteError } from "@/lib/api/responses";
 import { hasDmiStripeAppNamespace } from "@/lib/stripe/app-namespace";
 
@@ -22,7 +22,7 @@ export type EventClaim = { id: string; created: number; token: string };
 let scopePromise: Promise<{ scope: string; live: boolean }> | null = null;
 export async function billingRuntime(): Promise<BillingRuntime> {
   const stripe = getStripeServerClient();
-  scopePromise ||= Promise.all([stripe.accounts.retrieve(null), stripe.balance.retrieve()]).then(([account, balance]) => ({ scope: `${account.id}:${balance.livemode ? "live" : "test"}`, live: balance.livemode })).catch(() => { scopePromise = null; throw new BillingFailure("SCOPE_UNAVAILABLE"); });
+  scopePromise ||= resolveStripeAccountScope().then(result => ({ scope: result.stripeScope, live: result.livemode })).catch(() => { scopePromise = null; throw new BillingFailure("SCOPE_UNAVAILABLE"); });
   return { stripe, db: createSupabaseAdminClient(), ...await scopePromise };
 }
 export async function command<T>(r: BillingRuntime, action: string, user: string | null, token: string | null, input: object = {}): Promise<T> {
