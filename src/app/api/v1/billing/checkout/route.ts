@@ -1,4 +1,4 @@
-import { requireApiClient } from "@/lib/api/client-context";
+import { requireBillingIdentity } from "@/lib/stripe/client-identity";
 import {
   ApiRouteError,
   apiErrorFromUnknown,
@@ -21,7 +21,7 @@ type CheckoutRequestBody = {
 
 export async function POST(request: Request) {
   try {
-    const client = await requireApiClient(request);
+    const client = await requireBillingIdentity(request);
     const body = await parseCheckoutRequestBody(request);
     const plan = typeof body.plan === "string" ? body.plan : "";
     const billingInterval =

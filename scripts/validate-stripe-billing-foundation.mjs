@@ -42,7 +42,9 @@ const checks = [
     file: "src/lib/stripe/webhook.ts",
     includes: [
       'import "server-only"',
-      "createSupabaseAdminClient",
+      "synchronizeSubscription",
+      "event_claim",
+      "event_fail",
       "hasDmiStripeAppNamespace",
       "app_namespace_mismatch",
     ],
@@ -52,7 +54,7 @@ const checks = [
     file: "src/lib/stripe/checkout.ts",
     includes: [
       'import "server-only"',
-      "DMI_STRIPE_APP_METADATA_KEY",
+      "dmi_app",
       "DMI_STRIPE_APP_NAMESPACE",
       "subscription_data",
       "dmi_user_id",
@@ -62,7 +64,7 @@ const checks = [
     name: "Checkout API does not accept raw Stripe prices",
     file: "src/app/api/v1/billing/checkout/route.ts",
     includes: [
-      "requireApiClient",
+      "requireBillingIdentity",
       "isCheckoutBillingPlan",
       "isStripeBillingInterval",
       "stripePriceForCheckoutPlan",

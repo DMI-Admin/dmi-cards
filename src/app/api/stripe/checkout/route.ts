@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { ClientAuthRequiredError, requireClientUser } from "@/lib/client-auth";
-import { requireApiClient, type ApiClientContext } from "@/lib/api/client-context";
+import { requireBillingIdentity } from "@/lib/stripe/client-identity";
 import { ApiRouteError } from "@/lib/api/responses";
 import {
   isStripeBillingInterval,
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
       );
     }
 
-    console.error("[DMI Stripe] checkout session creation failed", error);
+    if (error instanceof ApiRouteError) return NextResponse.json({ error: { code: error.code, message: error.message } }, { status: error.status, headers: { "Cache-Control": "private, no-store" } });
 
     return NextResponse.json(
       {
@@ -101,12 +101,12 @@ export async function POST(request: Request) {
 
 async function requireCheckoutClient(request: Request): Promise<CheckoutClient> {
   if (request.headers.get("authorization")) {
-    const client: ApiClientContext = await requireApiClient(request);
+    const client = await requireBillingIdentity(request);
 
     return {
       userId: client.userId,
       email: client.email,
-      profileId: client.profile?.id || client.userId,
+      profileId: client.profileId,
     };
   }
 

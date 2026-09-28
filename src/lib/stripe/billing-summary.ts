@@ -13,6 +13,7 @@ import {
   type StripeBillingInterval,
   type StripeSubscriptionStatus,
 } from "@/lib/stripe/billing-state";
+import { billingRuntime, command, synchronizeSubscription, verifiedCustomerForUser, withAccount, BillingFailure } from "@/lib/stripe/reliability";
 import { getStripeServerClient } from "@/lib/stripe/config";
 
 export type BillingSummaryPaymentMethod = {
@@ -109,12 +110,15 @@ export async function setSubscriptionCancelAtPeriodEndForUser({
   }
 
   try {
-    await getStripeServerClient().subscriptions.update(
-      billingRow.stripe_subscription_id,
-      {
-        cancel_at_period_end: cancelAtPeriodEnd,
-      }
-    );
+    const runtime = await billingRuntime();
+    await withAccount(runtime, userId, async account => {
+      const customer = await verifiedCustomerForUser(runtime, account);
+      const subscription = await runtime.stripe.subscriptions.retrieve(billingRow.stripe_subscription_id!);
+      if (!customer || customerIdentifier(subscription.customer) !== customer || subscription.metadata.dmi_user_id !== userId || subscription.metadata.dmi_app !== "dmi_cards_v2" || subscription.livemode !== runtime.live) throw new BillingFailure("IDENTITY_CONFLICT", 409);
+      await command(runtime, "touch", userId, account.lease_token);
+      await runtime.stripe.subscriptions.update(subscription.id, { cancel_at_period_end: cancelAtPeriodEnd });
+    });
+    await synchronizeSubscription(runtime, billingRow.stripe_subscription_id, { userId });
 
     return await getBillingSummaryForUser(userId);
   } catch (error) {
