@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { constructStripeWebhookEvent } from "@/lib/stripe/config";
-import { handleStripeWebhookEvent } from "@/lib/stripe/webhook";
+import { handleStripeWebhookConsumers } from "@/lib/stripe/webhook-consumers";
 import { logError, logInfo, safeErrorMetadata } from "@/lib/observability/logger";
 import { requestIdFromRequest, withRequestIdHeader } from "@/lib/observability/request";
 
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
 
   try {
     const event = constructStripeWebhookEvent({ payload, signature });
-    const result = await handleStripeWebhookEvent(event);
+    const result = await handleStripeWebhookConsumers(event, requestId);
 
     logInfo({
       code: "STRIPE_WEBHOOK_PROCESSED",

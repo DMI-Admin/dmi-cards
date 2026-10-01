@@ -1,12 +1,15 @@
 import "server-only";
+import type {Observer} from "./webhook-observer";
 import type Stripe from "stripe";
 import { hasDmiStripeAppNamespace } from "@/lib/stripe/app-namespace";
 import { billingRuntime, BillingFailure, command, invoiceSubscription, objectId, synchronizeSubscription, type BillingRuntime } from "@/lib/stripe/reliability";
 
 const subscriptionEvents = new Set(["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"]);
 const invoiceEvents = new Set(["invoice.payment_failed", "invoice.payment_succeeded", "invoice.paid"]);
-export async function handleStripeWebhookEvent(event: Stripe.Event, runtime?: BillingRuntime) {
-  const r = runtime || await billingRuntime();
+export async function handleStripeWebhookEvent(event: Stripe.Event, runtime?: BillingRuntime, observer?: Observer) {
+  const initialize = async () => runtime || await billingRuntime();
+  const resolved = observer ? await observer.run("runtime", initialize) : await initialize();
+  const r = observer ? {...resolved, observer} : resolved;
   if (event.livemode !== r.live) throw new BillingFailure("SCOPE_CONFLICT", 409);
   const claim = await command<{ duplicate?: boolean; token: string }>(r, "event_claim", null, null, { id: event.id, type: event.type, created: event.created, subject: (event.data.object as { id?: string }).id });
   if (claim.duplicate) return { handled: true, skipped: true, reason: "duplicate_event" };
@@ -37,7 +40,8 @@ export async function handleStripeWebhookEvent(event: Stripe.Event, runtime?: Bi
       const sub = await r.stripe.subscriptions.retrieve(id);
       if (!hasDmiStripeAppNamespace(sub.metadata)) { await knownSubscription(sub.id); return await ignored("app_namespace_mismatch"); }
     } else return await ignored("unhandled_event_type");
-    const result = await synchronizeSubscription(r, id, { userId, deleted, event: { id: event.id, created: event.created, token: claim.token } });
+    const synchronize = () => synchronizeSubscription(r, id, { userId, deleted, event: { id: event.id, created: event.created, token: claim.token } });
+    const result = observer ? await observer.run("subscription_sync", synchronize) : await synchronize();
     return { handled: true, skipped: result.outcome.endsWith("ignored"), reason: result.outcome };
   } catch (error) {
     const reason = error instanceof BillingFailure ? error.reason : "RETRYABLE_FAILURE";

@@ -1,0 +1,42 @@
+// TEMPORARY: remove with staging webhook observer after diagnosis. Offline only.
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+const exports={};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/lib/stripe/webhook-observer.ts','utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{exports,Error,require:name=>{assert.equal(name,'server-only');return {};}});
+const {createWebhookObserver}=exports,logs=[];
+const observer=(id,sink=x=>logs.push(x))=>createWebhookObserver({requestId:id,stripeEventId:'evt_'+id,stripeEventType:'customer.subscription.updated',consumer:'finance'},sink);
+const a=observer('one'),b=observer('two');let unblock;
+const gate=new Promise(resolve=>{unblock=resolve;});const value={private:'not logged'};
+const pending=a.run('commit',async()=>{await gate;return value;});
+const error=new Error('secret arbitrary provider message');
+await assert.rejects(b.run('commit',async()=>{throw error;}),e=>e===error);
+unblock();assert.equal(await pending,value);
+assert.deepEqual(logs.map(x=>[x.requestId,x.outcome]),[['one','started'],['two','started'],['two','failed'],['one','succeeded']]);
+assert.equal(logs[2].errorCode,'UNCLASSIFIED');
+const broken=observer('broken',()=>{throw Error('logger unavailable');});assert.equal(await broken.run('commit',async()=>value),value);assert.throws(()=>broken.sync('normalization',()=>{throw error;}),e=>e===error);
+assert.equal(a.sync('normalization',()=>value),value);
+assert.throws(()=>a.sync('normalization',()=>{throw Error('FINANCE_MALFORMED_STRIPE_DATA');}),/FINANCE_MALFORMED/);
+assert.equal(logs.at(-1).errorCode,'FINANCE_MALFORMED_STRIPE_DATA');
+for(const row of logs)assert.ok(Object.keys(row).every(k=>['requestId','stripeEventId','stripeEventType','consumer','stage','outcome','errorCode'].includes(k)));
+assert.doesNotMatch(JSON.stringify(logs),/secret|provider message|not logged|stack/);
+console.log('PASS: request-scoped concurrency, exact result/error identity, fail-safe logging, fixed safe fields and explicit error allowlist.');
+
+const assertionLogs=[],assertions=observer('assertions',x=>assertionLogs.push(x));
+const detail={fieldPath:'subscription.items[].created',check:'unix_timestamp',present:false,primitiveType:'undefined',errorCode:'FINANCE_MALFORMED_STRIPE_DATA'};
+assertions.assertion(detail);assert.equal(assertionLogs.length,1);
+assert.equal(assertionLogs[0].fieldPath,detail.fieldPath);
+assertions.assertion({...detail,fieldPath:'PRIVATE_VALUE'});assertions.assertion({...detail,check:'PRIVATE_VALUE'});assert.equal(assertionLogs.length,1);
+assertions.assertion({...detail,errorCode:'PRIVATE_VALUE',primitiveType:'PRIVATE_VALUE'});assert.equal(assertionLogs.at(-1).errorCode,'UNCLASSIFIED');assert.equal(assertionLogs.at(-1).primitiveType,'unknown');
+broken.assertion(detail);
+assert.doesNotMatch(JSON.stringify(assertionLogs),/PRIVATE_VALUE/);
+for(const row of assertionLogs)assert.ok(Object.keys(row).every(k=>['requestId','stripeEventId','stripeEventType','consumer','stage','outcome','errorCode','check','fieldPath','present','primitiveType'].includes(k)));
+console.log('PASS: fixed assertion path/check allowlists, safe types/codes, fail-safe sink.');
+
+const merged=[],mergeObserver=observer('merged',x=>merged.push(x));
+assert.throws(()=>mergeObserver.sync('normalization',()=>{mergeObserver.assertion(detail);mergeObserver.assertion({...detail,fieldPath:'subscription.created'});throw error;}),e=>e===error);
+assert.equal(merged.filter(x=>x.outcome==='failed').length,1);assert.equal(merged.at(-1).fieldPath,detail.fieldPath);assert.equal(merged.at(-1).stripeEventId,'evt_merged');
+assert.throws(()=>mergeObserver.sync('normalization',()=>{throw error;}),e=>e===error);assert.equal(merged.at(-1).fieldPath,undefined);
+assert.throws(()=>broken.sync('normalization',()=>{broken.assertion(detail);throw error;}),e=>e===error);
+console.log('PASS: single correlated failure, first assertion only, cleared invocation state, broken sink preserves original error.');

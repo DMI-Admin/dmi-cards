@@ -1,4 +1,5 @@
 import "server-only";
+import type {Observer, Stage} from "./webhook-observer";
 import type Stripe from "stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { getStripeServerClient, resolveStripeAccountScope } from "@/lib/stripe/config";
@@ -10,7 +11,7 @@ export class BillingFailure extends ApiRouteError {
     super(status, status === 409 ? "CONFLICT" : "INTERNAL_ERROR", `Billing operation unavailable (${reason}). Please retry or contact support.`);
   }
 }
-export type BillingRuntime = { db: ReturnType<typeof createSupabaseAdminClient>; stripe: Stripe; scope: string; live: boolean };
+export type BillingRuntime = { observer?: Observer; db: ReturnType<typeof createSupabaseAdminClient>; stripe: Stripe; scope: string; live: boolean };
 export type BillingAccount = {
   user_id: string; stripe_customer_id: string | null; lease_token: string;
   customer_attempt: string | null; customer_attempt_at: string | null; customer_parameters: Stripe.CustomerCreateParams | null;
@@ -26,12 +27,15 @@ export async function billingRuntime(): Promise<BillingRuntime> {
   return { stripe, db: createSupabaseAdminClient(), ...await scopePromise };
 }
 export async function command<T>(r: BillingRuntime, action: string, user: string | null, token: string | null, input: object = {}): Promise<T> {
+  const work = async () => {
   const { data, error } = await r.db.rpc("billing_foundation_command", { p_action: action, p_scope: r.scope, p_user: user, p_token: token, p_input: input });
   if (error) {
     const reason = /BILLING_(BUSY|FENCE|REVISION|IDENTITY|SCOPE|UNKNOWN_PRICE)/.exec(error.message || "")?.[0] || "BILLING_STORE_UNAVAILABLE";
     throw new BillingFailure(reason, reason === "BILLING_IDENTITY" ? 409 : 503);
   }
   return data as T;
+  };
+  return r.observer ? r.observer.run(action as Stage, work) : work();
 }
 export async function withAccount<T>(r: BillingRuntime, userId: string, run: (account: BillingAccount) => Promise<T>): Promise<T> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) throw new BillingFailure("IDENTITY_CONFLICT", 409);
