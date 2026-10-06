@@ -53,6 +53,32 @@ export type HealthResponse = {
   groups: HealthGroup[];
 };
 
+export type StoredMonitorCheck = {
+  serviceKey: string;
+  checkKey: string;
+  storedStatus: HealthStatus;
+  severity: HealthSeverity;
+  reasonCode: string | null;
+  safeSummary: string;
+  evidence: Record<string, number | boolean>;
+  checkedAt: string;
+  verifiedAt: string | null;
+};
+
+export type StoredMonitorRun = {
+  environment: "staging";
+  generatedAt: string;
+  runId: string;
+  checks: StoredMonitorCheck[];
+};
+
+export type StagingMonitoringResponse = {
+  service: "dmi-cards";
+  requestId: string;
+  environment: "staging";
+  monitoringRun: StoredMonitorRun | null;
+};
+
 export const healthGroups: ReadonlyArray<{
   id: HealthGroupId;
   label: string;
