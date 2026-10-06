@@ -7,10 +7,12 @@ const typesPath = "src/lib/system-health/types.ts";
 const apiPath = "src/app/api/admin/system-health/route.ts";
 const pagePath = "src/app/system-health/page.tsx";
 const presentationPath = "src/lib/system-health/presentation.ts";
+const pageStylesPath = "src/app/system-health/system-health.module.css";
 const typesSource = fs.readFileSync(typesPath, "utf8");
 const apiSource = fs.readFileSync(apiPath, "utf8");
 const pageSource = fs.readFileSync(pagePath, "utf8");
 const presentationSource = fs.readFileSync(presentationPath, "utf8");
+const pageStylesSource = fs.readFileSync(pageStylesPath, "utf8");
 const exports = {};
 const compiled = ts.transpileModule(typesSource, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -86,6 +88,18 @@ assert.match(pageSource, /check\.evidence/);
 assert.match(pageSource, /This view does not report Production health/);
 assert.match(pageSource, /Copy diagnostic report/);
 assert.match(pageSource, /Refresh reloads the latest saved run/);
+assert.match(pageSource, /import Sidebar from "@\/components\/Sidebar"/);
+assert.match(pageSource, /p-5 sm:p-8 lg:p-10/);
+assert.match(pageSource, /styles\.statusBadge/);
+assert.match(pageSource, /flex-col items-start gap-3 sm:flex-row sm:justify-between/);
+for (const styleName of [
+  "operational", "degraded", "incident", "needsInvestigation",
+  "setupRequired", "stagingGap", "notYetMonitored", "unknown",
+]) {
+  assert.match(pageStylesSource, new RegExp(`\\.${styleName}(?:,|\\s*\\{)`));
+}
+assert.match(pageStylesSource, /white-space:\s*normal/);
+assert.match(pageStylesSource, /overflow-wrap:\s*anywhere/);
 assert.match(apiSource, /requireAdminAccess\(await auth\(\)\)/);
 assert.match(apiSource, /process\.env\.VERCEL_ENV !== "preview"/);
 assert.match(apiSource, /NEXT_PUBLIC_SUPABASE_URL\?\.trim\(\) !== stagingSupabaseUrl/);

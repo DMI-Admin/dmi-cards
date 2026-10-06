@@ -13,6 +13,7 @@ import {
   XCircle,
 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
+import styles from "./system-health.module.css";
 import type {
   HealthSeverity,
   HealthStatus,
@@ -107,7 +108,7 @@ export default function SystemHealthPage() {
   return (
     <main className="flex min-h-screen bg-[#070B1A] text-white">
       <Sidebar />
-      <section className="min-w-0 flex-1 p-6 lg:p-10">
+      <section className="min-w-0 flex-1 p-5 sm:p-8 lg:p-10">
         <header className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#D946EF]">
@@ -313,7 +314,7 @@ function HealthServiceCard({ check }: { check: StoredMonitorCheck }) {
         ? "border-white/10 bg-white/[0.035]"
         : "border-white/10 bg-white/[0.045] shadow-[0_18px_60px_rgba(0,0,0,0.18)]"
     }`}>
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
         <div className="min-w-0">
           <h3 className="text-lg font-semibold">{serviceTitle(check.serviceKey)}</h3>
           <p className="mt-1 truncate text-sm leading-6 text-white/75">{check.safeSummary}</p>
@@ -351,26 +352,16 @@ function HealthServiceCard({ check }: { check: StoredMonitorCheck }) {
 function Detail({ label, value }: { label: string; value: string | number | boolean | null }) {
   if (value === null || value === "") return null;
   return (
-    <div className="rounded-lg border border-white/5 bg-white/[0.035] px-3 py-2">
+    <div className="min-w-0 rounded-lg border border-white/5 bg-white/[0.035] px-3 py-2">
       <dt className="font-semibold uppercase tracking-[0.12em] text-white/35">{label}</dt>
-      <dd className="mt-1 break-words text-white/70">{String(value)}</dd>
+      <dd className="mt-1 text-white/70 [overflow-wrap:anywhere]">{String(value)}</dd>
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: DisplayStatus }) {
-  const style: Record<DisplayStatus, string> = {
-    Operational: "border-emerald-400/25 bg-emerald-400/10 text-emerald-200",
-    Degraded: "border-amber-400/25 bg-amber-400/10 text-amber-200",
-    Incident: "border-rose-400/25 bg-rose-400/10 text-rose-200",
-    "Needs investigation": "border-orange-300/25 bg-orange-300/10 text-orange-100",
-    "Setup required": "border-slate-300/20 bg-slate-300/10 text-slate-200",
-    "Staging gap": "border-violet-300/20 bg-violet-300/10 text-violet-200",
-    "Not yet monitored": "border-slate-300/20 bg-slate-300/10 text-slate-200",
-    Unknown: "border-slate-300/20 bg-slate-300/10 text-slate-200",
-  };
   return (
-    <span className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${style[status]}`}>
+    <span className={`${styles.statusBadge} ${styles[statusClassName(status)]}`}>
       <StatusIcon status={status} />
       {status}
     </span>
@@ -464,4 +455,18 @@ function isSafeEvidence(value: unknown): value is Record<string, number | boolea
 
 function slug(value: string) {
   return value.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-");
+}
+
+function statusClassName(status: DisplayStatus) {
+  const classes: Record<DisplayStatus, string> = {
+    Operational: "operational",
+    Degraded: "degraded",
+    Incident: "incident",
+    "Needs investigation": "needsInvestigation",
+    "Setup required": "setupRequired",
+    "Staging gap": "stagingGap",
+    "Not yet monitored": "notYetMonitored",
+    Unknown: "unknown",
+  };
+  return classes[status];
 }
