@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import styles from "./Sidebar.module.css";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useClerk } from "@clerk/nextjs";
@@ -27,7 +28,8 @@ type NavItem = {
   icon: LucideIcon;
 };
 
-export default function Sidebar() {
+export default function Sidebar({ variant = "default" }: { variant?: "default" | "compact" }) {
+  const compact = variant === "compact";
   const pathname = usePathname();
   const { signOut } = useClerk();
 
@@ -82,7 +84,8 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="dmi-sidebar admin-sidebar sticky top-0 flex h-dvh w-72 shrink-0 flex-col border-r">
+    <aside className={compact ? styles.compact : "dmi-sidebar admin-sidebar sticky top-0 flex h-dvh w-72 shrink-0 flex-col border-r"}>
+      {compact ? <div className={styles.brand}><Image src="/dmi-cards-logo.svg" alt="DMI Cards Logo" width={32} height={32} /><div><strong>DMI Cards</strong><span>Admin</span></div></div> : <>
       <div className="border-b px-6 py-8">
         <div className="rounded-[var(--radius-lg)] border border-[var(--border-brand)] bg-[image:var(--brand-gradient-subtle)] p-4">
           <div className="flex items-center gap-3">
@@ -108,10 +111,11 @@ export default function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-5 overflow-y-auto px-4 py-6">
+      </>}
+      <nav aria-label={compact ? "Admin navigation" : undefined} className={compact ? styles.navigation : "flex-1 space-y-5 overflow-y-auto px-4 py-6"}>
         {sections.map((section) => (
-          <div key={section.title}>
-            <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--dmi-muted)]">
+          <div key={section.title} className={compact ? styles.group : undefined}>
+            <p className={compact ? styles.sectionLabel : "mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--dmi-muted)]"}>
               {section.title}
             </p>
 
@@ -128,13 +132,13 @@ export default function Sidebar() {
                     key={item.name}
                     href={item.href}
                     aria-current={isActive ? "page" : undefined}
-                    className={`flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-left text-sm font-medium leading-5 transition-all duration-200 ${
+                    className={compact ? styles.link : `flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-left text-sm font-medium leading-5 transition-all duration-200 ${
                       isActive
                         ? "dmi-nav-active text-white"
                         : "text-[var(--dmi-muted)] hover:bg-[var(--dmi-surface-soft)] hover:text-[var(--foreground)]"
                     }`}
                   >
-                    <Icon className="h-4 w-4 shrink-0" />
+                    <Icon aria-hidden={compact ? true : undefined} className="h-4 w-4 shrink-0" />
                     <span className="min-w-0 flex-1">{item.name}</span>
                   </Link>
                 );
@@ -144,11 +148,11 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t p-4">
+      <div className={compact ? styles.footer : "border-t p-4"}>
         <button
           type="button"
           onClick={handleSignOut}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--dmi-border)] bg-[var(--button-secondary-bg)] px-4 py-3 text-sm font-semibold text-[var(--button-secondary-text)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] hover:text-[var(--foreground)]"
+          className={compact ? styles.signOut : "inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--dmi-border)] bg-[var(--button-secondary-bg)] px-4 py-3 text-sm font-semibold text-[var(--button-secondary-text)] transition hover:border-[var(--border-brand)] hover:bg-[var(--button-hover-bg)] hover:text-[var(--foreground)]"}
         >
           <LogOut className="h-4 w-4" />
           Sign Out

@@ -1,0 +1,43 @@
+.page { min-width:0; width:100%; display:flex; flex-direction:column; gap:24px; container-type:inline-size; }
+.kpis { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.filters { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; align-items:end; }
+.filters label { display:grid; gap:6px; min-width:0; font-size:12px; font-weight:500; color:var(--admin-text-secondary); }
+.control { width:100%; min-width:0; height:40px; padding:0 10px; border:1px solid var(--admin-border-control); border-radius:8px; font-size:14px; font-weight:400; }
+.button { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:8px 14px; border:1px solid var(--admin-border); border-radius:8px; background:var(--admin-surface); color:var(--admin-text); font-size:13px; font-weight:500; cursor:pointer; }
+.button:hover:not(:disabled) { background:var(--admin-hover); }
+.button:disabled { cursor:not-allowed; border-style:dashed; }
+.page :is(button,a,input,select):focus-visible { outline:2px solid var(--admin-focus); outline-offset:3px; }
+.surface { min-width:0; border:1px solid var(--admin-border); border-radius:12px; background:var(--admin-surface); overflow:hidden; }
+.tableViewport { overflow-x:auto; }
+.inventory { width:100%; border-collapse:collapse; font-size:14px; }
+.inventory th { padding:12px; text-align:left; font-size:12px; line-height:1.5; font-weight:500; color:var(--admin-text-secondary); background:var(--admin-table-header); }
+.inventory td { padding:12px; border-bottom:1px solid var(--admin-border); vertical-align:middle; line-height:1.5; }
+.inventory tbody tr:last-child td { border-bottom:0; }
+.inventory tbody tr:hover { background:var(--admin-hover); }
+.inventory .client { font-weight:600; }
+.inventory .email { color:var(--admin-muted); white-space:nowrap; }
+.inventory td:nth-child(6),.inventory td:nth-child(7),.inventory td:nth-child(8) { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.inventory :is(th,td):nth-child(6),.inventory :is(th,td):nth-child(9) { text-align:right; font-variant-numeric:tabular-nums; }
+.inventory small { font-size:12px; }
+.page .action, .page .inventory .action { display:inline-flex; align-items:center; min-height:32px; color:var(--admin-accent); font-size:13px; font-weight:500; text-decoration:underline; text-underline-offset:3px; white-space:nowrap; }
+.pagination { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; padding:12px 16px; border-top:1px solid var(--admin-border); font-size:12px; color:var(--admin-muted); font-variant-numeric:tabular-nums; }
+.state { padding:32px 16px; text-align:center; font-size:14px; color:var(--admin-muted); }
+.error { padding:14px 16px; border-radius:8px; background:var(--admin-danger-bg); color:var(--admin-danger-text); font-size:14px; }
+@container (min-width:580px) { .kpis { grid-template-columns:repeat(3,minmax(0,1fr)); } .filters { grid-template-columns:repeat(3,minmax(0,1fr)); } .search { grid-column:span 2; } }
+@container (min-width:1000px) { .kpis { grid-template-columns:repeat(6,minmax(0,1fr)); } .filters { grid-template-columns:minmax(220px,2fr) repeat(3,minmax(110px,1fr)) auto; } .search { grid-column:auto; } }
+@container (max-width:1099px) {
+ .inventory thead { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); }
+ .inventory,.inventory tbody { display:block; }
+ .inventory tr { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 20px; padding:20px 16px; border-bottom:1px solid var(--admin-border); }
+ .inventory tr:last-child { border-bottom:0; }
+ .inventory td { display:block; padding:0; border:0; min-width:0; overflow-wrap:anywhere; }
+ .inventory td::before { content:attr(data-label); display:block; margin-bottom:4px; font-size:12px; font-weight:400; color:var(--admin-muted); }
+ .inventory .client { grid-column:1; grid-row:1; }
+ .inventory .status { grid-column:2; grid-row:1; text-align:right; }
+ .inventory .email { white-space:normal; }
+ .inventory :is(td):nth-child(6),.inventory td:nth-child(9) { text-align:left; }
+}
+@media(max-width:767px) { .control { height:44px; font-size:16px; } .button,.page .action { min-height:44px; } }
+@container (max-width:400px) { .inventory tr { gap:16px 12px; } .inventory td:not(.client):not(.status) { grid-column:1 / -1; } .pagination > span { order:3; width:100%; text-align:center; } }
+
+.priceContext { display:block; font-size:12px; color:var(--admin-muted); }

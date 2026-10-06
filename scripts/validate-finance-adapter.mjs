@@ -8,7 +8,7 @@ const stripe={
  accounts:{retrieve:method('accounts.retrieve',id=>{assert.equal(id,null);return {id:'acct_adapter'};})},balance:{retrieve:method('balance.retrieve',()=>({livemode:false}))},
  customers:{retrieve:method('customers.retrieve',()=>f.graph.customers[0])},
  subscriptions:{retrieve:method('subscriptions.retrieve',()=>f.subscription),list:method('subscriptions.list',()=>({data:[f.subscription],has_more:false}))},
- invoices:{retrieve:method('invoices.retrieve',()=>f.invoice),list:method('invoices.list',()=>({data:[f.invoice],has_more:false}))},
+ invoices:{listLineItems:async()=>({data:[],has_more:false}),retrieve:method('invoices.retrieve',()=>f.invoice),list:method('invoices.list',()=>({data:[f.invoice],has_more:false}))},
  invoicePayments:{retrieve:method('invoicePayments.retrieve',()=>f.allocation),list:method('invoicePayments.list',()=>({data:[f.allocation],has_more:false}))},
  charges:{retrieve:method('charges.retrieve',()=>f.charge),list:method('charges.list',()=>({data:[f.charge],has_more:false}))},
  refunds:{retrieve:method('refunds.retrieve',()=>f.refund),list:method('refunds.list',()=>({data:[f.refund],has_more:false}))},
@@ -70,3 +70,23 @@ stripe.refunds.retrieve=method('refunds.retrieve',()=>({...f.refund,charge:'ch_o
 stripe.charges.retrieve=method('charges.retrieve',id=>({...f.charge,id}));
 await assert.rejects(source.graph({kind:'charge',id:'ch_one'}),/REFUND_CHARGE/);
 console.log('PASS: paginated Refund discovery ignores embedded lists; pagination/read exhaustion commits no state; listed/retrieved Charge linkage checked.');
+
+stripe.invoices.listLineItems=async()=>({data:[{id:'il_one',currency:'gbp'}],has_more:true});
+await assert.rejects(source.graph({kind:'invoice',id:'in_one'}),/PAGINATION_BOUND/);
+console.log('PASS invoice lines: bounded exhaustion aborts graph before any writer commit.');
+
+// Exact invoice/mode linkage and tax-rate read evidence, with no write methods.
+f.subscription.items.has_more=false;
+stripe.invoicePayments.list=async()=>({data:[],has_more:false});
+stripe.invoices.listLineItems=async()=>({data:[{id:'il_tax',currency:'gbp',invoice:'in_one',livemode:false}],has_more:false});
+f.invoice.total_taxes=[{amount:100,tax_behavior:'inclusive',type:'tax_rate_details',tax_rate_details:{tax_rate:'txr_test'},taxable_amount:499,taxability_reason:'standard_rated'}];
+stripe.taxRates={retrieve:method('taxRates.retrieve',()=>({id:'txr_test',livemode:false,tax_type:'vat',country:'GB',percentage:20}))};
+const taxGraph=await source.graph({kind:'invoice',id:'in_one'});
+assert.equal(taxGraph.invoices[0]._finance_tax_rates.txr_test.percentage,20);
+assert.equal(taxGraph.invoices[0].lines.has_more,false);
+stripe.invoices.listLineItems=async()=>({data:[{id:'il_tax',currency:'gbp',invoice:'in_other',livemode:false}],has_more:false});
+await assert.rejects(source.graph({kind:'invoice',id:'in_one'}),/INVOICE_LINES/);
+stripe.invoices.listLineItems=async()=>({data:[],has_more:false});
+stripe.taxRates.retrieve=async()=>({id:'txr_test',livemode:true});
+await assert.rejects(source.graph({kind:'invoice',id:'in_one'}),/SCOPE_MISMATCH/);
+console.log('PASS tax adapter: current rate evidence, invoice-line identity/mode checks and rate scope mismatch rejection.');

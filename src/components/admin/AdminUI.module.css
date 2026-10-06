@@ -1,0 +1,10 @@
+.header h1 { margin:0; font-size:clamp(28px,2vw,30px); font-weight:600; letter-spacing:-.025em; }
+.header p { margin:6px 0 0; font-size:14px; color:var(--admin-muted); }
+.kpi { min-width:0; padding:14px 16px; border:1px solid var(--admin-border); border-radius:12px; background:var(--admin-surface); }
+.kpi p { margin:0; color:var(--admin-text-secondary); font-size:12px; font-weight:500; }
+.kpi strong { display:block; margin-top:6px; font-size:28px; line-height:1.2; font-weight:600; letter-spacing:-.025em; font-variant-numeric:tabular-nums; color:var(--admin-text); }
+.badge { display:inline-flex; align-items:center; padding:3px 8px; border-radius:999px; font-size:12px; line-height:18px; font-weight:500; white-space:nowrap; background:var(--admin-surface-secondary); color:var(--admin-text-secondary); }
+.badge[data-tone="success"] { background:var(--admin-success-bg); color:var(--admin-success-text); }
+.badge[data-tone="warning"] { background:var(--admin-warning-bg); color:var(--admin-warning-text); }
+.badge[data-tone="danger"] { background:var(--admin-danger-bg); color:var(--admin-danger-text); }
+.badge[data-tone="trial"] { background:var(--admin-accent-soft); color:var(--admin-accent); }

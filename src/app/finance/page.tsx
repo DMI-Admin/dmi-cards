@@ -1,47 +1,65 @@
-import Sidebar from "@/components/Sidebar";
+"use client";
+import {useEffect,useState,type ReactNode} from "react";
+import Link from "next/link";
+import AdminShell from "@/components/admin/AdminShell";
+import {AdminPageHeader,AdminKpiCard,AdminStatusBadge} from "@/components/admin/AdminUI";
+import type {FinanceView,FinanceV1Row,FinanceV1Report,FinanceMonth} from "@/lib/admin-finance-v1";
+import type {reportingResult} from "@/lib/admin-finance";
+import styles from "./finance.module.css";
+const sections:{key:FinanceView;title:string;columns:string[]}[]=[
+ {key:'new_customers',title:'New Customers',columns:['Customer','Joined','Plan','Billing','Gross','VAT','Net','Status','Actions']},
+ {key:'invoices',title:'Invoices',columns:['Customer','Invoice','Date','Plan','Gross','VAT','Net','Status','Actions']},
+ {key:'upcoming',title:'Upcoming Payments',columns:['Customer','Plan','Billing','Due','Gross','Estimated VAT','Estimated Net','Status']},
+ {key:'failed',title:'Failed Payments',columns:['Customer','Failed on','Amount','Attempts','Subscription status','Next retry','Actions']},
+ {key:'cancelled',title:'Cancelled Customers',columns:['Customer','Plan','Billing','Started','Ended','Final payment','Reason','Actions']},
+ {key:'refunds',title:'Refunds',columns:['Customer','Date','Invoice','Gross refunded','VAT adjustment','Net refunded','Status','Reason']},
+];
+function money(value:string|null,currency:string|null='gbp'):string {
+ if(currency!=='gbp'||value===null||! /^-?\d+$/.test(value))return 'Unavailable';
+ const negative=value.startsWith('-'),digits=value.replace(/^-/,'').replace(/^0+(?=\d)/,'').padStart(3,'0');
+ return `${negative?'−':''}£${digits.slice(0,-2).replace(/\B(?=(\d{3})+(?!\d))/g,',')}.${digits.slice(-2)}`;
+}
+function date(value:string|null){return value&&Number.isFinite(Date.parse(value))?new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value)):'Unavailable';}
+function billingInterval(r:FinanceV1Row){if(!r.interval||!['day','week','month','year'].includes(r.interval)||!Number.isSafeInteger(r.intervalCount)||!r.intervalCount||r.intervalCount<1)return 'Unavailable';return r.intervalCount===1?({day:'Daily',week:'Weekly',month:'Monthly',year:'Annual'} as Record<string,string>)[r.interval]:`Every ${r.intervalCount} ${r.interval}s`;}
+function cells(kind:FinanceView,r:FinanceV1Row):ReactNode[]{
+ const client=<div className={styles.client}><strong>{r.client?.name||(r.linked?'Verified customer':'Client not linked')}</strong>{r.client?.email&&<small>{r.client.email}</small>}</div>;
+ const status=<AdminStatusBadge label={r.status==='past_due'?'Past Due':r.status.replace(/_/g,' ').replace(/^./,c=>c.toUpperCase())}/>;
+ const action=r.linked?<Link className={styles.link} href="/clients/individual">View customer</Link>:<span className={styles.quiet}>Unavailable</span>;
+ const plan=r.plan||'Unavailable',gross=money(r.amount,r.currency),vat=money(r.vat,r.currency),net=money(r.net,r.currency);
+ if(kind==='new_customers')return [client,date(r.date),plan,billingInterval(r),gross,vat,net,status,action];
+ if(kind==='invoices')return [client,r.reference||'Not recorded',date(r.date),plan,gross,vat,net,status,action];
+ if(kind==='upcoming')return [client,plan,billingInterval(r),<>{r.status==='cancelling'?'Ends ':''}{date(r.date)}</>,gross,vat,net,status];
+ if(kind==='failed')return [client,date(r.date),gross,r.attempts??'Unavailable',status,date(r.nextRetry),action];
+ if(kind==='cancelled')return [client,plan,billingInterval(r),date(r.started),date(r.date),r.finalPayment?<>{money(r.finalPayment.amount,r.finalPayment.currency)}<small className={styles.meta}>{date(r.finalPayment.date)}</small></>:'Unavailable',r.reason||'Not recorded',action];
+ return [client,date(r.date),r.reference||'Not recorded',gross,'Unavailable','Unavailable',status,r.reason?.replace(/_/g,' ')||'Not recorded'];
+}
+const monthName=(label:string)=>new Intl.DateTimeFormat('en-GB',{month:'long',year:'numeric',timeZone:'Europe/London'}).format(new Date(label+'-15T12:00:00Z'));
+function sum(rows:FinanceMonth[],key:'gross'|'vat'|'net'){rows=rows.filter(r=>r.invoiceCount!=='0');if(!rows.length||rows.some(r=>r[key]===null))return null;return rows.reduce((n,r)=>n+BigInt(r[key]!),BigInt(0)).toString();}
+function count(rows:FinanceMonth[],key:'newCustomers'){return rows.reduce((n,r)=>n+BigInt(r[key]),BigInt(0)).toString();}
+export default function FinancePage(){
+ const [period,setPeriod]=useState(()=>{const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'numeric'}).formatToParts(new Date()).map(x=>[x.type,x.value]));return {view:'monthly',year:Number(p.year),month:Number(p.month)};});
+ const [section,setSection]=useState<FinanceView>('new_customers'),[cursors,setCursors]=useState<(string|null)[]>([null]);
+ const [report,setReport]=useState<FinanceV1Report|null>(null),[error,setError]=useState(false),[loading,setLoading]=useState(true),[retry,setRetry]=useState(0);
+ const [coverage,setCoverage]=useState<ReturnType<typeof reportingResult>|null>(null);
+ const cursor=cursors.at(-1),selected=sections.find(s=>s.key===section)!;
+ useEffect(()=>{const controller=new AbortController();let active=true;
+ void(async()=>{try{const q=new URLSearchParams({view:period.view,year:String(period.year),list:section,limit:'25'});if(period.view==='monthly')q.set('month',String(period.month));if(cursor)q.set('cursor',cursor);
+ const response=await fetch('/api/admin/finance?'+q,{credentials:'same-origin',cache:'no-store',signal:controller.signal});if(!response.ok)throw Error();const data=await response.json();if(active){setReport(data);setError(false);}}catch{if(active){setReport(null);setError(true);}}finally{if(active)setLoading(false);}})();return()=>{active=false;controller.abort();};},[period,section,cursor,retry]);
+ useEffect(()=>{const controller=new AbortController();void fetch('/api/admin/finance',{credentials:'same-origin',cache:'no-store',signal:controller.signal}).then(r=>{if(!r.ok)throw Error();return r.json();}).then(setCoverage).catch(()=>{});return()=>controller.abort();},[retry]);
+ function navigate(next:(string|null)[]){setLoading(true);setError(false);setReport(null);setCursors(next);}
+ function shift(direction:number){let {year,month}=period;if(period.view==='yearly')year+=direction;else{month+=direction;if(month===0){month=12;year--;}if(month===13){month=1;year++;}}if(year<2000||year>9998)return;navigate([null]);setPeriod({...period,year,month});}
+ const months=report?.months||[],metrics=[['Active Customers',report?.activePaidCustomers],['New Customers',report?count(months,'newCustomers'):null],['Gross Invoiced',report?money(sum(months,'gross')):null],['VAT',report?money(sum(months,'vat')):null],['Net Revenue',report?money(sum(months,'net')):null],['Payment Issues',report?.recoveryCustomers]];
+ return <AdminShell><section className={styles.page}>
+ <AdminPageHeader title="Finance" subtitle="Monitor revenue, customers and payment recovery."/>
+ <div className={styles.controls}><div className={styles.segment} aria-label="Reporting period">{['monthly','yearly'].map(view=><button key={view} className={styles.button} aria-pressed={period.view===view} onClick={()=>{navigate([null]);setPeriod({...period,view});}}>{view==='monthly'?'Monthly':'Yearly'}</button>)}</div>
+ <div className={styles.period}><button className={styles.button} aria-label="Previous period" disabled={period.year===2000&&(period.view==='yearly'||period.month===1)} onClick={()=>shift(-1)}>←</button><div className={styles.periodPicker}><span className={styles.periodLabel} aria-hidden="true">{period.view==='monthly'?monthName(String(period.year)+'-'+String(period.month).padStart(2,'0')):period.year}</span><label className={styles.srOnly} htmlFor="finance-period">Selected period</label>{period.view==='monthly'?<input id="finance-period" type="month" className={styles.periodInput} min="2000-01" max="9998-12" value={`${period.year}-${String(period.month).padStart(2,'0')}`} onChange={e=>{const [year,month]=e.target.value.split('-').map(Number);if(year>=2000&&year<=9998&&month>=1&&month<=12){navigate([null]);setPeriod({...period,year,month});}}}/>:<input id="finance-period" type="number" className={styles.periodInput} min={2000} max={9998} value={period.year} onChange={e=>{const year=Number(e.target.value);if(Number.isInteger(year)&&year>=2000&&year<=9998){navigate([null]);setPeriod({...period,year});}}}/>}</div><button className={styles.button} aria-label="Next period" disabled={period.year===9998&&(period.view==='yearly'||period.month===12)} onClick={()=>shift(1)}>→</button></div></div>
 
-export default function FinancePage() {
-  return (
-    <main className="flex min-h-screen bg-[#070B1A] text-white">
-      <Sidebar />
-
-      <section className="flex-1 p-10">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold">Finance</h1>
-
-          <p className="text-white/50 mt-2">
-            Monitor revenue, payouts, invoices, and financial performance.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-4 gap-6 mb-8">
-          <div className="rounded-3xl bg-white/5 p-6 border border-white/10">
-            <p className="text-white/50 text-sm">Monthly Revenue</p>
-            <h2 className="text-4xl font-bold mt-3">£12,480</h2>
-          </div>
-
-          <div className="rounded-3xl bg-white/5 p-6 border border-white/10">
-            <p className="text-white/50 text-sm">Active Subscriptions</p>
-            <h2 className="text-4xl font-bold mt-3">482</h2>
-          </div>
-
-          <div className="rounded-3xl bg-white/5 p-6 border border-white/10">
-            <p className="text-white/50 text-sm">Pending Invoices</p>
-            <h2 className="text-4xl font-bold mt-3">16</h2>
-          </div>
-
-          <div className="rounded-3xl bg-white/5 p-6 border border-white/10">
-            <p className="text-white/50 text-sm">Annual Growth</p>
-            <h2 className="text-4xl font-bold mt-3">+28%</h2>
-          </div>
-        </div>
-
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-8">
-          <div className="h-96 rounded-2xl bg-[#101935] flex items-center justify-center text-white/30">
-            Financial analytics coming soon
-          </div>
-        </div>
-      </section>
-    </main>
-  );
+ <div className={styles.kpis} aria-busy={loading}>{metrics.map(([title,value])=><AdminKpiCard key={title} label={title!} value={<span className={styles.value}>{loading?'…':value??'Unavailable'}</span>}/>)}</div>
+ {error&&<div role="alert" className={styles.state}>Finance could not be loaded. <button className={styles.button} onClick={()=>{setLoading(true);setRetry(x=>x+1);}}>Retry</button></div>}
+ {period.view==='yearly'&&report&&!loading&&<section className={styles.surface} aria-label="Yearly reporting"><div className={styles.inventoryHeader}><h2>{period.year} overview</h2><p>Recorded monthly activity; failed payments are recorded attempts, not historical recovery populations.</p></div><div className={styles.yearViewport}><table className={styles.table}><caption className={styles.srOnly}>Monthly recorded Finance totals</caption><thead><tr>{['Month','New customers','Invoices','Gross invoiced','Verified VAT','Verified net','Failed payments','Cancelled customers','Refunds'].map(c=><th key={c} scope="col">{c}</th>)}</tr></thead><tbody>{months.map(m=><tr key={m.label}><th scope="row">{monthName(m.label)}</th><td>{m.newCustomers}</td><td>{m.invoiceCount}</td><td>{money(m.gross)}</td><td>{money(m.vat)}</td><td>{money(m.net)}</td><td>{m.failedPayments}</td><td>{m.cancelledCustomers}</td><td>{m.refunds}</td></tr>)}</tbody></table></div></section>}
+ <section className={styles.surface} aria-labelledby="inventory-heading"><nav className={styles.tabs} aria-label="Finance sections">{sections.map(s=><button className={styles.tab} aria-pressed={section===s.key} key={s.key} onClick={()=>{setSection(s.key);navigate([null]);}}>{s.title}</button>)}</nav><div className={styles.inventoryHeader}><h2 id="inventory-heading">{selected.title}</h2></div>
+ {loading?<p className={styles.state} role="status">Loading Finance…</p>:!error&&report&&<><div className={styles.tableViewport}><table className={styles.table}><caption className={styles.srOnly}>{selected.title}</caption><thead><tr>{selected.columns.map(c=><th key={c} scope="col">{c}</th>)}</tr></thead><tbody>{report.items.map(r=><tr key={r.id}>{cells(section,r).map((v,i)=><td key={selected.columns[i]}>{v}</td>)}</tr>)}</tbody></table></div><div className={styles.cards}>{report.items.map(r=><article className={styles.card} key={r.id}><dl>{cells(section,r).map((v,i)=><div key={selected.columns[i]}><dt>{selected.columns[i]}</dt><dd>{v}</dd></div>)}</dl></article>)}</div>{!report.items.length&&<p className={styles.state}>No matching recorded {selected.title.toLowerCase()}. This does not prove complete historical coverage.</p>}<nav className={styles.pagination} aria-label="Finance pagination"><button className={styles.button} disabled={cursors.length===1} onClick={()=>navigate(cursors.slice(0,-1))}>Previous</button><span>Page {cursors.length} · Up to 25 records</span><button className={styles.button} disabled={!report.nextCursor} onClick={()=>navigate([...cursors,report.nextCursor])}>Next</button></nav></>}
+ </section>
+ <details className={styles.coverage}><summary><span>Data status</span><span className={styles.detailsToggle}><span className={styles.showDetails}>Show details</span><span className={styles.hideDetails}>Hide details</span></span></summary><p>Recorded Finance history · GBP · Europe/London. Active Customers counts active paid customers now. Payment Issues counts customers in current recovery. Upcoming payments and recovery show current state, independent of the selected reporting period.</p><p>{section==='new_customers'?'First paid Pro invoice observed in available Finance history; the same invoice also appears in Invoices.':section==='upcoming'?'Current contracts. Cancelling rows show an end date, not an expected charge. Estimates require separate evidence.':section==='failed'?'Current unresolved recovery state; amounts are outstanding invoice balances.':section==='invoices'?'Invoices finalized in the selected period, retained after cancellation.':section==='refunds'?'Succeeded refunds with a verified success date in this period. Tax adjustments require separate evidence.':'Paid subscriptions actually ended in this period. Billing describes the last mirrored item.'}</p><p>Totals describe recorded invoices, not complete Stripe accounting history. Unknown VAT/net is unavailable; verified zero is £0.00. VAT is part of total tax, never an additional charge. Other tax components may mean gross differs from net plus VAT.</p><p>New customers means observed-first-paid, not lifetime-first. Current item intervals are not historical price snapshots. Historical MRR/ARR, forecast VAT and refund tax adjustments are not established.</p>{report&&<p>Invoices without a finalized date: {report.undatedInvoices}. Succeeded refunds without a verified date: {report.undatedRefunds}. These cannot be assigned to a reporting period.</p>}{coverage?<dl className={styles.coverageGrid}>{Object.entries(coverage.coverage).filter(([key])=>key!=='overall').map(([key,value])=><div key={key}><dt>{key.replace(/([A-Z])/g,' $1')}</dt><dd>{typeof value==='object'?value.status:value}</dd></div>)}</dl>:<p>Detailed coverage is unavailable.</p>}</details>
+ </section></AdminShell>;
 }

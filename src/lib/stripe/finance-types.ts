@@ -36,15 +36,17 @@ export type FinanceItem = Provenance & {
   period_start: string | null; period_end: string | null; effective_cycle_amount_minor: Minor | null;
   valuation_status: ValuationStatus; valuation_reason: string | null;
   discount_context: Discount[]; removed_at: string | null;
+  forecast_tax_evidence: ForecastTaxEvidence;
 };
 export type FinanceInvoice = Provenance & {
   stripe_customer_id: string; stripe_subscription_id: string | null; number: string | null;
   status: string; billing_reason: string | null; collection_method: string; currency: string;
-  subtotal_minor: Minor; discount_minor: Minor; tax_minor: Minor; total_minor: Minor;
+  subtotal_minor: Minor; discount_minor: Minor; tax_minor: Minor | null; total_minor: Minor;
   amount_due_minor: Minor; amount_paid_minor: Minor; amount_remaining_minor: Minor;
   attempt_count: number; due_at: string | null; next_payment_attempt_at: string | null;
   finalized_at: string | null; paid_at: string | null; voided_at: string | null;
   marked_uncollectible_at: string | null; payments_complete: boolean;
+  tax_evidence: InvoiceTaxEvidence;
 };
 export type FinancePayment = Provenance & {
   stripe_customer_id: string; stripe_payment_intent_id: string | null; currency: string; status: string;
@@ -95,3 +97,35 @@ export type FinanceSyncRun = {
 };
 export type Rational = { numerator: bigint; denominator: bigint };
 export type MetricResult<T> = { status: "complete"; value: T } | { status: "incomplete"; value: null; reason: string };
+
+/** V2 derived reporting only; never persisted as a writer bundle or used by MRR. */
+export type RecurringValuation = {
+ status:"complete"|"unavailable"|"unsupported";
+ amountMinor:string|null; currency:string; reasonCode:string|null;
+ evidenceBasis:"normalized_contract_v2"|"existing_tax_exclusive_valuation"|"unavailable";
+};
+export type ContractualRecurring = RecurringValuation & {taxBasis:"exclusive"|"inclusive"|"unresolved";interval:string;intervalCount:number;contractVersion:2};
+export type TaxComponent = {status:"complete"|"unavailable"|"unsupported";amountMinor:string|null;rateBasisPoints:number|null;reasonCode:string|null;evidenceBasis:"verified_tax_evidence"|"unavailable"};
+export type RecurringBreakdown = {contractualRecurring:ContractualRecurring;taxExclusiveRecurring:RecurringValuation;taxComponent:TaxComponent};
+
+/** Allowlisted, versioned evidence. Unknown is never a monetary zero. */
+export type TaxBreakdown = {
+ amountMinor: Minor; taxableAmountMinor: Minor | null;
+ behavior: "inclusive" | "exclusive"; taxRateId: string | null;
+ ratePercent: string | null; taxType: "vat" | "other" | "unknown";
+ country: string | null; reason: string;
+};
+export type InvoiceTaxEvidence = {
+ version: 1; status: "verified" | "unknown"; reason: string;
+ basis: "finalized_invoice" | "unavailable";
+ grossMinor: Minor | null; taxMinor: Minor | null; vatMinor: Minor | null; netMinor: Minor | null;
+ automaticTaxEnabled: boolean | null; automaticTaxStatus: "complete" | "failed" | "requires_location_inputs" | "unknown" | null;
+ breakdownComplete: boolean; linesComplete: boolean; lineCount: number | null;
+ breakdown: TaxBreakdown[];
+};
+export type ForecastTaxEvidence = {
+ version: 1; status: "unknown" | "verified"; basis: "unavailable" | "stripe_invoice_preview"; reason: "forecast_tax_evidence_missing" | "verified_preview_totals";
+ sourceRef: string | null; verifiedAt: string | null;
+ configuration: {version: 1; scope: string; subscriptionId: string; itemId: string; priceId: string; currency: string; quantity: Minor | null; interval: string; intervalCount: number; taxBehavior: string; discounts: Discount[]};
+ grossMinor: Minor | null; taxMinor: Minor | null; netMinor: Minor | null;
+};

@@ -7,7 +7,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 const load=(file,deps={})=>{const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{exports,Date,Intl,BigInt,require:name=>{if(name==='server-only')return {};if(name==='stripe')return {default:Stripe};assert.ok(name in deps,name);return deps[name];}});return exports;};
 const m=load('src/lib/stripe/finance-metrics.ts');
-const n=load('src/lib/stripe/finance-normalize.ts',{'./finance-metrics':m});
+const n=load('src/lib/stripe/finance-normalize.ts',{'./finance-metrics':m,'./finance-tax':load('src/lib/stripe/finance-tax.ts')});
 const scope='acct_fixture:test',now='2026-09-15T00:00:00.000Z',seconds=s=>Date.parse(s)/1000;
 const ctx={scope,verifiedAt:now,apiVersion:'fixture'};
 const item={id:'si_one',created:seconds('2026-09-01'),quantity:1,current_period_start:seconds('2026-09-01'),current_period_end:seconds('2026-10-01'),discounts:[],price:{id:'price_month',product:'prod_pro',unit_amount:599,unit_amount_decimal:'599',currency:'gbp',billing_scheme:'per_unit',tax_behavior:'exclusive',recurring:{interval:'month',interval_count:1,usage_type:'licensed'}}};
@@ -66,7 +66,7 @@ assert.ok(fs.readFileSync('src/lib/supabase-admin.ts','utf8').startsWith('import
 console.log(`PASS: Finance normalization/metrics, lossless money, discounts, scope/currency isolation, London/DST, incomplete coverage, evidence allowlists; ${clientEntries} client-entry import graphs exclude service-role module.`);
 
 assert.equal(n.normalizeRefund(refund,{...ctx,event:{...event,subjectId:'re_one',type:'refund.updated'}}).succeeded_at,null);
-assert.equal(n.normalizeInvoice({...invoice,total_discount_amounts:null,total_taxes:null},ctx).tax_minor,'0');
+assert.equal(n.normalizeInvoice({...invoice,total_discount_amounts:null,total_taxes:null},ctx).tax_minor,null);
 for (const field of ['total','amount_due','amount_remaining']) assert.throws(()=>n.normalizeInvoice({...invoice,[field]:Number.MAX_SAFE_INTEGER+1},ctx));
 assert.equal(m.expectedRenewalEligibility(current.subscription,current.items[0],scope,now).value,true);
 
@@ -85,3 +85,32 @@ for(const value of [{},{_coefficient:599n,_exponent:0},Object.freeze({_coefficie
 assert.equal(coerced,false);
 for(const value of ['-1','0.0000000000001'])for(const shape of [value,Stripe.Decimal.from(value)])assert.throws(()=>norm(withDecimal(shape,null)),/FINANCE_INVALID_DECIMAL/);
 console.log('PASS: real Stripe Decimal/string parity; exact 599p, fractional/large precision; malformed object rejection; unchanged integer agreement and decimal errors.');
+
+// V2 contractual evidence is separate from existing tax-exclusive MRR eligibility.
+const contractual=load('src/lib/stripe/finance-contractual.ts',{'./finance-metrics':m,'./finance-tax':load('src/lib/stripe/finance-tax.ts')});
+const derive=(input)=>{const x=norm(input);return {normalized:x,result:contractual.contractualRecurring(x.subscription,x.items[0],scope,now)};};
+for(const tax of ['exclusive','inclusive','unspecified']){
+ const input=structuredClone(raw);input.items.data[0].price.tax_behavior=tax;
+ const {normalized,result}=derive(input);
+ assert.equal(normalized.subscription.normalizer_version,2);assert.equal(normalized.items[0].normalizer_version,2);
+ assert.equal(result.contractualRecurring.amountMinor,'599');assert.equal(result.contractualRecurring.taxBasis,tax==='unspecified'?'unresolved':tax);
+ assert.equal(result.taxExclusiveRecurring.amountMinor,tax==='exclusive'?'599':null);assert.equal(result.taxComponent.amountMinor,null);assert.equal(result.taxComponent.rateBasisPoints,null);
+ if(tax!=='exclusive'){assert.equal(normalized.items[0].effective_cycle_amount_minor,null);assert.equal(m.mrrContribution(normalized.subscription,normalized.items[0],scope,now).status,'incomplete');}
+ const old=contractual.contractualRecurring({...normalized.subscription,normalizer_version:1},normalized.items[0],scope,now);assert.equal(old.contractualRecurring.amountMinor,null);assert.equal(old.contractualRecurring.reasonCode,'normalizer_refresh_required');
+ assert.equal(contractual.contractualRecurring(normalized.subscription,{...normalized.items[0],normalizer_version:1},scope,now).contractualRecurring.amountMinor,null);
+ assert.equal(contractual.contractualRecurring(normalized.subscription,normalized.items[0],'acct_other:test',now).contractualRecurring.amountMinor,null);
+}
+for(const change of [p=>p.transform_quantity={divide_by:2,round:'up'},p=>p.billing_scheme='tiered',p=>p.recurring.usage_type='metered']){
+ const input=structuredClone(raw);input.items.data[0].price.tax_behavior='unspecified';change(input.items.data[0].price);input.discounts=['di_unexpanded'];
+ const {normalized,result}=derive(input);assert.match(normalized.items[0].valuation_reason,/unsupported_pricing/);assert.match(normalized.items[0].valuation_reason,/unexpanded_discount/);assert.match(normalized.items[0].valuation_reason,/tax_basis_unresolved/);assert.equal(result.contractualRecurring.amountMinor,null);
+}
+for(const tax of ['inclusive','unspecified']){
+ const input=structuredClone(raw);input.items.data[0].price.tax_behavior=tax;input.items.data[0].quantity=3;input.discounts=[{id:'di_percent',start:seconds('2026-09-01'),end:null,source:{coupon:{id:'percent',duration:'forever',percent_off:10,amount_off:null,currency:null}}}];
+ assert.equal(derive(input).result.contractualRecurring.amountMinor,'1617');
+ input.discounts[0].source.coupon={id:'fixed',duration:'forever',percent_off:null,amount_off:100,currency:'gbp'};assert.equal(derive(input).result.contractualRecurring.amountMinor,'1697');
+ input.items.data[0].discounts=[structuredClone(coupon)];const blocked=derive(input);assert.match(blocked.normalized.items[0].valuation_reason,/stacked_discounts/);assert.equal(blocked.result.contractualRecurring.amountMinor,null);
+}
+for(const amount of ['599','599.123456789012','9007199254740993']){
+ const a=withDecimal(amount,null),b=withDecimal(Stripe.Decimal.from(amount),null);a.items.data[0].price.tax_behavior='unspecified';b.items.data[0].price.tax_behavior='unspecified';assert.equal(JSON.stringify(derive(a).result),JSON.stringify(derive(b).result));
+}
+console.log('PASS V2 contractual/net/tax separation; exclusive/inclusive/unspecified; version gate; all blockers retained; transformed/tiered/metered blocked; exact discounts/Decimal; unchanged net MRR and scope.');

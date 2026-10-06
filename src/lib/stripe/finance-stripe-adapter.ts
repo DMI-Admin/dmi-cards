@@ -25,7 +25,15 @@ export function stripeFinanceSource(stripe:Stripe):FinanceSource {
      const s=await call(()=>stripe.subscriptions.retrieve(id,{expand:["items.data.price","discounts.source.coupon"]},options));
      if(s.items.has_more)throw Error("FINANCE_ITEMS_BOUND");graph.subscriptions.push(record(s));await customer(objectId(s.customer));
     }else if(kind==="invoice"){
-     const inv=await call(()=>stripe.invoices.retrieve(id,{},options));graph.invoices.push(record(inv));await customer(objectId(inv.customer));
+     const inv=await call(()=>stripe.invoices.retrieve(id,{},options));
+     // Never trust the embedded first page; exhaust the bounded line list before commit.
+     const lines=await bounded(after=>call(()=>stripe.invoices.listLineItems(id,{limit:100,...(after?{starting_after:after}:{})},options)));
+     if(new Set(lines.map(line=>line.id)).size!==lines.length||lines.some(line=>line.currency!==inv.currency||line.invoice!==inv.id||line.livemode!==inv.livemode))throw Error("FINANCE_INVOICE_LINES");
+     const rates:Record<string,unknown>={};
+     for(const tax of inv.total_taxes||[]){const rateId=tax.tax_rate_details?.tax_rate;
+      if(rateId&&!rates[rateId]){if(!/^txr_[A-Za-z0-9]+$/.test(rateId))throw Error("FINANCE_TAX_RATE");const rate=await call(()=>stripe.taxRates.retrieve(rateId,{},options));if(rate.id!==rateId||rate.livemode!==inv.livemode)throw Error("FINANCE_SCOPE_MISMATCH");rates[rateId]=rate;}
+     }
+     graph.invoices.push({...record(inv),lines:{data:lines,has_more:false},_finance_tax_rates:rates});await customer(objectId(inv.customer));
      const sub=objectId(inv.parent?.subscription_details?.subscription);if(sub)await ensure("subscription",sub);
      const allocations=await bounded(after=>call(()=>stripe.invoicePayments.list({invoice:id,limit:100,...(after?{starting_after:after}:{})},options)));
      for(const allocation of allocations)await ensure("allocation",allocation.id);

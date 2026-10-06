@@ -1,3 +1,4 @@
+import {invoiceTaxEvidence,forecastTaxEvidence} from "./finance-tax";
 import "server-only";
 import Stripe from "stripe";
 import type {AssertionObserver} from "./webhook-observer";
@@ -67,23 +68,23 @@ const failureCodes=new Set(["card_declined","expired_card","incorrect_cvc","insu
 function failureCode(x:unknown){return typeof x==="string"&&failureCodes.has(x)?x:null;}
 
 function discounts(value:unknown,appliesTo:"subscription"|"item",now:string,check:Check=unchecked,path="subscription.discounts"):{rows:Discount[];issue:string|null} {
- const rows:Discount[]=[];let issue:string|null=null;
+ const rows:Discount[]=[];const issues:string[]=[];
  for(const raw of check(path,"array",value,()=>list(value))){
-  if(typeof raw==="string"){issue="unexpanded_discount";continue;}
+  if(typeof raw==="string"){issues.push("unexpanded_discount");continue;}
   const d=check(path+"[]","object",raw,()=>object(raw)),source=d.source==null?null:check(path+"[].source","object",d.source,()=>object(d.source)),rawCoupon=source?.coupon??d.coupon;
-  if(!rawCoupon||typeof rawCoupon==="string"){issue="unexpanded_coupon";continue;}
-  const coupon=check(path+"[].coupon","object",rawCoupon,()=>object(rawCoupon));if(coupon.deleted===true){issue="deleted_coupon";continue;}
+  if(!rawCoupon||typeof rawCoupon==="string"){issues.push("unexpanded_coupon");continue;}
+  const coupon=check(path+"[].coupon","object",rawCoupon,()=>object(rawCoupon));if(coupon.deleted===true){issues.push("deleted_coupon");continue;}
   const percent=coupon.percent_off==null?null:String(coupon.percent_off);
   if(percent!==null){const p=check(path+"[].coupon.percent_off","decimal",percent,()=>decimal(percent));if(p.numerator>BigInt(100)*p.denominator)check(path+"[].coupon.percent_off","percent_range",percent,()=>fail());}
   const amount=check(path+"[].coupon.amount_off","minor_units",coupon.amount_off,()=>nullableAmount(coupon.amount_off));
   const row:Discount={discount_id:check(path+"[].id","id",d.id,()=>id(d.id,"di")),coupon_id:check(path+"[].coupon.id","text",coupon.id,()=>text(coupon.id)),applies_to:appliesTo,percent_off:percent,amount_off_minor:amount,
    currency:coupon.currency==null?null:check(path+"[].coupon.currency","currency",coupon.currency,()=>currency(coupon.currency)),starts_at:check(path+"[].start","unix_timestamp",d.start,()=>iso(d.start)),ends_at:check(path+"[].end","optional_timestamp",d.end,()=>time(d.end))};
   rows.push(row);
-  if((percent===null)===(amount===null))issue="ambiguous_discount";
-  if(coupon.duration!=="forever"||coupon.applies_to!=null||coupon.currency_options!=null)issue="unsupported_discount_context";
-  if(Date.parse(row.starts_at)>Date.parse(now)||(row.ends_at&&Date.parse(row.ends_at)<=Date.parse(now)))issue="discount_requires_refresh";
+  if((percent===null)===(amount===null))issues.push("ambiguous_discount");
+  if(coupon.duration!=="forever"||coupon.applies_to!=null||coupon.currency_options!=null)issues.push("unsupported_discount_context");
+  if(Date.parse(row.starts_at)>Date.parse(now)||(row.ends_at&&Date.parse(row.ends_at)<=Date.parse(now)))issues.push("discount_requires_refresh");
  }
- return {rows,issue};
+ return {rows,issue:[...new Set(issues)].join("|")||null};
 }
 /** Pure normalizer. verifiedUserId comes only from a future trusted identity resolver. */
 export function normalizeSubscription(input:unknown,c:FinanceContext,verifiedUserId:string|null=null,observer?:AssertionObserver):{subscription:FinanceSubscription;items:FinanceItem[]} {
@@ -101,16 +102,18 @@ export function normalizeSubscription(input:unknown,c:FinanceContext,verifiedUse
   if(unit!==null&&decimalUnit!==null){const d=check("subscription.items[].price.unit_amount_decimal","decimal",decimalUnit,()=>decimal(decimalUnit));if(d.numerator!==BigInt(unit)*d.denominator)check("subscription.items[].price.unit_amount","amount_agreement",unit,()=>fail());}
   const interval=check("subscription.items[].price.recurring.interval","text",recurring.interval,()=>text(recurring.interval));if(!["month","year","week","day"].includes(interval))check("subscription.items[].price.recurring.interval","interval_enum",interval,()=>fail());
   const quantity=check("subscription.items[].quantity","minor_units",it.quantity,()=>nullableAmount(it.quantity)),usage=check("subscription.items[].price.recurring.usage_type","text",recurring.usage_type,()=>text(recurring.usage_type)),scheme=check("subscription.items[].price.billing_scheme","text",p.billing_scheme,()=>text(p.billing_scheme)),tax=check("subscription.items[].price.tax_behavior","text",p.tax_behavior,()=>text(p.tax_behavior));
-  let reason=parentDiscount.issue||localDiscount.issue;
-  if(!complete)reason="incomplete_items";
-  if(p.transform_quantity!=null||scheme!=="per_unit"||usage!=="licensed"||!["month","year"].includes(interval))reason="unsupported_pricing";
-  if(tax!=="exclusive")reason="tax_basis_unresolved";
-  if(unit===null&&decimalUnit===null||quantity===null)reason="missing_price_or_quantity";
+  // V2: retain every independent blocker. Tax can never mask pricing/discount issues.
+  const blockers=[parentDiscount.issue,localDiscount.issue].filter((x):x is string=>!!x);
+  if(!complete)blockers.push("incomplete_items");
+  if(p.transform_quantity!=null||scheme!=="per_unit"||usage!=="licensed"||!["month","year"].includes(interval))blockers.push("unsupported_pricing");
+  if(unit===null&&decimalUnit===null||quantity===null)blockers.push("missing_price_or_quantity");
+  if(tax!=="exclusive")blockers.push("tax_basis_unresolved");
+  const reason=[...new Set(blockers)].join("|")||null;
   const result:FinanceItem={...provenance(it,c,"si",check("subscription.livemode","boolean",o.livemode,()=>bool(o.livemode)),check,"subscription.items[]"),stripe_subscription_id:base.stripe_object_id,stripe_price_id:check("subscription.items[].price.id","id",p.id,()=>id(p.id,"price")),stripe_product_id:check("subscription.items[].price.product","id",p.product,()=>id(p.product,"prod")),
-   currency:check("subscription.items[].price.currency","currency",p.currency,()=>currency(p.currency)),quantity,unit_amount_minor:unit,unit_amount_decimal_minor:decimalUnit,recurring_interval:interval as FinanceItem["recurring_interval"],interval_count:check("subscription.items[].price.recurring.interval_count","positive_count",recurring.interval_count,()=>count(recurring.interval_count,true)),
+   normalizer_version:2,currency:check("subscription.items[].price.currency","currency",p.currency,()=>currency(p.currency)),quantity,unit_amount_minor:unit,unit_amount_decimal_minor:decimalUnit,recurring_interval:interval as FinanceItem["recurring_interval"],interval_count:check("subscription.items[].price.recurring.interval_count","positive_count",recurring.interval_count,()=>count(recurring.interval_count,true)),
    usage_type:usage,billing_scheme:scheme,tax_behavior:tax,period_start:check("subscription.items[].current_period_start","optional_timestamp",it.current_period_start,()=>time(it.current_period_start)),period_end:check("subscription.items[].current_period_end","optional_timestamp",it.current_period_end,()=>time(it.current_period_end)),
-   effective_cycle_amount_minor:null,valuation_status:reason?"unsupported":"complete",valuation_reason:reason,discount_context:localDiscount.rows,removed_at:null};
-  if(!result.period_start||!result.period_end){result.valuation_status="incomplete";result.valuation_reason="missing_period";}
+   effective_cycle_amount_minor:null,valuation_status:reason?"unsupported":"complete",valuation_reason:reason,discount_context:localDiscount.rows,forecast_tax_evidence:null as unknown as FinanceItem["forecast_tax_evidence"],removed_at:null};
+  if(!result.period_start||!result.period_end){result.valuation_status="incomplete";result.valuation_reason=[reason,"missing_period"].filter(Boolean).join("|");}
   else if(Date.parse(result.period_end)<=Date.parse(result.period_start))check("subscription.items[].current_period_end","period_order",it.current_period_end,()=>fail());
   return result;
  });
@@ -119,22 +122,26 @@ export function normalizeSubscription(input:unknown,c:FinanceContext,verifiedUse
  // Do not invent allocation for subscription-wide discounts over multiple items.
  const ambiguous=items.length>1&&parentDiscount.rows.length>0;
  for(const it of items){
-  if(mixed||ambiguous){it.valuation_status="unsupported";it.valuation_reason=mixed?"mixed_intervals_or_currencies":"ambiguous_subscription_discount";}
-  if(it.valuation_status!=="complete")continue;
+  const blockers=it.valuation_reason?it.valuation_reason.split("|"):[];
+  if(mixed)blockers.push("mixed_intervals_or_currencies");
+  if(ambiguous)blockers.push("ambiguous_subscription_discount");
+  const ds=[...it.discount_context,...parentDiscount.rows];
+  if(ds.length>1)blockers.push("stacked_discounts");
+  if(ds.some(d=>d.amount_off_minor!==null&&d.currency!==it.currency))blockers.push("discount_currency_mismatch");
+  it.valuation_reason=[...new Set(blockers)].join("|")||null;
+  if(blockers.length){if(it.valuation_status!=="incomplete")it.valuation_status="unsupported";continue;}
   let value=decimal(it.unit_amount_decimal_minor??it.unit_amount_minor!);
   value=rational(value.numerator*BigInt(it.quantity!),value.denominator);
-  const ds=[...it.discount_context,...parentDiscount.rows];
-  if(ds.length>1){it.valuation_status="unsupported";it.valuation_reason="stacked_discounts";continue;}
   for(const d of ds){
    if(d.percent_off!==null){const pc=decimal(d.percent_off);value=rational(value.numerator*(BigInt(100)*pc.denominator-pc.numerator),value.denominator*BigInt(100)*pc.denominator);}
-   else if(d.currency!==it.currency){it.valuation_status="unsupported";it.valuation_reason="discount_currency_mismatch";}
    else {value=add(value,rational(-BigInt(d.amount_off_minor!)));if(value.numerator<BigInt(0))value=rational(BigInt(0));}
   }
-  if(it.valuation_status==="complete")it.effective_cycle_amount_minor=check("subscription.items[].effective_cycle_amount_minor","minor_units",undefined,()=>minor(roundMinor(value)));
+  it.effective_cycle_amount_minor=check("subscription.items[].effective_cycle_amount_minor","minor_units",undefined,()=>minor(roundMinor(value)));
  }
- const bad=items.find(i=>i.valuation_status!=="complete");
- const reason=!complete?"incomplete_items":!items.length?"missing_items":bad?.valuation_reason||null;
- return {subscription:{...base,user_id:verifiedUserId,stripe_customer_id:check("subscription.customer","id",o.customer,()=>id(o.customer,"cus")),status:check("subscription.status","text",o.status,()=>text(o.status)),cancel_at_period_end:check("subscription.cancel_at_period_end","boolean",o.cancel_at_period_end,()=>bool(o.cancel_at_period_end)),cancel_at:check("subscription.cancel_at","optional_timestamp",o.cancel_at,()=>time(o.cancel_at)),
+ const reasons=[...(!complete?["incomplete_items"]:[]),...(!items.length?["missing_items"]:[]),...items.flatMap(i=>i.valuation_reason?.split("|")||[])];
+ const reason=[...new Set(reasons)].join("|")||null;
+ for(const item of items)item.forecast_tax_evidence=forecastTaxEvidence(item,parentDiscount.rows);
+ return {subscription:{...base,normalizer_version:2,user_id:verifiedUserId,stripe_customer_id:check("subscription.customer","id",o.customer,()=>id(o.customer,"cus")),status:check("subscription.status","text",o.status,()=>text(o.status)),cancel_at_period_end:check("subscription.cancel_at_period_end","boolean",o.cancel_at_period_end,()=>bool(o.cancel_at_period_end)),cancel_at:check("subscription.cancel_at","optional_timestamp",o.cancel_at,()=>time(o.cancel_at)),
   canceled_at:check("subscription.canceled_at","optional_timestamp",o.canceled_at,()=>time(o.canceled_at)),ended_at:check("subscription.ended_at","optional_timestamp",o.ended_at,()=>time(o.ended_at)),trial_end:check("subscription.trial_end","optional_timestamp",o.trial_end,()=>time(o.trial_end)),collection_paused:o.pause_collection!=null,
   linkage_status:verifiedUserId?"verified":"unresolved",valuation_status:reason?(!complete||!items.length?"incomplete":"unsupported"):"complete",valuation_reason:reason,
   items_complete:complete,discount_context:parentDiscount.rows},items};
@@ -146,11 +153,11 @@ export function normalizeInvoice(input:unknown,c:FinanceContext):FinanceInvoice 
  if(parent?.type==="subscription_details")sub=id(object(parent.subscription_details).subscription,"sub");
  else if(o.subscription!=null)sub=id(o.subscription,"sub");
  return {...provenance(o,c,"in"),stripe_customer_id:id(o.customer,"cus"),stripe_subscription_id:sub,number:optionalText(o.number),status:text(o.status),billing_reason:optionalText(o.billing_reason),collection_method:text(o.collection_method),currency:currency(o.currency),
-  subtotal_minor:minor(o.subtotal,true),discount_minor:minor(sumAmounts(o.total_discount_amounts)),tax_minor:sumAmounts(o.total_taxes),total_minor:minor(o.total,true),
+  subtotal_minor:minor(o.subtotal,true),discount_minor:minor(sumAmounts(o.total_discount_amounts)),tax_minor:invoiceTaxEvidence(o).taxMinor,total_minor:minor(o.total,true),
   amount_due_minor:minor(o.amount_due),amount_paid_minor:minor(o.amount_paid),amount_remaining_minor:minor(o.amount_remaining),attempt_count:count(o.attempt_count),
   due_at:time(o.due_date),next_payment_attempt_at:time(o.next_payment_attempt),finalized_at:time(s.finalized_at),paid_at:time(s.paid_at),voided_at:time(s.voided_at),marked_uncollectible_at:time(s.marked_uncollectible_at),
   // Allocation pagination/verification belongs to Phase 2, never infer it from an invoice.
-  payments_complete:false};
+  payments_complete:false,tax_evidence:invoiceTaxEvidence(o)};
 }
 export function normalizeInvoicePayment(input:unknown,c:FinanceContext):InvoicePayment {
  const o=object(input),p=object(o.payment),s=object(o.status_transitions),kind=text(p.type);

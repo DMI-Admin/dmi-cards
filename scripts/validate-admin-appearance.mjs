@@ -123,3 +123,11 @@ assert.equal(exports.isAdminAppearancePath('/business-onboarding'),true);
 const commercialCss=fs.readFileSync('src/components/admin/BusinessOnboardingPage.module.css','utf8');
 assert.match(commercialCss,/entitlementSummary/);
 assert.match(commercialCss,/var\(--admin-/);
+
+// Opt-in shell consumes existing Admin tokens without changing theme ownership.
+for (const file of ['src/components/Sidebar.module.css','src/components/admin/AdminShell.module.css']) {
+ const scoped = fs.readFileSync(file,'utf8');
+ assert.ok(scoped.includes('var(--admin-'));
+ assert.doesNotMatch(scoped, /!important|#[0-9a-f]{3,8}\b/i);
+ assert.ok(scoped.includes('focus-visible'));
+}
