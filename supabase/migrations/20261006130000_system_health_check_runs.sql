@@ -28,7 +28,7 @@ CREATE INDEX system_health_check_runs_environment_checked_idx
 
 ALTER TABLE public.system_health_check_runs ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.system_health_check_runs FROM PUBLIC, anon, authenticated, service_role;
-GRANT SELECT, INSERT, DELETE ON public.system_health_check_runs TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.system_health_check_runs TO service_role;
 
 CREATE FUNCTION public.prune_system_health_check_runs(
   p_environment text,
