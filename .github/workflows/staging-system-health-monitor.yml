@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: none
 
 concurrency:
   group: staging-system-health-monitor
@@ -17,6 +17,7 @@ jobs:
   monitor:
     name: Check Staging health
     runs-on: ubuntu-latest
+    environment: staging-monitor
     timeout-minutes: 2
     steps:
       - name: Request Staging monitoring run
@@ -32,10 +33,16 @@ jobs:
             exit 1
           fi
 
+          if [[ ! "$DMI_STAGING_CRON_SECRET" =~ ^[A-Za-z0-9._~+/=-]+$ ]]; then
+            echo "Staging monitoring secret has an unsupported format."
+            exit 1
+          fi
+
           response_file="$(mktemp)"
           trap 'rm -f "$response_file"' EXIT
 
-          http_status="$(curl \
+          http_status="$(printf 'header = "Authorization: Bearer %s"\n' "$DMI_STAGING_CRON_SECRET" | curl \
+            --config - \
             --silent \
             --show-error \
             --fail \
@@ -43,7 +50,6 @@ jobs:
             --max-time 45 \
             --output "$response_file" \
             --write-out '%{http_code}' \
-            --header "Authorization: Bearer ${DMI_STAGING_CRON_SECRET}" \
             "https://staging.dmicards.com/api/internal/system-health-monitor")"
 
           if (( http_status < 200 || http_status >= 300 )); then
