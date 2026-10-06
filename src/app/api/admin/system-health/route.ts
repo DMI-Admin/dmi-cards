@@ -1,155 +1,311 @@
-import { NextResponse } from "next/server";
+import "server-only";
+
 import { auth } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
 import {
-  isAdminAllowlistConfigured,
   requireAdminAccess,
 } from "@/lib/admin-auth";
+import { requestIdFromRequest } from "@/lib/observability/request";
+import {
+  healthGroups,
+  healthSeverity,
+  summarizeHealth,
+  type HealthCheck,
+  type HealthGroupId,
+  type HealthStatus,
+  type SafeHealthDetail,
+} from "@/lib/system-health/types";
 import { getAppleWalletConfig, validateAppleWalletConfig } from "@/lib/wallet/apple";
 import { checkGoogleWalletReadOnlyHealth } from "@/lib/wallet/google";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
-import { isEmailOAuthStateConfigured } from "@/lib/email/oauth-state";
-import { isEmailTokenEncryptionConfigured } from "@/lib/email/token-encryption";
-import { getGoogleEmailOAuthConfig } from "@/lib/email/providers/google";
-import { getMicrosoftEmailOAuthConfig } from "@/lib/email/providers/microsoft";
-
-type HealthStatus = "operational" | "degraded" | "outage";
-
-type HealthCheckResult = {
-  service: string;
-  status: HealthStatus;
-  latencyMs: number;
-  message: string;
-  metadata?: Record<string, string | number | boolean | null>;
-};
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
-export async function GET() {
+type CheckResult = {
+  status: HealthStatus;
+  message: string;
+  evidenceSummary: string;
+  verified: boolean;
+  observed?: boolean;
+  details?: Record<string, SafeHealthDetail>;
+};
+
+type CheckDefinition = {
+  service: string;
+  group: HealthGroupId;
+  check: () => Promise<CheckResult>;
+};
+
+const definitions: CheckDefinition[] = [
+  {
+    service: "web_application",
+    group: "core_platform",
+    check: async () => ({
+      status: "operational",
+      message: "This System Health request reached the application.",
+      evidenceSummary: "The protected health endpoint is responding.",
+      verified: true,
+      details: { probe: "current health request" },
+    }),
+  },
+  {
+    service: "database_read",
+    group: "core_platform",
+    check: checkDatabaseRead,
+  },
+  {
+    service: "database_configuration",
+    group: "core_platform",
+    check: async () => configResult(
+      "Supabase database access",
+      ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]
+    ),
+  },
+  {
+    service: "admin_authentication",
+    group: "core_platform",
+    check: async () => ({
+      status: "operational",
+      message: "Your current admin request passed authentication and access checks.",
+      evidenceSummary: "This request was authorized by Clerk and the admin access policy.",
+      verified: true,
+      details: { check: "current admin request only" },
+    }),
+  },
+  {
+    service: "customer_authentication",
+    group: "core_platform",
+    check: async () => unknownResult(
+      "Customer sign-in has not been exercised by a safe health probe.",
+      "No customer authentication test is run from this page."
+    ),
+  },
+  {
+    service: "supabase_auth_configuration",
+    group: "core_platform",
+    check: async () => configResult(
+      "Supabase Auth configuration",
+      ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"]
+    ),
+  },
+  {
+    service: "public_card_read_model",
+    group: "core_platform",
+    check: checkPublicCardReadModel,
+  },
+  {
+    service: "public_card_delivery",
+    group: "core_platform",
+    check: async () => unknownResult(
+      "Public card delivery has not been checked end to end.",
+      "No safe synthetic public-card fixture or non-writing probe is available."
+    ),
+  },
+  {
+    service: "stripe_configuration",
+    group: "payments_access",
+    check: async () => configResult(
+      "Stripe billing configuration",
+      ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"]
+    ),
+  },
+  {
+    service: "stripe_webhook_processing",
+    group: "payments_access",
+    check: async () => unknownResult(
+      "Webhook processing health cannot currently be verified safely.",
+      "Persisted webhook records have no suitable indexed, bounded health query."
+    ),
+  },
+  {
+    service: "subscription_synchronization",
+    group: "payments_access",
+    check: async () => unknownResult(
+      "Subscription synchronization health cannot currently be verified.",
+      "No bounded operational signal is available without scanning billing records."
+    ),
+  },
+  {
+    service: "entitlement_processing",
+    group: "payments_access",
+    check: async () => unknownResult(
+      "Entitlement processing health has no independent operational signal.",
+      "Subscription rows are intentionally not scanned for this health view."
+    ),
+  },
+  {
+    service: "card_publishing",
+    group: "card_services",
+    check: async () => unknownResult(
+      "Card publishing has not been checked end to end.",
+      "A published-card read does not prove that a customer can publish a card."
+    ),
+  },
+  {
+    service: "contacts_read_model",
+    group: "card_services",
+    check: checkContactsReadModel,
+  },
+  {
+    service: "public_lead_capture",
+    group: "card_services",
+    check: async () => unknownResult(
+      "Public lead capture has not been checked end to end.",
+      "No non-writing probe can verify lead persistence."
+    ),
+  },
+  {
+    service: "media_storage",
+    group: "card_services",
+    check: async () => unknownResult(
+      "Media upload and storage health has not been verified.",
+      "A safe read-only probe for the complete upload workflow is not available."
+    ),
+  },
+  {
+    service: "apple_wallet",
+    group: "card_services",
+    check: checkAppleWallet,
+  },
+  {
+    service: "google_wallet",
+    group: "card_services",
+    check: checkGoogleWallet,
+  },
+  {
+    service: "upstash_rate_limiting",
+    group: "infrastructure",
+    check: checkUpstashReachability,
+  },
+  {
+    service: "email_infrastructure",
+    group: "communications_integrations",
+    check: async () => unknownResult(
+      "Email delivery infrastructure has not been verified.",
+      "Configuration or stored connection metadata cannot prove delivery."
+    ),
+  },
+  {
+    service: "email_automations",
+    group: "communications_integrations",
+    check: async () => ({
+      status: "not_migrated",
+      message: "Email Automations exists in Production but its complete Staging foundation has not yet been migrated. This is a known staging-parity gap, not a service incident.",
+      evidenceSummary: "Known Staging parity gap; no Production systems were checked.",
+      verified: false,
+      observed: false,
+    }),
+  },
+  {
+    service: "external_integrations",
+    group: "communications_integrations",
+    check: async () => unknownResult(
+      "External integration health has not been verified.",
+      "No safe general integration health signal is available."
+    ),
+  },
+];
+
+export async function GET(request: Request) {
+  const requestId = requestIdFromRequest(request);
   const adminAccess = await requireAdminAccess(await auth());
 
   if (!adminAccess.authorized) {
     return NextResponse.json(
       { error: adminAccess.error },
-      { status: adminAccess.status }
+      { status: adminAccess.status, headers: { "x-request-id": requestId } }
     );
   }
 
-  const checks = await Promise.all([
-    timedCheck("application", checkApplication),
-    timedCheck("supabase_config", checkSupabaseConfig),
-    timedCheck("database", checkDatabase),
-    timedCheck("auth_config", checkAuthConfig),
-    timedCheck("admin_auth", checkAdminAuthConfig),
-    timedCheck("public_cards", checkPublicCardResolver),
-    timedCheck("rate_limiting", checkRateLimitConfig),
-    timedCheck("contacts", checkContactsReadModel),
-    timedCheck("stripe", checkStripeConfig),
-    timedCheck("apple_wallet", checkAppleWalletConfig),
-    timedCheck("google_wallet", checkGoogleWalletConfig),
-    timedCheck("google_email_oauth", checkGoogleEmailOAuthConfig),
-    timedCheck("microsoft_email_oauth", checkMicrosoftEmailOAuthConfig),
-  ]);
-  const status = aggregateStatus(checks);
+  const checks = await Promise.all(definitions.map((definition) => runCheck(definition)));
+  const checkByGroup = new Map<HealthGroupId, HealthCheck[]>();
+  for (const check of checks) {
+    const grouped = checkByGroup.get(check.group) || [];
+    grouped.push(check);
+    checkByGroup.set(check.group, grouped);
+  }
+  const checkedAt = new Date().toISOString();
 
-  return NextResponse.json({
-    status,
-    service: "dmi-cards",
-    checkedAt: new Date().toISOString(),
-    checks,
-  });
+  return NextResponse.json(
+    {
+      service: "dmi-cards",
+      requestId,
+      checkedAt,
+      overall: summarizeHealth(checks),
+      groups: healthGroups.map((group) => ({
+        ...group,
+        checks: checkByGroup.get(group.id) || [],
+      })),
+    },
+    {
+      headers: {
+        "Cache-Control": "private, no-store",
+        "x-request-id": requestId,
+      },
+    }
+  );
 }
 
-async function timedCheck(
-  service: string,
-  check: () => Promise<Omit<HealthCheckResult, "service" | "latencyMs">>
-): Promise<HealthCheckResult> {
-  const startedAt = Date.now();
-
+async function runCheck(definition: CheckDefinition): Promise<HealthCheck> {
+  const observedAt = new Date().toISOString();
   try {
-    const result = await withTimeout(check(), 5000);
+    const result = await withTimeout(definition.check(), 5000);
+    const verifiedAt = result.verified ? new Date().toISOString() : null;
     return {
-      service,
-      latencyMs: Date.now() - startedAt,
-      ...result,
+      service: definition.service,
+      group: definition.group,
+      status: result.status,
+      severity: healthSeverity(result.status),
+      observedAt: result.observed === false ? null : observedAt,
+      verifiedAt,
+      message: result.message,
+      evidenceSummary: result.evidenceSummary,
+      details: result.details || {},
     };
-  } catch {
+  } catch (error) {
     return {
-      service,
-      status: "outage",
-      latencyMs: Date.now() - startedAt,
-      message: "Health check failed.",
+      service: definition.service,
+      group: definition.group,
+      status: "unknown",
+      severity: "info",
+      observedAt,
+      verifiedAt: null,
+      message: "This check could not complete, so its health is unknown.",
+      evidenceSummary: "No verified result was returned.",
+      details: { errorCategory: safeErrorCategory(error) },
     };
   }
 }
 
-async function checkApplication() {
-  return {
-    status: "operational" as const,
-    message: "Application runtime is responding.",
-  };
-}
-
-async function checkSupabaseConfig() {
-  const hasUrl = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim());
-  const hasAnonKey = Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim());
-  const hasServiceRole = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
-  const configured = hasUrl && hasAnonKey && hasServiceRole;
-
-  return {
-    status: configured ? ("operational" as const) : ("outage" as const),
-    message: configured
-      ? "Supabase environment configuration is present."
-      : "Supabase environment configuration is incomplete.",
-  };
-}
-
-async function checkDatabase() {
-  const supabase = createSupabaseAdminClient();
-  const { error } = await supabase.from("templates").select("id").limit(1);
+async function checkDatabaseRead(): Promise<CheckResult> {
+  const { data, error } = await createSupabaseAdminClient()
+    .from("templates")
+    .select("id")
+    .limit(1);
 
   if (error) {
     return {
-      status: "outage" as const,
-      message: "Database read check failed.",
+      status: "incident",
+      message: "The database did not complete a read of the template catalogue.",
+      evidenceSummary: "A bounded database read failed.",
+      verified: true,
+      details: { query: "templates: select id, limit 1", errorCategory: safeErrorCode(error.code) },
     };
   }
 
   return {
-    status: "operational" as const,
-    message: "Database read check succeeded.",
+    status: "operational",
+    message: "The template catalogue can be read. This does not test every database operation.",
+    evidenceSummary: "A bounded service-role read of the template catalogue succeeded.",
+    verified: true,
+    details: { query: "templates: select id, limit 1", returnedRows: data?.length || 0 },
   };
 }
 
-async function checkAuthConfig() {
-  const configured = Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
-  );
-
-  return {
-    status: configured ? ("operational" as const) : ("outage" as const),
-    message: configured
-      ? "Client authentication configuration is present."
-      : "Client authentication configuration is incomplete.",
-  };
-}
-
-async function checkAdminAuthConfig() {
-  const configured = isAdminAllowlistConfigured();
-
-  return {
-    status: configured ? ("operational" as const) : ("outage" as const),
-    message: configured
-      ? "Admin allowlist configuration is present."
-      : "Admin allowlist configuration is missing.",
-  };
-}
-
-async function checkPublicCardResolver() {
-  const supabase = createSupabaseAdminClient();
-  const { error } = await supabase
+async function checkPublicCardReadModel(): Promise<CheckResult> {
+  const { data, error } = await createSupabaseAdminClient()
     .from("cards")
     .select("id")
     .or("status.eq.published,is_published.eq.true")
@@ -157,154 +313,188 @@ async function checkPublicCardResolver() {
 
   if (error) {
     return {
-      status: "outage" as const,
-      message: "Public card read model check failed.",
+      status: "degraded",
+      message: "The published-card read model could not be queried.",
+      evidenceSummary: "A bounded published-card database read failed; public delivery was not tested.",
+      verified: true,
+      details: { query: "published cards: select id, limit 1", errorCategory: safeErrorCode(error.code) },
     };
   }
 
   return {
-    status: "operational" as const,
-    message: "Public card read model is reachable.",
+    status: "operational",
+    message: "The published-card read query succeeded. Public page delivery and publishing are not tested.",
+    evidenceSummary: "A bounded read of the published-card data path succeeded.",
+    verified: true,
+    details: { query: "published cards: select id, limit 1", returnedRows: data?.length || 0 },
   };
 }
 
-async function checkRateLimitConfig() {
-  const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim().replace(/\/+$/, "") || "";
-  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim() || "";
-  const hasRedis = Boolean(redisUrl && redisToken);
-  const hasSecret = Boolean(process.env.PUBLIC_LEAD_RATE_LIMIT_SECRET?.trim());
-
-  if (!hasRedis || !hasSecret) {
-    return {
-      status: "degraded" as const,
-      message: "Public lead rate-limit configuration is incomplete.",
-    };
-  }
-
-  const response = await fetch(`${redisUrl}/ping`, {
-    headers: {
-      Authorization: `Bearer ${redisToken}`,
-    },
-    signal: AbortSignal.timeout(1500),
-  });
-
-  return {
-    status: response.ok ? ("operational" as const) : ("outage" as const),
-    message: response.ok
-      ? "Public lead rate limiter is reachable."
-      : "Public lead rate limiter did not respond successfully.",
-  };
-}
-
-async function checkContactsReadModel() {
-  const supabase = createSupabaseAdminClient();
-  const { error } = await supabase.from("contacts").select("id").limit(1);
+async function checkContactsReadModel(): Promise<CheckResult> {
+  const { data, error } = await createSupabaseAdminClient()
+    .from("contacts")
+    .select("id")
+    .limit(1);
 
   if (error) {
+    const missing = error.code === "42P01" || error.code === "PGRST205";
     return {
-      status: "outage" as const,
-      message: "Contacts read model check failed.",
+      status: missing ? "not_migrated" : "degraded",
+      message: missing
+        ? "The Contacts table is not present in this Staging database."
+        : "The Contacts table read could not be completed.",
+      evidenceSummary: missing
+        ? "The database reported that the Contacts relation is missing."
+        : "A bounded Contacts database read failed.",
+      verified: true,
+      details: { query: "contacts: select id, limit 1", errorCategory: safeErrorCode(error.code) },
     };
   }
 
   return {
-    status: "operational" as const,
-    message: "Contacts read model is reachable.",
+    status: "operational",
+    message: "The Contacts table can be read. Public lead capture is not tested.",
+    evidenceSummary: "A bounded service-role read of the Contacts table succeeded.",
+    verified: true,
+    details: { query: "contacts: select id, limit 1", returnedRows: data?.length || 0 },
   };
 }
 
-async function checkStripeConfig() {
-  const configured = Boolean(
-    process.env.STRIPE_SECRET_KEY?.trim() &&
-      process.env.STRIPE_WEBHOOK_SECRET?.trim() &&
-      process.env.STRIPE_PRICE_PRO_MONTHLY?.trim() &&
-      process.env.STRIPE_PRICE_PRO_ANNUAL?.trim()
-  );
-
-  return {
-    status: configured ? ("operational" as const) : ("degraded" as const),
-    message: configured
-      ? "Stripe configuration is present."
-      : "Stripe configuration is incomplete.",
-  };
-}
-
-async function checkAppleWalletConfig() {
-  const config = getAppleWalletConfig();
-
-  if (!config.configured) {
+async function checkAppleWallet(): Promise<CheckResult> {
+  const result = getAppleWalletConfig();
+  if (!result.configured) {
     return {
-      status: "degraded" as const,
+      status: "not_configured",
       message: "Apple Wallet configuration is incomplete.",
+      evidenceSummary: "Required local certificate configuration is absent.",
+      verified: false,
+      details: { missingConfigurationCount: result.missingVariables.length },
     };
   }
 
-  const valid = validateAppleWalletConfig(config.config);
-
+  const valid = validateAppleWalletConfig(result.config);
   return {
-    status: valid ? ("operational" as const) : ("degraded" as const),
+    status: valid ? "operational" : "degraded",
     message: valid
-      ? "Apple Wallet configuration is present and certificate material is readable."
+      ? "Apple Wallet certificate material is readable. Pass delivery is not tested."
       : "Apple Wallet certificate material could not be validated.",
+    evidenceSummary: valid
+      ? "Local certificate validation succeeded; provider delivery was not tested."
+      : "Local certificate validation failed.",
+    verified: true,
+    details: { check: "local certificate validation only" },
   };
 }
 
-async function checkGoogleWalletConfig() {
+async function checkGoogleWallet(): Promise<CheckResult> {
   const health = await checkGoogleWalletReadOnlyHealth();
-
+  const missingConfiguration = health.category === "missing_configuration";
+  const status: HealthStatus = health.status === "healthy"
+    ? "operational"
+    : missingConfiguration
+      ? "not_configured"
+      : "degraded";
   return {
-    status: googleWalletHealthStatus(health.status),
+    status,
     message: health.message,
-    metadata: {
-      walletStatus: health.status,
-      timestamp: health.timestamp,
-      category: health.category,
+    evidenceSummary: health.status === "healthy"
+      ? "Google Wallet token generation and class lookup succeeded."
+      : missingConfiguration
+        ? "Required Google Wallet configuration is absent."
+        : "The read-only Google Wallet provider check reported a problem.",
+    verified: health.status !== "degraded" || !missingConfiguration,
+    details: {
+      checkCategory: safeCategory(health.category),
       httpStatus: health.httpStatus ?? null,
-      providerStatus: health.providerStatus ?? null,
     },
   };
 }
 
-function googleWalletHealthStatus(status: "healthy" | "degraded" | "failed") {
-  if (status === "healthy") return "operational" as const;
-  if (status === "failed") return "outage" as const;
-  return "degraded" as const;
+async function checkUpstashReachability(): Promise<CheckResult> {
+  const url = process.env.UPSTASH_REDIS_REST_URL?.trim().replace(/\/+$/, "") || "";
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim() || "";
+  const hasRateLimitSecret = Boolean(process.env.PUBLIC_LEAD_RATE_LIMIT_SECRET?.trim());
+  if (!url || !token || !hasRateLimitSecret) {
+    return {
+      status: "not_configured",
+      message: "Upstash rate-limit configuration is incomplete.",
+      evidenceSummary: "Required Upstash or rate-limit configuration is absent.",
+      verified: false,
+      details: {
+        redisConfigurationPresent: Boolean(url && token),
+        rateLimitSecretPresent: hasRateLimitSecret,
+      },
+    };
+  }
+
+  try {
+    const response = await fetch(`${url}/ping`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(1500),
+      cache: "no-store",
+    });
+    return {
+      status: response.ok ? "operational" : "degraded",
+      message: response.ok
+        ? "Upstash Redis responded to a ping. The application rate-limit flow is not tested."
+        : "Upstash Redis did not return a successful ping response.",
+      evidenceSummary: response.ok
+        ? "The configured Redis endpoint answered a read-only ping."
+        : "The configured Redis endpoint returned an unsuccessful ping response.",
+      verified: true,
+      details: { probe: "Redis PING", httpStatus: response.status },
+    };
+  } catch {
+    return {
+      status: "degraded",
+      message: "Upstash Redis did not respond to the read-only ping.",
+      evidenceSummary: "The configured Redis endpoint failed to respond within the probe limit.",
+      verified: true,
+      details: { probe: "Redis PING", errorCategory: "unreachable_or_timeout" },
+    };
+  }
 }
 
-async function checkGoogleEmailOAuthConfig() {
-  const oauthConfig = getGoogleEmailOAuthConfig();
-  const configured =
-    oauthConfig.configured &&
-    isEmailTokenEncryptionConfigured() &&
-    isEmailOAuthStateConfigured();
-
+function configResult(label: string, variables: string[]): CheckResult {
+  const present = variables.filter((name) => Boolean(process.env[name]?.trim()));
+  const configured = present.length === variables.length;
   return {
-    status: configured ? ("operational" as const) : ("degraded" as const),
+    status: configured ? "unknown" : "not_configured",
     message: configured
-      ? "Google email OAuth configuration is present."
-      : "Google email OAuth configuration is incomplete.",
+      ? `${label} values are present, but service operation has not been tested.`
+      : `${label} is not fully configured.`,
+    evidenceSummary: configured
+      ? "Configuration presence was checked; it does not prove service health."
+      : "One or more required configuration values are absent.",
+    verified: false,
+    details: {
+      configurationPresentCount: present.length,
+      requiredConfigurationCount: variables.length,
+    },
   };
 }
 
-async function checkMicrosoftEmailOAuthConfig() {
-  const oauthConfig = getMicrosoftEmailOAuthConfig();
-  const configured =
-    oauthConfig.configured &&
-    isEmailTokenEncryptionConfigured() &&
-    isEmailOAuthStateConfigured();
-
+function unknownResult(message: string, evidenceSummary: string): CheckResult {
   return {
-    status: configured ? ("operational" as const) : ("degraded" as const),
-    message: configured
-      ? "Microsoft email OAuth configuration is present."
-      : "Microsoft email OAuth configuration is incomplete.",
+    status: "unknown",
+    message,
+    evidenceSummary,
+    verified: false,
+    observed: false,
   };
 }
 
-function aggregateStatus(checks: HealthCheckResult[]): HealthStatus {
-  if (checks.some((check) => check.status === "outage")) return "outage";
-  if (checks.some((check) => check.status === "degraded")) return "degraded";
-  return "operational";
+function safeErrorCategory(error: unknown) {
+  if (!error || typeof error !== "object" || !("code" in error)) return "check_failed";
+  return safeErrorCode(String(error.code));
+}
+
+function safeErrorCode(value: string | undefined) {
+  return value && /^[A-Z0-9_]{1,40}$/.test(value) ? value : "unclassified";
+}
+
+function safeCategory(value: string) {
+  return /^[a-zA-Z0-9_.-]{1,80}$/.test(value) ? value : "unavailable";
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
