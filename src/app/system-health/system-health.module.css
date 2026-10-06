@@ -1,0 +1,53 @@
+.statusBadge {
+  display: inline-flex;
+  max-width: 100%;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid;
+  border-radius: 9999px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.25rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.operational {
+  color: #14532d !important;
+  background: #dcfce7 !important;
+  border-color: #86efac !important;
+}
+
+.degraded,
+.needsInvestigation {
+  color: #7c2d12 !important;
+  background: #ffedd5 !important;
+  border-color: #fdba74 !important;
+}
+
+.incident {
+  color: #7f1d1d !important;
+  background: #fee2e2 !important;
+  border-color: #fca5a5 !important;
+}
+
+.setupRequired {
+  color: #78350f !important;
+  background: #fef3c7 !important;
+  border-color: #fcd34d !important;
+}
+
+.stagingGap {
+  color: #581c87 !important;
+  background: #f3e8ff !important;
+  border-color: #d8b4fe !important;
+}
+
+.notYetMonitored,
+.unknown {
+  color: #334155 !important;
+  background: #e2e8f0 !important;
+  border-color: #94a3b8 !important;
+}
