@@ -100,7 +100,9 @@ export function getGoogleWalletConfig(): GoogleWalletConfigResult {
   };
 }
 
-export async function checkGoogleWalletReadOnlyHealth(): Promise<GoogleWalletHealthResult> {
+export async function checkGoogleWalletReadOnlyHealth(
+  signal?: AbortSignal
+): Promise<GoogleWalletHealthResult> {
   const timestamp = new Date().toISOString();
   const config = getGoogleWalletConfig();
 
@@ -125,7 +127,7 @@ export async function checkGoogleWalletReadOnlyHealth(): Promise<GoogleWalletHea
   let accessToken = "";
 
   try {
-    accessToken = await createGoogleWalletAccessToken(config.config);
+    accessToken = await createGoogleWalletAccessToken(config.config, signal);
   } catch (error) {
     return googleWalletHealthFailure(
       timestamp,
@@ -138,7 +140,8 @@ export async function checkGoogleWalletReadOnlyHealth(): Promise<GoogleWalletHea
   const classId = buildGoogleWalletClassId(config.config.issuerId);
   const response = await googleWalletRequest(
     accessToken,
-    `genericClass/${resourceId(classId)}`
+    `genericClass/${resourceId(classId)}`,
+    { signal }
   );
 
   if (!response.ok) {
@@ -363,7 +366,7 @@ async function resolveGoogleWalletProfileImageUrl(card: WalletCardForPass) {
   return (await isPublicGoogleWalletImage(profileImageUrl)) ? profileImageUrl : "";
 }
 
-async function createGoogleWalletAccessToken(config: GoogleWalletConfig) {
+async function createGoogleWalletAccessToken(config: GoogleWalletConfig, signal?: AbortSignal) {
   const now = Math.floor(Date.now() / 1000);
   const assertion = signJwt(
     {
@@ -384,6 +387,7 @@ async function createGoogleWalletAccessToken(config: GoogleWalletConfig) {
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
     },
+    ...(signal ? { signal } : {}),
     body: new URLSearchParams({
       grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
       assertion,
@@ -442,6 +446,7 @@ async function googleWalletRequest(
   options: {
     body?: Record<string, unknown>;
     method?: "GET" | "PATCH" | "POST";
+    signal?: AbortSignal;
   } = {}
 ) {
   return fetch(`${googleWalletApiBaseUrl}/${path}`, {
@@ -450,6 +455,7 @@ async function googleWalletRequest(
       Authorization: `Bearer ${accessToken}`,
       ...(options.body ? { "Content-Type": "application/json" } : {}),
     },
+    ...(options.signal ? { signal: options.signal } : {}),
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 }

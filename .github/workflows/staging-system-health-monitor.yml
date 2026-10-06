@@ -1,0 +1,78 @@
+name: Staging System Health Monitor
+
+# GitHub scheduling is best-effort; workflow failures are not owner alerts.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-system-health-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    name: Check Staging health
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Request Staging monitoring run
+        shell: bash
+        env:
+          DMI_STAGING_CRON_SECRET: ${{ secrets.DMI_STAGING_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          set +x
+
+          if [[ -z "${DMI_STAGING_CRON_SECRET:-}" ]]; then
+            echo "Required repository secret DMI_STAGING_CRON_SECRET is not configured."
+            exit 1
+          fi
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          http_status="$(curl \
+            --silent \
+            --show-error \
+            --fail \
+            --connect-timeout 10 \
+            --max-time 45 \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${DMI_STAGING_CRON_SECRET}" \
+            "https://staging.dmicards.com/api/internal/system-health-monitor")"
+
+          if (( http_status < 200 || http_status >= 300 )); then
+            echo "Staging monitoring endpoint returned a non-success HTTP status."
+            exit 1
+          fi
+
+          jq -e '
+            .ok == true and
+            (.runId | type == "string") and
+            (.checked | type == "number") and
+            (.operational | type == "number") and
+            (.degraded | type == "number") and
+            (.incident | type == "number") and
+            (.unknown | type == "number") and
+            (.notConfigured | type == "number") and
+            (.notMigrated | type == "number") and
+            (.retentionDeleted | type == "number")
+          ' "$response_file" >/dev/null
+
+          jq '{
+            ok,
+            runId,
+            checked,
+            operational,
+            degraded,
+            incident,
+            unknown,
+            notConfigured,
+            notMigrated,
+            retentionDeleted
+          }' "$response_file"
