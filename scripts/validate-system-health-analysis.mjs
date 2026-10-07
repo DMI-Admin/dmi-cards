@@ -3,6 +3,8 @@ import fs from "node:fs";
 import { resolve } from "node:path";
 import vm from "node:vm";
 import ts from "typescript";
+import { Readable } from "node:stream";
+import { NextRequestAdapter } from "next/dist/server/web/spec-extension/adapters/next-request.js";
 
 const root = process.cwd();
 const cache = new Map();
@@ -314,7 +316,7 @@ const analysisServerSource = fs.readFileSync(resolve(root, "src/lib/system-healt
 assert.match(routeSource, /requireAdminAccess\(await auth\(\)\)/);
 assert.match(routeSource, /process\.env\.VERCEL_ENV !== "preview"/);
 assert.match(routeSource, /NEXT_PUBLIC_SUPABASE_URL\?\.trim\(\) !== stagingSupabaseUrl/);
-assert.match(routeSource, /request\.body !== null/);
+assert.match(routeSource, /await hasEmptyRequestBody\(request\)/);
 assert.match(routeSource, /loadLatestStagingMonitorRun/);
 assert.match(routeSource, /buildAnalysisInput/);
 assert.match(routeSource, /enforceSystemHealthAnalysisRateLimit/);
@@ -328,4 +330,102 @@ assert.match(providerSource, /https:\/\/api\.openai\.com\/v1\/responses/);
 assert.doesNotMatch(providerSource, /console\.|logError|logWarn|NEXT_PUBLIC_OPENAI/);
 assert.doesNotMatch(analysisServerSource, /system_health_check_runs|runSystemHealthMonitoring/);
 
-console.log("PASS: shared section grouping, deterministic levels, advisory provider schema, anti-escalation, bounded server orchestration, Admin/Staging route guards, Upstash rate limits, and server-only provider boundary.");
+// Exercise the actual route with the installed Next.js request adapter. Every
+// external dependency is mocked; the VM never sees real environment variables.
+const routeCalls = { limiter: 0, savedRun: 0, provider: 0 };
+const routeEnv = {
+  VERCEL_ENV: "preview",
+  NEXT_PUBLIC_SUPABASE_URL: "https://uohdkewufeivdpaljnng.supabase.co",
+};
+let authorized = true;
+const routeDependencies = {
+  "server-only": {},
+  "@clerk/nextjs/server": { auth: async () => ({}) },
+  "next/server": { NextResponse: { json: (body, options) => Response.json(body, options) } },
+  "@/lib/admin-auth": { requireAdminAccess: async () => ({ authorized, userId: "synthetic-admin", error: "Forbidden", status: 403 }) },
+  "@/lib/observability/request": { requestIdFromRequest: () => "synthetic-request" },
+  "@/lib/security/public-lead-rate-limit": { enforceSystemHealthAnalysisRateLimit: async () => { routeCalls.limiter++; return true; } },
+  "@/lib/system-health/admin-report-server": { loadLatestStagingMonitorRun: async () => { routeCalls.savedRun++; return {}; } },
+  "@/lib/system-health/presentation": { buildDiagnosticReport: () => ({}) },
+  "@/lib/system-health/analysis-contract": { buildAnalysisInput: () => groupedInput },
+  "@/lib/system-health/analysis-provider": {
+    ...providerModule,
+    getSystemHealthAnalysisProvider: () => ({ analyze: async (...args) => { routeCalls.provider++; return mockProvider.analyze(...args); } }),
+  },
+  "@/lib/system-health/analysis-server": analysisServer,
+};
+const routeModule = { exports: {} };
+vm.runInNewContext(ts.transpileModule(routeSource, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, {
+  module: routeModule, exports: routeModule.exports,
+  require: (specifier) => {
+    assert.ok(Object.hasOwn(routeDependencies, specifier), `Unexpected route dependency: ${specifier}`);
+    return routeDependencies[specifier];
+  },
+  process: { env: routeEnv }, setTimeout, clearTimeout,
+  fetch: () => { throw new Error("Network requests are forbidden in route validation"); },
+});
+const requestUrl = "https://offline.invalid/api/admin/system-health/analysis";
+const standardPost = (body, headers = {}) => new Request(requestUrl, {
+  method: "POST", headers, ...(body === undefined ? {} : { body, duplex: "half" }),
+});
+const nextPost = (chunks, headers = {}) => NextRequestAdapter.fromNodeNextRequest({
+  url: requestUrl, method: "POST", headers, body: Readable.from(chunks),
+}, new AbortController().signal);
+async function checkRoute(request, expectedStatus) {
+  for (const key of Object.keys(routeCalls)) routeCalls[key] = 0;
+  const result = await routeModule.exports.POST(request);
+  assert.equal(result.status, expectedStatus);
+  assert.equal(result.headers.get("Cache-Control"), "private, no-store");
+  const expectedCalls = expectedStatus === 200 ? 1 : 0;
+  assert.deepEqual(routeCalls, { limiter: expectedCalls, savedRun: expectedCalls, provider: expectedCalls });
+  const body = await result.json();
+  if (expectedStatus === 200) {
+    assert.equal(body.overall.level, "critical");
+    assert.doesNotMatch(JSON.stringify(body), /usage|costNanoUsd|reasoning/);
+  } else if (expectedStatus === 400) {
+    assert.deepEqual(body, { error: "A request body is not supported." });
+  }
+}
+await checkRoute(standardPost(), 200);
+for (const headers of [{}, { "content-length": "0" }, { "content-length": "100" }]) {
+  const request = nextPost([], headers);
+  assert.notEqual(request.body, null, "Next.js supplies an empty body stream");
+  await checkRoute(request, 200);
+  for (const body of ['{"prompt":"arbitrary"}', '{"diagnostics":[]}', " \t\n"]) {
+    await checkRoute(nextPost([Buffer.from(body)], headers), 400);
+    await checkRoute(standardPost(body, headers), 400);
+  }
+}
+await checkRoute(standardPost(new ReadableStream({ start(controller) {
+  controller.enqueue(new Uint8Array()); controller.close();
+} })), 200);
+await checkRoute(standardPost(new ReadableStream({ start(controller) {
+  controller.enqueue(new Uint8Array()); controller.enqueue(new Uint8Array([32])); controller.close();
+} })), 400);
+let cancelled = false;
+const started = Date.now();
+await checkRoute(standardPost(new ReadableStream({
+  start() {},
+  cancel() { cancelled = true; return new Promise(() => {}); },
+})), 400);
+assert.equal(cancelled, true);
+assert.ok(Date.now() - started < 2000, "Stalled reads and cancellation must be bounded");
+await checkRoute(standardPost(new ReadableStream({ start(controller) {
+  controller.error(new Error("synthetic private stream error"));
+} })), 400);
+await checkRoute(standardPost(new ReadableStream({ pull(controller) {
+  controller.enqueue(new Uint8Array());
+} })), 400);
+const locked = standardPost(new ReadableStream());
+const lockedReader = locked.body.getReader();
+await checkRoute(locked, 400);
+lockedReader.releaseLock();
+authorized = false;
+await checkRoute(standardPost(), 403);
+authorized = true;
+routeEnv.VERCEL_ENV = "production";
+await checkRoute(standardPost(), 503);
+
+console.log("PASS: shared section grouping, deterministic levels, strict advisory schema, bounded server orchestration, Admin/Staging guards, and actual route regression tests for standard/Next.js empty POSTs, nonempty/whitespace bodies, misleading headers, stalled/erroring/locked streams, bounded cancellation, and rejection before limiter/provider. No live requests.");

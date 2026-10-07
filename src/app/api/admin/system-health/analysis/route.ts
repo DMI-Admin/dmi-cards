@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (request.body !== null) {
+  if (!(await hasEmptyRequestBody(request))) {
     return response(
       { error: "A request body is not supported." },
       400,
@@ -115,6 +115,41 @@ export async function POST(request: Request) {
       503,
       requestId
     );
+  }
+}
+
+async function hasEmptyRequestBody(request: Request): Promise<boolean> {
+  if (request.body === null) return true;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    reader = request.body.getReader();
+    const bodyReader = reader;
+    // Next.js may provide an empty stream for a bodyless POST. Inspect bytes,
+    // never Content-Length, and bound both elapsed time and empty chunks.
+    const deadline = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), 1_000);
+    });
+    return await Promise.race([
+      deadline,
+      (async () => {
+        for (let reads = 0; reads < 16; reads++) {
+          const { done, value } = await bodyReader.read();
+          if (done) return true;
+          if (value.byteLength !== 0) return false;
+        }
+        return false;
+      })(),
+    ]);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+    if (reader) {
+      // Cancellation can itself stall; do not await untrusted stream cleanup.
+      void reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
   }
 }
 

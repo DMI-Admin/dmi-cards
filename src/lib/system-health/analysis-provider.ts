@@ -158,13 +158,15 @@ function extractNarrativeText(body: Record<string, unknown>): string {
   let reasoningSeen = false;
   for (const item of body.output) {
     if (!isRecord(item)) throw new AnalysisProviderOutputInvalidError();
-    // Reasoning models may return a documented reasoning item. No summary was requested.
+    // Ignore documented reasoning metadata; it is never the advisory narrative.
     if (item.type === "reasoning") {
       if (
         reasoningSeen || text !== undefined || typeof item.id !== "string" ||
-        !Array.isArray(item.summary) || item.summary.length !== 0 ||
-        (item.status !== undefined && item.status !== "completed") ||
-        Object.keys(item).some((key) => !["id", "type", "summary", "status"].includes(key))
+        !isReasoningTextArray(item.summary, "summary_text") ||
+        (item.content !== undefined && !isReasoningTextArray(item.content, "reasoning_text")) ||
+        (item.encrypted_content != null && typeof item.encrypted_content !== "string") ||
+        (item.status != null && item.status !== "completed") ||
+        Object.keys(item).some((key) => !["id", "type", "summary", "status", "content", "encrypted_content"].includes(key))
       ) throw new AnalysisProviderOutputInvalidError();
       reasoningSeen = true;
       continue;
@@ -172,7 +174,8 @@ function extractNarrativeText(body: Record<string, unknown>): string {
     if (
       item.type !== "message" || item.role !== "assistant" || item.status !== "completed" ||
       typeof item.id !== "string" || text !== undefined ||
-      Object.keys(item).some((key) => !["id", "type", "role", "status", "content"].includes(key)) ||
+      (item.phase != null && item.phase !== "final_answer") ||
+      Object.keys(item).some((key) => !["id", "type", "role", "status", "content", "phase"].includes(key)) ||
       !Array.isArray(item.content) || item.content.length !== 1
     ) throw new AnalysisProviderOutputInvalidError();
     const content: unknown = item.content[0];
@@ -186,6 +189,13 @@ function extractNarrativeText(body: Record<string, unknown>): string {
   }
   if (text === undefined) throw new AnalysisProviderOutputInvalidError();
   return text;
+}
+
+function isReasoningTextArray(value: unknown, type: string): boolean {
+  return Array.isArray(value) && value.every((part: unknown) =>
+    isRecord(part) && part.type === type && typeof part.text === "string" &&
+    Object.keys(part).every((key) => ["type", "text"].includes(key))
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

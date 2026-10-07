@@ -146,9 +146,49 @@ for (const body of [
   envelope({ output: [{ ...envelope().output[0], content: [{ type: "output_text", text: JSON.stringify({ ...narrative, sections: [] }), annotations: [] }] }] }),
 ]) await rejectsSafely(async () => jsonResponse(body));
 const reasoning = { type: "reasoning", id: "rs_test", summary: [] };
-fetchMock = async () => jsonResponse(envelope({ output: [reasoning, ...envelope().output] }));
-await server.runSystemHealthAnalysis(input, adapter);
-await rejectsSafely(async () => jsonResponse(envelope({ output: [{ ...reasoning, summary: [{ type: "summary_text", text: "unexpected" }] }, ...envelope().output] })));
+const privateReasoning = "synthetic reasoning must never be returned";
+for (const metadata of [
+  reasoning,
+  { ...reasoning, status: null },
+  { ...reasoning, status: "completed", summary: [{ type: "summary_text", text: privateReasoning }] },
+  { ...reasoning, status: null, content: [{ type: "reasoning_text", text: privateReasoning }], encrypted_content: "synthetic-encrypted-reasoning" },
+  { ...reasoning, encrypted_content: null },
+]) {
+  for (const phase of [undefined, null, "final_answer"]) {
+    const finalMessage = { ...envelope().output[0], ...(phase === undefined ? {} : { phase }) };
+    fetchMock = async () => jsonResponse(envelope({ output: [metadata, finalMessage] }));
+    const parsed = await adapter.analyze(input, provider.SYSTEM_HEALTH_ANALYSIS_INSTRUCTIONS, new AbortController().signal);
+    assert.deepEqual(JSON.parse(JSON.stringify(parsed.narrative)), JSON.parse(JSON.stringify(narrative)));
+    assert.equal(parsed.usage.costNanoUsd, 728000);
+    const browser = await server.runSystemHealthAnalysis(input, adapter);
+    assert.equal(browser.overall.level, "monitoring_incomplete");
+    assert.doesNotMatch(JSON.stringify({ parsed, browser }), /synthetic reasoning|synthetic-encrypted-reasoning|summary_text|reasoning_text/);
+    assert.doesNotMatch(JSON.stringify(browser), /usage|costNanoUsd|pricingStatus/);
+  }
+}
+for (const phase of [null, "final_answer"]) {
+  fetchMock = async () => jsonResponse(envelope({ output: [{ ...envelope().output[0], phase }] }));
+  await server.runSystemHealthAnalysis(input, adapter);
+}
+for (const metadata of [
+  { ...reasoning, status: "incomplete" },
+  { ...reasoning, status: "failed" },
+  { ...reasoning, summary: [{ type: "summary_text", text: 123 }] },
+  { ...reasoning, summary: [{ type: "summary_text", text: privateReasoning, level: "critical" }] },
+  { ...reasoning, content: [{ type: "output_text", text: JSON.stringify(narrative) }] },
+  { ...reasoning, encrypted_content: {} },
+  { ...reasoning, unexpected: true },
+]) await rejectsSafely(async () => jsonResponse(envelope({ output: [metadata, ...envelope().output] })));
+for (const phase of ["commentary", "unexpected", 123, {}]) {
+  await rejectsSafely(async () => jsonResponse(envelope({ output: [{ ...envelope().output[0], phase }] })));
+}
+await rejectsSafely(async () => jsonResponse(envelope({ output: [...envelope().output, reasoning] })));
+await rejectsSafely(async () => jsonResponse(envelope({ output: [reasoning] })));
+await rejectsSafely(async () => jsonResponse(envelope({ output: [reasoning, {
+  ...envelope().output[0], phase: "final_answer", content: [{
+    type: "output_text", text: JSON.stringify({ ...narrative, level: "critical" }), annotations: [],
+  }],
+}] })));
 
 for (const invalid of [undefined, null, {}, { input_tokens: -1, output_tokens: 0 }, { input_tokens: 0.5, output_tokens: 0 },
   { input_tokens: "1", output_tokens: 0 }, { input_tokens: 0, output_tokens: -1 }, { input_tokens: 0, output_tokens: Number.MAX_SAFE_INTEGER + 1 },
