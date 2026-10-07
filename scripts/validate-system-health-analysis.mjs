@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import vm from "node:vm";
 import ts from "typescript";
 import { Readable } from "node:stream";
+import { randomUUID } from "node:crypto";
 import { NextRequestAdapter } from "next/dist/server/web/spec-extension/adapters/next-request.js";
 
 const root = process.cwd();
@@ -338,19 +339,27 @@ const routeEnv = {
   NEXT_PUBLIC_SUPABASE_URL: "https://uohdkewufeivdpaljnng.supabase.co",
 };
 let authorized = true;
+const routeEvents = [];
+let routeProviderError;
 const routeDependencies = {
   "server-only": {},
   "@clerk/nextjs/server": { auth: async () => ({}) },
   "next/server": { NextResponse: { json: (body, options) => Response.json(body, options) } },
   "@/lib/admin-auth": { requireAdminAccess: async () => ({ authorized, userId: "synthetic-admin", error: "Forbidden", status: 403 }) },
   "@/lib/observability/request": { requestIdFromRequest: () => "synthetic-request" },
+  "node:crypto": { randomUUID },
+  "@/lib/observability/logger": { logWarn: (event) => { routeEvents.push(event); } },
   "@/lib/security/public-lead-rate-limit": { enforceSystemHealthAnalysisRateLimit: async () => { routeCalls.limiter++; return true; } },
   "@/lib/system-health/admin-report-server": { loadLatestStagingMonitorRun: async () => { routeCalls.savedRun++; return {}; } },
   "@/lib/system-health/presentation": { buildDiagnosticReport: () => ({}) },
   "@/lib/system-health/analysis-contract": { buildAnalysisInput: () => groupedInput },
   "@/lib/system-health/analysis-provider": {
     ...providerModule,
-    getSystemHealthAnalysisProvider: () => ({ analyze: async (...args) => { routeCalls.provider++; return mockProvider.analyze(...args); } }),
+    getSystemHealthAnalysisProvider: () => ({ analyze: async (...args) => {
+      routeCalls.provider++;
+      if (routeProviderError) throw routeProviderError;
+      return mockProvider.analyze(...args);
+    } }),
   },
   "@/lib/system-health/analysis-server": analysisServer,
 };
@@ -374,6 +383,7 @@ const nextPost = (chunks, headers = {}) => NextRequestAdapter.fromNodeNextReques
   url: requestUrl, method: "POST", headers, body: Readable.from(chunks),
 }, new AbortController().signal);
 async function checkRoute(request, expectedStatus) {
+  routeEvents.length = 0;
   for (const key of Object.keys(routeCalls)) routeCalls[key] = 0;
   const result = await routeModule.exports.POST(request);
   assert.equal(result.status, expectedStatus);
@@ -381,6 +391,7 @@ async function checkRoute(request, expectedStatus) {
   const expectedCalls = expectedStatus === 200 ? 1 : 0;
   assert.deepEqual(routeCalls, { limiter: expectedCalls, savedRun: expectedCalls, provider: expectedCalls });
   const body = await result.json();
+  assert.equal(routeEvents.length, 0, "Success and pre-analysis guards do not log provider metadata");
   if (expectedStatus === 200) {
     assert.equal(body.overall.level, "critical");
     assert.doesNotMatch(JSON.stringify(body), /usage|costNanoUsd|reasoning/);
@@ -427,5 +438,24 @@ await checkRoute(standardPost(), 403);
 authorized = true;
 routeEnv.VERCEL_ENV = "production";
 await checkRoute(standardPost(), 503);
+routeEnv.VERCEL_ENV = "preview";
+for (const [error, status, message] of [
+  [new providerModule.AnalysisProviderOutputInvalidError("narrative_semantic_invalid"), 502, "System Health AI returned a response that could not be validated."],
+  [new providerModule.AnalysisProviderTimeoutError(), 504, "System Health AI analysis timed out. Try again later."],
+  [new providerModule.AnalysisProviderNotConfiguredError(), 503, "System Health AI analysis is not configured."],
+  [new providerModule.AnalysisInputTooLargeError(), 413, "System Health diagnostic input exceeded the safe analysis limit."],
+  [new Error("synthetic private failure"), 503, "System Health analysis could not be completed safely."],
+]) {
+  routeProviderError = error;
+  routeEvents.length = 0;
+  const response = await routeModule.exports.POST(standardPost());
+  assert.equal(response.status, status);
+  assert.deepEqual(await response.json(), { error: message });
+  assert.equal(routeEvents.length, 1);
+  assert.equal(routeEvents[0].code, "system_health_ai_analysis_failed");
+  assert.match(routeEvents[0].requestId, /^[a-f0-9-]{36}$/);
+  assert.notEqual(routeEvents[0].requestId, "synthetic-request");
+  assert.doesNotMatch(JSON.stringify(routeEvents), /synthetic private failure|synthetic-admin/);
+}
 
 console.log("PASS: shared section grouping, deterministic levels, strict advisory schema, bounded server orchestration, Admin/Staging guards, and actual route regression tests for standard/Next.js empty POSTs, nonempty/whitespace bodies, misleading headers, stalled/erroring/locked streams, bounded cancellation, and rejection before limiter/provider. No live requests.");

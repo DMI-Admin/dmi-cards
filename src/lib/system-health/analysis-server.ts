@@ -14,6 +14,8 @@ import {
   AnalysisProviderOutputInvalidError,
   AnalysisProviderTimeoutError,
   SYSTEM_HEALTH_ANALYSIS_INSTRUCTIONS,
+  analysisFailureMetadata,
+  type AnalysisProviderProgress,
   type SystemHealthAnalysisProvider,
 } from "./analysis-provider";
 
@@ -30,15 +32,17 @@ export async function runSystemHealthAnalysis(
   }
 
   const controller = new AbortController();
+  const startedAt = Date.now();
+  const progress: AnalysisProviderProgress = { fetch_attempted: false, response_received: false };
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let rawOutput: unknown;
   try {
     const providerResult = await Promise.race([
-      provider.analyze(input, SYSTEM_HEALTH_ANALYSIS_INSTRUCTIONS, controller.signal),
+      provider.analyze(input, SYSTEM_HEALTH_ANALYSIS_INSTRUCTIONS, controller.signal, progress),
       new Promise<never>((_, reject) => {
         timeout = setTimeout(() => {
           controller.abort();
-          reject(new AnalysisProviderTimeoutError());
+          reject(new AnalysisProviderTimeoutError(analysisFailureMetadata("timeout", progress, startedAt)));
         }, timeoutMs);
       }),
     ]);
@@ -49,11 +53,11 @@ export async function runSystemHealthAnalysis(
   }
 
   if (byteLength(rawOutput) > MAX_PROVIDER_OUTPUT_BYTES) {
-    throw new AnalysisProviderOutputInvalidError();
+    throw new AnalysisProviderOutputInvalidError("response_too_large", progress, startedAt);
   }
 
   const result = buildValidatedAnalysisResult(rawOutput, input);
-  if (!result) throw new AnalysisProviderOutputInvalidError();
+  if (!result) throw new AnalysisProviderOutputInvalidError("final_result_invalid", progress, startedAt);
   return result;
 }
 

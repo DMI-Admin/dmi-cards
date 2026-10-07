@@ -3,12 +3,15 @@ import fs from "node:fs";
 import { resolve, dirname, relative } from "node:path";
 import vm from "node:vm";
 import ts from "typescript";
+import { randomUUID } from "node:crypto";
 
 // Isolated environment: never read process.env or load dotenv/real credentials.
 const syntheticKey = "synthetic-system-health-test-key";
 const env = { OPENAI_API_KEY: syntheticKey };
 let fetchMock;
 const cache = new Map();
+const loggedOutput = [];
+const routeDependencies = {};
 function load(path) {
   if (cache.has(path)) return cache.get(path);
   const source = fs.readFileSync(path, "utf8");
@@ -22,12 +25,14 @@ function load(path) {
     exports: moduleRecord.exports,
     require: (specifier) => {
       if (specifier === "server-only") return {};
+      if (Object.hasOwn(routeDependencies, specifier)) return routeDependencies[specifier];
       assert.ok(specifier.startsWith("."), "Only local modules may be loaded");
       return load(resolve(dirname(path), `${specifier}.ts`));
     },
     process: { env },
     fetch: (...args) => fetchMock(...args),
     TextEncoder, TextDecoder, AbortController, setTimeout, clearTimeout,
+    console: { warn: (value) => loggedOutput.push(value), error: (value) => loggedOutput.push(value), info: (value) => loggedOutput.push(value) },
   });
   return moduleRecord.exports;
 }
@@ -112,6 +117,12 @@ async function rejectsSafely(mock, errorCode = "SYSTEM_HEALTH_ANALYSIS_PROVIDER_
     assert.equal(error.cause, undefined);
     assert.equal(error.stack.includes(syntheticKey), false);
     assert.equal(error.stack.includes("raw upstream secret"), false);
+    if (errorCode === "SYSTEM_HEALTH_ANALYSIS_PROVIDER_OUTPUT_INVALID") {
+      assert.ok(provider.ANALYSIS_FAILURE_STAGES.includes(error.failure.stage));
+      assert.equal(Number.isSafeInteger(error.failure.elapsed_ms), true);
+      assert.equal(Object.isFrozen(error.failure), true);
+      assert.doesNotMatch(JSON.stringify(error.failure), /synthetic-system-health-test-key|raw upstream secret/);
+    }
     return true;
   });
 }
@@ -258,6 +269,109 @@ for (const phase of ["fetch", "body"]) {
   assert.equal(capturedSignal.aborted, true);
   assert.equal(aborted, true);
 }
+
+// Run provider failures through the actual route and actual structured logger.
+// Everything external (auth, saved run, rate limiter, fetch) remains mocked.
+env.VERCEL_ENV = "preview";
+env.NEXT_PUBLIC_SUPABASE_URL = "https://uohdkewufeivdpaljnng.supabase.co";
+let routeTimeoutMs = 8000;
+Object.assign(routeDependencies, {
+  "node:crypto": { randomUUID },
+  "@clerk/nextjs/server": { auth: async () => ({}) },
+  "next/server": { NextResponse: { json: (body, options) => Response.json(body, options) } },
+  "@/lib/admin-auth": { requireAdminAccess: async () => ({ authorized: true, userId: "synthetic-private-admin" }) },
+  "@/lib/observability/request": { requestIdFromRequest: () => "synthetic-private-inbound-id" },
+  "@/lib/observability/logger": load(resolve(root, "src/lib/observability/logger.ts")),
+  "@/lib/security/public-lead-rate-limit": { enforceSystemHealthAnalysisRateLimit: async () => true },
+  "@/lib/system-health/admin-report-server": { loadLatestStagingMonitorRun: async () => ({}) },
+  "@/lib/system-health/presentation": { buildDiagnosticReport: () => ({}) },
+  "@/lib/system-health/analysis-contract": { buildAnalysisInput: () => input },
+  "@/lib/system-health/analysis-provider": provider,
+  "@/lib/system-health/analysis-server": { runSystemHealthAnalysis: (value, adapter) => server.runSystemHealthAnalysis(value, adapter, routeTimeoutMs) },
+});
+const route = load(resolve(root, "src/app/api/admin/system-health/analysis/route.ts"));
+const privateMarker = "synthetic-private-prompt-diagnostic-provider-data";
+const privateText = `${privateMarker} ${syntheticKey}`;
+input.overall_assessment_source.headline = privateMarker;
+const post = () => new Request("https://offline.invalid/api/admin/system-health/analysis", { method: "POST" });
+async function checkFailureLog(mock, stage, status, fetchAttempted = true, responseReceived = true) {
+  fetchMock = mock;
+  loggedOutput.length = 0;
+  const response = await route.POST(post());
+  const timeout = stage === "timeout";
+  assert.equal(response.status, timeout ? 504 : 502);
+  assert.deepEqual(await response.json(), { error: timeout
+    ? "System Health AI analysis timed out. Try again later."
+    : "System Health AI returned a response that could not be validated." });
+  assert.equal(loggedOutput.length, 1);
+  assert.ok(loggedOutput[0].startsWith("[DMI] "));
+  const event = JSON.parse(loggedOutput[0].slice(6));
+  assert.deepEqual(Object.keys(event).sort(), ["timestamp", "level", "code", "requestId", "route", "metadata"].sort());
+  assert.equal(event.code, "system_health_ai_analysis_failed");
+  assert.match(event.requestId, /^[a-f0-9-]{36}$/);
+  assert.equal(event.metadata.stage, stage);
+  assert.equal(event.metadata.fetch_attempted, fetchAttempted);
+  assert.equal(event.metadata.response_received, responseReceived);
+  assert.equal(Number.isSafeInteger(event.metadata.elapsed_ms), true);
+  assert.ok(event.metadata.elapsed_ms >= 0);
+  assert.deepEqual(Object.keys(event.metadata).sort(), ["stage", "fetch_attempted", "response_received", "elapsed_ms", ...(status === undefined ? [] : ["openai_http_status"])].sort());
+  if (status !== undefined) assert.equal(event.metadata.openai_http_status, status);
+  for (const marker of [syntheticKey, privateMarker, "synthetic-private-admin", "synthetic-private-inbound-id", "raw upstream secret", narrative.overall.plain_english]) {
+    assert.equal(loggedOutput[0].includes(marker), false);
+  }
+  assert.doesNotMatch(loggedOutput[0], /Authorization|Bearer|stack|prompt|diagnostic|response_body|response_text/);
+}
+for (const status of [400, 401, 403, 429, 500]) {
+  await checkFailureLog(async () => new Response(privateText, { status }), "openai_http_failure", status);
+}
+await checkFailureLog(async () => { throw new Error(privateText); }, "transport_failure", undefined, true, false);
+await checkFailureLog(async () => new Response(privateText), "response_json_failure", 200);
+await checkFailureLog(async () => new Response(privateText.repeat(3000)), "response_too_large", 200);
+await checkFailureLog(async () => new Response(new ReadableStream({ start(controller) {
+  controller.error(new Error(privateText));
+} })), "response_read_failure", 200);
+await checkFailureLog(async () => new Response(new Uint8Array([255])), "response_read_failure", 200);
+await checkFailureLog(async () => jsonResponse(envelope({ usage: { input_tokens: -1, output_tokens: 0, cost_usd: privateText } })), "usage_invalid", 200);
+await checkFailureLog(async () => jsonResponse(envelope({ output: [{ type: "function_call", arguments: privateText }] })), "envelope_invalid", 200);
+await checkFailureLog(async () => jsonResponse(envelope({ status: "incomplete", incomplete_details: { reason: "max_output_tokens", untrusted: privateText } })), "provider_incomplete", 200);
+await checkFailureLog(async () => jsonResponse(envelope({ status: "incomplete", usage: null })), "provider_incomplete", 200);
+const outputTextEnvelope = (text) => envelope({ output: [{ ...envelope().output[0], content: [{ type: "output_text", text, annotations: [] }] }] });
+await checkFailureLog(async () => jsonResponse(envelope({ output: [{ ...envelope().output[0], content: [{ type: "refusal", refusal: privateText }] }] })), "provider_refusal", 200);
+await checkFailureLog(async () => jsonResponse(envelope({ usage: null, output: [{ ...envelope().output[0], content: [{ type: "refusal", refusal: privateText }] }] })), "provider_refusal", 200);
+await checkFailureLog(async () => jsonResponse(outputTextEnvelope(privateText)), "narrative_json_invalid", 200);
+await checkFailureLog(async () => jsonResponse(outputTextEnvelope(JSON.stringify({ ...narrative, unexpected: privateText }))), "narrative_schema_invalid", 200);
+await checkFailureLog(async () => jsonResponse(outputTextEnvelope(JSON.stringify({ ...narrative, overall: {
+  headline: "Monitoring incomplete", plain_english: "Incomplete monitoring does not imply a service failure.",
+} }))), "narrative_semantic_invalid", 200);
+// Metadata supplied by the model cannot masquerade as an internal stage.
+await checkFailureLog(async () => jsonResponse(envelope({ output: [], stage: privateText, failure: { stage: privateText } })), "envelope_invalid", 200);
+routeTimeoutMs = 5;
+for (const phase of ["fetch", "body"]) {
+  await checkFailureLog(async (_url, options) => {
+    if (phase === "fetch") return new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => reject(new Error(privateText)), { once: true });
+    });
+    return new Response(new ReadableStream({ start(controller) {
+      options.signal.addEventListener("abort", () => controller.error(new Error(privateText)), { once: true });
+    } }));
+  }, "timeout", phase === "body" ? 200 : undefined, true, phase === "body");
+}
+routeTimeoutMs = 8000;
+routeDependencies["@/lib/system-health/analysis-provider"].getSystemHealthAnalysisProvider = () => ({
+  analyze: async () => ({ narrative: { ...narrative, extra: privateText }, usage: {} }),
+});
+await checkFailureLog(async () => { throw new Error("Must not fetch"); }, "final_result_invalid", undefined, false, false);
+// Restore the adapter and prove successful analysis emits no provider event.
+routeDependencies["@/lib/system-health/analysis-provider"].getSystemHealthAnalysisProvider = () => adapter;
+fetchMock = async () => jsonResponse(envelope());
+loggedOutput.length = 0;
+const successfulResponse = await route.POST(post());
+assert.equal(successfulResponse.status, 200);
+assert.equal(loggedOutput.length, 0);
+assert.doesNotMatch(JSON.stringify(await successfulResponse.json()), /stage|elapsed_ms|openai_http_status|fetch_attempted|response_received|usage|costNanoUsd/);
+const sanitized = provider.safeAnalysisFailureMetadata({ stage: privateText, openai_http_status: privateText,
+  fetch_attempted: "true", response_received: "true", elapsed_ms: privateText, prompt: privateText, stack: privateText });
+assert.deepEqual(JSON.parse(JSON.stringify(sanitized)), { stage: "unclassified_failure", fetch_attempted: false, response_received: false, elapsed_ms: 0 });
 for (const path of ["src/lib/system-health/analysis-provider.ts", "src/lib/ai/openai-pricing-server.ts"]) {
   const source = fs.readFileSync(resolve(root, path), "utf8");
   assert.match(source, /import "server-only"/);

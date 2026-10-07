@@ -1,9 +1,11 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { requireAdminAccess } from "@/lib/admin-auth";
 import { requestIdFromRequest } from "@/lib/observability/request";
+import { logWarn } from "@/lib/observability/logger";
 import { enforceSystemHealthAnalysisRateLimit } from "@/lib/security/public-lead-rate-limit";
 import { loadLatestStagingMonitorRun } from "@/lib/system-health/admin-report-server";
 import {
@@ -16,6 +18,7 @@ import {
   AnalysisProviderNotConfiguredError,
   AnalysisProviderOutputInvalidError,
   AnalysisProviderTimeoutError,
+  safeAnalysisFailureMetadata,
 } from "@/lib/system-health/analysis-provider";
 import { runSystemHealthAnalysis } from "@/lib/system-health/analysis-server";
 
@@ -57,6 +60,7 @@ export async function POST(request: Request) {
     );
   }
 
+  const startedAt = Date.now();
   try {
     const allowed = await enforceSystemHealthAnalysisRateLimit(adminAccess.userId);
     if (!allowed) {
@@ -82,6 +86,20 @@ export async function POST(request: Request) {
     const result = await runSystemHealthAnalysis(input, provider);
     return response(result, 200, requestId);
   } catch (error) {
+    const failure = safeAnalysisFailureMetadata(
+      error instanceof AnalysisProviderOutputInvalidError || error instanceof AnalysisProviderTimeoutError
+        ? error.failure : {
+          stage: error instanceof AnalysisProviderNotConfiguredError ? "not_configured"
+            : error instanceof AnalysisInputTooLargeError ? "input_too_large" : "unclassified_failure",
+          fetch_attempted: false, response_received: false, elapsed_ms: Math.max(0, Date.now() - startedAt),
+        }
+    );
+    logWarn({
+      code: "system_health_ai_analysis_failed",
+      requestId: randomUUID(),
+      route: "/api/admin/system-health/analysis",
+      metadata: failure,
+    });
     if (error instanceof AnalysisInputTooLargeError) {
       return response(
         { error: "System Health diagnostic input exceeded the safe analysis limit." },

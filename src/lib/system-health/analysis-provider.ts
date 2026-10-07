@@ -8,7 +8,7 @@ import {
 import {
   MAX_PROVIDER_OUTPUT_BYTES,
   SYSTEM_HEALTH_ANALYSIS_JSON_SCHEMA,
-  validateProviderResponse,
+  providerResponseFailureStage,
 } from "./analysis-contract";
 
 import type {
@@ -36,9 +36,58 @@ export type SystemHealthAnalysisProvider = {
   analyze(
     input: SystemHealthAnalysisInput,
     instructions: string,
-    signal: AbortSignal
+    signal: AbortSignal,
+    progress?: AnalysisProviderProgress
   ): Promise<SystemHealthAnalysisProviderResult>;
 };
+
+export const ANALYSIS_FAILURE_STAGES = Object.freeze([
+  "transport_failure", "openai_http_failure", "response_too_large",
+  "response_read_failure", "response_json_failure", "usage_invalid",
+  "envelope_invalid", "provider_refusal", "provider_incomplete",
+  "narrative_json_invalid", "narrative_schema_invalid", "narrative_semantic_invalid",
+  "final_result_invalid", "timeout", "not_configured", "input_too_large", "unclassified_failure",
+] as const);
+export type AnalysisFailureStage = typeof ANALYSIS_FAILURE_STAGES[number];
+export type AnalysisProviderProgress = {
+  fetch_attempted: boolean;
+  response_received: boolean;
+  openai_http_status?: number;
+};
+export type AnalysisFailureMetadata = AnalysisProviderProgress & {
+  stage: AnalysisFailureStage;
+  elapsed_ms: number;
+};
+
+// Reconstruct an allowlisted object: never spread exceptions or provider data.
+export function safeAnalysisFailureMetadata(value: unknown): AnalysisFailureMetadata {
+  const source = isRecord(value) ? value : {};
+  const stage = ANALYSIS_FAILURE_STAGES.find((allowed) => allowed === source.stage) ?? "unclassified_failure";
+  const responseReceived = source.response_received === true;
+  const status = source.openai_http_status;
+  return Object.freeze({
+    stage,
+    fetch_attempted: source.fetch_attempted === true,
+    response_received: responseReceived,
+    ...(responseReceived && typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599
+      ? { openai_http_status: status } : {}),
+    elapsed_ms: typeof source.elapsed_ms === "number" && Number.isSafeInteger(source.elapsed_ms) && source.elapsed_ms >= 0
+      ? source.elapsed_ms : 0,
+  });
+}
+
+export function analysisFailureMetadata(
+  stage: AnalysisFailureStage,
+  progress: AnalysisProviderProgress,
+  startedAt: number
+): AnalysisFailureMetadata {
+  return safeAnalysisFailureMetadata({
+    stage, fetch_attempted: progress.fetch_attempted,
+    response_received: progress.response_received,
+    openai_http_status: progress.openai_http_status,
+    elapsed_ms: Math.max(0, Date.now() - startedAt),
+  });
+}
 
 export class AnalysisProviderNotConfiguredError extends Error {
   constructor() {
@@ -48,16 +97,28 @@ export class AnalysisProviderNotConfiguredError extends Error {
 }
 
 export class AnalysisProviderTimeoutError extends Error {
-  constructor() {
+  readonly failure: AnalysisFailureMetadata;
+  constructor(failure?: AnalysisFailureMetadata) {
     super("SYSTEM_HEALTH_ANALYSIS_PROVIDER_TIMEOUT");
     this.name = "AnalysisProviderTimeoutError";
+    this.failure = safeAnalysisFailureMetadata({
+      stage: "timeout", fetch_attempted: failure?.fetch_attempted,
+      response_received: failure?.response_received,
+      openai_http_status: failure?.openai_http_status, elapsed_ms: failure?.elapsed_ms,
+    });
   }
 }
 
 export class AnalysisProviderOutputInvalidError extends Error {
-  constructor() {
+  readonly failure: AnalysisFailureMetadata;
+  constructor(
+    stage: AnalysisFailureStage = "envelope_invalid",
+    progress: AnalysisProviderProgress = { fetch_attempted: false, response_received: false },
+    startedAt = Date.now()
+  ) {
     super("SYSTEM_HEALTH_ANALYSIS_PROVIDER_OUTPUT_INVALID");
     this.name = "AnalysisProviderOutputInvalidError";
+    this.failure = analysisFailureMetadata(stage, progress, startedAt);
   }
 }
 
@@ -70,10 +131,13 @@ export class AnalysisInputTooLargeError extends Error {
 
 export function getSystemHealthAnalysisProvider(): SystemHealthAnalysisProvider {
   return {
-    async analyze(input, instructions, signal) {
+    async analyze(input, instructions, signal, progress = { fetch_attempted: false, response_received: false }) {
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey?.trim()) throw new AnalysisProviderNotConfiguredError();
+      const startedAt = Date.now();
+      let stage: AnalysisFailureStage = "transport_failure";
       try {
+        progress.fetch_attempted = true;
         const response = await fetch("https://api.openai.com/v1/responses", {
           method: "POST",
           headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -99,26 +163,40 @@ export function getSystemHealthAnalysisProvider(): SystemHealthAnalysisProvider 
             },
           }),
         });
+        progress.response_received = true;
+        progress.openai_http_status = response.status;
         if (!response.ok) {
+          stage = "openai_http_failure";
           // Never parse, log, or propagate an upstream error body.
           await response.body?.cancel();
-          throw new AnalysisProviderOutputInvalidError();
+          throw new AnalysisProviderOutputInvalidError(stage);
         }
-        const body: unknown = JSON.parse(await readBoundedResponse(response));
+        stage = "response_read_failure";
+        const responseText = await readBoundedResponse(response);
+        stage = "response_json_failure";
+        const body: unknown = JSON.parse(responseText);
         if (!isRecord(body)) throw new AnalysisProviderOutputInvalidError();
-        // Accounting is server-only and independent of model-authored narrative fields.
-        const usage = parseOpenAiRequestUsage(body.usage);
+        stage = "envelope_invalid";
         const text = extractNarrativeText(body);
+        // Accounting is server-only and independent of model-authored narrative fields.
+        stage = "usage_invalid";
+        const usage = parseOpenAiRequestUsage(body.usage);
         if (new TextEncoder().encode(text).byteLength > MAX_PROVIDER_OUTPUT_BYTES) {
-          throw new AnalysisProviderOutputInvalidError();
+          throw new AnalysisProviderOutputInvalidError("response_too_large");
         }
+        stage = "narrative_json_invalid";
         const narrative: unknown = JSON.parse(text);
-        if (!validateProviderResponse(narrative, input)) throw new AnalysisProviderOutputInvalidError();
+        stage = "narrative_schema_invalid";
+        const failureStage = providerResponseFailureStage(narrative, input);
+        if (failureStage) throw new AnalysisProviderOutputInvalidError(failureStage);
         return { narrative, usage };
-      } catch {
+      } catch (error) {
         // Do not attach raw errors as causes: fetch failures may contain request details.
-        if (signal.aborted) throw new AnalysisProviderTimeoutError();
-        throw new AnalysisProviderOutputInvalidError();
+        if (signal.aborted) throw new AnalysisProviderTimeoutError(analysisFailureMetadata("timeout", progress, startedAt));
+        throw new AnalysisProviderOutputInvalidError(
+          error instanceof AnalysisProviderOutputInvalidError ? error.failure.stage : stage,
+          progress, startedAt
+        );
       }
     },
   };
@@ -127,7 +205,7 @@ export function getSystemHealthAnalysisProvider(): SystemHealthAnalysisProvider 
 export const MAX_OPENAI_RESPONSE_BYTES = 65_536;
 
 async function readBoundedResponse(response: Response): Promise<string> {
-  if (!response.body) throw new AnalysisProviderOutputInvalidError();
+  if (!response.body) throw new AnalysisProviderOutputInvalidError("response_read_failure");
   const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let bytes = 0;
@@ -137,7 +215,7 @@ async function readBoundedResponse(response: Response): Promise<string> {
       const { done, value } = await reader.read();
       if (done) break;
       bytes += value.byteLength;
-      if (bytes > MAX_OPENAI_RESPONSE_BYTES) throw new AnalysisProviderOutputInvalidError();
+      if (bytes > MAX_OPENAI_RESPONSE_BYTES) throw new AnalysisProviderOutputInvalidError("response_too_large");
       text += decoder.decode(value, { stream: true });
     }
     return text + decoder.decode();
@@ -148,6 +226,9 @@ async function readBoundedResponse(response: Response): Promise<string> {
 }
 
 function extractNarrativeText(body: Record<string, unknown>): string {
+  if (body.status === "incomplete" || body.incomplete_details != null) {
+    throw new AnalysisProviderOutputInvalidError("provider_incomplete");
+  }
   if (
     body.object !== "response" || body.status !== "completed" ||
     body.error != null || body.incomplete_details != null ||
@@ -179,6 +260,9 @@ function extractNarrativeText(body: Record<string, unknown>): string {
       !Array.isArray(item.content) || item.content.length !== 1
     ) throw new AnalysisProviderOutputInvalidError();
     const content: unknown = item.content[0];
+    if (isRecord(content) && content.type === "refusal") {
+      throw new AnalysisProviderOutputInvalidError("provider_refusal");
+    }
     if (
       !isRecord(content) || content.type !== "output_text" || typeof content.text !== "string" ||
       !Array.isArray(content.annotations) || content.annotations.length !== 0 ||

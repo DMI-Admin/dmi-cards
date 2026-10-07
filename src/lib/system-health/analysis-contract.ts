@@ -183,7 +183,15 @@ export function validateProviderResponse(
   value: unknown,
   input: SystemHealthAnalysisInput
 ): value is ProviderAnalysisResponse {
-  if (!hasExactProperties(value, providerProperties)) return false;
+  return providerResponseFailureStage(value, input) === null;
+}
+
+// Classify existing checks without recording or changing the rejected narrative.
+export function providerResponseFailureStage(
+  value: unknown,
+  input: SystemHealthAnalysisInput
+): "narrative_schema_invalid" | "narrative_semantic_invalid" | null {
+  if (!hasExactProperties(value, providerProperties)) return "narrative_schema_invalid";
   const response = value as Record<string, unknown>;
   if (
     !hasExactProperties(response.overall, providerOverallProperties) ||
@@ -195,14 +203,14 @@ export function validateProviderResponse(
     response.limitations.length > MAX_LIMITATIONS ||
     !response.limitations.every((limitation) => boundedText(limitation, MAX_LIMITATION_LENGTH))
   ) {
-    return false;
+    return "narrative_schema_invalid";
   }
 
   const checksBySection = groupChecks(input.checks);
   const narratives = new Map<HealthGroupId, ProviderSectionNarrative>();
   const sectionLevels = new Map<HealthGroupId, AnalysisSectionLevel>();
   for (const valueSection of response.sections) {
-    if (!hasExactProperties(valueSection, providerSectionProperties)) return false;
+    if (!hasExactProperties(valueSection, providerSectionProperties)) return "narrative_schema_invalid";
     const section = valueSection as Record<string, unknown>;
     if (
       !isOneOf(section.section, sectionIds) ||
@@ -211,24 +219,24 @@ export function validateProviderResponse(
       !boundedText(section.plain_english, MAX_OUTPUT_SUMMARY_LENGTH) ||
       typeof section.codex_recommended !== "boolean"
     ) {
-      return false;
+      return "narrative_schema_invalid";
     }
     const level = sectionLevelForChecks(checksBySection.get(section.section) ?? []);
     if (
       (level === "all_good" && section.codex_recommended) ||
       !narrativeMatchesLevel(section.headline, section.plain_english, level)
-    ) return false;
+    ) return "narrative_semantic_invalid";
     narratives.set(section.section, section as unknown as ProviderSectionNarrative);
     sectionLevels.set(section.section, level);
   }
 
   const overallLevel = overallLevelForSections([...sectionLevels.values()]);
-  return sectionIds.every((section) => narratives.has(section)) &&
-    narrativeMatchesLevel(
-      response.overall.headline as string,
-      response.overall.plain_english as string,
-      overallLevel
-    );
+  if (!sectionIds.every((section) => narratives.has(section))) return "narrative_schema_invalid";
+  return narrativeMatchesLevel(
+    response.overall.headline as string,
+    response.overall.plain_english as string,
+    overallLevel
+  ) ? null : "narrative_semantic_invalid";
 }
 
 export function buildValidatedAnalysisResult(
