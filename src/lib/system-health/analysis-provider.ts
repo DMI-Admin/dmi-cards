@@ -1,5 +1,16 @@
 import "server-only";
 
+import {
+  parseOpenAiRequestUsage,
+  SYSTEM_HEALTH_OPENAI_MODEL,
+  type OpenAiRequestUsage,
+} from "../ai/openai-pricing-server";
+import {
+  MAX_PROVIDER_OUTPUT_BYTES,
+  SYSTEM_HEALTH_ANALYSIS_JSON_SCHEMA,
+  validateProviderResponse,
+} from "./analysis-contract";
+
 import type {
   ProviderAnalysisResponse,
   SystemHealthAnalysisInput,
@@ -13,14 +24,20 @@ export const SYSTEM_HEALTH_ANALYSIS_INSTRUCTIONS = [
   "Never describe monitoring coverage gaps, setup requirements, or Staging parity gaps as outages unless separate check data reports a real incident.",
   "Set codex_recommended only when a human-led code investigation would likely help. Do not propose automatic repairs.",
   "Return only the requested structured response.",
+  "Include exactly one narrative for each section in the schema, including sections without checks. Keep narratives brief.",
 ].join(" ");
+
+export type SystemHealthAnalysisProviderResult = {
+  narrative: unknown;
+  usage: OpenAiRequestUsage;
+};
 
 export type SystemHealthAnalysisProvider = {
   analyze(
     input: SystemHealthAnalysisInput,
     instructions: string,
     signal: AbortSignal
-  ): Promise<unknown>;
+  ): Promise<SystemHealthAnalysisProviderResult>;
 };
 
 export class AnalysisProviderNotConfiguredError extends Error {
@@ -53,10 +70,126 @@ export class AnalysisInputTooLargeError extends Error {
 
 export function getSystemHealthAnalysisProvider(): SystemHealthAnalysisProvider {
   return {
-    async analyze() {
-      throw new AnalysisProviderNotConfiguredError();
+    async analyze(input, instructions, signal) {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey?.trim()) throw new AnalysisProviderNotConfiguredError();
+      try {
+        const response = await fetch("https://api.openai.com/v1/responses", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          cache: "no-store",
+          redirect: "error",
+          signal,
+          body: JSON.stringify({
+            model: SYSTEM_HEALTH_OPENAI_MODEL,
+            instructions,
+            input: [{ role: "user", content: [{ type: "input_text", text: JSON.stringify(input) }] }],
+            store: false,
+            stream: false,
+            background: false,
+            tools: [],
+            max_output_tokens: 2048,
+            text: {
+              format: {
+                type: "json_schema",
+                name: "system_health_analysis",
+                strict: true,
+                schema: SYSTEM_HEALTH_ANALYSIS_JSON_SCHEMA,
+              },
+            },
+          }),
+        });
+        if (!response.ok) {
+          // Never parse, log, or propagate an upstream error body.
+          await response.body?.cancel();
+          throw new AnalysisProviderOutputInvalidError();
+        }
+        const body: unknown = JSON.parse(await readBoundedResponse(response));
+        if (!isRecord(body)) throw new AnalysisProviderOutputInvalidError();
+        // Accounting is server-only and independent of model-authored narrative fields.
+        const usage = parseOpenAiRequestUsage(body.usage);
+        const text = extractNarrativeText(body);
+        if (new TextEncoder().encode(text).byteLength > MAX_PROVIDER_OUTPUT_BYTES) {
+          throw new AnalysisProviderOutputInvalidError();
+        }
+        const narrative: unknown = JSON.parse(text);
+        if (!validateProviderResponse(narrative, input)) throw new AnalysisProviderOutputInvalidError();
+        return { narrative, usage };
+      } catch {
+        // Do not attach raw errors as causes: fetch failures may contain request details.
+        if (signal.aborted) throw new AnalysisProviderTimeoutError();
+        throw new AnalysisProviderOutputInvalidError();
+      }
     },
   };
+}
+
+export const MAX_OPENAI_RESPONSE_BYTES = 65_536;
+
+async function readBoundedResponse(response: Response): Promise<string> {
+  if (!response.body) throw new AnalysisProviderOutputInvalidError();
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let bytes = 0;
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_OPENAI_RESPONSE_BYTES) throw new AnalysisProviderOutputInvalidError();
+      text += decoder.decode(value, { stream: true });
+    }
+    return text + decoder.decode();
+  } finally {
+    await reader.cancel();
+    reader.releaseLock();
+  }
+}
+
+function extractNarrativeText(body: Record<string, unknown>): string {
+  if (
+    body.object !== "response" || body.status !== "completed" ||
+    body.error != null || body.incomplete_details != null ||
+    !Array.isArray(body.output) || body.output.length < 1 || body.output.length > 2
+  ) throw new AnalysisProviderOutputInvalidError();
+
+  let text: string | undefined;
+  let reasoningSeen = false;
+  for (const item of body.output) {
+    if (!isRecord(item)) throw new AnalysisProviderOutputInvalidError();
+    // Reasoning models may return a documented reasoning item. No summary was requested.
+    if (item.type === "reasoning") {
+      if (
+        reasoningSeen || text !== undefined || typeof item.id !== "string" ||
+        !Array.isArray(item.summary) || item.summary.length !== 0 ||
+        (item.status !== undefined && item.status !== "completed") ||
+        Object.keys(item).some((key) => !["id", "type", "summary", "status"].includes(key))
+      ) throw new AnalysisProviderOutputInvalidError();
+      reasoningSeen = true;
+      continue;
+    }
+    if (
+      item.type !== "message" || item.role !== "assistant" || item.status !== "completed" ||
+      typeof item.id !== "string" || text !== undefined ||
+      Object.keys(item).some((key) => !["id", "type", "role", "status", "content"].includes(key)) ||
+      !Array.isArray(item.content) || item.content.length !== 1
+    ) throw new AnalysisProviderOutputInvalidError();
+    const content: unknown = item.content[0];
+    if (
+      !isRecord(content) || content.type !== "output_text" || typeof content.text !== "string" ||
+      !Array.isArray(content.annotations) || content.annotations.length !== 0 ||
+      (content.logprobs !== undefined && (!Array.isArray(content.logprobs) || content.logprobs.length !== 0)) ||
+      Object.keys(content).some((key) => !["type", "text", "annotations", "logprobs"].includes(key))
+    ) throw new AnalysisProviderOutputInvalidError();
+    text = content.text;
+  }
+  if (text === undefined) throw new AnalysisProviderOutputInvalidError();
+  return text;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 export type { ProviderAnalysisResponse };

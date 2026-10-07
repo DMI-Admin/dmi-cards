@@ -38,6 +38,7 @@ function loadTsModule(relativePath) {
     Promise,
     setTimeout,
     clearTimeout,
+    process: { env: {} },
   });
   return moduleRecord.exports;
 }
@@ -269,20 +270,20 @@ const mockProvider = {
     assert.equal(signal.aborted, false);
     assert.equal("run_id" in input, false);
     assert.match(instructions, /untrusted data/i);
-    return providerResponse();
+    return { narrative: providerResponse(), usage: {} };
   },
 };
 const mockResult = await analysisServer.runSystemHealthAnalysis(groupedInput, mockProvider);
 assert.equal(mockResult.overall.level, "critical");
 await assert.rejects(
   analysisServer.runSystemHealthAnalysis(groupedInput, {
-    async analyze() { return providerResponse({ extra: true }); },
+    async analyze() { return { narrative: providerResponse({ extra: true }), usage: {} }; },
   }),
   /SYSTEM_HEALTH_ANALYSIS_PROVIDER_OUTPUT_INVALID/
 );
 await assert.rejects(
   analysisServer.runSystemHealthAnalysis(groupedInput, {
-    async analyze() { return { oversized: "x".repeat(17_000) }; },
+    async analyze() { return { narrative: { oversized: "x".repeat(17_000) }, usage: {} }; },
   }),
   /SYSTEM_HEALTH_ANALYSIS_PROVIDER_OUTPUT_INVALID/
 );
@@ -322,7 +323,9 @@ assert.doesNotMatch(routeSource, /system-health-monitor/);
 assert.match(rateLimitSource, /UPSTASH_REDIS_REST_URL/);
 assert.match(rateLimitSource, /UPSTASH_REDIS_REST_TOKEN/);
 assert.match(providerSource, /import "server-only"/);
-assert.doesNotMatch(providerSource, /process\.env|fetch\(/);
+assert.match(providerSource, /process\.env\.OPENAI_API_KEY/);
+assert.match(providerSource, /https:\/\/api\.openai\.com\/v1\/responses/);
+assert.doesNotMatch(providerSource, /console\.|logError|logWarn|NEXT_PUBLIC_OPENAI/);
 assert.doesNotMatch(analysisServerSource, /system_health_check_runs|runSystemHealthMonitoring/);
 
-console.log("PASS: shared section grouping, deterministic levels, advisory provider schema, anti-escalation, bounded server orchestration, Admin/Staging route guards, Upstash rate limits, and no provider credentials/network calls.");
+console.log("PASS: shared section grouping, deterministic levels, advisory provider schema, anti-escalation, bounded server orchestration, Admin/Staging route guards, Upstash rate limits, and server-only provider boundary.");

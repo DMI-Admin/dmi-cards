@@ -33,7 +33,7 @@ export async function runSystemHealthAnalysis(
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let rawOutput: unknown;
   try {
-    rawOutput = await Promise.race([
+    const providerResult = await Promise.race([
       provider.analyze(input, SYSTEM_HEALTH_ANALYSIS_INSTRUCTIONS, controller.signal),
       new Promise<never>((_, reject) => {
         timeout = setTimeout(() => {
@@ -42,6 +42,8 @@ export async function runSystemHealthAnalysis(
         }, timeoutMs);
       }),
     ]);
+    // Usage/cost stays inside the server-only provider envelope; never return it to the browser.
+    rawOutput = providerResult.narrative;
   } finally {
     if (timeout) clearTimeout(timeout);
   }

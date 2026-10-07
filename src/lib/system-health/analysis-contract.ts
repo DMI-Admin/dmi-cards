@@ -51,6 +51,45 @@ const sectionIds = healthGroups.map(({ id }) => id);
 const providerOverallProperties = ["headline", "plain_english"] as const;
 const providerSectionProperties = ["section", "headline", "plain_english", "codex_recommended"] as const;
 const providerProperties = ["overall", "sections", "limitations"] as const;
+
+export const SYSTEM_HEALTH_ANALYSIS_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: providerProperties,
+  properties: {
+    overall: {
+      type: "object",
+      additionalProperties: false,
+      required: providerOverallProperties,
+      properties: {
+        headline: { type: "string", minLength: 1, maxLength: MAX_ISSUE_TITLE_LENGTH },
+        plain_english: { type: "string", minLength: 1, maxLength: MAX_OUTPUT_SUMMARY_LENGTH },
+      },
+    },
+    sections: {
+      type: "array",
+      minItems: healthGroups.length,
+      maxItems: healthGroups.length,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: providerSectionProperties,
+        properties: {
+          section: { type: "string", enum: sectionIds },
+          headline: { type: "string", minLength: 1, maxLength: MAX_ISSUE_TITLE_LENGTH },
+          plain_english: { type: "string", minLength: 1, maxLength: MAX_OUTPUT_SUMMARY_LENGTH },
+          codex_recommended: { type: "boolean" },
+        },
+      },
+    },
+    limitations: {
+      type: "array",
+      maxItems: MAX_LIMITATIONS,
+      items: { type: "string", minLength: 1, maxLength: MAX_LIMITATION_LENGTH },
+    },
+  },
+} as const;
+
 type DiagnosticCheck = DiagnosticReport["checks"][number];
 
 export function categoryForHealth(
