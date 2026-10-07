@@ -31,7 +31,29 @@ type RedisPipelineResult = Array<{
 }>;
 
 const keyPrefix = "dmi:public-leads:v1";
+const systemHealthAnalysisKeyPrefix = "dmi:system-health-analysis:v1";
 const localBuckets = new Map<string, { count: number; expiresAt: number }>();
+
+export async function enforceSystemHealthAnalysisRateLimit(userId: string) {
+  const userKey = hashRateLimitValue(`system-health-analysis:user:${userId}`);
+  const platformKey = hashRateLimitValue("system-health-analysis:platform");
+  const rules: RateLimitRule[] = [
+    {
+      name: "admin-minute",
+      limit: 3,
+      windowSeconds: 60,
+      key: `${systemHealthAnalysisKeyPrefix}:admin:${userKey}`,
+    },
+    {
+      name: "platform-minute",
+      limit: 30,
+      windowSeconds: 60,
+      key: `${systemHealthAnalysisKeyPrefix}:platform:${platformKey}`,
+    },
+  ];
+  const results = await incrementRateLimitCounters(rules);
+  return !results.some(({ rule, count }) => count > rule.limit);
+}
 
 export async function enforcePublicLeadRateLimit({
   request,

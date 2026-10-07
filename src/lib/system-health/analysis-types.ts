@@ -1,5 +1,5 @@
 import type { DiagnosticReport, DisplayStatus } from "./presentation";
-import type { HealthSeverity, HealthStatus } from "./types";
+import type { HealthGroupId, HealthSeverity, HealthStatus } from "./types";
 
 export const analysisCategories = [
   "healthy",
@@ -13,21 +13,11 @@ export const analysisCategories = [
 ] as const;
 
 export type AnalysisCategory = (typeof analysisCategories)[number];
-export type AnalysisIssueCategory = Exclude<AnalysisCategory, "healthy">;
-
-export const overallAssessments = [
-  "healthy",
-  "action_required",
-  "configuration_required",
-  "staging_parity_gap",
-  "coverage_gap",
-  "mixed",
-  "unknown",
-] as const;
-
-export type OverallAssessment = (typeof overallAssessments)[number];
-export type AnalysisConfidence = "high" | "medium" | "low";
-export type ChangeRequirement = "yes" | "no" | "unknown";
+export type AnalysisSectionLevel =
+  | "all_good"
+  | "monitoring_incomplete"
+  | "needs_attention"
+  | "critical";
 
 export const safeEvidenceKeys = [
   "returned_rows",
@@ -55,9 +45,11 @@ export type AnalysisCounts = {
 };
 
 export type AnalysisInputCheck = {
+  section_key: HealthGroupId;
   service_key: string;
   check_key: string;
   stored_status: HealthStatus;
+  category: AnalysisCategory;
   display_status: DisplayStatus;
   severity: HealthSeverity;
   reason_code: string | null;
@@ -75,30 +67,38 @@ export type SystemHealthAnalysisInput = {
   checks: AnalysisInputCheck[];
 };
 
-export type AnalysisIssue = {
-  service_key: string;
-  check_key: string;
-  category: AnalysisIssueCategory;
-  title: string;
-  explanation: string;
-  probable_area: string;
-  recommended_next_step: string;
-  where_to_fix: string;
-  confidence: AnalysisConfidence;
-  requires_code_change: ChangeRequirement;
-  requires_configuration_change: ChangeRequirement;
-  requires_database_change: ChangeRequirement;
-  evidence_check_keys: string[];
+export type ProviderSectionNarrative = {
+  section: HealthGroupId;
+  headline: string;
+  plain_english: string;
+  codex_recommended: boolean;
+};
+
+export type ProviderAnalysisResponse = {
+  overall: {
+    headline: string;
+    plain_english: string;
+  };
+  sections: ProviderSectionNarrative[];
+  limitations: string[];
+};
+
+export type SystemHealthAnalysisSection = ProviderSectionNarrative & {
+  level: AnalysisSectionLevel;
+  affected_checks: string[];
 };
 
 export type SystemHealthAnalysisResult = {
-  summary: string;
-  overall_assessment: OverallAssessment;
-  issues: AnalysisIssue[];
+  overall: {
+    level: AnalysisSectionLevel;
+    headline: string;
+    plain_english: string;
+  };
+  sections: SystemHealthAnalysisSection[];
   limitations: string[];
 };
 
 export type DiagnosticReportInput = Pick<
   DiagnosticReport,
-  "overall_headline" | "checks"
+  "environment" | "overall_headline" | "checks"
 >;

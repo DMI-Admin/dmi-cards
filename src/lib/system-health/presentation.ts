@@ -1,9 +1,11 @@
 import type {
+  HealthGroupId,
   HealthSeverity,
   HealthStatus,
   StoredMonitorCheck,
   StoredMonitorRun,
 } from "./types";
+import { healthGroups } from "./types";
 
 export const displayStatuses = [
   "Operational",
@@ -85,32 +87,24 @@ const specificGuidance: Record<string, FixGuidance> = {
   },
 };
 
-const serviceGroups: Record<string, string> = {
-  web_application: "Core Platform",
-  database: "Core Platform",
-  admin_authentication: "Core Platform",
-  customer_authentication: "Core Platform",
-  public_cards: "Card Services",
-  contacts: "Card Services",
-  public_lead_capture: "Card Services",
-  media_storage: "Card Services",
-  apple_wallet: "Card Services",
-  google_wallet: "Card Services",
-  stripe_webhook_processing: "Payments & Access",
-  billing_reconciliation: "Payments & Access",
-  entitlement_processing: "Payments & Access",
-  upstash_rate_limiting: "Infrastructure",
-  email_automations: "Communications & Integrations",
-  external_integrations: "Communications & Integrations",
+const serviceGroups: Record<string, HealthGroupId> = {
+  web_application: "core_platform",
+  database: "core_platform",
+  admin_authentication: "core_platform",
+  customer_authentication: "core_platform",
+  public_cards: "card_services",
+  contacts: "card_services",
+  public_lead_capture: "card_services",
+  media_storage: "card_services",
+  apple_wallet: "card_services",
+  google_wallet: "card_services",
+  stripe_webhook_processing: "payments_access",
+  billing_reconciliation: "payments_access",
+  entitlement_processing: "payments_access",
+  upstash_rate_limiting: "infrastructure",
+  email_automations: "communications_integrations",
+  external_integrations: "communications_integrations",
 };
-
-const groupOrder = [
-  "Core Platform",
-  "Payments & Access",
-  "Card Services",
-  "Infrastructure",
-  "Communications & Integrations",
-] as const;
 
 const statusPriority: Record<DisplayStatus, number> = {
   Incident: 0,
@@ -125,6 +119,10 @@ const statusPriority: Record<DisplayStatus, number> = {
 
 export function serviceTitle(serviceKey: string): string {
   return serviceTitles[serviceKey] ?? serviceKey.replaceAll("_", " ");
+}
+
+export function sectionForService(serviceKey: string): HealthGroupId {
+  return serviceGroups[serviceKey] ?? "communications_integrations";
 }
 
 export function displayStatus(
@@ -217,9 +215,9 @@ export function overallHeadline(checks: readonly StoredMonitorCheck[]): string {
 }
 
 export function orderedGroups(checks: readonly StoredMonitorCheck[]) {
-  return groupOrder.map((label) => ({
+  return healthGroups.map(({ id, label }) => ({
     label,
-    checks: checks.filter((check) => (serviceGroups[check.serviceKey] ?? "Communications & Integrations") === label),
+    checks: checks.filter((check) => sectionForService(check.serviceKey) === id),
   })).filter((group) => group.checks.length > 0);
 }
 

@@ -9,7 +9,8 @@ const pagePath = "src/app/system-health/page.tsx";
 const presentationPath = "src/lib/system-health/presentation.ts";
 const pageStylesPath = "src/app/system-health/system-health.module.css";
 const typesSource = fs.readFileSync(typesPath, "utf8");
-const apiSource = fs.readFileSync(apiPath, "utf8");
+const apiSource = fs.readFileSync(apiPath, "utf8") +
+  fs.readFileSync("src/lib/system-health/admin-report-server.ts", "utf8");
 const pageSource = fs.readFileSync(pagePath, "utf8");
 const presentationSource = fs.readFileSync(presentationPath, "utf8");
 const pageStylesSource = fs.readFileSync(pageStylesPath, "utf8");
@@ -22,7 +23,10 @@ const presentationExports = {};
 const compiledPresentation = ts.transpileModule(presentationSource, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-vm.runInNewContext(compiledPresentation, { exports: presentationExports });
+vm.runInNewContext(compiledPresentation, {
+  exports: presentationExports,
+  require: () => exports,
+});
 
 const statuses = [
   "operational",
