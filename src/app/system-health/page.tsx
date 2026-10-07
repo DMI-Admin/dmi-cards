@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -14,6 +14,9 @@ import {
 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import styles from "./system-health.module.css";
+import { healthGroups } from "@/lib/system-health/types";
+import type { SystemHealthAnalysisResult } from "@/lib/system-health/analysis-types";
+import { analysisLevelDisplay, requestSystemHealthAnalysis, SystemHealthAnalysisClientError } from "@/lib/system-health/analysis-client";
 import type {
   HealthSeverity,
   HealthStatus,
@@ -39,8 +42,17 @@ export default function SystemHealthPage() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
+  const [analysis, setAnalysis] = useState<SystemHealthAnalysisResult | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
+  const analysisRequest = useRef<AbortController | null>(null);
 
   const loadHealth = useCallback(async (signal?: AbortSignal) => {
+    analysisRequest.current?.abort();
+    analysisRequest.current = null;
+    setAnalysis(null);
+    setAnalysisLoading(false);
+    setAnalysisError("");
     setLoading(true);
     setError("");
     setCopied(false);
@@ -76,6 +88,7 @@ export default function SystemHealthPage() {
     return () => {
       window.clearTimeout(timer);
       controller.abort();
+      analysisRequest.current?.abort();
     };
   }, [loadHealth]);
 
@@ -104,6 +117,36 @@ export default function SystemHealthPage() {
       )
     : [];
   const headline = run ? overallHeadline(run.checks) : "No Staging run available";
+  const groups = run ? healthGroups.map(({ id, label }) => ({
+    id,
+    label,
+    checks: orderedGroups(run.checks).find((group) => group.label === label)?.checks ?? [],
+  })).filter((group) => analysis !== null || group.checks.length > 0) : [];
+
+  const analyseLatestHealthRun = async () => {
+    if (!run || analysisRequest.current) return;
+    const controller = new AbortController();
+    analysisRequest.current = controller;
+    setAnalysis(null);
+    setAnalysisError("");
+    setAnalysisLoading(true);
+    try {
+      const result = await requestSystemHealthAnalysis(controller.signal);
+      if (!controller.signal.aborted) setAnalysis(result);
+    } catch (requestError) {
+      if (!controller.signal.aborted) {
+        // The client request helper emits only fixed, owner-friendly errors.
+        setAnalysisError(requestError instanceof SystemHealthAnalysisClientError
+          ? requestError.message
+          : "AI analysis is unavailable right now. You can try again later.");
+      }
+    } finally {
+      if (analysisRequest.current === controller) {
+        analysisRequest.current = null;
+        setAnalysisLoading(false);
+      }
+    }
+  };
 
   return (
     <main className="flex min-h-screen bg-[#070B1A] text-white">
@@ -188,6 +231,28 @@ export default function SystemHealthPage() {
           ) : null}
         </section>
 
+        <section aria-labelledby="ai-health-analysis" aria-busy={analysisLoading} className="mb-8 rounded-3xl border border-white/10 bg-white/[0.06] p-5 sm:p-6">
+          <div className="flex flex-col items-start justify-between gap-4 lg:flex-row">
+            <div className="min-w-0">
+              <h2 id="ai-health-analysis" className="text-xl font-semibold">AI Health Analysis</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-white/80">
+                AI explains the latest verified System Health results in plain English. It cannot change health statuses or make fixes.
+              </p>
+              <p className="mt-2 text-sm font-semibold text-sky-100">Not yet monitored does not mean the service is broken.</p>
+            </div>
+            <button type="button" onClick={() => void analyseLatestHealthRun()} disabled={analysisLoading || loading || !run}
+              className="inline-flex max-w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-fuchsia-300/40 bg-fuchsia-500/20 px-4 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-500/30 disabled:cursor-not-allowed disabled:opacity-60">
+              {analysisLoading ? <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin" /> : null}
+              {analysisLoading ? "Analysing…" : "Analyse latest health run"}
+            </button>
+          </div>
+          <div aria-live="polite">
+            {analysisLoading ? <p role="status" className="mt-4 text-sm text-white/80">Analysing the latest saved health run…</p> : null}
+            {analysisError ? <p role="alert" className="mt-4 rounded-xl border border-amber-300/40 bg-amber-400/10 p-4 text-sm text-amber-100">{analysisError}</p> : null}
+            {analysis ? <div className="mt-5"><AiExplanation summary={analysis.overall} /></div> : null}
+          </div>
+        </section>
+
         {loading && !health ? (
           <p role="status" className="py-8 text-sm text-white/60">Loading saved Staging checks…</p>
         ) : run && counts ? (
@@ -222,12 +287,13 @@ export default function SystemHealthPage() {
               </section>
             ) : null}
 
-            {orderedGroups(run.checks).map((group) => (
+            {groups.map((group) => (
               <section key={group.label} aria-labelledby={`group-${slug(group.label)}`}>
                 <div className="mb-4 flex items-end justify-between gap-4">
                   <h2 id={`group-${slug(group.label)}`} className="text-xl font-semibold">{group.label}</h2>
                   <span className="text-xs text-white/40">{group.checks.length} checks</span>
                 </div>
+                {analysis ? <AiExplanation summary={analysis.sections.find((section) => section.section === group.id)!} /> : null}
                 <div className="grid gap-4 xl:grid-cols-2">
                   {group.checks.map((check) => (
                     <HealthServiceCard key={`${check.serviceKey}/${check.checkKey}`} check={check} />
@@ -259,6 +325,21 @@ export default function SystemHealthPage() {
         ) : null}
       </section>
     </main>
+  );
+}
+
+function AiExplanation({ summary }: { summary: SystemHealthAnalysisResult["overall"] }) {
+  const display = analysisLevelDisplay[summary.level];
+  const Icon = summary.level === "all_good" ? CheckCircle2 : summary.level === "critical" ? XCircle : summary.level === "needs_attention" ? AlertTriangle : HelpCircle;
+  return (
+    <div className={`${styles.aiExplanation} ${styles[display.tone]}`}>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className={`${styles.statusBadge} ${styles.aiLevelBadge}`}><Icon aria-hidden="true" className="h-4 w-4" />{display.label}</span>
+        <span className="text-xs font-semibold text-white/80">AI advisory</span>
+      </div>
+      <h3 className="mt-3 font-semibold text-white [overflow-wrap:anywhere]">{summary.headline}</h3>
+      <p className="mt-2 text-sm leading-6 text-white/90 [overflow-wrap:anywhere]">{summary.plain_english}</p>
+    </div>
   );
 }
 

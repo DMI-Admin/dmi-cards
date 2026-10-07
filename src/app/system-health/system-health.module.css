@@ -51,3 +51,43 @@
   background: #e2e8f0 !important;
   border-color: #94a3b8 !important;
 }
+
+.aiExplanation {
+  min-width: 0;
+  margin-bottom: 1rem;
+  border: 1px solid var(--ai-border);
+  border-left-width: 4px;
+  border-radius: 1rem;
+  padding: 1rem;
+  background: #10182b;
+}
+
+.aiAllGood {
+  --ai-border: #86efac;
+  --ai-text: #14532d;
+  --ai-background: #dcfce7;
+}
+
+.aiMonitoringIncomplete {
+  --ai-border: #7dd3fc;
+  --ai-text: #0c4a6e;
+  --ai-background: #e0f2fe;
+}
+
+.aiNeedsAttention {
+  --ai-border: #fdba74;
+  --ai-text: #7c2d12;
+  --ai-background: #ffedd5;
+}
+
+.aiCritical {
+  --ai-border: #fca5a5;
+  --ai-text: #7f1d1d;
+  --ai-background: #fee2e2;
+}
+
+.aiLevelBadge {
+  color: var(--ai-text) !important;
+  background: var(--ai-background) !important;
+  border-color: var(--ai-border) !important;
+}
