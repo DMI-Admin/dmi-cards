@@ -15,6 +15,9 @@ const effects = [];
 const timers = [];
 const requests = [];
 let fetchMock;
+const clipboardWrites = [];
+let clipboardFails = false;
+let clipboardPending;
 const react = {
   ...React,
   useState(initial) {
@@ -53,7 +56,12 @@ function load(path) {
       return load(`${base}.ts`);
     },
     fetch: (...args) => { requests.push(args); return fetchMock(...args); },
-    AbortController,
+    AbortController, TextEncoder,
+    navigator: { clipboard: { writeText: async (text) => {
+      clipboardWrites.push(text);
+      if (clipboardFails) throw new Error("synthetic private clipboard failure");
+      if (clipboardPending) await clipboardPending;
+    } } },
     window: { setTimeout: (callback) => { timers.push(callback); return timers.length; }, clearTimeout: () => {} },
   });
   return moduleRecord.exports;
@@ -70,7 +78,7 @@ const check = {
 };
 const health = {
   service: "dmi-cards", requestId: "offline-test", environment: "staging",
-  monitoringRun: { environment: "staging", generatedAt: check.checkedAt, runId: "offline-run", checks: [check] },
+  monitoringRun: { environment: "staging", generatedAt: check.checkedAt, runId: "00000000-0000-4000-8000-000000000001", checks: [check] },
 };
 const storedCheck = JSON.stringify(health.monitoringRun.checks);
 const levels = ["all_good", "monitoring_incomplete", "needs_attention", "critical"];
@@ -150,8 +158,65 @@ for (const level of levels) assert.match(current.html, new RegExp(client.analysi
 assert.match(current.html, /Not yet monitored does not mean the service is broken\./);
 assert.match(current.html, /Operational/);
 assert.doesNotMatch(current.html, /Tell Codex|Prepare Codex|automatic fix|costNanoUsd|inputTokens|outputTokens/);
+assert.match(current.html, /No checks in this saved run currently require an incident investigation\./);
 assert.equal(JSON.stringify(health.monitoringRun.checks), storedCheck);
 assert.equal(requests.length, 2, "Rendering a successful result must not request another analysis");
+
+// Eligibility is driven by the displayed run, even when AI says all_good and
+// codex_recommended is false. Preparing/reviewing/copying is entirely local.
+health.monitoringRun.checks = [{ ...check, storedStatus: "incident", severity: "critical", safeSummary: "synthetic-private-summary" }];
+fetchMock = async (url) => jsonResponse(url === "/api/admin/system-health" ? health : analysis);
+const refreshButton = (tree) => find(tree, (node) => node.type === "button" && String(node.props.children).includes("Refresh"));
+const prepareButton = (tree) => find(tree, (node) => node.type === "button" && node.props.children === "Prepare Codex investigation");
+const copyButton = (tree) => find(tree, (node) => node.type === "button" && node.props.children === "Copy Codex investigation");
+refreshButton(current.tree).props.onClick();
+await tick();
+current = render();
+assert.equal(prepareButton(current.tree), null, "Handoff UX waits for analysis success");
+analyseButton(current.tree).props.onClick();
+await tick();
+current = render();
+assert.ok(prepareButton(current.tree));
+assert.equal(copyButton(current.tree), null, "Copy cannot happen before review is opened");
+const beforePreparation = requests.length;
+prepareButton(current.tree).props.onClick();
+current = render();
+assert.match(current.html, /Based on the displayed saved health run/);
+assert.match(current.html, /not necessarily the same run the AI analysed/);
+assert.match(current.html, /web_application\/runtime/);
+assert.match(current.html, /00000000-0000-4000-8000-000000000001/);
+const promptField = find(current.tree, (node) => node.type === "textarea" && node.props.id === "codex-investigation-prompt");
+assert.ok(promptField.props.readOnly);
+assert.ok(promptField.props.value.endsWith("Make no changes. Stop after reporting."));
+assert.doesNotMatch(promptField.props.value, /synthetic-private-summary|Overall advisory headline|codex_recommended/);
+assert.equal(clipboardWrites.length, 0, "Prepare only opens review; it must not copy");
+assert.equal(requests.length, beforePreparation);
+copyButton(current.tree).props.onClick();
+await tick();
+assert.deepEqual(clipboardWrites, [promptField.props.value]);
+assert.match(render().html, /Codex investigation copied/);
+clipboardFails = true;
+copyButton(current.tree).props.onClick();
+await tick();
+current = render();
+assert.match(current.html, /full prompt remains visible/);
+assert.doesNotMatch(current.html, /synthetic private clipboard failure/);
+assert.equal(find(current.tree, (node) => node.type === "textarea").props.value, promptField.props.value);
+assert.equal(requests.length, beforePreparation, "Prepare and copy cannot perform network calls");
+clipboardFails = false;
+let resolveClipboard;
+clipboardPending = new Promise((resolveCopy) => { resolveClipboard = resolveCopy; });
+copyButton(current.tree).props.onClick();
+refreshButton(current.tree).props.onClick();
+resolveClipboard();
+await tick();
+clipboardPending = undefined;
+current = render();
+assert.doesNotMatch(current.html, /Review Codex investigation|Codex investigation copied|full prompt remains visible/);
+assert.equal(copyButton(current.tree), null, "Refresh clears prepared prompt and stale copy completion");
+analyseButton(current.tree).props.onClick();
+await tick();
+current = render();
 
 assert.equal(client.isSystemHealthAnalysisResult(analysis), true);
 for (const invalid of [
@@ -222,4 +287,11 @@ for (const { tone } of Object.values(client.analysisLevelDisplay)) {
 }
 assert.match(css, /color: var\(--ai-text\) !important/);
 assert.match(css, /background: var\(--ai-background\) !important/);
-console.log("PASS: offline manual-only AI UI, bodyless POST, loading/double-click protection, five section summaries, four server levels, safe errors/no retries, refresh cancellation, contrast styling, and no client secrets or fix controls.");
+for (const selector of ["investigationButton", "investigationPrompt"]) {
+  const rule = css.match(new RegExp(`\\.${selector} \\{([^}]+)\\}`))[1];
+  const foreground = luminance(rule.match(/color: #([0-9a-f]{6}) !important/)[1]);
+  const background = luminance(rule.match(/background: #([0-9a-f]{6}) !important/)[1]);
+  assert.ok((Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05) >= 7);
+  assert.match(rule, /(?:max-)?width: 100%/);
+}
+console.log("PASS: offline manual-only AI UI and local Codex handoff: deterministic eligibility, review before explicit copy, clipboard fallback, refresh/stale-copy cancellation, no preparation network calls, five summaries, trusted levels, safe errors and strong contrast. No client secrets or fix controls.");

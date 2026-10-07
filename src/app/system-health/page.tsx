@@ -17,6 +17,7 @@ import styles from "./system-health.module.css";
 import { healthGroups } from "@/lib/system-health/types";
 import type { SystemHealthAnalysisResult } from "@/lib/system-health/analysis-types";
 import { analysisLevelDisplay, requestSystemHealthAnalysis, SystemHealthAnalysisClientError } from "@/lib/system-health/analysis-client";
+import { prepareSystemHealthInvestigation, type PreparedInvestigation } from "@/lib/system-health/investigation-prompt";
 import type {
   HealthSeverity,
   HealthStatus,
@@ -46,6 +47,10 @@ export default function SystemHealthPage() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
   const analysisRequest = useRef<AbortController | null>(null);
+  const [investigation, setInvestigation] = useState<PreparedInvestigation | null>(null);
+  const [investigationCopied, setInvestigationCopied] = useState(false);
+  const [investigationCopyError, setInvestigationCopyError] = useState("");
+  const investigationDraft = useRef<PreparedInvestigation | null>(null);
 
   const loadHealth = useCallback(async (signal?: AbortSignal) => {
     analysisRequest.current?.abort();
@@ -53,6 +58,10 @@ export default function SystemHealthPage() {
     setAnalysis(null);
     setAnalysisLoading(false);
     setAnalysisError("");
+    investigationDraft.current = null;
+    setInvestigation(null);
+    setInvestigationCopied(false);
+    setInvestigationCopyError("");
     setLoading(true);
     setError("");
     setCopied(false);
@@ -110,6 +119,28 @@ export default function SystemHealthPage() {
   };
 
   const run = health?.monitoringRun ?? null;
+  const investigationPreparation = useMemo(() => run ? prepareSystemHealthInvestigation(run) : null, [run]);
+  const prepareInvestigation = () => {
+    if (!analysis || investigationPreparation?.kind !== "ready") return;
+    investigationDraft.current = investigationPreparation.investigation;
+    setInvestigation(investigationPreparation.investigation);
+    setInvestigationCopied(false);
+    setInvestigationCopyError("");
+  };
+  const copyInvestigation = async () => {
+    const draft = investigationDraft.current;
+    if (!draft) return;
+    try {
+      await navigator.clipboard.writeText(draft.prompt);
+      if (investigationDraft.current !== draft) return;
+      setInvestigationCopied(true);
+      setInvestigationCopyError("");
+    } catch {
+      if (investigationDraft.current !== draft) return;
+      setInvestigationCopied(false);
+      setInvestigationCopyError("Copy was unavailable. The full prompt remains visible; select and copy it manually.");
+    }
+  };
   const counts = run ? displayCounts(run.checks) : null;
   const actionable = run
     ? priorityOrderedChecks(run.checks).filter((check) =>
@@ -249,7 +280,34 @@ export default function SystemHealthPage() {
           <div aria-live="polite">
             {analysisLoading ? <p role="status" className="mt-4 text-sm text-white/80">Analysing the latest saved health run…</p> : null}
             {analysisError ? <p role="alert" className="mt-4 rounded-xl border border-amber-300/40 bg-amber-400/10 p-4 text-sm text-amber-100">{analysisError}</p> : null}
-            {analysis ? <div className="mt-5"><AiExplanation summary={analysis.overall} /></div> : null}
+            {analysis ? <div className="mt-5">
+              <AiExplanation summary={analysis.overall} />
+              {investigationPreparation?.kind === "ready" ? (
+                <button type="button" onClick={prepareInvestigation} className={styles.investigationButton}>
+                  Prepare Codex investigation
+                </button>
+              ) : investigationPreparation?.kind === "none" ? (
+                <p className="mt-4 text-sm text-white/80">No checks in this saved run currently require an incident investigation.</p>
+              ) : (
+                <p role="alert" className="mt-4 text-sm text-amber-100">A safe investigation prompt could not be prepared from this saved run. Refresh the health results.</p>
+              )}
+              {investigation ? <section aria-labelledby="codex-investigation-review" className={styles.investigationPanel}>
+                <h3 id="codex-investigation-review" className="text-lg font-semibold">Review Codex investigation</h3>
+                <p className="mt-2 text-sm font-semibold text-sky-100">Based on the displayed saved health run</p>
+                <p className="mt-2 break-words text-sm text-white/85">Saved run: {investigation.runId} · {formatTime(investigation.savedAt)}</p>
+                <p className="mt-2 text-sm text-white/85">This historical snapshot is not necessarily the same run the AI analysed. Review the full read-only prompt before copying.</p>
+                <ul className="my-4 space-y-2 text-sm text-white/90">
+                  {investigation.checks.map((check) => <li key={`${check.service_key}/${check.check_key}`} className="break-words">
+                    <strong>{check.section_label}</strong>: {check.service_key}/{check.check_key} — {check.display_status}
+                  </li>)}
+                </ul>
+                <label htmlFor="codex-investigation-prompt" className="block text-sm font-semibold">Full read-only investigation prompt</label>
+                <textarea id="codex-investigation-prompt" readOnly value={investigation.prompt} rows={18} className={styles.investigationPrompt} />
+                <button type="button" onClick={() => void copyInvestigation()} className={styles.investigationButton}>Copy Codex investigation</button>
+                {investigationCopied ? <p role="status" className="mt-3 text-sm text-emerald-200">Codex investigation copied. Review it in Codex before proceeding.</p> : null}
+                {investigationCopyError ? <p role="alert" className="mt-3 text-sm text-amber-100">{investigationCopyError}</p> : null}
+              </section> : null}
+            </div> : null}
           </div>
         </section>
 
