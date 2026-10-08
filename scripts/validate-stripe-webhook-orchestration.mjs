@@ -117,3 +117,64 @@ console.log('PASS: actual webhook assertion trace, unchanged sanitized 500, enti
 assert.equal(assertionLogs[0].stripeEventId,e.id);
 assert.equal(s.logs.filter(x=>x.code==='STRIPE_WEBHOOK_DIAGNOSTIC'&&x.metadata.stage==='normalization'&&x.metadata.outcome==='failed').length,1);
 console.log('PASS: assertion fields survive the real logger on the single event-correlated normalization failure record.');
+
+// Exercise the real signed route and logger for claim failures, then normal retry/duplicate.
+const claimFailures=[
+ [{code:'23503',constraint:'billing_accounts_user_id_fkey'},'AUTH_USER_NOT_FOUND'],
+ [{code:'23503'},'FOREIGN_KEY_VIOLATION'],
+ [{code:'23505'},'UNIQUE_CONFLICT'],
+ [{code:'23514'},'INVALID_ACCOUNT_STATE'],
+ [{code:'57014'},'DATABASE_TIMEOUT_OR_CANCELLED'],
+ [{code:'08006'},'DATABASE_UNAVAILABLE'],
+ [{code:'unrecognised'},'UNKNOWN_STORE_ERROR'],
+];
+for(const [structured,expected] of claimFailures){
+ const test=setup(),delivery=test.make('evt_category','customer.subscription.updated',test.f.subscription);
+ const original=test.billing.r.db.rpc;let failedReason;
+ test.billing.r.db.rpc=async(name,args)=>{
+  if(args.p_action==='claim')return {error:{...structured,message:'PRIVATE_CLAIM_ERROR sk_test_private cus_private user-private payload-private',details:'PRIVATE_DETAILS',hint:'PRIVATE_HINT'}};
+  if(args.p_action==='event_fail')failedReason=args.p_input.error;
+  return original(name,args);
+ };
+ const response=await test.send(delivery);assert.equal(response.status,500);
+ const browser=await response.json();assert.equal(browser.error.code,'STRIPE_WEBHOOK_FAILED');
+ assert.doesNotMatch(JSON.stringify(browser),/failureCategory|PRIVATE_|AUTH_USER_NOT_FOUND|FOREIGN_KEY_VIOLATION|DATABASE_TIMEOUT/);
+ assert.equal(failedReason,'BILLING_STORE_UNAVAILABLE');
+ assert.equal(test.billing.events.get(delivery.id).state,'failed');assert.equal(test.billing.mirrors.length,0);
+ assert.equal((await test.h.delivery(delivery.id)).state,'processed');
+ assert.equal(test.billing.retrieves,1); // Existing retrieval only; categorisation adds none.
+ const records=test.logs.filter(x=>x.code==='STRIPE_WEBHOOK_DIAGNOSTIC'&&x.metadata.failureCategory).map(x=>x.metadata);
+ assert.equal(records.length,1);assert.equal(records[0].failureCategory,expected);
+ assert.deepEqual(Object.keys(records[0]).sort(),['consumer','errorCode','failureCategory','outcome','requestId','stage'].sort());
+ assert.equal(records[0].stage,'claim');assert.equal(records[0].outcome,'failed');assert.equal(records[0].errorCode,'BILLING_STORE_UNAVAILABLE');
+ assert.doesNotMatch(JSON.stringify(records),/evt_|cus_|sub_|acct_|sk_test|PRIVATE_|user-private|payload-private/);
+ assert.doesNotMatch(JSON.stringify(test.logs),/PRIVATE_CLAIM_ERROR|PRIVATE_DETAILS|PRIVATE_HINT|sk_test_private|cus_private|user-private|payload-private/);
+ test.billing.r.db.rpc=original;
+ const logCount=test.logs.length;
+ assert.equal((await test.send(delivery)).status,200);assert.equal(test.billing.events.get(delivery.id).state,'processed');assert.equal(test.billing.mirrors[0].revision,1);
+ assert.equal(test.logs.slice(logCount).filter(x=>x.metadata?.failureCategory).length,0);
+ const reads=test.billing.retrieves;
+ assert.equal((await test.send(delivery)).status,200);assert.equal(test.billing.retrieves,reads);assert.equal(test.billing.mirrors[0].revision,1);
+}
+// Arbitrary category text is clamped; thrown errors remain identical and logger failure is harmless.
+const observerModule=load('src/lib/stripe/webhook-observer.ts',{'server-only':{}},{});
+const categoryLogs=[];
+const categoryObserver=observerModule.createWebhookObserver({requestId:'opaque-test',stripeEventId:'evt_private',stripeEventType:'invoice.paid',consumer:'entitlement'},fields=>categoryLogs.push(fields));
+const originalError=Object.assign(Error('PRIVATE_RAW_ERROR'),{claimFailureCategory:'PRIVATE_SECRET_PAYLOAD',code:'23503'});
+await assert.rejects(categoryObserver.run('claim',async()=>{throw originalError;}),error=>error===originalError);
+assert.equal(categoryLogs.at(-1).failureCategory,'UNKNOWN_STORE_ERROR');assert.doesNotMatch(JSON.stringify(categoryLogs.at(-1)),/PRIVATE_|evt_private/);
+assert.equal(categoryLogs[0].failureCategory,undefined);
+const brokenObserver=observerModule.createWebhookObserver({requestId:'opaque-test',stripeEventId:'evt_private',stripeEventType:'invoice.paid',consumer:'entitlement'},()=>{throw Error('sink failure');});
+await assert.rejects(brokenObserver.run('claim',async()=>{throw originalError;}),error=>error===originalError);
+console.log('PASS: safe claim-category logs through real route/logger, no identifiers/raw data in category records, unchanged browser/ledger/retry/commit/duplicate behaviour.');
+
+// Some clients throw structured errors instead of returning them. Preserve exception identity.
+const thrownLogs=[];
+const thrownObserver=observerModule.createWebhookObserver({requestId:'opaque-test',stripeEventId:'evt_private',stripeEventType:'invoice.paid',consumer:'entitlement'},fields=>thrownLogs.push(fields));
+for(const [code,expected] of [['23503','FOREIGN_KEY_VIOLATION'],['57014','DATABASE_TIMEOUT_OR_CANCELLED'],['08006','DATABASE_UNAVAILABLE'],['unknown','UNKNOWN_STORE_ERROR']]){
+ const thrown=Object.assign(Error('PRIVATE_THROWN_ERROR'),{code,details:'PRIVATE_DETAILS',hint:'PRIVATE_HINT'});
+ await assert.rejects(thrownObserver.run('claim',async()=>{throw thrown;}),error=>error===thrown);
+ assert.equal(thrownLogs.at(-1).failureCategory,expected);
+ assert.doesNotMatch(JSON.stringify(thrownLogs.at(-1)),/PRIVATE_|evt_private/);
+}
+console.log('PASS: thrown structured client errors categorised without changing exception identity.');

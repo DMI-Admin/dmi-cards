@@ -13,7 +13,7 @@ let now=Date.now();
 class Clock extends Date { static now(){return now;} }
 function load(file,deps){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,Date:Clock,URL,Buffer,console,require(name){assert.ok(name in deps,`unexpected dependency: ${name}`);return deps[name];}});return exports;}
 const namespace={hasDmiStripeAppNamespace:m=>m?.dmi_app==='dmi_cards_v2',DMI_STRIPE_APP_NAMESPACE:'dmi_cards_v2'};
-const rel=load('src/lib/stripe/reliability.ts',{'server-only':{},'@/lib/supabase-admin':{},'@/lib/stripe/config':{},'@/lib/api/responses':{ApiRouteError},'@/lib/stripe/app-namespace':namespace});
+const rel=load('src/lib/stripe/reliability.ts',{'./webhook-observer':load('src/lib/stripe/webhook-observer.ts',{'server-only':{}}),'server-only':{},'@/lib/supabase-admin':{},'@/lib/stripe/config':{},'@/lib/api/responses':{ApiRouteError},'@/lib/stripe/app-namespace':namespace});
 const webhook=load('src/lib/stripe/webhook.ts',{'server-only':{},'@/lib/stripe/app-namespace':namespace,'@/lib/stripe/reliability':rel});
 const checkout=load('src/lib/stripe/checkout.ts',{'server-only':{},'@/lib/stripe/app-namespace':namespace,'@/lib/stripe/config':{},'@/lib/stripe/reliability':rel});
 const reconcile=load('src/lib/stripe/reconciliation.ts',{'server-only':{},'@/lib/stripe/reliability':rel});
@@ -145,3 +145,39 @@ assert.equal((await summary.getBillingSummaryForUser(other)).hasSubscription,fal
 for(const cancelAtPeriodEnd of [true,false]){const response=await summary.setSubscriptionCancelAtPeriodEndForUser({userId:user,cancelAtPeriodEnd});assert.equal(response.cancelAtPeriodEnd,cancelAtPeriodEnd);assert.equal(f.mirrors[0].sync_snapshot.cancel_at_period_end,cancelAtPeriodEnd);}
 await assert.rejects(summary.setSubscriptionCancelAtPeriodEndForUser({userId:other,cancelAtPeriodEnd:true}));assert.equal(updates,2);
 console.log('PASS: real portal route past_due/unpaid recovery, unrelated/unauthenticated denial; real client billing summary, cancellation/resume and shared mirror refresh.');
+
+// Claim categorisation is additive; structured fields only, with no extra queries/calls.
+const claimCases=[
+ [{code:'23503',constraint:'billing_accounts_user_id_fkey'},'AUTH_USER_NOT_FOUND'],
+ [{code:'23503'},'FOREIGN_KEY_VIOLATION'],
+ [{code:'23503',constraint:'unrecognised_constraint'},'FOREIGN_KEY_VIOLATION'],
+ [{code:'23505'},'UNIQUE_CONFLICT'],
+ [{code:'23502'},'INVALID_ACCOUNT_STATE'],
+ [{code:'23514'},'INVALID_ACCOUNT_STATE'],
+ [{code:'22P02'},'INVALID_ACCOUNT_STATE'],
+ [{code:'57014'},'DATABASE_TIMEOUT_OR_CANCELLED'],
+ [{code:'08006'},'DATABASE_UNAVAILABLE'],
+ [{code:'57P03'},'DATABASE_UNAVAILABLE'],
+ [{code:'PGRST002'},'DATABASE_UNAVAILABLE'],
+ [{code:'P0001'},'UNKNOWN_STORE_ERROR'],
+ [{code:'PRIVATE_UNKNOWN_CODE',constraint:'billing_accounts_user_id_fkey'},'UNKNOWN_STORE_ERROR'],
+ [{},'UNKNOWN_STORE_ERROR'],
+];
+for(const [structured,expected] of claimCases){
+ const raw='PRIVATE_DATABASE_ERROR cus_private evt_private sk_test_private payload-private';
+ const error={...structured,message:raw};
+ for(const field of ['details','hint'])Object.defineProperty(error,field,{get(){throw Error('must not inspect raw '+field);}});
+ let calls=0;
+ const runtime={scope:'acct_fixture:test',live:false,stripe:new Proxy({},{get(){throw Error('new Stripe call forbidden');}}),db:{async rpc(name,args){calls++;assert.equal(name,'billing_foundation_command');assert.equal(args.p_action,'claim');return {data:null,error};}}};
+ await assert.rejects(rel.command(runtime,'claim',user,null),failure=>{
+  assert.equal(failure.reason,'BILLING_STORE_UNAVAILABLE');assert.equal(failure.status,503);
+  assert.equal(failure.claimFailureCategory,expected);
+  assert.doesNotMatch(JSON.stringify(failure),/PRIVATE_DATABASE_ERROR|cus_private|evt_private|sk_test_private|payload-private/);
+  return true;
+ });
+ assert.equal(calls,1);
+ await assert.rejects(rel.command({...runtime,db:{async rpc(){return {error};}}},'commit',user,'existing-token'),failure=>{assert.equal(failure.claimFailureCategory,undefined);return true;});
+}
+// Existing high-level mapping stays authoritative even when structured categorisation is unknown.
+await assert.rejects(rel.command({db:{async rpc(){return {error:{code:'P0001',message:'BILLING_IDENTITY'}};}}},'claim',user,null),failure=>failure.reason==='BILLING_IDENTITY'&&failure.status===409&&failure.claimFailureCategory==='UNKNOWN_STORE_ERROR');
+console.log('PASS: closed claim taxonomy, structured code/constraint only, raw details excluded, one existing RPC, no Stripe calls, other operation failures unchanged.');

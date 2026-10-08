@@ -1,5 +1,6 @@
 import "server-only";
-import type {Observer, Stage} from "./webhook-observer";
+import { classifyClaimStoreError } from "./webhook-observer";
+import type {ClaimFailureCategory, Observer, Stage} from "./webhook-observer";
 import type Stripe from "stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { getStripeServerClient, resolveStripeAccountScope } from "@/lib/stripe/config";
@@ -7,7 +8,7 @@ import { ApiRouteError } from "@/lib/api/responses";
 import { hasDmiStripeAppNamespace } from "@/lib/stripe/app-namespace";
 
 export class BillingFailure extends ApiRouteError {
-  constructor(public reason: string, status: 409 | 503 = 503) {
+  constructor(public reason: string, status: 409 | 503 = 503, public readonly claimFailureCategory?: ClaimFailureCategory) {
     super(status, status === 409 ? "CONFLICT" : "INTERNAL_ERROR", `Billing operation unavailable (${reason}). Please retry or contact support.`);
   }
 }
@@ -31,7 +32,7 @@ export async function command<T>(r: BillingRuntime, action: string, user: string
   const { data, error } = await r.db.rpc("billing_foundation_command", { p_action: action, p_scope: r.scope, p_user: user, p_token: token, p_input: input });
   if (error) {
     const reason = /BILLING_(BUSY|FENCE|REVISION|IDENTITY|SCOPE|UNKNOWN_PRICE)/.exec(error.message || "")?.[0] || "BILLING_STORE_UNAVAILABLE";
-    throw new BillingFailure(reason, reason === "BILLING_IDENTITY" ? 409 : 503);
+    throw new BillingFailure(reason, reason === "BILLING_IDENTITY" ? 409 : 503, action === "claim" ? classifyClaimStoreError(error) : undefined);
   }
   return data as T;
   };

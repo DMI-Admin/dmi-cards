@@ -1,6 +1,22 @@
 import "server-only";
 // TEMPORARY staging diagnostics: remove after the webhook failure is diagnosed.
 export const stages = ["runtime", "consumer", "envelope", "event_claim", "claim", "bind", "commit", "event_finish", "event_fail", "release", "subscription_sync", "stripe_retrieval", "identity_binding", "normalization", "mirror_read", "item_read", "run_start", "run_read", "other_rpc"] as const;
+export const claimFailureCategories = ["AUTH_USER_NOT_FOUND", "FOREIGN_KEY_VIOLATION", "UNIQUE_CONFLICT", "INVALID_ACCOUNT_STATE", "DATABASE_UNAVAILABLE", "DATABASE_TIMEOUT_OR_CANCELLED", "UNKNOWN_STORE_ERROR"] as const;
+export type ClaimFailureCategory = typeof claimFailureCategories[number];
+// Classify structured database fields only; messages/details/hints are never evidence.
+export function classifyClaimStoreError(value: unknown): ClaimFailureCategory {
+ try {
+  if (!value || typeof value !== "object") return "UNKNOWN_STORE_ERROR";
+  const error = value as {code?: unknown; constraint?: unknown};
+  if (error.code === "23503") return error.constraint === "billing_accounts_user_id_fkey" ? "AUTH_USER_NOT_FOUND" : "FOREIGN_KEY_VIOLATION";
+  if (error.code === "23505") return "UNIQUE_CONFLICT";
+  if (["23502", "23514", "22P02"].includes(error.code as string)) return "INVALID_ACCOUNT_STATE";
+  // SQLSTATE 57014 includes statement timeout and explicit query cancellation.
+  if (error.code === "57014") return "DATABASE_TIMEOUT_OR_CANCELLED";
+  if (["08000", "08001", "08003", "08004", "08006", "08007", "08P01", "57P01", "57P02", "57P03", "PGRST000", "PGRST001", "PGRST002"].includes(error.code as string)) return "DATABASE_UNAVAILABLE";
+  return "UNKNOWN_STORE_ERROR";
+ } catch { return "UNKNOWN_STORE_ERROR"; }
+}
 export type Stage = typeof stages[number];
 export type AssertionObserver = (details:{fieldPath:string;check:string;present:boolean;primitiveType:string;errorCode:string})=>void;
 const assertionPaths=new Set(["context", "context.verified_user", "subscription", "subscription.cancel_at", "subscription.cancel_at_period_end", "subscription.canceled_at", "subscription.created", "subscription.customer", "subscription.discounts", "subscription.discounts[]", "subscription.discounts[].coupon", "subscription.discounts[].coupon.amount_off", "subscription.discounts[].coupon.currency", "subscription.discounts[].coupon.id", "subscription.discounts[].coupon.percent_off", "subscription.discounts[].end", "subscription.discounts[].id", "subscription.discounts[].source", "subscription.discounts[].start", "subscription.ended_at", "subscription.id", "subscription.items", "subscription.items.data", "subscription.items.has_more", "subscription.items[]", "subscription.items[].created", "subscription.items[].current_period_end", "subscription.items[].current_period_start", "subscription.items[].discounts", "subscription.items[].discounts[]", "subscription.items[].discounts[].coupon", "subscription.items[].discounts[].coupon.amount_off", "subscription.items[].discounts[].coupon.currency", "subscription.items[].discounts[].coupon.id", "subscription.items[].discounts[].coupon.percent_off", "subscription.items[].discounts[].end", "subscription.items[].discounts[].id", "subscription.items[].discounts[].source", "subscription.items[].discounts[].start", "subscription.items[].effective_cycle_amount_minor", "subscription.items[].id", "subscription.items[].price", "subscription.items[].price.billing_scheme", "subscription.items[].price.currency", "subscription.items[].price.id", "subscription.items[].price.product", "subscription.items[].price.recurring", "subscription.items[].price.recurring.interval", "subscription.items[].price.recurring.interval_count", "subscription.items[].price.recurring.usage_type", "subscription.items[].price.tax_behavior", "subscription.items[].price.unit_amount", "subscription.items[].price.unit_amount_decimal", "subscription.items[].quantity", "subscription.livemode", "subscription.metadata", "subscription.status", "subscription.trial_end"]);
@@ -27,6 +43,13 @@ export function createWebhookObserver(context: {requestId: string; stripeEventId
     const reason = (error as Error & {reason?: unknown}).reason;
     if (typeof reason === "string" && codes.has(reason)) errorCode = reason;
     else if (codes.has(error.message)) errorCode = error.message;
+   }
+   if (safe.consumer === "entitlement" && stage === "claim" && outcome === "failed") {
+    const category = error instanceof Error ? (error as Error & {claimFailureCategory?: unknown}).claimFailureCategory : undefined;
+    const failureCategory = category === undefined ? classifyClaimStoreError(error) : claimFailureCategories.find(value => value === category) ?? "UNKNOWN_STORE_ERROR";
+    // Claim-category records contain no event/customer/user identifiers or raw errors.
+    sink({requestId:safe.requestId, consumer:safe.consumer, stage, outcome, errorCode, failureCategory});
+    return;
    }
    sink({...safe, stage: stages.includes(stage) ? stage : "other_rpc", outcome, ...(outcome === "failed" ? {errorCode,...assertion} : {})});
   } catch { /* Logging must never affect either consumer. */ }
