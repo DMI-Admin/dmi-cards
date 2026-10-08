@@ -1,13 +1,15 @@
 import AdminAppearanceControl from "@/components/admin/AdminAppearance";
+import AdminShell from "@/components/admin/AdminShell";
+import { AdminPageHeader, AdminSurface } from "@/components/admin/AdminUI";
+import styles from "@/components/admin/AdminSimplePages.module.css";
 
 export default function SettingsPage() {
-  return (
-    <main className="min-h-screen bg-[#090B14] p-10 text-white">
-      <h1 className="text-3xl font-bold">Settings</h1>
-      <p className="mt-2 text-white/60">Admin settings placeholder page.</p>
-      <div className="mt-8 max-w-3xl">
+  return <AdminShell>
+    <section className={styles.page}>
+      <AdminPageHeader title="Settings" subtitle="Admin settings placeholder page." />
+      <AdminSurface className={styles.settings}>
         <AdminAppearanceControl />
-      </div>
-    </main>
-  );
+      </AdminSurface>
+    </section>
+  </AdminShell>;
 }
