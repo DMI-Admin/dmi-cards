@@ -92,18 +92,16 @@ assert.match(pageSource, /check\.evidence/);
 assert.match(pageSource, /This view does not report Production health/);
 assert.match(pageSource, /Copy diagnostic report/);
 assert.match(pageSource, /Refresh reloads the latest saved run/);
-assert.match(pageSource, /import Sidebar from "@\/components\/Sidebar"/);
-assert.match(pageSource, /p-5 sm:p-8 lg:p-10/);
-assert.match(pageSource, /styles\.statusBadge/);
+assert.match(pageSource, /<AdminShell>/);assert.doesNotMatch(pageSource, /Sidebar|<main/);
+assert.match(pageSource, /<AdminPageHeader/);
+assert.match(pageSource, /<AdminStatusBadge/);
+assert.match(pageSource, /Technical details/);
+assert.match(pageSource, /ownerCounts\(run\.checks\)/);
+assert.doesNotMatch(pageSource, /<SummaryTile|isActionable/);
 assert.match(pageSource, /flex-col items-start gap-3 sm:flex-row sm:justify-between/);
-for (const styleName of [
-  "operational", "degraded", "incident", "needsInvestigation",
-  "setupRequired", "stagingGap", "notYetMonitored", "unknown",
-]) {
-  assert.match(pageStylesSource, new RegExp(`\\.${styleName}(?:,|\\s*\\{)`));
-}
-assert.match(pageStylesSource, /white-space:\s*normal/);
 assert.match(pageStylesSource, /overflow-wrap:\s*anywhere/);
+assert.match(pageStylesSource, /var\(--admin-/);
+assert.doesNotMatch(pageStylesSource, /!important|#[a-fA-F0-9]{3,8}\b/);
 assert.match(apiSource, /requireAdminAccess\(await auth\(\)\)/);
 assert.match(apiSource, /process\.env\.VERCEL_ENV !== "preview"/);
 assert.match(apiSource, /NEXT_PUBLIC_SUPABASE_URL\?\.trim\(\) !== stagingSupabaseUrl/);

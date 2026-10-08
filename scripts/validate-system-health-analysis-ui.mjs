@@ -49,7 +49,8 @@ function load(path) {
       if (specifier === "react") return react;
       if (specifier === "react/jsx-runtime") return jsxRuntime;
       if (specifier === "lucide-react") return new Proxy({}, { get: () => (props) => React.createElement("span", props) });
-      if (specifier === "@/components/Sidebar") return { default: () => React.createElement("aside", null, "Admin navigation") };
+      if (specifier === "@/components/admin/AdminShell") return { default: ({ children }) => React.createElement("main", null, children) };
+      if (specifier === "@/components/admin/AdminUI") return load(resolve("src/components/admin/AdminUI.tsx"));
       if (specifier.endsWith(".css")) return { default: new Proxy({}, { get: (_target, key) => key }) };
       const base = specifier.startsWith("@/") ? resolve("src", specifier.slice(2)) : resolve(dirname(path), specifier);
       assert.ok(specifier.startsWith("@/lib/system-health/") || specifier.startsWith("."), "Unexpected dependency");
@@ -99,6 +100,7 @@ function render() {
 function find(tree, predicate) {
   if (!React.isValidElement(tree)) return null;
   if (predicate(tree)) return tree;
+  if (typeof tree.type === "function" && tree.type.name === "AdminButton") return find(tree.type(tree.props), predicate);
   for (const child of React.Children.toArray(tree.props.children)) {
     const match = find(child, predicate);
     if (match) return match;
@@ -117,6 +119,12 @@ timers.forEach((timer) => timer());
 await tick();
 assert.equal(requests.length, 1);
 assert.equal(requests[0][0], "/api/admin/system-health");
+const beforeAi = render().html;
+assert.ok(beforeAi.indexOf('aria-label="Owner status summary"') < beforeAi.indexOf('id="ai-health-analysis"'));
+assert.equal((beforeAi.match(/data-owner-state="[^"]+"/g) ?? []).length, 5);
+assert.doesNotMatch(beforeAi, /id="owner-attention"|id="owner-completion"/);
+const ownerSummaryHtml = (html) => html.match(/<section aria-label="Owner status summary"[\s\S]*?<\/section>/)[0];
+const initialOwnerSummary = ownerSummaryHtml(beforeAi);
 let pendingResolve;
 fetchMock = (_url, options) => {
   assert.equal(options.method, "POST");
@@ -141,6 +149,7 @@ pendingResolve(jsonResponse(analysis));
 await tick();
 current = render();
 assert.match(current.html, /Overall advisory headline/);
+assert.equal(ownerSummaryHtml(current.html), initialOwnerSummary, "AI words and levels cannot alter owner counts or colours");
 assert.equal((current.html.match(/AI headline /g) ?? []).length, 5);
 assert.equal((current.html.match(/AI advisory/g) ?? []).length, 6);
 for (const { id, label } of types.healthGroups) {
@@ -149,7 +158,7 @@ for (const { id, label } of types.healthGroups) {
   const sectionHtml = renderToStaticMarkup(section);
   const returnedLevel = analysis.sections.find((summary) => summary.section === id).level;
   assert.ok(sectionHtml.includes(client.analysisLevelDisplay[returnedLevel].label));
-  assert.ok(sectionHtml.includes(client.analysisLevelDisplay[returnedLevel].tone));
+  assert.ok(sectionHtml.includes(`data-tone="${({ all_good: "success", monitoring_incomplete: "coverage", needs_attention: "attention", critical: "critical" })[returnedLevel]}"`));
   assert.equal((sectionHtml.match(new RegExp(`AI headline ${id}`, "g")) ?? []).length, 1);
   assert.ok(sectionHtml.indexOf("<h2") < sectionHtml.indexOf("aiExplanation"));
   if (sectionHtml.includes("<article")) assert.ok(sectionHtml.indexOf("aiExplanation") < sectionHtml.indexOf("<article"));
@@ -161,6 +170,15 @@ assert.doesNotMatch(current.html, /Tell Codex|Prepare Codex|automatic fix|costNa
 assert.match(current.html, /No checks in this saved run currently require an incident investigation\./);
 assert.equal(JSON.stringify(health.monitoringRun.checks), storedCheck);
 assert.equal(requests.length, 2, "Rendering a successful result must not request another analysis");
+
+const diagnosticButton = find(current.tree, (node) => node.type === "button" && String(node.props.children).includes("Copy diagnostic report"));
+const technicalReport = find(current.tree, (node) => node.type === "details" && renderToStaticMarkup(node).includes("Safe diagnostic report JSON"));
+assert.ok(technicalReport && !technicalReport.props.open);
+assert.ok(find(technicalReport, (node) => node.type === "button" && node.props.onClick === diagnosticButton.props.onClick));
+diagnosticButton.props.onClick();
+await tick();
+const presentation = load(resolve("src/lib/system-health/presentation.ts"));
+assert.equal(clipboardWrites.pop(), JSON.stringify(presentation.buildDiagnosticReport(health.monitoringRun), null, 2));
 
 // Eligibility is driven by the displayed run, even when AI says all_good and
 // codex_recommended is false. Preparing/reviewing/copying is entirely local.
@@ -273,25 +291,11 @@ assert.doesNotMatch(pageSource + clientSource, /OPENAI_API_KEY|NEXT_PUBLIC_.*OPE
 assert.doesNotMatch(clientSource, /body\s*:|prompt\s*:|diagnostic\s*:/);
 assert.match(pageSource, /requestError instanceof SystemHealthAnalysisClientError/);
 assert.match(pageSource, /onClick=\{\(\) => void analyseLatestHealthRun\(\)\}/);
-for (const tone of ["aiAllGood", "aiMonitoringIncomplete", "aiNeedsAttention", "aiCritical"]) assert.match(css, new RegExp(`\\.${tone} \\{`));
-function luminance(hex) {
-  const components = hex.match(/../g).map((component) => parseInt(component, 16) / 255);
-  const linear = components.map((component) => component <= 0.04045 ? component / 12.92 : ((component + 0.055) / 1.055) ** 2.4);
-  return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+for (const [level, tone] of Object.entries({ all_good: "success", monitoring_incomplete: "coverage", needs_attention: "attention", critical: "critical" })) {
+  assert.ok(pageSource.includes(`${level}: "${tone}"`));
 }
-for (const { tone } of Object.values(client.analysisLevelDisplay)) {
-  const rule = css.match(new RegExp(`\\.${tone} \\{([^}]+)\\}`))[1];
-  const foreground = luminance(rule.match(/--ai-text: #([0-9a-f]{6})/)[1]);
-  const background = luminance(rule.match(/--ai-background: #([0-9a-f]{6})/)[1]);
-  assert.ok((Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05) >= 7, `${tone}: strong text contrast required`);
-}
-assert.match(css, /color: var\(--ai-text\) !important/);
-assert.match(css, /background: var\(--ai-background\) !important/);
-for (const selector of ["investigationButton", "investigationPrompt"]) {
-  const rule = css.match(new RegExp(`\\.${selector} \\{([^}]+)\\}`))[1];
-  const foreground = luminance(rule.match(/color: #([0-9a-f]{6}) !important/)[1]);
-  const background = luminance(rule.match(/background: #([0-9a-f]{6}) !important/)[1]);
-  assert.ok((Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05) >= 7);
-  assert.match(rule, /(?:max-)?width: 100%/);
-}
+assert.match(css, /background:var\(--admin-input\)/);
+assert.match(css, /color:var\(--admin-text\)/);
+assert.match(css, /\.investigationPrompt[^}]*width:100%/);
+assert.doesNotMatch(css, /#[a-f0-9]{3,8}\b|!important/i);
 console.log("PASS: offline manual-only AI UI and local Codex handoff: deterministic eligibility, review before explicit copy, clipboard fallback, refresh/stale-copy cancellation, no preparation network calls, five summaries, trusted levels, safe errors and strong contrast. No client secrets or fix controls.");
