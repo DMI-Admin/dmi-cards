@@ -39,6 +39,7 @@ async function fetchMock(url,init={}) {
  return {ok:true,json:async()=>({template:plain(saved)})};
 }
 function load(name) {
+ if(name.endsWith('.module.css'))return {default:{page:'page',builderGrid:'builderGrid',livePreview:'livePreview'}};
  if(deps[name])return deps[name];
  if(cache[name])return cache[name];
  if(name.startsWith('@/components/'))return {default:noopComponent};

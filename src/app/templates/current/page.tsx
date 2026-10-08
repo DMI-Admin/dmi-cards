@@ -6,7 +6,9 @@ import { useAdminInteraction } from "@/components/AdminInteractionDialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
-import Sidebar from "@/components/Sidebar";
+import AdminShell from "@/components/admin/AdminShell";
+import { AdminPageHeader, AdminSurface } from "@/components/admin/AdminUI";
+import adminStyles from "../templates-admin.module.css";
 import CardRenderer from "@/components/CardRenderer";
 import {
   deleteAdminTemplate,
@@ -183,21 +185,16 @@ export default function CurrentTemplatesPage() {
   }
 
   return (
-    <main className="dmi-app-shell flex min-h-screen">
-      <Sidebar />
+    <AdminShell>
       {interaction.dialog}
 
-      <section className="dmi-page space-y-8">
+      <section className={`${adminStyles.page} space-y-8`}>
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <p className="text-sm uppercase tracking-[0.3em] text-[var(--dmi-muted)]">
               Management
             </p>
-            <h1 className="mt-2 text-4xl font-semibold">Current Templates</h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--dmi-muted)]">
-              Edit, duplicate, publish and delete templates from the
-              Admin-managed catalogue.
-            </p>
+            <AdminPageHeader title="Current Templates" subtitle="Edit, duplicate, publish and delete templates from the Admin-managed catalogue." />
           </div>
         </div>
 
@@ -275,7 +272,7 @@ export default function CurrentTemplatesPage() {
                 ) : (
                   <div className="flex flex-wrap justify-center gap-6">
                     {visibleTemplates.map((template) => (
-                      <div
+                      <AdminSurface
                         key={template.id}
                         className="w-full min-w-0 max-w-[260px] rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)] p-3 transition hover:border-[var(--border-brand)]"
                       >
@@ -367,7 +364,7 @@ export default function CurrentTemplatesPage() {
                             Delete
                           </button>
                         </div>
-                      </div>
+                      </AdminSurface>
                     ))}
                   </div>
                 )}
@@ -376,7 +373,7 @@ export default function CurrentTemplatesPage() {
           );
         })}
       </section>
-    </main>
+    </AdminShell>
   );
 }
 

@@ -1,0 +1,11 @@
+.page { min-width:0; color:var(--admin-text); }
+.builderGrid { display:grid; grid-template-columns:minmax(0,1fr); gap:24px; align-items:start; }
+.builderGrid > div { min-width:0; }
+.livePreview { min-width:0; }
+@media(min-width:1536px) {
+  .builderGrid { grid-template-columns:minmax(0,1fr) 420px; }
+  .livePreview { position:sticky; top:24px; align-self:start; }
+}
+/* The shared editor's selected background-mode control inherits a legacy
+   global text override. Keep its Admin label readable without changing cards. */
+.clientPreview :global(button.capitalize[class~="bg-[#AC00FF]"]) { --foreground:var(--admin-on-primary); }

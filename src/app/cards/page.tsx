@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAdminInteraction } from "@/components/AdminInteractionDialog";
 import { downloadCompanyReport } from "@/lib/admin-company-report";
-import Sidebar from "@/components/Sidebar";
+import AdminShell from "@/components/admin/AdminShell";
+import { AdminPageHeader, AdminKpiCard, AdminTableWrapper } from "@/components/admin/AdminUI";
 import styles from "./cards.module.css";
 import { useAdminDialog } from "@/hooks/useAdminDialog";
 import type { SupportCard, SupportInventory } from "@/lib/admin-card-support";
@@ -61,16 +62,12 @@ export default function CardsPage() {
   const totalPages = Math.max(1, Math.ceil((inventory?.total || 0) / (inventory?.pageSize || 25)));
   const summary = inventory?.summary;
   return (
-    <main className="dmi-app-shell flex min-h-screen flex-col md:flex-row">
-      <div className="hidden md:block"><Sidebar /></div>
-      <details className="border-b border-[var(--dmi-border)] p-3 md:hidden [&_aside]:relative [&_aside]:h-auto [&_aside]:w-full">
-        <summary className="cursor-pointer font-semibold">Admin navigation</summary><Sidebar />
-      </details>
-      <section className="dmi-page space-y-6">
-        <header><h1 className="text-3xl font-semibold">Card Management</h1><p className="mt-2 text-sm text-[var(--dmi-muted)]">Read-only support workspace to locate and inspect cards and export company reports.</p></header>
+    <AdminShell>
+      <section className="min-w-0 space-y-6">
+        <AdminPageHeader title="Card Management" subtitle="Read-only support workspace to locate and inspect cards and export company reports." />
         <section aria-label="All cards summary"><p className="mb-2 text-xs text-[var(--dmi-muted)]">All cards — totals are independent of the filters below.</p>
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-            {([['Total Cards', summary?.total], ['Published', summary?.published], ['Draft / Unpublished', summary?.unpublished], ['Business Cards', summary?.business], ['Individual Cards', summary?.individual]] as const).map(([label, value]) => <div key={label} className="dmi-card p-4"><p className="text-xs text-[var(--dmi-muted)]">{label}</p><p className="mt-2 text-2xl font-semibold">{loading ? "…" : value ?? "—"}</p></div>)}
+            {([['Total Cards', summary?.total], ['Published', summary?.published], ['Draft / Unpublished', summary?.unpublished], ['Business Cards', summary?.business], ['Individual Cards', summary?.individual]] as const).map(([label, value]) => <AdminKpiCard key={label} label={label} value={loading ? "…" : value ?? "—"} />)}
           </div>
           {summary && summary.total > summary.business + summary.individual && <p className="mt-2 text-xs text-[var(--dmi-muted)]">{summary.total - summary.business - summary.individual} cards have unknown account linkage and remain visible under All or Unknown linkage.</p>}
         </section>
@@ -83,7 +80,7 @@ export default function CardsPage() {
         {feedback && <p role={feedback.error ? "alert" : "status"} className="text-sm">{feedback.text}</p>}
         {error && <div role="alert" className="dmi-card p-4"><p>{error}</p><button className={`${button} mt-3`} onClick={() => setRetry(value => value + 1)}>Retry</button></div>}
         {loading ? <p role="status">Loading cards…</p> : !error && inventory && <>
-          <div className={`${styles.inventory} dmi-card overflow-hidden`}><div className="overflow-x-auto" role="region" aria-label="Card support inventory" tabIndex={0}>
+          <div className={`${styles.inventory} dmi-card overflow-hidden`}><AdminTableWrapper label="Card support inventory">
             <table role="table"><caption className="sr-only">Card support inventory</caption>
               <thead role="rowgroup" className="bg-[var(--dmi-surface-soft)] text-xs text-[var(--dmi-muted)]"><tr role="row">{['Card Owner / Name','Company','Account Type','Template','Status','Published state','Public URL / slug','Last Updated','Actions'].map(label => <th role="columnheader" scope="col" key={label}>{label}</th>)}</tr></thead>
               <tbody role="rowgroup">{inventory.cards.map(card => <tr role="row" key={card.id} className="border-t border-[var(--dmi-border)] align-top">
@@ -94,13 +91,13 @@ export default function CardsPage() {
                 <td role="cell" data-label="Actions"><div data-support-actions><PublicAction card={card} /><button className={button} onClick={() => setSelected(card)} aria-label={`View Details: ${card.name}`}>View Details</button></div></td>
               </tr>)}</tbody>
             </table>
-          </div>{inventory.cards.length === 0 && <p className="p-6 text-center text-sm text-[var(--dmi-muted)]">No cards found for this page and these filters.</p>}</div>
+          </AdminTableWrapper>{inventory.cards.length === 0 && <p className="p-6 text-center text-sm text-[var(--dmi-muted)]">No cards found for this page and these filters.</p>}</div>
           <nav aria-label="Card pagination" className="flex flex-wrap items-center justify-between gap-3 text-sm"><p>{inventory.total} matching cards · Page {filters.page} of {totalPages}</p><div className="flex gap-2"><button className={button} disabled={filters.page <= 1} onClick={() => setFilters(current => ({ ...current, page: current.page - 1 }))}>Previous</button><button className={button} disabled={filters.page >= totalPages || filters.page >= 9999} onClick={() => setFilters(current => ({ ...current, page: current.page + 1 }))}>Next</button></div></nav>
         </>}
       </section>
       {interaction.dialog}
       {selected && createPortal(<CardDetails card={selected} onClose={() => setSelected(null)} />, document.body)}
-    </main>
+    </AdminShell>
   );
 }
 

@@ -80,7 +80,7 @@ const projection=server.projectSupportCard({...raw,public_url:'https://evil.inva
 assert.equal(server.projectSupportCard({...raw,user_id:null,company_name:'Business text is not identity'}).accountType,'unknown');
 const source=fs.readFileSync('src/app/cards/page.tsx','utf8');assert.doesNotMatch(source,/supabase|mutateAdminCard|LegacyBusinessCards|method: "(?:POST|PATCH|PUT|DELETE)"/);
 assert.match(source,/method: "GET"/);assert.match(source,/target="_blank" rel="noopener noreferrer"/);assert.match(source,/useAdminDialog\(onClose\)/);
-assert.match(source,/overflow-x-auto/);assert.match(source,/max-h-\[90dvh\]/);assert.match(source,/md:hidden/);assert.doesNotMatch(source,/(?:bg|text)-(?:white|black)(?:\s|"|$)/);
+assert.match(source,/<AdminTableWrapper label="Card support inventory"/);assert.match(source,/max-h-\[90dvh\]/);assert.match(source,/<AdminShell>/);assert.doesNotMatch(source,/Sidebar/);assert.doesNotMatch(source,/(?:bg|text)-(?:white|black)(?:\s|"|$)/);
 const sidebar=fs.readFileSync('src/components/Sidebar.tsx','utf8');
 const sections=[...sidebar.matchAll(/title: "([^"]+)"/g)].map(x=>x[1]);assert.deepEqual(sections,['Overview','Card Management','Individual','Business','Billing','Operations']);
 const cardSection=sidebar.slice(sidebar.indexOf('title: "Card Management"'),sidebar.indexOf('title: "Individual"'));
@@ -103,7 +103,7 @@ const page={};
 vm.runInNewContext(ts.transpileModule(pageCode,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{
  exports:page,URLSearchParams,AbortController,document:{body:{}},console,
  fetch:(url,options)=>{assert.equal(options.method,'GET');assert.equal(options.cache,'no-store');assert.equal(options.credentials,'same-origin');return new Promise(resolve=>pending.push({url,options,resolve}));},
- require(name){const deps={'@/components/AdminInteractionDialog':{useAdminInteraction:()=>({confirm:async()=>{return confirmation;},dialog:null})},'@/lib/admin-company-report':{downloadCompanyReport:report=>downloads.push(report)},'./cards.module.css':{default:{inventory:'inventory',filters:'filters'}},react,'react/jsx-runtime':{jsx,jsxs:jsx,Fragment:'fragment'},'react-dom':{createPortal:node=>node},'@/components/Sidebar':{default:()=>null},'@/hooks/useAdminDialog':{useAdminDialog:()=>({role:'dialog','aria-modal':true,tabIndex:-1})}};assert.ok(name in deps,name);return deps[name];},
+ require(name){const deps={'@/components/AdminInteractionDialog':{useAdminInteraction:()=>({confirm:async()=>{return confirmation;},dialog:null})},'@/lib/admin-company-report':{downloadCompanyReport:report=>downloads.push(report)},'./cards.module.css':{default:{inventory:'inventory',filters:'filters'}},react,'react/jsx-runtime':{jsx,jsxs:jsx,Fragment:'fragment'},'react-dom':{createPortal:node=>node},'@/components/admin/AdminShell':{default:()=>null},'@/components/admin/AdminUI':{AdminPageHeader:()=>null,AdminKpiCard:()=>null,AdminTableWrapper:()=>null},'@/hooks/useAdminDialog':{useAdminDialog:()=>({role:'dialog','aria-modal':true,tabIndex:-1})}};assert.ok(name in deps,name);return deps[name];},
 });
 function nodes(node){if(Array.isArray(node))return Array.from(node).flatMap(nodes);if(!node||typeof node!=='object')return [];return [node,...nodes(node.props?.children)];}
 const textOf=node=>Array.isArray(node)?node.map(textOf).join(''):typeof node==='string'||typeof node==='number'?String(node):node?.props?textOf(node.props.children):'';

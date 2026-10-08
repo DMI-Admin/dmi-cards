@@ -31,7 +31,9 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import Sidebar from "@/components/Sidebar";
+import AdminShell from "@/components/admin/AdminShell";
+import { AdminPageHeader } from "@/components/admin/AdminUI";
+import adminStyles from "./templates-admin.module.css";
 import CardRenderer, {
   type CardRendererData,
   type CardRendererTemplate,
@@ -2116,34 +2118,25 @@ export default function TemplatesPage() {
   }
 
   return (
-    <main className="dmi-app-shell flex min-h-screen">
-      <Sidebar />
+    <AdminShell>
       {interaction.dialog}
 
-      <section className="dmi-page">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-[var(--text-primary)]">
-            Template Builder
-          </h1>
-          <p className="mt-2 text-[var(--dmi-muted)]">
-            Create and edit reusable card layouts. Clients will customise
-            colours and content later.
-          </p>
-        </div>
+      <section className={adminStyles.page}>
+        <div className="mb-8"><AdminPageHeader title="Template Builder" subtitle="Create and edit reusable card layouts. Clients will customise colours and content later." /></div>
 
         {templateMessage && (
-          <div className="mb-6 rounded-2xl border border-green-400/20 bg-green-500/10 px-5 py-4 text-sm text-green-100">
+          <div className="mb-6 rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-success-bg)] px-5 py-4 text-sm text-[var(--admin-success-text)]">
             {templateMessage}
           </div>
         )}
 
         {templateError && (
-          <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm font-medium text-amber-950 dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-100">
+          <div className="mb-6 rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-attention-bg)] px-5 py-4 text-sm font-medium text-[var(--admin-attention-text)]">
             {templateError}
           </div>
         )}
 
-        <div className="mb-10 grid gap-6 2xl:grid-cols-[minmax(0,1fr)_420px] 2xl:items-start">
+        <div className={`${adminStyles.builderGrid} mb-10`}>
           <div className={builderWorkspaceClass}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -2218,7 +2211,7 @@ export default function TemplatesPage() {
             </div>
           </div>
 
-          <div className={`${builderWorkspaceClass} mx-auto w-full max-w-[560px] 2xl:sticky 2xl:top-6 2xl:max-w-none 2xl:self-start`}>
+          <div className={`${builderWorkspaceClass} ${adminStyles.livePreview} mx-auto w-full max-w-[560px]`}>
             <div className="mb-6">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div>
@@ -2289,7 +2282,7 @@ export default function TemplatesPage() {
           />
         )}
       </section>
-    </main>
+    </AdminShell>
   );
 }
 
@@ -2530,7 +2523,7 @@ function ClientExperiencePreview({
   };
 
   return (
-    <div ref={previewDialogRef}>
+    <div ref={previewDialogRef} className={adminStyles.clientPreview}>
     <CardEditorModalShell
       title="Client Experience Preview"
       description={`Previewing ${template.name || "current Admin draft"} with local sample data. Changes here do not save. Publishing requirements are not checked.`}
