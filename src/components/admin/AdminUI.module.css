@@ -1,10 +1,37 @@
 .header h1 { margin:0; font-size:clamp(28px,2vw,30px); font-weight:600; letter-spacing:-.025em; }
 .header p { margin:6px 0 0; font-size:14px; color:var(--admin-muted); }
-.kpi { min-width:0; padding:14px 16px; border:1px solid var(--admin-border); border-radius:12px; background:var(--admin-surface); }
+.kpi { color:var(--admin-text); min-width:0; padding:14px 16px; border:1px solid var(--admin-border); border-radius:12px; background:var(--admin-surface); }
 .kpi p { margin:0; color:var(--admin-text-secondary); font-size:12px; font-weight:500; }
 .kpi strong { display:block; margin-top:6px; font-size:28px; line-height:1.2; font-weight:600; letter-spacing:-.025em; font-variant-numeric:tabular-nums; color:var(--admin-text); }
-.badge { display:inline-flex; align-items:center; padding:3px 8px; border-radius:999px; font-size:12px; line-height:18px; font-weight:500; white-space:nowrap; background:var(--admin-surface-secondary); color:var(--admin-text-secondary); }
+.badge { display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border-radius:999px; font-size:12px; line-height:18px; font-weight:500; white-space:nowrap; background:var(--admin-surface-secondary); color:var(--admin-text-secondary); }
 .badge[data-tone="success"] { background:var(--admin-success-bg); color:var(--admin-success-text); }
 .badge[data-tone="warning"] { background:var(--admin-warning-bg); color:var(--admin-warning-text); }
 .badge[data-tone="danger"] { background:var(--admin-danger-bg); color:var(--admin-danger-text); }
 .badge[data-tone="trial"] { background:var(--admin-accent-soft); color:var(--admin-accent); }
+
+/* New primitives use paired Admin tokens; no fixed-palette/global overrides. */
+.badge[data-tone="completion"] { background:var(--admin-completion-bg); color:var(--admin-completion-text); }
+.badge[data-tone="coverage"] { background:var(--admin-coverage-bg); color:var(--admin-coverage-text); }
+.badge[data-tone="attention"] { background:var(--admin-attention-bg); color:var(--admin-attention-text); }
+.badge[data-tone="critical"] { background:var(--admin-critical-bg); color:var(--admin-critical-text); }
+.badge[data-tone="neutral"] { background:var(--admin-neutral-bg); color:var(--admin-neutral-text); }
+.statusDot { width:10px; height:10px; flex:0 0 auto; border-radius:50%; background:var(--admin-neutral-dot); }
+.badge[data-tone="success"] .statusDot { background:var(--admin-success-dot); }
+.badge[data-tone="completion"] .statusDot { background:var(--admin-completion-dot); }
+.badge[data-tone="coverage"] .statusDot { background:var(--admin-coverage-dot); }
+.badge[data-tone="attention"] .statusDot { background:var(--admin-attention-dot); }
+.badge[data-tone="critical"] .statusDot { background:var(--admin-critical-dot); }
+
+.surface { min-width:0; padding:16px; border:1px solid var(--admin-border); border-radius:12px; background:var(--admin-surface); color:var(--admin-text); }
+.button { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; max-width:100%; padding:8px 14px; border:1px solid var(--admin-border-control); border-radius:8px; background:var(--admin-surface); color:var(--admin-text); font:inherit; font-size:13px; font-weight:500; cursor:pointer; overflow-wrap:anywhere; }
+.button:hover:not(:disabled) { background:var(--admin-hover); }
+.button[data-variant="primary"] { background:var(--admin-gradient); color:var(--admin-on-primary); border-color:transparent; }
+.button[data-variant="danger"] { background:var(--admin-danger-solid); color:var(--admin-on-primary); border-color:transparent; }
+.control { display:block; width:100%; min-width:0; min-height:44px; padding:8px 10px; border:1px solid var(--admin-border-control); border-radius:8px; background:var(--admin-input); color:var(--admin-text); font:inherit; font-size:14px; color-scheme:inherit; }
+.control::placeholder { color:var(--admin-muted); opacity:1; }
+.button:disabled,.control:disabled { background:var(--admin-disabled-bg); color:var(--admin-disabled-text); border-color:var(--admin-border-control); cursor:not-allowed; opacity:1; }
+.control[readonly] { background:var(--admin-surface-secondary); }
+.button[data-variant]:disabled { background-image:none; }
+.tableWrapper { width:100%; max-width:100%; min-width:0; overflow-x:auto; overscroll-behavior-x:contain; }
+.button:focus-visible,.control:focus-visible,.tableWrapper:focus-visible { outline:2px solid var(--admin-focus); outline-offset:3px; }
+@media(max-width:767px) { .control { font-size:16px; } }

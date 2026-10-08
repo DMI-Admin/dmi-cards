@@ -20,6 +20,7 @@
   --admin-overlay: #10142688;
   --admin-disabled-bg: #e6e4ed;
   --admin-disabled-text: #5a6173;
+  --admin-disabled-opacity: 1;
   --admin-success-bg: #e5f5ed;
   --admin-success-text: #15623f;
   --admin-warning-bg: #fff1d6;
@@ -33,6 +34,24 @@
   --admin-shadow: #17213b25;
   --admin-on-primary: #ffffff;
   --admin-gradient: linear-gradient(110deg,#bf226f,#7721b8);
+  /* Presentation-only states; existing billing warning/danger tones stay intact. */
+  --admin-success-dot: #15803d;
+  --admin-completion-bg: #fef9c3;
+  --admin-completion-text: #713f12;
+  --admin-completion-dot: #a16207;
+  --admin-coverage-bg: #e0f2fe;
+  --admin-coverage-text: #0c4a6e;
+  --admin-coverage-dot: #0369a1;
+  --admin-attention-bg: #ffedd5;
+  --admin-attention-text: #7c2d12;
+  --admin-attention-dot: #c2410c;
+  --admin-critical-bg: #fee2e2;
+  --admin-critical-text: #7f1d1d;
+  --admin-critical-dot: #b91c1c;
+  --admin-neutral-bg: var(--admin-surface-secondary);
+  --admin-neutral-text: var(--admin-text-secondary);
+  --admin-neutral-dot: #475569;
+
   --bg-primary: var(--admin-page);
   --bg-secondary: var(--admin-surface);
   --bg-tertiary: var(--admin-surface-secondary);
@@ -58,6 +77,7 @@
   --input-focus: var(--admin-focus);
   --disabled-bg: var(--admin-disabled-bg);
   --disabled-text: var(--admin-disabled-text);
+  --disabled-opacity: var(--admin-disabled-opacity);
   --success: var(--admin-success-text);
   --success-bg: var(--admin-success-bg);
   --warning: var(--admin-warning-text);
@@ -111,6 +131,21 @@
   --admin-accent-soft: #382544;
   --admin-focus: #eea4ff;
   --admin-shadow: #00000066;
+  --admin-success-dot: #86efac;
+  --admin-completion-bg: #422f0b;
+  --admin-completion-text: #fde68a;
+  --admin-completion-dot: #facc15;
+  --admin-coverage-bg: #082f49;
+  --admin-coverage-text: #bae6fd;
+  --admin-coverage-dot: #38bdf8;
+  --admin-attention-bg: #431407;
+  --admin-attention-text: #fed7aa;
+  --admin-attention-dot: #fb923c;
+  --admin-critical-bg: #450a0a;
+  --admin-critical-text: #fecaca;
+  --admin-critical-dot: #f87171;
+  --admin-neutral-dot: #cbd5e1;
+
 }
 @media (prefers-color-scheme: dark) {
   :root[data-admin-appearance="system"] {
@@ -145,6 +180,21 @@
   --admin-accent-soft: #382544;
   --admin-focus: #eea4ff;
   --admin-shadow: #00000066;
+  --admin-success-dot: #86efac;
+  --admin-completion-bg: #422f0b;
+  --admin-completion-text: #fde68a;
+  --admin-completion-dot: #facc15;
+  --admin-coverage-bg: #082f49;
+  --admin-coverage-text: #bae6fd;
+  --admin-coverage-dot: #38bdf8;
+  --admin-attention-bg: #431407;
+  --admin-attention-text: #fed7aa;
+  --admin-attention-dot: #fb923c;
+  --admin-critical-bg: #450a0a;
+  --admin-critical-text: #fecaca;
+  --admin-critical-dot: #f87171;
+  --admin-neutral-dot: #cbd5e1;
+
   }
 }
 

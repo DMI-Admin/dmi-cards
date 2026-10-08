@@ -23,6 +23,10 @@ assert.equal(document.documentElement.dataset.adminAppearance,'system');
 const css=fs.readFileSync('src/app/admin-theme.css','utf8');
 for(const token of ['page','sidebar','surface','surface-secondary','card','border','text','muted','input','table-header','table-row','drawer','dialog','overlay','disabled-bg','success-text','danger-text','gradient'])assert.ok(css.includes('--admin-'+token+':'));
 assert.match(css,/prefers-color-scheme: dark/);
+for(const tone of ['success','completion','coverage','attention','critical','neutral']) {
+ for(const role of ['bg','text','dot']) assert.ok(css.includes('--admin-'+tone+'-'+role+':'), `${tone} ${role}`);
+}
+assert.equal((css.match(/--admin-coverage-bg: #082f49;/g)||[]).length,2,'Explicit dark and System-dark share blue coverage');
 const control=fs.readFileSync('src/components/admin/AdminAppearance.tsx','utf8');
 assert.doesNotMatch(control,/dataset\.theme|["']dmi-theme["']/);
 assert.match(control,/delete document.documentElement.dataset.adminAppearance/);
