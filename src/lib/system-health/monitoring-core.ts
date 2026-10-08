@@ -30,7 +30,13 @@ const allowedEvidenceKeys = new Set([
   "certificate_valid",
   "provider_response_ok",
   "query_bounded",
+  "sampled_rows",
+  "failed_count",
+  "overdue_count",
+  "sample_limit_reached",
 ]);
+
+const aggregateBounds: Record<string, number> = { sampled_rows: 40, failed_count: 20, overdue_count: 20 };
 
 export type SafeEvidence = Record<string, number | boolean>;
 
@@ -68,6 +74,8 @@ export function sanitizeEvidence(evidence: Record<string, unknown> = {}): SafeEv
   return Object.fromEntries(
     Object.entries(evidence).filter(([key, value]) =>
       allowedEvidenceKeys.has(key) &&
+      (key !== "sample_limit_reached" || typeof value === "boolean") &&
+      (!(key in aggregateBounds) || (typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= aggregateBounds[key])) &&
       ((typeof value === "number" && Number.isFinite(value)) || typeof value === "boolean")
     )
   ) as SafeEvidence;

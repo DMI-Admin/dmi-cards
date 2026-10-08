@@ -56,6 +56,7 @@ const titles: Record<string, string> = {
   upstash_rate_limiting: "Request protection", apple_wallet: "Apple Wallet configuration",
 };
 const scopes: Record<string, string> = {
+  "stripe_webhook_processing/operational_evidence": "Recent Stripe webhook processing records show no failed or overdue processing in the bounded sample.",
   "web_application/runtime": "The Staging monitoring endpoint responded.",
   "database/bounded_read": "The saved template catalogue could be read.",
   "public_cards/read_model": "Saved card data could be read. This does not test the whole public-card experience.",
@@ -100,7 +101,10 @@ export function ownerCheck(check: StoredMonitorCheck) {
       nextStep = "Prioritise a read-only investigation and review proposed changes before acting.";
       break;
     default:
-      explanation = "This saved result does not contain enough verified evidence to establish the current state.";
+      explanation = check.serviceKey === "stripe_webhook_processing" && check.checkKey === "operational_evidence" &&
+        check.reasonCode === "payment_notification_sample_incomplete"
+        ? "The payment-notification sample reached its fixed limit. Monitoring evidence is incomplete; no service failure is established."
+        : "This saved result does not contain enough verified evidence to establish the current state.";
       problem = "Unknown. This does not establish a service failure.";
       nextStep = "Review the technical evidence before deciding whether investigation is needed.";
   }

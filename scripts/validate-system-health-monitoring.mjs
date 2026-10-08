@@ -99,11 +99,13 @@ assert.ok(listedServiceKeys.every((key) => !/customer_id|card_id|user_id/i.test(
 assert.match(runner, /serviceKey: "email_automations"[\s\S]*?status: "not_migrated"/);
 assert.match(runner, /This is a known staging-parity gap, not a service incident\./);
 for (const service of [
-  "stripe_webhook_processing", "billing_reconciliation", "entitlement_processing",
+  "billing_reconciliation", "entitlement_processing",
   "public_lead_capture", "media_storage", "customer_authentication", "external_integrations",
 ]) {
   assert.match(runner, new RegExp(`serviceKey: "${service}"[\\s\\S]*?run: async \\(\\) => unknown\\(`));
 }
+assert.match(runner, /serviceKey: "stripe_webhook_processing"[\s\S]*?checkPaymentNotifications\(/);
+assert.match(runner, /createMonitoringDatabaseClient\(signal\), process\.env\.STRIPE_ACCOUNT_SCOPE, signal/);
 assert.match(runner, /status: "unknown"/);
 assert.doesNotMatch(runner, /status:\s*"incident"/);
 assert.match(coreSource, /case "unknown":[\s\S]*?counts\.unknown\+\+/);

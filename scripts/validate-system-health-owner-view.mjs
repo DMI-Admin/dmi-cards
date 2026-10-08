@@ -208,7 +208,7 @@ for (const file of [
   "src/lib/system-health/analysis-provider.ts", "src/lib/system-health/analysis-server.ts",
   "src/lib/system-health/analysis-contract.ts", "src/lib/system-health/analysis-client.ts",
   "src/lib/system-health/analysis-types.ts", "src/lib/system-health/investigation-prompt.ts",
-  "src/lib/system-health/presentation.ts", "src/lib/system-health/types.ts",
+  "src/lib/system-health/types.ts",
   "src/lib/ai/budget.ts", "src/lib/ai/openai-pricing-server.ts",
 ]) assert.equal(fs.readFileSync(file, "utf8"), baseline(file), `${file} remains unchanged`);
 console.log("PASS: offline owner mappings, dynamic 6/2/8 fixture, unknown/verification guards, section precedence, precise probe wording, unchanged diagnostic export/Codex eligibility, collapsed evidence, responsive CSS/native disclosures, colour/text contrast, no network.");
@@ -222,3 +222,15 @@ assert.match(phoneOwnerCss, /align-items:center/);
 assert.match(phoneOwnerCss, /overflow-wrap:anywhere/);
 assert.match(phoneOwnerCss, /font-size:24px; text-align:right/);
 console.log('PASS: phone-only compact owner rows with right-aligned counts; semantic dots and deterministic logic unchanged.');
+
+// Phase 1 adds two fixed guidance entries only; unrelated presentation behaviour stays frozen.
+const presentationSource = fs.readFileSync('src/lib/system-health/presentation.ts','utf8');
+const withoutPaymentGuidance = presentationSource.replace(/  "stripe_webhook_processing\/operational_evidence\/payment_notification_(?:processing_problem|sample_incomplete)": \{[\s\S]*?\n  \},\n/g, '');
+assert.equal(withoutPaymentGuidance, baseline('src/lib/system-health/presentation.ts'));
+const paymentIds = ['stripe_webhook_processing', 'operational_evidence'];
+assert.equal(owner.ownerState(check('operational', null, ...paymentIds)), 'working');
+assert.equal(owner.ownerState(check('degraded', 'payment_notification_processing_problem', ...paymentIds)), 'attention');
+assert.equal(owner.ownerState(check('unknown', 'payment_notification_sample_incomplete', ...paymentIds)), 'unknown');
+assert.equal(owner.ownerState(check('unknown', 'check_failed', ...paymentIds)), 'attention');
+assert.match(owner.ownerCheck(check('operational', null, ...paymentIds)).explanation, /^Recent Stripe webhook processing records show no failed or overdue processing in the bounded sample\.$/);
+assert.match(owner.ownerCheck(check('unknown', 'payment_notification_sample_incomplete', ...paymentIds)).explanation, /Monitoring evidence is incomplete; no service failure is established/);

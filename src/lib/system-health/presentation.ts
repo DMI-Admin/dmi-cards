@@ -53,6 +53,14 @@ const specificGuidance: Record<string, FixGuidance> = {
     whereToFix: "Staging Supabase / Email Automations foundation",
     recommendedNextStep: "Complete the approved Email Automations Staging parity work before relying on Staging for this feature.",
   },
+  "stripe_webhook_processing/operational_evidence/payment_notification_processing_problem": {
+    whereToFix: "Monitoring coverage / Stripe webhook processing evidence",
+    recommendedNextStep: "Investigate the failed or overdue ledger processing read-only. Do not replay events or run reconciliation automatically.",
+  },
+  "stripe_webhook_processing/operational_evidence/payment_notification_sample_incomplete": {
+    whereToFix: "Monitoring coverage / Stripe webhook sample bounds",
+    recommendedNextStep: "The bounded sample is incomplete. Review monitoring coverage read-only; this does not establish a service failure.",
+  },
   "stripe_webhook_processing/operational_evidence/no_safe_operational_probe": {
     whereToFix: "Monitoring coverage / Stripe webhook evidence",
     recommendedNextStep: "No incident is proven. Add a bounded read-only operational signal before marking this check verifiable.",

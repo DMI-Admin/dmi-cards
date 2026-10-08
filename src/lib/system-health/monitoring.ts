@@ -13,6 +13,8 @@ import {
   type MonitorObservation,
 } from "./monitoring-core";
 
+import { checkPaymentNotifications } from "./payment-notification-probe";
+
 const environment = "staging";
 const googleWalletConfigurationRequired = 3;
 const appleWalletConfigurationRequired = 6;
@@ -65,7 +67,9 @@ const systemHealthChecks: MonitorCheckDefinition[] = [
   {
     serviceKey: "stripe_webhook_processing",
     checkKey: "operational_evidence",
-    run: async () => unknown("No bounded service-level webhook health signal is available."),
+    run: (signal) => checkPaymentNotifications(
+      createMonitoringDatabaseClient(signal), process.env.STRIPE_ACCOUNT_SCOPE, signal
+    ),
   },
   {
     serviceKey: "billing_reconciliation",
