@@ -35,3 +35,10 @@
 .tableWrapper { width:100%; max-width:100%; min-width:0; overflow-x:auto; overscroll-behavior-x:contain; }
 .button:focus-visible,.control:focus-visible,.tableWrapper:focus-visible { outline:2px solid var(--admin-focus); outline-offset:3px; }
 @media(max-width:767px) { .control { font-size:16px; } }
+
+/* Phone density: retain the established tablet and desktop presentation. */
+@media(max-width:480px) {
+  .kpi { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:10px 12px; min-height:56px; }
+  .kpi p { min-width:0; overflow-wrap:anywhere; }
+  .kpi strong { margin-top:0; font-size:24px; text-align:right; white-space:nowrap; }
+}

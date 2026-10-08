@@ -212,3 +212,13 @@ for (const file of [
   "src/lib/ai/budget.ts", "src/lib/ai/openai-pricing-server.ts",
 ]) assert.equal(fs.readFileSync(file, "utf8"), baseline(file), `${file} remains unchanged`);
 console.log("PASS: offline owner mappings, dynamic 6/2/8 fixture, unknown/verification guards, section precedence, precise probe wording, unchanged diagnostic export/Codex eligibility, collapsed evidence, responsive CSS/native disclosures, colour/text contrast, no network.");
+
+// Phone presentation changes cannot alter classifications, counts, or larger layouts.
+const phoneOwnerCss = fs.readFileSync('src/app/system-health/system-health.module.css','utf8').split('/* Phone density: retain the established tablet and desktop presentation. */')[1];
+assert.ok(phoneOwnerCss);
+assert.match(phoneOwnerCss, /@media\(max-width:480px\)/);
+assert.match(phoneOwnerCss, /grid-template-columns:minmax\(0,1fr\) auto/);
+assert.match(phoneOwnerCss, /align-items:center/);
+assert.match(phoneOwnerCss, /overflow-wrap:anywhere/);
+assert.match(phoneOwnerCss, /font-size:24px; text-align:right/);
+console.log('PASS: phone-only compact owner rows with right-aligned counts; semantic dots and deterministic logic unchanged.');

@@ -7,3 +7,9 @@
 .settings { width:100%; max-width:768px; }
 @media(max-width:1199px) { .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:599px) { .kpis { grid-template-columns:1fr; } .placeholder { min-height:200px; padding:16px; } }
+
+/* Phone density: retain the established tablet and desktop presentation. */
+@media(max-width:480px) {
+  .page { gap:20px; }
+  .kpis { gap:8px; }
+}

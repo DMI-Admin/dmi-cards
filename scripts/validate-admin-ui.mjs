@@ -91,6 +91,33 @@ assert.match(css,/color-scheme:inherit/);
 assert.match(css,/min-height:44px/);
 assert.match(css,/focus-visible/);
 assert.match(css,/overflow-x:auto/);
-for (const file of ['src/app/subscriptions/page.tsx','src/app/subscriptions/subscriptions.module.css','src/app/finance/page.tsx','src/app/finance/finance.module.css','src/components/admin/AdminShell.tsx','src/components/admin/AdminShell.module.css','src/components/Sidebar.tsx','src/components/Sidebar.module.css','src/app/globals.css','src/app/theme.css']) assert.equal(fs.readFileSync(file,'utf8'),original(file),`${file} remains unchanged`);
+for (const file of ['src/app/subscriptions/page.tsx','src/app/subscriptions/subscriptions.module.css','src/app/finance/page.tsx','src/components/admin/AdminShell.tsx','src/components/admin/AdminShell.module.css','src/components/Sidebar.tsx','src/components/Sidebar.module.css','src/app/globals.css','src/app/theme.css']) assert.equal(fs.readFileSync(file,'utf8'),original(file),`${file} remains unchanged`);
+// Density refinements may append phone-only rules; all existing CSS stays byte-for-byte intact.
+const densityBase = '9953dfa783f5ace8d26ba599787bea23e50e6847';
+const marker = '\n/* Phone density: retain the established tablet and desktop presentation. */';
+const postcss = (await import('postcss')).default;
+for (const file of ['src/components/admin/AdminUI.module.css','src/components/admin/AdminSimplePages.module.css','src/app/finance/finance.module.css','src/app/system-health/system-health.module.css']) {
+ const current = fs.readFileSync(file,'utf8');
+ const before = execFileSync('git',['show',`${densityBase}:${file}`],{encoding:'utf8'});
+ assert.ok(current.startsWith(before + marker), `${file} preserves all existing rules`);
+ const addition = postcss.parse(current.slice(before.length));
+ addition.each(node => {
+  if (node.type === 'comment') return;
+  assert.equal(node.type, 'atrule'); assert.equal(node.name, 'media'); assert.equal(node.params, '(max-width:480px)');
+  node.walkAtRules(() => assert.fail('No nested breakpoint or global rule'));
+  node.walkDecls(decl => assert.equal(decl.important, undefined, 'No important overrides'));
+ });
+}
+const phoneKpi = css.slice(css.indexOf(marker));
+assert.match(phoneKpi,/grid-template-columns:minmax\(0,1fr\) auto/);
+assert.match(phoneKpi,/align-items:center/);
+assert.match(phoneKpi,/min-height:56px/);
+assert.match(phoneKpi,/overflow-wrap:anywhere/);
+assert.match(phoneKpi,/text-align:right/);
+const financePhone = fs.readFileSync('src/app/finance/finance.module.css','utf8').split(marker)[1];
+assert.match(financePhone,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+assert.match(financePhone,/align-items:stretch/);
+assert.match(financePhone,/min-height:88px/);
+assert.match(financePhone,/text-align:left/);
 console.log(JSON.stringify(results));
 console.log('PASS: offline six semantic states, light/dark/System parity, AA text/3:1 dots, explicit/default tones, native props, shared surfaces/buttons/controls/table region, unchanged reference pages/shell and no new global workaround or network.');

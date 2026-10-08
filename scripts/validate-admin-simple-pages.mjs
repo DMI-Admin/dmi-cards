@@ -83,8 +83,8 @@ assert.match(css, /repeat\(4,minmax\(0,1fr\)\)/);
 assert.match(css, /max-width:599px/);
 assert.match(css, /grid-template-columns:1fr/);
 assert.match(css, /min-width:0/);
-// Phase 2A changes stay confined to presentation and its validator.
-const allowed = new Set([...pages.map(([file]) => file), 'src/components/admin/AdminSimplePages.module.css', 'scripts/validate-admin-simple-pages.mjs']);
+// Allow the approved phone-only density refinement alongside the Phase 2A presentation scope.
+const allowed = new Set([...pages.map(([file]) => file), 'src/components/admin/AdminSimplePages.module.css', 'scripts/validate-admin-simple-pages.mjs', 'src/components/admin/AdminUI.module.css', 'src/app/finance/finance.module.css', 'src/app/system-health/system-health.module.css', 'scripts/validate-admin-ui.mjs', 'scripts/validate-system-health-owner-view.mjs']);
 const status = execFileSync('git', ['status','--porcelain=v1','--untracked-files=all'], { encoding:'utf8' });
 for (const line of status.split('\n').filter(Boolean)) assert.ok(allowed.has(line.slice(3)), `Out-of-scope pending change: ${line}`);
 console.log('PASS: seven shared-shell views, original headings/placeholders/static KPIs, no invented actions/data/security checks, unchanged Dashboard redirect/auth/appearance/Client settings and scoped responsive semantic styling.');

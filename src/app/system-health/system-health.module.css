@@ -28,3 +28,13 @@
 .diagnosticReport { max-width:100%; max-height:32rem; overflow:auto; margin-top:16px; padding:12px; border-radius:10px; background:var(--admin-input); color:var(--admin-text); white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
 @media(min-width:1200px) { .checkGrid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:480px) { .ownerSummary { grid-template-columns:minmax(0,1fr); } .headerActions { width:100%; } }
+
+/* Phone density: retain the established tablet and desktop presentation. */
+@media(max-width:480px) {
+  .ownerView { gap:20px; }
+  .overview { gap:16px; }
+  .ownerSummary { gap:8px; }
+  .ownerTile { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:12px; min-height:56px; }
+  .counterLabel { min-width:0; overflow-wrap:anywhere; }
+  .ownerNumber { margin-top:0; font-size:24px; text-align:right; white-space:nowrap; }
+}
