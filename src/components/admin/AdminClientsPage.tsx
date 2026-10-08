@@ -5,7 +5,8 @@ import { useAuth } from "@clerk/nextjs";
 import { accountsForArea, clientPage, individualPlanLabel } from "@/lib/admin-client-lists";
 import AdminClientSheet from "./AdminClientSheet";
 import styles from "./AdminClientsPage.module.css";
-import Sidebar from "@/components/Sidebar";
+import AdminShell from "./AdminShell";
+import { AdminPageHeader, AdminSurface, AdminButton, AdminStatusBadge } from "./AdminUI";
 import CardRenderer from "@/components/CardRenderer";
 import { mutateAdminCard } from "@/lib/admin-card-mutations";
 import { getAdminInventory } from "@/lib/admin-inventory";
@@ -137,7 +138,6 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
   const [relationships, setRelationships] = useState<ClientRelationshipCounts | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [createdAccount, setCreatedAccount] = useState<{ id: string; name: string; email: string; status: string; contact?: string; phone?: string } | null>(null);
   const [statusTarget, setStatusTarget] = useState<Client | null>(null);
   const [notice, setNotice] = useState("");
@@ -551,19 +551,16 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
   );
 
   return (
-    <main className={styles.page}>
-      <div className={styles.desktopSidebar}><Sidebar /></div>
+    <AdminShell>
+    <div className={styles.page}>
       <section className={styles.content}>
-        <button className={styles.menuButton} onClick={() => setMenuOpen(true)} aria-label="Open Admin navigation">☰ Menu</button>
         <div className={styles.pageHeader}>
-          <div><h1 className="text-3xl font-bold">{area === "individual" ? "Individual Clients" : "Business Clients"}</h1>
-          <p className="mt-3 max-w-4xl admin-muted">
-            {area === "individual" ? "Manage personal DMI Cards customers and their cards." : "Manage company accounts, staff and digital cards."}
-          </p></div>
+          <AdminPageHeader title={area === "individual" ? "Individual Clients" : "Business Clients"}
+            subtitle={area === "individual" ? "Manage personal DMI Cards customers and their cards." : "Manage company accounts, staff and digital cards."} />
           <div className={styles.headerActions}>
-            <button className={styles.primary} onClick={() => { setCreatedAccount(null); setOperationError(""); setNotice(""); setCreateOpen(true); }}>+ {area === "individual" ? "Add Individual Client" : "Add Business"}</button>
-            <button onClick={() => setFullListMode(area)}>View All {area === "individual" ? "Clients" : "Companies"}</button>
-            {area === "business" && <button onClick={() => { setOperationError(""); setNotice(""); setImportOpen(true); }}>Import</button>}
+            <AdminButton variant="primary" className={styles.primary} onClick={() => { setCreatedAccount(null); setOperationError(""); setNotice(""); setCreateOpen(true); }}>+ {area === "individual" ? "Add Individual Client" : "Add Business"}</AdminButton>
+            <AdminButton onClick={() => setFullListMode(area)}>View All {area === "individual" ? "Clients" : "Companies"}</AdminButton>
+            {area === "business" && <AdminButton onClick={() => { setOperationError(""); setNotice(""); setImportOpen(true); }}>Import</AdminButton>}
           </div>
         </div>
 
@@ -690,7 +687,6 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
 
       {notice && <div role="status" className={styles.toast}>{notice}<button aria-label="Dismiss notification" onClick={() => setNotice("")}>×</button></div>}
       {operationError && !createOpen && !importOpen && !detailsModal && !expandedCompany && !statusTarget && <div role="alert" className={styles.error}>{operationError}</div>}
-      {menuOpen && <AdminClientSheet title="DMI Cards Admin" onClose={() => setMenuOpen(false)}><div className={styles.mobileSidebar}><Sidebar /></div></AdminClientSheet>}
       {statusTarget && <AdminClientSheet title={`${statusTarget.status === "suspended" ? "Reactivate" : "Suspend"} ${statusTarget.account_type === "individual" ? "Client" : "Company"}`} busy={mutationBusy} onClose={() => { setStatusTarget(null); setOperationError(""); }} confirm>
         <div className={styles.confirmation}>
           <span aria-hidden="true" className={styles.warning}>!</span>
@@ -820,7 +816,8 @@ export default function AdminClientsPage({ area }: { area: "individual" | "busin
           onDeleteCard={deleteCard}
         />
       )}
-    </main>
+    </div>
+    </AdminShell>
   );
 }
 
@@ -1144,7 +1141,7 @@ function normalizeImportRow(row: Record<string, string>): ImportRow {
 }
 
 function StatCard({ label, value, caption, danger = false }: { label: string; value: number | string; caption: string; danger?: boolean }) {
-  return <div className={styles.stat}><p>{label}</p><strong className={danger ? styles.danger : ""}>{value}</strong><small>{caption}</small></div>;
+  return <AdminSurface className={styles.stat}><p>{label}</p><strong className={danger ? styles.danger : ""}>{value}</strong><small>{caption}</small></AdminSurface>;
 
 }
 
@@ -1362,6 +1359,6 @@ function ClientActions({ client, onView }: { client: Client; onView: (client: Cl
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const styles = status === "active" ? "admin-status-success" : status === "pending" ? "admin-status-warning" : "admin-status-danger";
-  return <span className={`rounded-full px-3 py-1 text-xs capitalize ${styles}`}>{status}</span>;
+  const tone = status === "active" ? "success" : status === "pending" ? "completion" : "critical";
+  return <span className={styles.statusBadge}><AdminStatusBadge label={status} tone={tone} /></span>;
 }

@@ -115,10 +115,10 @@ export async function runAdminThemeChecks(page,origin,tmp,checkDensity=async()=>
  // Initial loading/empty rows and mobile navigation use the same theme.
  await page.getByLabel('Admin appearance',{exact:true}).first().selectOption('dark');
  for(const query of ['loading','empty']){await page.goto(origin+'/clients/individual?'+query);await page.getByText(query==='loading'?'Loading individual clients...':'No matching individual clients found.',{exact:true}).waitFor();await contrast(page.locator('main td'));}
- await page.setViewportSize({width:320,height:568});await page.getByRole('button',{name:'Open Admin navigation',exact:true}).focus();await page.keyboard.press('Enter');
- const nav=page.getByRole('dialog',{name:'DMI Cards Admin',exact:true});assert.equal(await nav.getByLabel('Admin appearance',{exact:true}).count(),0);
+ await page.setViewportSize({width:320,height:568});await page.getByRole('button',{name:'Menu',exact:true}).focus();await page.keyboard.press('Enter');
+ const nav=page.getByRole('dialog',{name:'Admin navigation',exact:true});assert.equal(await nav.getByLabel('Admin appearance',{exact:true}).count(),0);
  await contrast(nav.locator('label, nav p, nav a'));await page.keyboard.press('Escape');
- assert.equal(await page.getByRole('button',{name:'Open Admin navigation',exact:true}).evaluate(n=>n===document.activeElement),true);
+ assert.equal(await page.getByRole('button',{name:'Menu',exact:true}).evaluate(n=>n===document.activeElement),true);
  console.log('PASS: 72 theme/area/viewport combinations; OS tracking, overrides, persistence, contrast ≥4.5, dialogs, errors, empty/loading, mobile navigation/focus and Client preference isolation.');
 }
 

@@ -48,7 +48,7 @@ window.fetch=async(url,options={})=>{
 createRoot(document.getElementById('root')).render(<><AdminAppearanceInitializer/><Page/></>);
 `);
 await esbuild.build({entryPoints:[path.join(tmp,'entry.jsx')],bundle:true,outfile:path.join(tmp,'app.js'),nodePaths:[root+'/node_modules'],jsx:'automatic',loader:{'.css':'local-css'},plugins:[{name:'fixture',setup(build){
- build.onResolve({filter:/.*/},args=>{if(mocks[args.path])return {path:args.path,namespace:'fixture'};if(args.path.startsWith('@/'))return {path:path.join(root,'src',args.path.slice(2)+(args.path.endsWith('Sidebar')?'.tsx':'.ts'))}});
+ build.onResolve({filter:/.*/},args=>{if(mocks[args.path])return {path:args.path,namespace:'fixture'};if(args.path.startsWith('@/'))return {path:path.join(root,'src',args.path.slice(2)+(args.path.startsWith('@/components/')?'.tsx':'.ts'))}});
  build.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:mocks[args.path],loader:'jsx',resolveDir:root}));
 }}]});
 const css=fs.readdirSync(root+'/.next/static/chunks').filter(f=>f.endsWith('.css')).map(f=>fs.readFileSync(root+'/.next/static/chunks/'+f,'utf8')).join('\n');

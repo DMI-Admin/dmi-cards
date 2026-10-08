@@ -1,6 +1,5 @@
-.page { display:flex; min-height:100dvh; background:var(--admin-page); color:var(--admin-text); }
-.content { flex:1; min-width:0; max-width:1800px; margin-inline:auto; padding:32px clamp(20px,3vw,48px); }
-.desktopSidebar { flex:0 0 288px; }
+.page { min-width:0; color:var(--admin-text); }
+.content { min-width:0; }
 .pageHeader { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; margin-bottom:24px; }
 .pageHeader h1 { font-size:28px; letter-spacing:-.03em; }
 .pageHeader p { font-size:14px; margin-top:8px; }
@@ -47,11 +46,7 @@
 .successMark { background:var(--admin-success-bg); color:var(--admin-success-text); border-radius:50%; width:52px; height:52px; display:grid; place-items:center; font-size:28px; }
 .toast { position:fixed; z-index:60; bottom:24px; left:50%; transform:translateX(-50%); max-width:calc(100vw - 32px); padding:12px 20px; display:flex; align-items:center; gap:20px; border:1px solid var(--admin-border); background:var(--admin-success-bg); color:var(--admin-success-text); border-radius:14px; box-shadow:0 8px 32px var(--admin-shadow); font-size:14px; }
 .error { color:var(--admin-danger-text); background:var(--admin-danger-bg); border:1px solid var(--admin-border); padding:12px; border-radius:10px; margin:12px 0; overflow-wrap:anywhere; }
-.menuButton { display:none; }
-.mobileSidebar :global(aside) { position:static; width:100%; height:auto; min-height:75dvh; border:0; }
 @media (max-width:1199px) {
- .desktopSidebar { display:none; }
- .menuButton { display:block; background:var(--admin-surface); border:1px solid var(--admin-border); border-radius:10px; padding:8px 14px; margin-bottom:18px; }
  .sheet:not(.wideSheet):not(.confirmSheet) { width:78vw; }
  .pageHeader { flex-wrap:wrap; }
 }
@@ -59,7 +54,6 @@
  .inventoryTable th,.inventoryTable td { padding:10px 8px; }
 }
 @media (max-width:639px) {
- .content { padding:16px; }
  .pageHeader { gap:16px; margin-bottom:18px; }
  .pageHeader h1 { font-size:24px; }
  .headerActions { width:100%; }
@@ -164,3 +158,5 @@
 .peopleList li > div { min-width:0; overflow-wrap:anywhere; }
 .peopleList p,.peopleList span { color:var(--admin-muted); }
 .peopleList button { flex-shrink:0; }
+
+.statusBadge { text-transform:capitalize; }

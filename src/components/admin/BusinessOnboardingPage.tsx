@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import Sidebar from "@/components/Sidebar";
+import AdminShell from "./AdminShell";
+import { AdminPageHeader, AdminButton, AdminKpiCard } from "./AdminUI";
 import { accessTypes, onboardingStatuses, statusLabels, textFields, validateOnboarding, type OnboardingRecord } from "@/lib/business-onboarding-contract";
 import BusinessEntitlementPanel from "./BusinessEntitlementPanel";
 import styles from "./BusinessOnboardingPage.module.css";
@@ -16,7 +17,7 @@ const groups = [
 async function read<T>(path:string, signal?:AbortSignal):Promise<T> { const r=await fetch(path,{credentials:"same-origin",cache:"no-store",signal});const j=await r.json();if(!r.ok)throw Error(j.error || "Could not load onboarding.");return j; }
 export default function BusinessOnboardingPage(){
  const {getToken}=useAuth();
- const [menu,setMenu]=useState(false),[open,setOpen]=useState(false),[record,setRecord]=useState<OnboardingRecord|null>(null);
+ const [open,setOpen]=useState(false),[record,setRecord]=useState<OnboardingRecord|null>(null);
  const [form,setForm]=useState<Form>(blank),[baseline,setBaseline]=useState(()=>JSON.stringify(blank()));
  const [commercialLocked,setCommercialLocked]=useState(true);
  const [requestId,setRequestId]=useState(""); const [busy,setBusy]=useState(false);const pending=useRef(false);
@@ -86,12 +87,10 @@ export default function BusinessOnboardingPage(){
   finally{pending.current=false;setBusy(false);}
  }
  const field=(key:string,label:string,type="text")=><label key={key}>{label}{key==="address"?<textarea rows={3} maxLength={2000} value={form[key]} onChange={e=>update(key,e.target.value)}/>:<input type={type} name={key} aria-label={label} aria-describedby={type==="date"?key+"-value":undefined} onInput={type==="date"?e=>update(key,e.currentTarget.value):undefined} onBlur={type==="date"?e=>update(key,e.currentTarget.value):undefined} maxLength={key==="contact_email"?254:2000} min={key==="requested_seats"?1:undefined} step={key==="requested_seats"?1:undefined} value={form[key]} onChange={e=>update(key,e.target.value)}/>} {type==="date"&&<small id={key+"-value"}>{form[key]?"Selected date: "+form[key]:"No date selected"}</small>}</label>;
- return <div className={styles.page}>
-  <div className={`${styles.sidebar} ${menu?styles.menuOpen:""}`}><Sidebar/></div>
-  <main className={styles.content}>
-   <button className={styles.menu} aria-expanded={menu} onClick={()=>setMenu(!menu)}>{menu?"Close navigation":"☰ Menu"}</button>
-   <header className={styles.header}><div><h1>Business Onboarding</h1><p>Manage new Business customers before workspace activation.</p></div><button className={styles.primary} disabled={busy} onClick={start}>+ New Business Onboarding</button></header>
-   <div className={styles.metrics}>{([["In Progress","inProgress"],["Awaiting Information","awaitingInformation"],["Awaiting Payment","awaitingPayment"],["Trial / Complimentary","trialComplimentary"],["Ready to Activate","readyToActivate"]] as const).map(([label,key])=><div key={key}><span>{label}</span><strong>{summary?.[key]??"—"}</strong></div>)}</div>
+ return <AdminShell><div className={styles.page}>
+  <div className={styles.content}>
+   <div className={styles.header}><AdminPageHeader title="Business Onboarding" subtitle="Manage new Business customers before workspace activation." /><AdminButton variant="primary" className={styles.primary} disabled={busy} onClick={start}>+ New Business Onboarding</AdminButton></div>
+   <div className={styles.metrics}>{([["In Progress","inProgress"],["Awaiting Information","awaitingInformation"],["Awaiting Payment","awaitingPayment"],["Trial / Complimentary","trialComplimentary"],["Ready to Activate","readyToActivate"]] as const).map(([label,key])=><AdminKpiCard key={key} label={label} value={summary?.[key]??"—"} />)}</div>
    {error && <p role="alert" className={styles.error}>{error}</p>}
    {open && <section ref={panel} tabIndex={-1} className={styles.workspace} aria-label="Onboarding workspace">
     <div className={styles.header}><h2>{record?"Manage Business Onboarding":"New Business Onboarding"}</h2><button disabled={busy} onClick={()=>{if(askLeave())setOpen(false);}}>Close workspace</button></div>
@@ -131,6 +130,6 @@ export default function BusinessOnboardingPage(){
     </tbody></table></div>
     <nav className={styles.pagination} aria-label="Onboarding pages"><button disabled={loading||page<=1} onClick={()=>setPage(p=>p-1)}>Previous</button><span>Page {page} of {Math.max(1,Math.ceil(total/25))}</span><button disabled={loading||page*25>=total} onClick={()=>setPage(p=>p+1)}>Next</button></nav>
    </section>
-  </main>
- </div>;
+  </div>
+ </div></AdminShell>;
 }

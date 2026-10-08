@@ -48,7 +48,7 @@ createRoot(document.getElementById('root')).render(<><ThemeInitializer/><AdminAp
 await esbuild.build({entryPoints:[path.join(tmp,'entry.jsx')],bundle:true,outfile:path.join(tmp,'app.js'),nodePaths:[root+'/node_modules'],jsx:'automatic',loader:{'.css':'local-css'},plugins:[{name:'fixture',setup(build){
 build.onResolve({filter:/.*/},args=>{
 if(mocks[args.path])return {path:args.path,namespace:'fixture'};
-if(args.path.startsWith('@/'))return {path:path.join(root,'src',args.path.slice(2)+((args.path.endsWith('Sidebar')||args.path.endsWith('AdminAppearance'))?'.tsx':'.ts'))};
+if(args.path.startsWith('@/'))return {path:path.join(root,'src',args.path.slice(2)+(args.path.startsWith('@/components/')?'.tsx':'.ts'))};
 });
 build.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:mocks[args.path],loader:'jsx',resolveDir:root}));
 }}]});
@@ -235,8 +235,8 @@ async function checkInventoryDensity(table,width){
  await page.getByRole('button',{name:'Manage',exact:true}).first().click();
  await page.getByRole('dialog',{name:'Edited Fixture Company',exact:true}).waitFor();
  await page.keyboard.press('Escape');
- await page.getByRole('button',{name:'Open Admin navigation',exact:true}).click();
- await page.getByRole('dialog',{name:'DMI Cards Admin',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Menu',exact:true}).click();
+ await page.getByRole('dialog',{name:'Admin navigation',exact:true}).waitFor();
  await page.keyboard.press('Escape');
  assert.equal(await page.locator('dialog[open]').count(),0);
  // Company-specific widths AND short heights; no live API/data calls.

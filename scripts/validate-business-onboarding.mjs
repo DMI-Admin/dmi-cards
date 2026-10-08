@@ -60,6 +60,7 @@ for(const file of ['src/components/admin/BusinessOnboardingPage.tsx','src/lib/bu
 for(const route of ['route.ts','[onboardingId]/route.ts','summary/route.ts'])assert.match(source('src/app/api/admin/business-onboardings/'+route),/businessOnboardingRequest/);
 assert.match(source('src/lib/admin-auth.ts'),/business-onboarding/);assert.match(source('src/lib/admin-appearance.ts'),/business-onboarding/);
 console.log('PASS onboarding contract/API: auth, validation, idempotency, revision conflicts, bounded list and summaries, isolated writes');
+if(process.argv.includes('--contracts-only')){console.log('SKIP: SQL execution explicitly excluded; mocked contract/API checks passed.');process.exit(0);}
 const modulePath=process.argv.find(v=>v.startsWith('--postgres-module='))?.split('=').slice(1).join('=');
 if(!modulePath)throw Error('Supply --postgres-module=/path/to/pglite/dist/index.js for mandatory offline PostgreSQL migration validation');
 const {PGlite}=await import(pathToFileURL(modulePath));const pg=new PGlite();

@@ -11,6 +11,8 @@ function load(path,deps={}) {
 const styles=new Proxy({}, {get:(_,key)=>String(key)});
 const sheet=load('src/components/admin/AdminClientSheet.tsx',{'react':React,'react/jsx-runtime':jsx,'./AdminClientsPage.module.css':{default:styles}});
 const lists=load('src/lib/admin-client-lists.ts');
+const ui=load('src/components/admin/AdminUI.tsx',{'react/jsx-runtime':jsx,'./AdminUI.module.css':{default:styles}});
+const shell=({children})=>React.createElement('div',{'data-admin-shell':true},children);
 const rows=Array.from({length:60},(_,i)=>({id:String(i).padStart(3,'0'),full_name:'Person '+i,company_name:'Company '+i,email:'test@example.invalid',account_type:i<30?'individual':i===59?'enterprise':'business',created_at:new Date(Date.UTC(2026,0,i+1)).toISOString(),status:'active',subscription_plan:'free',billing_status:'free',card_count:2}));
 const original=JSON.stringify(rows);
 assert.equal(lists.accountsForArea(rows,'individual').length,30);assert.equal(lists.accountsForArea(rows,'business').length,30);
@@ -25,7 +27,7 @@ function render(area,overrides={}) {
  let index=0;
  const react={...React,useState:initial=>{const name=hookNames[index++];const values={clients:rows,loading:false,...overrides};return [Object.hasOwn(values,name)?values[name]:initial,()=>{}];},useEffect:()=>{},useMemo:fn=>fn(),useRef:value=>({current:value})};
  const noop=()=>null;
- const mod=load(file,{'react':react,'react/jsx-runtime':jsx,'./AdminClientSheet':sheet,'./AdminClientsPage.module.css':{default:styles},'@clerk/nextjs':{useAuth:()=>({getToken:async()=>null})},'@/lib/admin-client-lists':lists,'@/components/Sidebar':{default:noop},'@/components/CardRenderer':{default:noop},'@/lib/admin-card-mutations':{},'@/lib/admin-inventory':{},'@/lib/templates':{},'@/lib/admin-client-contract':{},xlsx:{},'lucide-react':{Download:noop,FileSpreadsheet:noop,UploadCloud:noop}});
+ const mod=load(file,{'react':react,'react/jsx-runtime':jsx,'./AdminClientSheet':sheet,'./AdminClientsPage.module.css':{default:styles},'@clerk/nextjs':{useAuth:()=>({getToken:async()=>null})},'@/lib/admin-client-lists':lists,'./AdminShell':{default:shell},'./AdminUI':ui,'@/components/CardRenderer':{default:noop},'@/lib/admin-card-mutations':{},'@/lib/admin-inventory':{},'@/lib/templates':{},'@/lib/admin-client-contract':{},xlsx:{},'lucide-react':{Download:noop,FileSpreadsheet:noop,UploadCloud:noop}});
  return renderToStaticMarkup(mod.default({area}));
 }
 const individual=render('individual');const business=render('business');
@@ -75,9 +77,9 @@ for(const area of ['individual','business']) {
 }
 assert.doesNotMatch(source.slice(source.indexOf('function toggleClientStatus'),source.indexOf('async function createClientUser')),/window.confirm/);
 const css=fs.readFileSync('src/components/admin/AdminClientsPage.module.css','utf8');
-assert.match(css,/max-width:1800px/);assert.match(css,/width:78vw/);assert.match(css,/width:100vw/);
+assert.match(source,/<AdminShell>/);assert.doesNotMatch(source,/Sidebar|menuOpen|setMenuOpen/);assert.doesNotMatch(css,/desktopSidebar|menuButton|padding:32px clamp/);assert.match(css,/width:78vw/);assert.match(css,/width:100vw/);
 assert.match(css,/max-width:639px/);assert.match(css,/inventoryTable thead.*display:none/);
-assert.match(css,/desktopSidebar.*display:none/);assert.match(css,/prefers-reduced-motion/);
+assert.match(css,/prefers-reduced-motion/);
 const drawer=fs.readFileSync('src/components/admin/AdminClientSheet.tsx','utf8');
 assert.match(drawer,/showModal/);assert.match(drawer,/aria-labelledby/);assert.match(drawer,/if \(!busy\) onClose/);assert.match(drawer,/previous.focus/);
 console.log('PASS: create/success/manage presentation, confirmation busy/error states, native dialog focus contract, scoped sidebar and phone/tablet layout rules.');

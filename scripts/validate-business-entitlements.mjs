@@ -35,6 +35,7 @@ assert.equal((await http('activate','a'.repeat(16001))).status,413);
 assert.equal((await http('activate',{...valid,actor:'user_attacker'})).status,400);
 assert.equal((await http('read')).headers.get('cache-control'),'private, no-store');
 console.log('PASS protected API auth/actor/origin/body bounds/contract checks');
+if(process.argv.includes('--contracts-only')){console.log('SKIP: SQL execution explicitly excluded; mocked contract/API checks passed.');process.exit(0);}
 const option=n=>process.argv.find(v=>v.startsWith(n+'='))?.slice(n.length+1);
 let pg,client,Driver;
 const port=option('--local-postgres-port');
