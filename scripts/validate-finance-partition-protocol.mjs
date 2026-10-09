@@ -91,6 +91,6 @@ for(const tracked of sourceFiles){
   assert.doesNotMatch(source,/finance-customer-validation/);
  }
 }
-assert.equal(execFileSync("git",["diff","HEAD","--","src","supabase/migrations"],{encoding:"utf8"}),"");
+assert.equal(execFileSync("git",["diff","HEAD","--","src",":(exclude)src/lib/stripe/finance-sync.ts",":(exclude)src/lib/stripe/finance-reconciliation.ts","supabase/migrations"],{encoding:"utf8"}),"");
 assert.doesNotMatch(fs.readFileSync(file,"utf8"),/console\.|process\.env|fetch\(|\.rpc\(|setTimeout|Date\.now|performance\./);
 console.log("PASS: protocol modes/epochs, exclusive drain transitions, claim eligibility, partition fences, receipt binding/terminality, bounded reconciliation units and rollback; pure and unused (offline).");

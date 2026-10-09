@@ -16,12 +16,13 @@ export function memoryHarness(scope,busyFailure=()=>Error("FINANCE_BUSY")){
  const copy=x=>x==null?null:structuredClone(x);
  const store={
   async command(action,s,token,input={}){assert.equal(s,scope);
+   if(action==='read_protocol')return {mode:'legacy',epoch:0};
    if(action==='event_claim'){let d=deliveries.get(input.id);if(d?.state==='processed'||d?.state==='ignored')return {duplicate:true};if(d?.state==='processing')throw Error('FINANCE_BUSY');d={state:'processing',token:randomUUID()};deliveries.set(input.id,d);return {token:d.token};}
    if(action==='event_fail'){const d=deliveries.get(input.id);assert.equal(d.token,token);d.state='failed';return {};}
    if(action==='claim'){if(lease)throw busyFailure();lease=randomUUID();return {token:lease,revision:String(++rev)};}
    if(action==='release'){if(lease===token)lease=null;return {};}
    if(lease!==token)throw Error('FINANCE_FENCE');
-   if(action==='run_start'){let run=runs.get(input.id);if(!run){run={id:input.id,stripe_scope:s,mode:input.mode,resource_type:input.resource,status:'running',window_start:input.start,window_end:input.end,cursor:{},error_count:0,processed_count:0};runs.set(input.id,run);}return copy(run);}
+   if(action==='run_start'){let run=runs.get(input.id);if(!run){run={protocol_epoch:input.expected_protocol_epoch,id:input.id,stripe_scope:s,mode:input.mode,resource_type:input.resource,status:'running',window_start:input.start,window_end:input.end,cursor:{},error_count:0,processed_count:0};runs.set(input.id,run);}return copy(run);}
    assert.equal(action,'commit');assert.equal(input.expected_scope_revision,String(rev));
    if(input.event_id){const d=deliveries.get(input.event_id);assert.equal(d.token,input.event_token);assert.equal(d.state,'processing');}
    for(const resource of ['subscriptions','items','invoices','payments','allocations','attempts','refunds','activity'])for(const entry of input[resource]||[]){const row=entry.row,key=row.stripe_object_id??row.attempt_key??row.activity_key;rows[resource]||={};const old=rows[resource][key];

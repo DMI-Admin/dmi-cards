@@ -6,6 +6,8 @@ import type {FinanceContext,FinanceActivity} from "./finance-types";
 import {emptyBundle,objectId,record,type Bundle,type EventEvidence,type Root,type Runtime,type Resource,type Rows,type StoredRow} from "./finance-contract";
 import {transitionActivity} from "./finance-activity";
 
+import {requireLegacyFinanceProtocol} from "./finance-reconciliation-guard";
+
 export type Lease={token:string;revision:string};
 export async function withFinanceLease<T>(r:Runtime,work:(lease:Lease)=>Promise<T>):Promise<T> {
  const acquire=()=>r.store.command<Lease>("claim",r.scope,null);
@@ -142,9 +144,10 @@ export async function prepareFinanceSync(r:Runtime,root:Root,event?:EventEvidenc
  return {bundle,complete};
 }
 export async function synchronizeFinance(r:Runtime,root:Root,origin:FinanceActivity["origin"]="reconciliation") {
+ const epoch=await requireLegacyFinanceProtocol(r);
  return withFinanceLease(r,async lease=>{
   const prepared=await prepareFinanceSync(r,root,undefined,origin);
-  await r.store.command("commit",r.scope,lease.token,{expected_scope_revision:lease.revision,...prepared.bundle});
+  await r.store.command("commit",r.scope,lease.token,{expected_scope_revision:lease.revision,expected_protocol_epoch:epoch,...prepared.bundle});
   return {complete:prepared.complete};
  });
 }
