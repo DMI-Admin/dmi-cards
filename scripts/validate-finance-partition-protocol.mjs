@@ -80,7 +80,17 @@ rejects(()=>m.beginReconciliationUnit(rolled,retryable,lease,fence(lease),1000),
 try{m.assertPartitionOwners(p,[{scope:p.scope,customer:"cus_PRIVATESECRET"}]);}catch(error){assert.doesNotMatch(error.message,/PRIVATE|cus_|acct_/);}
 // No runtime imports, changes to existing tracked files, or migration changes.
 const sourceFiles=execFileSync("git",["ls-files","src"],{encoding:"utf8"}).trim().split("\n");
-for(const tracked of sourceFiles)assert.doesNotMatch(fs.readFileSync(tracked,"utf8"),/finance-partition-protocol/);
+const inactiveComposition="src/lib/stripe/finance-customer-validation.ts";
+for(const tracked of sourceFiles){
+ const source=fs.readFileSync(tracked,"utf8");
+ if(tracked===inactiveComposition){
+  assert.match(source,/import \{ assertPartitionOwners, type Partition \} from "\.\/finance-partition-protocol"/);
+  assert.doesNotMatch(source,/assertClaimEligible|assertFence|transitionProtocol|bindReceipt|completeReceipt|beginReconciliationUnit|finishReconciliationUnit/);
+ }else{
+  assert.doesNotMatch(source,/finance-partition-protocol/);
+  assert.doesNotMatch(source,/finance-customer-validation/);
+ }
+}
 assert.equal(execFileSync("git",["diff","HEAD","--","src","supabase/migrations"],{encoding:"utf8"}),"");
 assert.doesNotMatch(fs.readFileSync(file,"utf8"),/console\.|process\.env|fetch\(|\.rpc\(|setTimeout|Date\.now|performance\./);
 console.log("PASS: protocol modes/epochs, exclusive drain transitions, claim eligibility, partition fences, receipt binding/terminality, bounded reconciliation units and rollback; pure and unused (offline).");

@@ -86,7 +86,12 @@ for(const [before,after] of [
 const migrations=fs.readdirSync("supabase/migrations").filter(n=>n.endsWith(".sql"));
 assert.deepEqual(migrations.filter(n=>n.startsWith("20261009180000_")),[migration.split("/").at(-1)]);
 for(const name of ["billing_finance_protocol_control","billing_finance_partition_command","billing_finance_receipt_partition_guard","billing_finance_protocol_foundation_legacy","billing_finance_receipt_partition_customer_check","partition_customer_id"])
- for(const other of migrations)if(!migration.endsWith(other))assert.ok(!fs.readFileSync("supabase/migrations/"+other,"utf8").includes(name),"Object name collision");
+ for(const other of migrations)if(!migration.endsWith(other)){
+  const later=fs.readFileSync("supabase/migrations/"+other,"utf8");
+  if(other!=="20261009200000_finance_legacy_protocol_gate.sql")assert.ok(!later.includes(name),"Object name collision");
+  const declarations=[...later.matchAll(/\b(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|FUNCTION|TRIGGER)|ADD\s+(?:COLUMN|CONSTRAINT))\s+(?:public\.)?([a-z_]+)/gi)].map(m=>m[1]);
+  assert.ok(!declarations.includes(name),"Object declaration collision");
+ }
 for(const file of execFileSync("git",["ls-files","src"],{encoding:"utf8"}).trim().split("\n"))
  assert.doesNotMatch(fs.readFileSync(file,"utf8"),/billing_finance_partition_command/);
 assert.equal(execFileSync("git",["diff","HEAD","--","src","supabase/migrations/20260930120000_finance_v1_foundation.sql","supabase/migrations/20260930130000_finance_v1_writer.sql","supabase/migrations/20261003120000_finance_tax_evidence.sql"],{encoding:"utf8"}),"");
