@@ -1,4 +1,5 @@
 import "server-only";
+import {decideFinanceApplication} from "./finance-foreign-event";
 import {FinanceLeaseBusyFailure} from "./finance-store";
 import {acquireLeaseWithRetry} from "./lease-acquisition-timing";
 import {projectVerifiedFinanceRouting} from "./finance-routing-evidence";
@@ -22,6 +23,13 @@ export async function consumeCustomerFinanceEvent(verified:EventEvidence,event:E
    return {outcome:"ignored",complete:false};
   }
   if(!r.relationshipDb)throw Error("FINANCE_CUSTOMER_ROUTING_UNAVAILABLE");
+  const decision=await decideFinanceApplication(r.relationshipDb,r.scope,verified);
+  if(decision.state==="unresolved")throw Error("FINANCE_OWNERSHIP_UNRESOLVED");
+  if(decision.state==="conflict")throw Error("FINANCE_OWNERSHIP_CONFLICT");
+  if(decision.state==="foreign"){
+   await r.store.command("foreign_complete",r.scope,receipt.token,{event_id:event.id,expected_epoch:epoch,evidence:decision.evidence,proofs:decision.proofs});
+   return {outcome:"ignored",complete:false};
+  }
   const evidence=projectVerifiedFinanceRouting(r.scope,verified);
   const routing=await resolveVerifiedFinanceRouting(r.relationshipDb,r.scope,evidence);
   if(routing.status!=="routed"&&routing.status!=="resolved")throw Error("FINANCE_CUSTOMER_ROUTING_UNRESOLVED");
@@ -43,7 +51,6 @@ export async function consumeCustomerFinanceEvent(verified:EventEvidence,event:E
     graph=structuredClone(fetched);return fetched;
    }},store:{...r.store,read:async(...args)=>{const row=await r.store.read(...args);if(row)remember(args[0],row);return row;},items:async(...args)=>{const rows=await r.store.items(...args);for(const row of rows)remember("items",row);return rows;}}};
    // Includes existing financial/attribution rules and retirement of stored items.
-   // FINANCE_FOREIGN_APPLICATION deliberately remains retryable here: SQL has no reviewed foreign proof action.
    const prepared=await prepareFinanceSync(guarded,{kind,id:objectId(event.data.object)},event,"webhook");
    if(!graph||!validateFinanceGraphOwnership(partition,graph,stored).valid||!validateFinanceBundleOwnership(partition,prepared.bundle,stored).valid)throw Error("FINANCE_CUSTOMER_BUNDLE_OWNERSHIP");
    const input={customer:partition.customer,expected_epoch:epoch,expected_partition_revision:lease.revision,event_id:event.id,event_token:receipt.token,bundle:prepared.bundle};

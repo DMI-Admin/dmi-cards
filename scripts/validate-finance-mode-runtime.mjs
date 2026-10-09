@@ -21,7 +21,7 @@ function fixture(mode='customer'){
   if(action==='partition_ignored'){receipts.get(input.event_id).state='processed';return {};}
   throw Error('UNEXPECTED_COMMAND');
  },read:async()=>null,items:async()=>[],binding:async()=>({user_id:user,verified_at:fixtureNow}),run:async()=>null};
- const db={from:()=>({select(){return this;},eq(){return this;},abortSignal(){return this;},maybeSingle:async()=>({data:null,error:null})})};
+ const db={from:table=>{const filters={};return {select(){return this;},eq(k,v){filters[k]=v;return this;},abortSignal(){return this;},maybeSingle:async()=>({data:table==='billing_stripe_resource_ownership'?{stripe_scope:filters.stripe_scope,resource_type:filters.resource_type,stripe_resource_id:filters.stripe_resource_id,application_key:'dmi_cards',ownership_basis:filters.resource_type==='price'?'price_owner':'exclusive_customer',provenance:'operator_review',revision:1,state:'active',billing_stripe_applications:{state:'active'}}:null,error:null})};}};
  const runtime={store,relationshipDb:db,scope:'acct_fixture:test',apiVersion,now:()=>fixtureNow,source:{identity:async()=>({scope:'acct_fixture:test',apiVersion}),graph:async root=>{graphs++;return typeof graph==='function'?await graph(root):structuredClone(graph);},scan:async()=>{throw Error('NO_SCAN');}}};
  return {runtime,f,counts:()=>({protocolReads,graphs,legacy,commits,binds,claims,releases}),graph:g=>{graph=g;},busy:n=>{busy=n;},leases};
 }
@@ -48,7 +48,7 @@ for(const mode of ['draining_to_customer','draining_to_legacy']){const h=fixture
  await assert.rejects(consumer.consumeFinanceEvent(event('timeout','customer.subscription.created',h.f.subscription),h.runtime));assert.equal(h.counts().graphs,0);assert.equal(timedClaims,1);
 }
 {
- const h=fixture();const missing={...h.f.subscription,customer:null};await assert.rejects(consumer.consumeFinanceEvent(event('missing','customer.subscription.created',missing),h.runtime),/FINANCE_CUSTOMER_ROUTING_UNRESOLVED/);assert.equal(h.counts().claims,0);
+ const h=fixture();const missing={...h.f.subscription,customer:null};await assert.rejects(consumer.consumeFinanceEvent(event('missing','customer.subscription.created',missing),h.runtime),/FINANCE_OWNERSHIP_UNRESOLVED/);assert.equal(h.counts().claims,0);
 }
 {
  const h=fixture();const g=structuredClone(h.f.graph);g.subscriptions[0].customer='cus_other';g.customers[0].id='cus_other';h.graph(g);

@@ -38,7 +38,7 @@ export async function handleStripeWebhookConsumers(event:Stripe.Event, requestId
     const store=runtime.store;
     runtime.observer=finance;
     runtime.store={...store,
-     command:<T>(action:string,scope:string,token:string|null,input:object={})=>finance.run(({read_protocol:"other_rpc",partition_claim:"claim",partition_release:"release",partition_bind:"bind",partition_commit:"commit",partition_ignored:"event_finish"} as Record<string,Stage>)[action]??action as Stage,()=>store.command<T>(action,scope,token,input)),
+     command:<T>(action:string,scope:string,token:string|null,input:object={})=>finance.run(({read_protocol:"other_rpc",partition_claim:"claim",partition_release:"release",partition_bind:"bind",partition_commit:"commit",partition_ignored:"event_finish",foreign_complete:"event_finish"} as Record<string,Stage>)[action]??action as Stage,()=>store.command<T>(action,scope,token,input)),
      read:(...args)=>finance.run("mirror_read",()=>store.read(...args)),
      items:(...args)=>finance.run("item_read",()=>store.items(...args)),
      binding:(...args)=>finance.run("identity_binding",()=>store.binding(...args)),

@@ -28,7 +28,7 @@ export function createFinanceStore(db:ReturnType<typeof createSupabaseAdminClien
       const request=input as Record<string,unknown>;
       if(partition&&!Object.hasOwn(partitionActions,action))throw Error("FINANCE_COMMAND");
       const {customer,...partitionInput}=request;
-      const rpc=()=>partition?db.rpc("billing_finance_partition_command",{p_action:partitionActions[action],p_scope:scope,p_customer:customer??null,p_token:token,p_input:partitionInput}):db.rpc("billing_finance_command",{p_action:action,p_scope:scope,p_token:token,p_input:input});
+      const rpc=()=>action==="foreign_complete"?db.rpc("billing_finance_complete_foreign",{p_scope:scope,p_event:request.event_id,p_token:token,p_epoch:request.expected_epoch,p_evidence:request.evidence,p_proofs:request.proofs}):partition?db.rpc("billing_finance_partition_command",{p_action:partitionActions[action],p_scope:scope,p_customer:customer??null,p_token:token,p_input:partitionInput}):db.rpc("billing_finance_command",{p_action:action,p_scope:scope,p_token:token,p_input:input});
       const result=async()=>{
         try {
           return (action==="claim"||action==="partition_claim") && acquisitionTiming
