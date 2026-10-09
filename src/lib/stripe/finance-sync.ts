@@ -1,4 +1,6 @@
 import "server-only";
+import {FinanceLeaseBusyFailure} from "./finance-store";
+import {acquireLeaseWithRetry} from "./lease-acquisition-timing";
 import {normalizeSubscription,normalizeInvoice,normalizeInvoicePayment,normalizeCharge,normalizeFailedCharge,normalizeRefund} from "./finance-normalize";
 import type {FinanceContext,FinanceActivity} from "./finance-types";
 import {emptyBundle,objectId,record,type Bundle,type EventEvidence,type Root,type Runtime,type Resource,type Rows,type StoredRow} from "./finance-contract";
@@ -6,7 +8,10 @@ import {transitionActivity} from "./finance-activity";
 
 export type Lease={token:string;revision:string};
 export async function withFinanceLease<T>(r:Runtime,work:(lease:Lease)=>Promise<T>):Promise<T> {
- const lease=await r.store.command<Lease>("claim",r.scope,null);
+ const acquire=()=>r.store.command<Lease>("claim",r.scope,null);
+ const lease=r.leaseRetry
+  ? await acquireLeaseWithRetry(r.leaseRetry,"finance",acquire,error=>error instanceof FinanceLeaseBusyFailure&&error.message==="FINANCE_BUSY")
+  : await acquire();
  try{return await work(lease);}finally{await r.store.command("release",r.scope,lease.token).catch(()=>undefined);}
 }
 function context(r:Runtime,event?:EventEvidence):FinanceContext {

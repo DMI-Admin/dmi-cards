@@ -1,5 +1,5 @@
 import "server-only";
-import { boundedLeaseAcquisition, AcquisitionTimingFailure, type AcquisitionTiming } from "./lease-acquisition-timing";
+import { boundedLeaseAcquisition, acquireLeaseWithRetry, AcquisitionTimingFailure, type LeaseRetryPolicy, type AcquisitionTiming } from "./lease-acquisition-timing";
 import { classifyClaimStoreError } from "./webhook-observer";
 import type {ClaimFailureCategory, Observer, Stage} from "./webhook-observer";
 import type Stripe from "stripe";
@@ -13,7 +13,7 @@ export class BillingFailure extends ApiRouteError {
     super(status, status === 409 ? "CONFLICT" : "INTERNAL_ERROR", `Billing operation unavailable (${reason}). Please retry or contact support.`);
   }
 }
-export type BillingRuntime = { observer?: Observer; acquisitionTiming?: AcquisitionTiming; db: ReturnType<typeof createSupabaseAdminClient>; stripe: Stripe; scope: string; live: boolean };
+export type BillingRuntime = { observer?: Observer; acquisitionTiming?: AcquisitionTiming; leaseRetry?: LeaseRetryPolicy; db: ReturnType<typeof createSupabaseAdminClient>; stripe: Stripe; scope: string; live: boolean };
 export type BillingAccount = {
   user_id: string; stripe_customer_id: string | null; lease_token: string;
   customer_attempt: string | null; customer_attempt_at: string | null; customer_parameters: Stripe.CustomerCreateParams | null;
@@ -54,7 +54,11 @@ export async function command<T>(r: BillingRuntime, action: string, user: string
 }
 export async function withAccount<T>(r: BillingRuntime, userId: string, run: (account: BillingAccount) => Promise<T>): Promise<T> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) throw new BillingFailure("IDENTITY_CONFLICT", 409);
-  const account = await command<BillingAccount>(r, "claim", userId, null);
+  const acquire = () => command<BillingAccount>(r, "claim", userId, null);
+  const account = r.leaseRetry
+    ? await acquireLeaseWithRetry(r.leaseRetry, "entitlement", acquire,
+      error => error instanceof BillingFailure && error.reason === "BILLING_BUSY")
+    : await acquire();
   try { return await run(account); }
   finally { await command(r, "release", userId, account.lease_token).catch(() => undefined); }
 }

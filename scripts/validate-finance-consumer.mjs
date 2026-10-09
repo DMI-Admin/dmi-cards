@@ -11,14 +11,14 @@ export function loadFinance(){
  const cache={};function load(file){if(cache[file])return cache[file];const exports={};cache[file]=exports;vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{exports,Error,performance,AbortController,setTimeout,clearTimeout,Date,Intl,BigInt,Map,Set,Promise,require:name=>{if(name==='server-only')return {};if(name==='stripe')return {default:Stripe};if(name==='node:crypto')return {randomUUID};if(name.startsWith('.'))return load(path.join(path.dirname(file),name)+'.ts');throw Error('Unexpected import '+name);}});return exports;}
  return {evidence:load('src/lib/stripe/finance-event-evidence.ts'),consumer:load('src/lib/stripe/finance-webhook.ts'),sync:load('src/lib/stripe/finance-sync.ts'),reconcile:load('src/lib/stripe/finance-reconciliation.ts'),adapter:load('src/lib/stripe/finance-stripe-adapter.ts'),storeModule:load('src/lib/stripe/finance-store.ts')};
 }
-export function memoryHarness(scope){
+export function memoryHarness(scope,busyFailure=()=>Error("FINANCE_BUSY")){
  const rows={},deliveries=new Map(),runs=new Map();let lease=null,rev=0;
  const copy=x=>x==null?null:structuredClone(x);
  const store={
   async command(action,s,token,input={}){assert.equal(s,scope);
    if(action==='event_claim'){let d=deliveries.get(input.id);if(d?.state==='processed'||d?.state==='ignored')return {duplicate:true};if(d?.state==='processing')throw Error('FINANCE_BUSY');d={state:'processing',token:randomUUID()};deliveries.set(input.id,d);return {token:d.token};}
    if(action==='event_fail'){const d=deliveries.get(input.id);assert.equal(d.token,token);d.state='failed';return {};}
-   if(action==='claim'){if(lease)throw Error('FINANCE_BUSY');lease=randomUUID();return {token:lease,revision:String(++rev)};}
+   if(action==='claim'){if(lease)throw busyFailure();lease=randomUUID();return {token:lease,revision:String(++rev)};}
    if(action==='release'){if(lease===token)lease=null;return {};}
    if(lease!==token)throw Error('FINANCE_FENCE');
    if(action==='run_start'){let run=runs.get(input.id);if(!run){run={id:input.id,stripe_scope:s,mode:input.mode,resource_type:input.resource,status:'running',window_start:input.start,window_end:input.end,cursor:{},error_count:0,processed_count:0};runs.set(input.id,run);}return copy(run);}

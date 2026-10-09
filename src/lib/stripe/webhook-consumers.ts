@@ -1,5 +1,5 @@
 import "server-only";
-import {createAcquisitionTiming} from "./lease-acquisition-timing";
+import {createAcquisitionTiming,createLeaseRetryPolicy} from "./lease-acquisition-timing";
 import {logInfo} from "@/lib/observability/logger";
 import {createWebhookObserver, type Stage} from "./webhook-observer";
 import {isFinanceTargetEnabled} from "./finance-runtime-guard";
@@ -16,10 +16,11 @@ import type {EventEvidence} from "./finance-contract";
 export async function handleStripeWebhookConsumers(event:Stripe.Event, requestId="unavailable", invocationStartedAt=performance.now()) {
  if(!isFinanceTargetEnabled())return handleStripeWebhookEvent(event);
  const acquisitionTiming=createAcquisitionTiming(invocationStartedAt,metadata=>logInfo({code:"BILLING_LEASE_ACQUISITION_TIMING",route:"/api/stripe/webhook",metadata}));
+ const leaseRetry=createLeaseRetryPolicy(acquisitionTiming,metadata=>logInfo({code:"BILLING_LEASE_ACQUISITION_RETRY",route:"/api/stripe/webhook",metadata}));
  const enabled=process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()==="https://uohdkewufeivdpaljnng.supabase.co";
  const observer=(consumer:"entitlement"|"finance")=>enabled?createWebhookObserver({requestId,stripeEventId:event.id,stripeEventType:event.type,consumer},fields=>logInfo({code:"STRIPE_WEBHOOK_DIAGNOSTIC",requestId,route:"/api/stripe/webhook",metadata:fields})):undefined;
  const access=observer("entitlement"), finance=observer("finance");
- const entitlementWork=()=>handleStripeWebhookEvent(event,undefined,access,acquisitionTiming);
+ const entitlementWork=()=>handleStripeWebhookEvent(event,undefined,access,acquisitionTiming,leaseRetry);
  const [entitlement]=await orchestrateBillingConsumers(
   event as unknown as EventEvidence,
   ()=>access?access.run("consumer",entitlementWork):entitlementWork(),
@@ -30,6 +31,7 @@ export async function handleStripeWebhookConsumers(event:Stripe.Event, requestId
    if(!/^(sk|rk)_test_/.test(process.env.STRIPE_SECRET_KEY?.trim()||""))throw Error("FINANCE_STAGING_CREDENTIAL");
    const runtime=await createFinanceRuntime(stripeFinanceSource(getStripeServerClient()),createFinanceStore(createSupabaseAdminClient(),acquisitionTiming));
    if(!runtime.scope.endsWith(":test"))throw Error("FINANCE_STAGING_MODE");
+   runtime.leaseRetry=leaseRetry;
    if(finance){
     const store=runtime.store;
     runtime.observer=finance;

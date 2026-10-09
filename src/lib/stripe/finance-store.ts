@@ -3,6 +3,11 @@ import { boundedLeaseAcquisition, AcquisitionTimingFailure, type AcquisitionTimi
 import {createSupabaseAdminClient} from "@/lib/supabase-admin";
 import {resources,type FinanceStore,type StoredRow,type Resource,type Runtime,type FinanceSource,FINANCE_API_VERSION} from "./finance-contract";
 
+// Created only from a received RPC error response, never from transport exceptions.
+export class FinanceLeaseBusyFailure extends Error {
+  constructor() { super("FINANCE_BUSY"); }
+}
+
 // Cast exact SQL numbers before JSON decoding; never round bigint/decimal via JS Number.
 const columns:Record<Resource,string>={
  subscriptions:"stripe_scope,stripe_object_id,stripe_created_at,source_event_id,source_event_created_at,stripe_api_version,normalizer_version,revision::text,verified_at,created_at,updated_at,user_id,stripe_customer_id,status,cancel_at_period_end,cancel_at,canceled_at,ended_at,trial_end,collection_paused,linkage_status,valuation_status,valuation_reason,items_complete,discount_context",
@@ -30,7 +35,10 @@ export function createFinanceStore(db:ReturnType<typeof createSupabaseAdminClien
         }
       };
       const {data,error}=await result();
-      if(error)throw Error(/^FINANCE_[A-Z_]+$/.test(error.message||"")?error.message:"FINANCE_STORE_UNAVAILABLE");
+      if(error){
+        if(action==="claim"&&error.message==="FINANCE_BUSY")throw new FinanceLeaseBusyFailure();
+        throw Error(/^FINANCE_[A-Z_]+$/.test(error.message||"")?error.message:"FINANCE_STORE_UNAVAILABLE");
+      }
       return data as T;
     },
     async read(resource:Resource,scope:string,id:string) {

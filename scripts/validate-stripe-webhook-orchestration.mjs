@@ -23,7 +23,7 @@ function setup(){
  const billing=billingExports.fixture();
  const originalRpc=billing.r.db.rpc;
  billing.r.db.rpc=(...args)=>{const pending=originalRpc(...args);pending.abortSignal=()=>pending;return pending;};
- const h=memoryHarness('acct_fixture:test');
+ const h=memoryHarness('acct_fixture:test',()=>new storeModule.FinanceLeaseBusyFailure());
  const f=JSON.parse(JSON.stringify(graphFixture()).replaceAll('sub_one','sub_owned').replaceAll('cus_one','cus_owned').replaceAll('price_month','price_current'));
  f.graph.subscriptions=[f.subscription];Object.assign(billing.sub,f.subscription);
  let failFinance=false,timingMode=null,reads=0,entitlementCalls=0;const logs=[],timingContexts=[],financeTimings=[];
@@ -39,7 +39,7 @@ function setup(){
   'server-only':{},'./webhook':{handleStripeWebhookEvent:(...args)=>{entitlementCalls++;timingContexts.push(args[3]);
    if(args[3]&&timingMode==='headroom')args[3].clock.now=()=>args[3].startedAt+116000;
    if(args[3]&&timingMode==='timeout'){args[3].clock.setTimer=work=>{queueMicrotask(work);return 1;};args[3].clock.clearTimer=()=>{};}
-   return billingExports.webhook.handleStripeWebhookEvent(args[0],billing.r,args[2],args[3]);}},
+   return billingExports.webhook.handleStripeWebhookEvent(args[0],billing.r,args[2],args[3],args[4]);}},
   './config':{getStripeServerClient:()=>sdk},'@/lib/supabase-admin':{createSupabaseAdminClient:()=>({})},
   './finance-store':{createFinanceStore:(_db,timing)=>{financeTimings.push(timing);return h.store;},createFinanceRuntime:(s,store)=>storeModule.createFinanceRuntime(s,store,()=>fixtureNow)},
   './finance-stripe-adapter':{stripeFinanceSource:()=>source},'./finance-webhook':consumer,
@@ -156,7 +156,7 @@ for(const [structured,expected] of claimFailures){
  assert.equal((await test.h.delivery(delivery.id)).state,'processed');
  assert.equal(test.billing.retrieves,1); // Existing retrieval only; categorisation adds none.
  const records=test.logs.filter(x=>x.code==='STRIPE_WEBHOOK_DIAGNOSTIC'&&x.metadata.failureCategory).map(x=>x.metadata);
- assert.equal(records.length,1);assert.equal(records[0].failureCategory,expected);
+ assert.equal(records.length,expected==='LEASE_BUSY'?3:1);assert.ok(records.every(record=>record.failureCategory===expected));
  assert.deepEqual(Object.keys(records[0]).sort(),['consumer','errorCode','failureCategory','outcome','requestId','stage'].sort());
  assert.equal(records[0].stage,'claim');assert.equal(records[0].outcome,'failed');assert.equal(records[0].errorCode,expected==='LEASE_BUSY'?'BILLING_BUSY':'BILLING_STORE_UNAVAILABLE');
  assert.doesNotMatch(JSON.stringify(records),/evt_|cus_|sub_|acct_|sk_test|PRIVATE_|user-private|payload-private/);

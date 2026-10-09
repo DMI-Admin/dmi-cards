@@ -1,4 +1,5 @@
 import "server-only";
+import type {LeaseRetryPolicy} from "./lease-acquisition-timing";
 import type {Observer} from "./webhook-observer";
 import type { FinanceActivity, FinanceInvoice, FinanceItem, FinancePayment, FinanceRefund, FinanceSubscription, InvoicePayment, PaymentAttempt } from "./finance-types";
 
@@ -33,7 +34,7 @@ export interface FinanceStore {
   binding(scope:string,customer:string):Promise<{user_id:string;verified_at:string|null}|null>;
   run(scope:string,id:string):Promise<Raw|null>;
 }
-export type Runtime = {observer?:Observer;source:FinanceSource;store:FinanceStore;scope:string;apiVersion:string;now:()=>string};
+export type Runtime = {leaseRetry?:LeaseRetryPolicy;observer?:Observer;source:FinanceSource;store:FinanceStore;scope:string;apiVersion:string;now:()=>string};
 export function emptyBundle():Bundle {return {subscriptions:[],items:[],invoices:[],payments:[],allocations:[],attempts:[],refunds:[],activity:[]};}
 export function objectId(value:unknown):string {return typeof value==="string"?value:value&&typeof value==="object"&&"id" in value?String(value.id):"";}
 export function record(value:unknown):Raw {if(!value||typeof value!=="object"||Array.isArray(value))throw Error("FINANCE_SHAPE");return value as Raw;}

@@ -93,3 +93,90 @@ export async function boundedLeaseAcquisition<T>(
     if (timer !== undefined) timing.clock.clearTimer(timer);
   }
 }
+
+// Staging webhook opt-in only. A timing context alone does not enable retries.
+export const LEASE_ACQUISITION_ATTEMPTS = 3;
+export const LEASE_RETRY_MAX_WAIT_MS = 400;
+export type LeaseRetryOutcome = "acquired_after_retry" | "retry_exhausted" | "budget_exhausted" | "non_busy_failure";
+export type LeaseRetryMetadata = {
+  consumer: AcquisitionMetadata["consumer"];
+  lease_kind: "account" | "scope";
+  attempts_used: number;
+  retries_used: number;
+  deliberate_wait_ms: number;
+  elapsed_ms: number;
+  outcome: LeaseRetryOutcome;
+};
+export type LeaseRetryPolicy = {
+  readonly timing: AcquisitionTiming;
+  readonly jitter: () => number;
+  readonly emit: (metadata: LeaseRetryMetadata) => void;
+};
+export function createLeaseRetryPolicy(
+  timing: AcquisitionTiming,
+  emit: LeaseRetryPolicy["emit"] = () => {},
+  jitter: () => number = () => Math.floor(Math.random() * 51),
+): LeaseRetryPolicy {
+  return Object.freeze({timing, emit, jitter});
+}
+function retryHeadroom(timing: AcquisitionTiming, consumer: AcquisitionMetadata["consumer"], delay: number): boolean {
+  const now = timing.clock.now();
+  return !timing.ambiguousConsumers.has(consumer) &&
+    [now, timing.startedAt, timing.deadline, delay].every(Number.isFinite) &&
+    now >= timing.startedAt && delay >= 0 &&
+    timing.deadline - now >= ACQUISITION_RESERVE_MS + CLAIM_RPC_TIMEOUT_MS + delay;
+}
+
+/** Only acquire() repeats. The caller owns callback, commit and release outside this loop. */
+export async function acquireLeaseWithRetry<T>(
+  policy: LeaseRetryPolicy,
+  consumer: AcquisitionMetadata["consumer"],
+  acquire: () => Promise<T>,
+  isDefinitivelyBusy: (error: unknown) => boolean,
+): Promise<T> {
+  const {timing} = policy;
+  const startedAt = timing.clock.now();
+  let attempts = 0, wait = 0;
+  let lastBusy: unknown;
+  function emit(outcome: LeaseRetryOutcome) {
+    const elapsed = timing.clock.now() - startedAt;
+    try {
+      policy.emit({consumer, lease_kind: consumer === "entitlement" ? "account" : "scope",
+        attempts_used: attempts, retries_used: Math.max(0, attempts - 1),
+        deliberate_wait_ms: wait,
+        elapsed_ms: Number.isFinite(elapsed) ? Math.max(0, Math.min(300_000, Math.floor(elapsed))) : 0,
+        outcome});
+    } catch { /* Diagnostics must never change billing outcomes. */ }
+  }
+  while (attempts < LEASE_ACQUISITION_ATTEMPTS) {
+    if (attempts > 0 && !retryHeadroom(timing, consumer, 0)) {
+      emit("budget_exhausted"); throw lastBusy;
+    }
+    attempts++;
+    try {
+      const lease = await acquire();
+      if (attempts > 1) emit("acquired_after_retry");
+      return lease;
+    } catch (error) {
+      if (timing.ambiguousConsumers.has(consumer) || !isDefinitivelyBusy(error)) {
+        if (attempts > 1) emit("non_busy_failure");
+        throw error;
+      }
+      lastBusy = error;
+      if (attempts === LEASE_ACQUISITION_ATTEMPTS) {
+        emit("retry_exhausted"); throw error;
+      }
+      let jitter: number;
+      try { jitter = policy.jitter(); } catch { emit("non_busy_failure"); throw error; }
+      if (!Number.isFinite(jitter)) { emit("non_busy_failure"); throw error; }
+      const delay = (attempts === 1 ? 100 : 200) + Math.max(0, Math.min(50, Math.floor(jitter)));
+      if (wait + delay > LEASE_RETRY_MAX_WAIT_MS || !retryHeadroom(timing, consumer, delay)) {
+        emit("budget_exhausted"); throw error;
+      }
+      await new Promise<void>(resolve => timing.clock.setTimer(resolve, delay));
+      wait += delay;
+    }
+  }
+  // The third busy attempt throws above; never start a fourth acquisition.
+  throw lastBusy;
+}
