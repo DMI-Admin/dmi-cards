@@ -32,7 +32,7 @@ export async function command<T>(r: BillingRuntime, action: string, user: string
   const { data, error } = await r.db.rpc("billing_foundation_command", { p_action: action, p_scope: r.scope, p_user: user, p_token: token, p_input: input });
   if (error) {
     const reason = /BILLING_(BUSY|FENCE|REVISION|IDENTITY|SCOPE|UNKNOWN_PRICE)/.exec(error.message || "")?.[0] || "BILLING_STORE_UNAVAILABLE";
-    throw new BillingFailure(reason, reason === "BILLING_IDENTITY" ? 409 : 503, action === "claim" ? classifyClaimStoreError(error) : undefined);
+    throw new BillingFailure(reason, reason === "BILLING_IDENTITY" ? 409 : 503, action === "claim" ? (reason === "BILLING_BUSY" ? "LEASE_BUSY" : classifyClaimStoreError(error)) : undefined);
   }
   return data as T;
   };

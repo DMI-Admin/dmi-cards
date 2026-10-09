@@ -146,8 +146,9 @@ for(const cancelAtPeriodEnd of [true,false]){const response=await summary.setSub
 await assert.rejects(summary.setSubscriptionCancelAtPeriodEndForUser({userId:other,cancelAtPeriodEnd:true}));assert.equal(updates,2);
 console.log('PASS: real portal route past_due/unpaid recovery, unrelated/unauthenticated denial; real client billing summary, cancellation/resume and shared mirror refresh.');
 
-// Claim categorisation is additive; structured fields only, with no extra queries/calls.
+// Claim categorisation is additive: structured fields or the existing normalized busy reason.
 const claimCases=[
+ [{code:'P0001',message:'BILLING_BUSY PRIVATE_DATABASE_ERROR cus_private evt_private sk_test_private payload-private'},'LEASE_BUSY'],
  [{code:'23503',constraint:'billing_accounts_user_id_fkey'},'AUTH_USER_NOT_FOUND'],
  [{code:'23503'},'FOREIGN_KEY_VIOLATION'],
  [{code:'23503',constraint:'unrecognised_constraint'},'FOREIGN_KEY_VIOLATION'],
@@ -165,12 +166,12 @@ const claimCases=[
 ];
 for(const [structured,expected] of claimCases){
  const raw='PRIVATE_DATABASE_ERROR cus_private evt_private sk_test_private payload-private';
- const error={...structured,message:raw};
+ const error={message:raw,...structured};
  for(const field of ['details','hint'])Object.defineProperty(error,field,{get(){throw Error('must not inspect raw '+field);}});
  let calls=0;
  const runtime={scope:'acct_fixture:test',live:false,stripe:new Proxy({},{get(){throw Error('new Stripe call forbidden');}}),db:{async rpc(name,args){calls++;assert.equal(name,'billing_foundation_command');assert.equal(args.p_action,'claim');return {data:null,error};}}};
  await assert.rejects(rel.command(runtime,'claim',user,null),failure=>{
-  assert.equal(failure.reason,'BILLING_STORE_UNAVAILABLE');assert.equal(failure.status,503);
+  assert.equal(failure.reason,expected==='LEASE_BUSY'?'BILLING_BUSY':'BILLING_STORE_UNAVAILABLE');assert.equal(failure.status,503);
   assert.equal(failure.claimFailureCategory,expected);
   assert.doesNotMatch(JSON.stringify(failure),/PRIVATE_DATABASE_ERROR|cus_private|evt_private|sk_test_private|payload-private/);
   return true;
@@ -180,4 +181,4 @@ for(const [structured,expected] of claimCases){
 }
 // Existing high-level mapping stays authoritative even when structured categorisation is unknown.
 await assert.rejects(rel.command({db:{async rpc(){return {error:{code:'P0001',message:'BILLING_IDENTITY'}};}}},'claim',user,null),failure=>failure.reason==='BILLING_IDENTITY'&&failure.status===409&&failure.claimFailureCategory==='UNKNOWN_STORE_ERROR');
-console.log('PASS: closed claim taxonomy, structured code/constraint only, raw details excluded, one existing RPC, no Stripe calls, other operation failures unchanged.');
+console.log('PASS: closed claim taxonomy, structured code/constraint and normalized busy reason, raw details excluded, one existing RPC, no Stripe calls, other operation failures unchanged.');
