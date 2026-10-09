@@ -11,9 +11,9 @@ const clone=x=>x===undefined?undefined:JSON.parse(JSON.stringify(x));
 class ApiRouteError extends Error { constructor(status,code,message){super(message);this.status=status;this.code=code;} }
 let now=Date.now();
 class Clock extends Date { static now(){return now;} }
-function load(file,deps){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,Date:Clock,URL,Buffer,console,require(name){assert.ok(name in deps,`unexpected dependency: ${name}`);return deps[name];}});return exports;}
+function load(file,deps){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,Error,performance,AbortController,setTimeout,clearTimeout,Date:Clock,URL,Buffer,console,require(name){assert.ok(name in deps,`unexpected dependency: ${name}`);return deps[name];}});return exports;}
 const namespace={hasDmiStripeAppNamespace:m=>m?.dmi_app==='dmi_cards_v2',DMI_STRIPE_APP_NAMESPACE:'dmi_cards_v2'};
-const rel=load('src/lib/stripe/reliability.ts',{'./webhook-observer':load('src/lib/stripe/webhook-observer.ts',{'server-only':{}}),'server-only':{},'@/lib/supabase-admin':{},'@/lib/stripe/config':{},'@/lib/api/responses':{ApiRouteError},'@/lib/stripe/app-namespace':namespace});
+const rel=load('src/lib/stripe/reliability.ts',{'./lease-acquisition-timing':load('src/lib/stripe/lease-acquisition-timing.ts',{'server-only':{}}),'./webhook-observer':load('src/lib/stripe/webhook-observer.ts',{'server-only':{}}),'server-only':{},'@/lib/supabase-admin':{},'@/lib/stripe/config':{},'@/lib/api/responses':{ApiRouteError},'@/lib/stripe/app-namespace':namespace});
 const webhook=load('src/lib/stripe/webhook.ts',{'server-only':{},'@/lib/stripe/app-namespace':namespace,'@/lib/stripe/reliability':rel});
 const checkout=load('src/lib/stripe/checkout.ts',{'server-only':{},'@/lib/stripe/app-namespace':namespace,'@/lib/stripe/config':{},'@/lib/stripe/reliability':rel});
 const reconcile=load('src/lib/stripe/reconciliation.ts',{'server-only':{},'@/lib/stripe/reliability':rel});

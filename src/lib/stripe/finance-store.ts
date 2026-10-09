@@ -1,4 +1,5 @@
 import "server-only";
+import { boundedLeaseAcquisition, AcquisitionTimingFailure, type AcquisitionTiming } from "./lease-acquisition-timing";
 import {createSupabaseAdminClient} from "@/lib/supabase-admin";
 import {resources,type FinanceStore,type StoredRow,type Resource,type Runtime,type FinanceSource,FINANCE_API_VERSION} from "./finance-contract";
 
@@ -14,10 +15,21 @@ const columns:Record<Resource,string>={
  activity:"stripe_scope,activity_key,kind,stripe_customer_id,stripe_subscription_id,object_type,object_id,occurred_at,amount_minor::text,currency,effective_at,source_event_id,origin,source_revision::text,created_at",
 };
 
-export function createFinanceStore(db:ReturnType<typeof createSupabaseAdminClient>):FinanceStore {
+export function createFinanceStore(db:ReturnType<typeof createSupabaseAdminClient>, acquisitionTiming?:AcquisitionTiming):FinanceStore {
   return {
     async command<T>(action:string,scope:string,token:string|null,input:object={}) {
-      const {data,error}=await db.rpc("billing_finance_command",{p_action:action,p_scope:scope,p_token:token,p_input:input});
+      const rpc=()=>db.rpc("billing_finance_command",{p_action:action,p_scope:scope,p_token:token,p_input:input});
+      const result=async()=>{
+        try {
+          return action==="claim" && acquisitionTiming
+            ? await boundedLeaseAcquisition(acquisitionTiming,"finance",signal=>rpc().abortSignal(signal))
+            : await rpc();
+        } catch(error) {
+          if(error instanceof AcquisitionTimingFailure)throw Error("FINANCE_STORE_UNAVAILABLE");
+          throw error;
+        }
+      };
+      const {data,error}=await result();
       if(error)throw Error(/^FINANCE_[A-Z_]+$/.test(error.message||"")?error.message:"FINANCE_STORE_UNAVAILABLE");
       return data as T;
     },

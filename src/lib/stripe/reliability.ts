@@ -1,4 +1,5 @@
 import "server-only";
+import { boundedLeaseAcquisition, AcquisitionTimingFailure, type AcquisitionTiming } from "./lease-acquisition-timing";
 import { classifyClaimStoreError } from "./webhook-observer";
 import type {ClaimFailureCategory, Observer, Stage} from "./webhook-observer";
 import type Stripe from "stripe";
@@ -12,7 +13,7 @@ export class BillingFailure extends ApiRouteError {
     super(status, status === 409 ? "CONFLICT" : "INTERNAL_ERROR", `Billing operation unavailable (${reason}). Please retry or contact support.`);
   }
 }
-export type BillingRuntime = { observer?: Observer; db: ReturnType<typeof createSupabaseAdminClient>; stripe: Stripe; scope: string; live: boolean };
+export type BillingRuntime = { observer?: Observer; acquisitionTiming?: AcquisitionTiming; db: ReturnType<typeof createSupabaseAdminClient>; stripe: Stripe; scope: string; live: boolean };
 export type BillingAccount = {
   user_id: string; stripe_customer_id: string | null; lease_token: string;
   customer_attempt: string | null; customer_attempt_at: string | null; customer_parameters: Stripe.CustomerCreateParams | null;
@@ -29,7 +30,20 @@ export async function billingRuntime(): Promise<BillingRuntime> {
 }
 export async function command<T>(r: BillingRuntime, action: string, user: string | null, token: string | null, input: object = {}): Promise<T> {
   const work = async () => {
-  const { data, error } = await r.db.rpc("billing_foundation_command", { p_action: action, p_scope: r.scope, p_user: user, p_token: token, p_input: input });
+  const rpc = () => r.db.rpc("billing_foundation_command", { p_action: action, p_scope: r.scope, p_user: user, p_token: token, p_input: input });
+  const result = async () => {
+    try {
+      return action === "claim" && r.acquisitionTiming
+        ? await boundedLeaseAcquisition(r.acquisitionTiming, "entitlement", signal => rpc().abortSignal(signal))
+        : await rpc();
+    } catch (error) {
+      if (error instanceof AcquisitionTimingFailure)
+        throw new BillingFailure("BILLING_STORE_UNAVAILABLE", 503,
+          error.outcome === "timeout_ambiguous" ? "DATABASE_TIMEOUT_OR_CANCELLED" : "UNKNOWN_STORE_ERROR");
+      throw error;
+    }
+  };
+  const { data, error } = await result();
   if (error) {
     const reason = /BILLING_(BUSY|FENCE|REVISION|IDENTITY|SCOPE|UNKNOWN_PRICE)/.exec(error.message || "")?.[0] || "BILLING_STORE_UNAVAILABLE";
     throw new BillingFailure(reason, reason === "BILLING_IDENTITY" ? 409 : 503, action === "claim" ? (reason === "BILLING_BUSY" ? "LEASE_BUSY" : classifyClaimStoreError(error)) : undefined);

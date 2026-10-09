@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function POST(request: Request) {
+  const invocationStartedAt = performance.now();
   const requestId = requestIdFromRequest(request);
   const route = "/api/stripe/webhook";
   const payload = await request.text();
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
 
   try {
     const event = constructStripeWebhookEvent({ payload, signature });
-    const result = await handleStripeWebhookConsumers(event, requestId);
+    const result = await handleStripeWebhookConsumers(event, requestId, invocationStartedAt);
 
     logInfo({
       code: "STRIPE_WEBHOOK_PROCESSED",

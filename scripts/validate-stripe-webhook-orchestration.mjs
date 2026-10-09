@@ -13,28 +13,35 @@ const billingSource=fs.readFileSync('scripts/validate-stripe-reliability.mjs','u
 assert.ok(billingSource.includes('let f=fixture();'));
 const billingExports={};
 vm.runInNewContext(transpile(billingSource.split('let f=fixture();')[0]+'\nexports.fixture=fixture;exports.webhook=webhook;'),{
- exports:billingExports,Error,Date,URL,Buffer,console,Promise,setImmediate,
+ exports:billingExports,Error,performance,AbortController,setTimeout,clearTimeout,Date,URL,Buffer,console,Promise,setImmediate,
  require:name=>({'node:assert/strict':{default:assert},'node:fs':{default:fs},'node:vm':{default:vm},typescript:{default:ts},'node:crypto':{randomUUID}}[name]),
 });
 const {consumer,storeModule}=loadFinance();
-function load(file,deps,env,logConsole=console){const exports={};vm.runInNewContext(transpile(fs.readFileSync(file,'utf8')),{exports,Error,Date,Promise,URL,console:logConsole,process:{env},require:name=>{assert.ok(name in deps,`Unexpected import: ${name}`);return deps[name];}});return exports;}
+function load(file,deps,env,logConsole=console){const exports={};vm.runInNewContext(transpile(fs.readFileSync(file,'utf8')),{exports,Error,performance,AbortController,setTimeout,clearTimeout,queueMicrotask,Date,Promise,URL,console:logConsole,process:{env},require:name=>{assert.ok(name in deps,`Unexpected import: ${name}`);return deps[name];}});return exports;}
 const signingSecret='whsec_offline_fixture';const sdk=new Stripe('sk_test_offline_fixture');
 function setup(){
- const billing=billingExports.fixture(),h=memoryHarness('acct_fixture:test');
+ const billing=billingExports.fixture();
+ const originalRpc=billing.r.db.rpc;
+ billing.r.db.rpc=(...args)=>{const pending=originalRpc(...args);pending.abortSignal=()=>pending;return pending;};
+ const h=memoryHarness('acct_fixture:test');
  const f=JSON.parse(JSON.stringify(graphFixture()).replaceAll('sub_one','sub_owned').replaceAll('cus_one','cus_owned').replaceAll('price_month','price_current'));
  f.graph.subscriptions=[f.subscription];Object.assign(billing.sub,f.subscription);
- let failFinance=false,reads=0,entitlementCalls=0;const logs=[];
+ let failFinance=false,timingMode=null,reads=0,entitlementCalls=0;const logs=[],timingContexts=[],financeTimings=[];
  const env={VERCEL_ENV:'preview',VERCEL_TARGET_ENV:'staging',NEXT_PUBLIC_SUPABASE_URL:'https://uohdkewufeivdpaljnng.supabase.co',STRIPE_SECRET_KEY:'sk_test_offline_fixture'};
  const capture=line=>logs.push(JSON.parse(line.replace(/^\[DMI\] /,'')));
  const logger=load('src/lib/observability/logger.ts',{},env,{info:capture,warn:capture,error:capture});
  const source={identity:async()=>({scope:'acct_fixture:test',apiVersion}),graph:async()=>{reads++;if(failFinance)throw Error('PRIVATE_PROVIDER_ERROR');return structuredClone(f.graph);}};
  const orchestrator=load('src/lib/stripe/webhook-consumers.ts',{
+  './lease-acquisition-timing':load('src/lib/stripe/lease-acquisition-timing.ts',{'server-only':{}},env),
   '@/lib/observability/logger':logger,
   './webhook-observer':load('src/lib/stripe/webhook-observer.ts',{'server-only':{}},env),
   './finance-runtime-guard':load('src/lib/stripe/finance-runtime-guard.ts',{'server-only':{}},env),
-  'server-only':{},'./webhook':{handleStripeWebhookEvent:(...args)=>{entitlementCalls++;return billingExports.webhook.handleStripeWebhookEvent(args[0],billing.r,args[2]);}},
+  'server-only':{},'./webhook':{handleStripeWebhookEvent:(...args)=>{entitlementCalls++;timingContexts.push(args[3]);
+   if(args[3]&&timingMode==='headroom')args[3].clock.now=()=>args[3].startedAt+116000;
+   if(args[3]&&timingMode==='timeout'){args[3].clock.setTimer=work=>{queueMicrotask(work);return 1;};args[3].clock.clearTimer=()=>{};}
+   return billingExports.webhook.handleStripeWebhookEvent(args[0],billing.r,args[2],args[3]);}},
   './config':{getStripeServerClient:()=>sdk},'@/lib/supabase-admin':{createSupabaseAdminClient:()=>({})},
-  './finance-store':{createFinanceStore:()=>h.store,createFinanceRuntime:(s,store)=>storeModule.createFinanceRuntime(s,store,()=>fixtureNow)},
+  './finance-store':{createFinanceStore:(_db,timing)=>{financeTimings.push(timing);return h.store;},createFinanceRuntime:(s,store)=>storeModule.createFinanceRuntime(s,store,()=>fixtureNow)},
   './finance-stripe-adapter':{stripeFinanceSource:()=>source},'./finance-webhook':consumer,
  },env);
  let signatures=0;
@@ -47,7 +54,7 @@ function setup(){
  },env);
  const make=(id,type,object)=>({id,object:'event',type,created:Math.floor(Date.now()/1000),api_version:webhookVersion,livemode:false,data:{object:structuredClone(object)}});
  async function send(e,bad=false){const payload=JSON.stringify(e),signature=bad?'invalid':sdk.webhooks.generateTestHeaderString({payload,secret:signingSecret});return route.POST(new Request('https://staging.invalid/api/stripe/webhook',{method:'POST',body:payload,headers:{'stripe-signature':signature}}));}
- return {billing,h,f,env,make,send,logs,get reads(){return reads;},get signatures(){return signatures;},get entitlementCalls(){return entitlementCalls;},set failFinance(v){failFinance=v;}};
+ return {billing,h,f,env,make,send,logs,timingContexts,financeTimings,get reads(){return reads;},get signatures(){return signatures;},get entitlementCalls(){return entitlementCalls;},set failFinance(v){failFinance=v;},set timingMode(v){timingMode=v;}};
 }
 // A: entitlement committed, failed Finance retries without another entitlement mutation.
 let s=setup();let e=s.make('evt_isolationA','customer.subscription.created',s.f.subscription);s.failFinance=true;
@@ -79,13 +86,15 @@ s=setup();e=s.make('evt_signature','customer.subscription.created',s.f.subscript
 // Finance configuration failures cannot prevent already-authorized entitlement work.
 s=setup();s.env.NEXT_PUBLIC_SUPABASE_URL='https://wrong.invalid';e=s.make('evt_target','customer.subscription.created',s.f.subscription);assert.equal((await s.send(e)).status,500);assert.equal(s.billing.events.get(e.id).state,'processed');assert.equal(s.reads,0);
 // Production retains the existing entitlement-only path; no Finance instantiation.
-s=setup();s.env.VERCEL_ENV='production';e=s.make('evt_productionguard','customer.subscription.created',s.f.subscription);assert.equal((await s.send(e)).status,200);assert.equal(await s.h.delivery(e.id),null);assert.equal(s.reads,0);
+s=setup();s.env.VERCEL_ENV='production';e=s.make('evt_productionguard','customer.subscription.created',s.f.subscription);assert.equal((await s.send(e)).status,200);assert.equal(await s.h.delivery(e.id),null);assert.equal(s.reads,0);assert.equal(s.timingContexts[0],undefined);assert.equal(s.financeTimings.length,0);
 assert.doesNotMatch(JSON.stringify(s.logs),/sk_test|whsec|PRIVATE_PROVIDER_ERROR/);
 console.log('PASS: signed real webhook route; both real consumers; failure isolation/retry/duplicate; five configured events; ignored allocation; compatibility failure; staging guards; Production entitlement-only; sanitized responses.');
 
 // Temporary staging observer: trace both real consumers without changing failures.
 s=setup();e=s.make('evt_diagnostic','customer.subscription.updated',s.f.subscription);
 assert.equal((await s.send(e)).status,200);
+assert.ok(s.timingContexts[0]);assert.equal(s.financeTimings[0],s.timingContexts[0]);
+assert.equal(s.logs.filter(x=>x.code==='BILLING_LEASE_ACQUISITION_TIMING').length,0);
 let diagnostics=s.logs.filter(x=>x.code==='STRIPE_WEBHOOK_DIAGNOSTIC').map(x=>x.metadata);
 for(const consumer of ['entitlement','finance'])for(const stage of ['runtime','event_claim','claim','commit','release'])assert.ok(diagnostics.some(x=>x.consumer===consumer&&x.stage===stage&&x.outcome==='succeeded'),consumer+':'+stage);
 for(const stage of ['envelope','stripe_retrieval','identity_binding','normalization','mirror_read','item_read'])assert.ok(diagnostics.some(x=>x.consumer==='finance'&&x.stage===stage&&x.outcome==='succeeded'),stage);
@@ -99,7 +108,7 @@ diagnostics=s.logs.filter(x=>x.code==='STRIPE_WEBHOOK_DIAGNOSTIC').map(x=>x.meta
 assert.ok(diagnostics.some(x=>x.stage==='event_fail'&&x.outcome==='failed'&&x.errorCode==='FINANCE_FENCE'));
 assert.ok(diagnostics.some(x=>x.consumer==='finance'&&x.stage==='consumer'&&x.outcome==='failed'&&x.errorCode==='FINANCE_RETRYABLE_FAILURE'));
 assert.doesNotMatch(JSON.stringify(diagnostics),/PRIVATE_PROVIDER_ERROR|sk_test|whsec|cus_|sub_owned|lease_token/);
-for(const target of ['preview','production']){s=setup();s.env.VERCEL_ENV=target;s.env.VERCEL_TARGET_ENV=target;e=s.make('evt_noDiagnostic'+target,'customer.subscription.updated',s.f.subscription);await s.send(e);assert.equal(s.logs.filter(x=>x.code==='STRIPE_WEBHOOK_DIAGNOSTIC').length,0);}
+for(const target of ['preview','production']){s=setup();s.env.VERCEL_ENV=target;s.env.VERCEL_TARGET_ENV=target;e=s.make('evt_noDiagnostic'+target,'customer.subscription.updated',s.f.subscription);await s.send(e);assert.equal(s.logs.filter(x=>x.code==='STRIPE_WEBHOOK_DIAGNOSTIC').length,0);assert.equal(s.timingContexts[0],undefined);assert.equal(s.financeTimings.length,0);}
 console.log('PASS: temporary diagnostics trace real consumer/RPC stages, preserve original failure despite event_fail failure, sanitize data and stay disabled outside staging.');
 
 // TEMPORARY: actual normalization failure emits only the fixed assertion label.
@@ -133,11 +142,12 @@ const claimFailures=[
 for(const [structured,expected] of claimFailures){
  const test=setup(),delivery=test.make('evt_category','customer.subscription.updated',test.f.subscription);
  const original=test.billing.r.db.rpc;let failedReason;
- test.billing.r.db.rpc=async(name,args)=>{
+ const failedRpc=async(name,args)=>{
   if(args.p_action==='claim')return {error:{message:'PRIVATE_CLAIM_ERROR sk_test_private cus_private user-private payload-private',details:'PRIVATE_DETAILS',hint:'PRIVATE_HINT',...structured}};
   if(args.p_action==='event_fail')failedReason=args.p_input.error;
   return original(name,args);
  };
+ test.billing.r.db.rpc=(...args)=>{const pending=failedRpc(...args);pending.abortSignal=()=>pending;return pending;};
  const response=await test.send(delivery);assert.equal(response.status,500);
  const browser=await response.json();assert.equal(browser.error.code,'STRIPE_WEBHOOK_FAILED');
  assert.doesNotMatch(JSON.stringify(browser),/failureCategory|PRIVATE_|LEASE_BUSY|BILLING_BUSY|AUTH_USER_NOT_FOUND|FOREIGN_KEY_VIOLATION|DATABASE_TIMEOUT/);
@@ -180,3 +190,23 @@ for(const [code,expected] of [['23503','FOREIGN_KEY_VIOLATION'],['57014','DATABA
  assert.doesNotMatch(JSON.stringify(thrownLogs.at(-1)),/PRIVATE_|evt_private/);
 }
 console.log('PASS: thrown structured client errors categorised without changing exception identity.');
+
+// Timing outcomes traverse the real signed route, retain generic 500/ledger reasons.
+for(const mode of ['headroom','timeout']){
+ const test=setup();test.timingMode=mode;
+ const delivery=test.make('evt_timing_'+mode,'customer.subscription.updated',test.f.subscription);
+ const response=await test.send(delivery);
+ assert.equal(response.status,500);
+ const browser=await response.json();assert.equal(browser.error.code,'STRIPE_WEBHOOK_FAILED');
+ assert.doesNotMatch(JSON.stringify(browser),/timeout_ambiguous|headroom_insufficient|failureCategory|PRIVATE/);
+ assert.equal(test.billing.mirrors.length,0);
+ assert.equal(test.billing.events.get(delivery.id).state,'failed');
+ const timingLogs=test.logs.filter(x=>x.code==='BILLING_LEASE_ACQUISITION_TIMING');
+ assert.equal(timingLogs.length,1);
+ assert.equal(timingLogs[0].metadata.outcome,mode==='timeout'?'timeout_ambiguous':'headroom_insufficient');
+ assert.equal(timingLogs[0].requestId,null);
+ assert.deepEqual(Object.keys(timingLogs[0].metadata).sort(),['consumer','elapsed_ms','outcome','remaining_ms']);
+ assert.doesNotMatch(JSON.stringify(timingLogs),/evt_|acct_|cus_|sub_|user_id|token|payload|PRIVATE|details|hint|stack/);
+ assert.equal(test.billing.retrieves,1); // No repeated Stripe read or consumer callback.
+}
+console.log('PASS: real route timing failures stay HTTP 500; safe metadata only; no extra Stripe reads/mirror commits.');

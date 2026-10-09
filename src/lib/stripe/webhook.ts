@@ -1,4 +1,5 @@
 import "server-only";
+import type {AcquisitionTiming} from "./lease-acquisition-timing";
 import type {Observer} from "./webhook-observer";
 import type Stripe from "stripe";
 import { hasDmiStripeAppNamespace } from "@/lib/stripe/app-namespace";
@@ -6,10 +7,10 @@ import { billingRuntime, BillingFailure, command, invoiceSubscription, objectId,
 
 const subscriptionEvents = new Set(["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"]);
 const invoiceEvents = new Set(["invoice.payment_failed", "invoice.payment_succeeded", "invoice.paid"]);
-export async function handleStripeWebhookEvent(event: Stripe.Event, runtime?: BillingRuntime, observer?: Observer) {
+export async function handleStripeWebhookEvent(event: Stripe.Event, runtime?: BillingRuntime, observer?: Observer, acquisitionTiming?: AcquisitionTiming) {
   const initialize = async () => runtime || await billingRuntime();
   const resolved = observer ? await observer.run("runtime", initialize) : await initialize();
-  const r = observer ? {...resolved, observer} : resolved;
+  const r = {...resolved, ...(observer ? {observer} : {}), ...(acquisitionTiming ? {acquisitionTiming} : {})};
   if (event.livemode !== r.live) throw new BillingFailure("SCOPE_CONFLICT", 409);
   const claim = await command<{ duplicate?: boolean; token: string }>(r, "event_claim", null, null, { id: event.id, type: event.type, created: event.created, subject: (event.data.object as { id?: string }).id });
   if (claim.duplicate) return { handled: true, skipped: true, reason: "duplicate_event" };
