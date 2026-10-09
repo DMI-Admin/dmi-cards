@@ -86,5 +86,8 @@ for(const file of ["finance-sync","finance-webhook","finance-store","finance-rec
 }
 assert.equal(execFileSync("git",["diff","HEAD","--","supabase/migrations","src/app/api/stripe/webhook/route.ts"],{encoding:"utf8"}),"");
 for(const name of ["finance-routing-evidence","finance-customer-relationship-adapter"]){const source=fs.readFileSync("src/lib/stripe/"+name+".ts","utf8");assert.match(source,/import "server-only"/);assert.doesNotMatch(source,/console\.|fetch\(|\.rpc\(|process\.env|\.insert\(|\.update\(|\.delete\(/);}
-assert.throws(()=>execFileSync("git",["grep","-n","billing_finance_partition_command","HEAD","--","src"],{encoding:"utf8",stdio:"pipe"}),e=>e.status===1);
+// The approved mode-runtime phase introduced the sole server-side partition RPC adapter.
+const partitionCalls=execFileSync("git",["grep","-n","billing_finance_partition_command","HEAD","--","src"],{encoding:"utf8",stdio:"pipe"}).trim().split("\n");
+assert.ok(partitionCalls.length>0);
+for(const line of partitionCalls)assert.ok(line.startsWith("HEAD:src/lib/stripe/finance-store.ts:"),"Partition RPC stays inside the reviewed server store adapter");
 console.log("PASS: all 17 verified projections; exact read-only adapter; shared two-read/two-second deadline; conflicts/missing/errors/cancellation/late responses; no sensitive logs; legacy runtime/RPC/HTTP/reconciliation unchanged (mocked only).");

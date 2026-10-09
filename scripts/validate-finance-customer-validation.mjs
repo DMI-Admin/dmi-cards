@@ -53,5 +53,8 @@ assert.deepEqual(logs,[]);
 const source=fs.readFileSync("src/lib/stripe/finance-customer-validation.ts","utf8");assert.match(source,/import "server-only"/);assert.doesNotMatch(source,/console\.|fetch\(|\.rpc\(|process\.env|\.command\(|\.insert\(|\.update\(|\.delete\(|assertClaimEligible|assertFence|withFinanceLease/);
 for(const file of ["src/lib/stripe/finance-sync.ts","src/lib/stripe/finance-webhook.ts","src/lib/stripe/finance-store.ts","src/lib/stripe/finance-reconciliation.ts","src/lib/stripe/webhook-consumers.ts","src/app/api/stripe/webhook/route.ts"]){if(!["src/lib/stripe/finance-sync.ts","src/lib/stripe/finance-reconciliation.ts","src/lib/stripe/finance-webhook.ts","src/lib/stripe/finance-store.ts","src/lib/stripe/webhook-consumers.ts"].includes(file))assert.equal(execFileSync("git",["diff","HEAD","--",file],{encoding:"utf8"}),"");assert.doesNotMatch(fs.readFileSync(file,"utf8"),/finance-customer-validation|finance-routing-evidence|finance-customer-relationship-adapter/);}
 assert.equal(execFileSync("git",["diff","HEAD","--","supabase/migrations"],{encoding:"utf8"}),"");
-assert.throws(()=>execFileSync("git",["grep","-n","billing_finance_partition_command","HEAD","--","src"],{encoding:"utf8",stdio:"pipe"}),e=>e.status===1);
+// The approved mode-runtime phase introduced the sole server-side partition RPC adapter.
+const partitionCalls=execFileSync("git",["grep","-n","billing_finance_partition_command","HEAD","--","src"],{encoding:"utf8",stdio:"pipe"}).trim().split("\n");
+assert.ok(partitionCalls.length>0);
+for(const line of partitionCalls)assert.ok(line.startsWith("HEAD:src/lib/stripe/finance-store.ts:"),"Partition RPC stays inside the reviewed server store adapter");
 console.log("PASS: inactive 17-event routing/graph/final-bundle composition; first-time/fallback; cross-customer/stale/retired/indirect rejection; bounded timeout/cancellation; fixed private diagnostics; no provider/mutation/lease/RPC/HTTP/schema changes (offline).");
