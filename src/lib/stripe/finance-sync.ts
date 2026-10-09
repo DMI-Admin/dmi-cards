@@ -10,7 +10,7 @@ import {requireLegacyFinanceProtocol} from "./finance-reconciliation-guard";
 
 export type Lease={token:string;revision:string};
 export async function withFinanceLease<T>(r:Runtime,work:(lease:Lease)=>Promise<T>):Promise<T> {
- const acquire=()=>r.store.command<Lease>("claim",r.scope,null);
+ const acquire=()=>r.store.command<Lease>("claim",r.scope,null,r.financeProtocol?{expected_protocol_epoch:r.financeProtocol.epoch}:{});
  const lease=r.leaseRetry
   ? await acquireLeaseWithRetry(r.leaseRetry,"finance",acquire,error=>error instanceof FinanceLeaseBusyFailure&&error.message==="FINANCE_BUSY")
   : await acquire();

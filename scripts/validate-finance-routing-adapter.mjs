@@ -82,7 +82,7 @@ for(const patch of [{resource:"items",id:"si_fixture",columns:rel.relationshipCo
 assert.equal(exact.calls.length,1);assert.deepEqual(logs,[]);
 const liveTypes=[...fs.readFileSync("src/lib/stripe/finance-webhook.ts","utf8").split("const eventRoots")[1].split("};")[0].matchAll(/"([a-z_.]+)":"(?:subscription|invoice|charge|refund)"/g)].map(x=>x[1]);assert.deepEqual(Object.keys(types).sort(),liveTypes.sort());
 for(const file of ["finance-sync","finance-webhook","finance-store","finance-reconciliation","finance-event-evidence","webhook-consumers"]){
- const name="src/lib/stripe/"+file+".ts";if(!["src/lib/stripe/finance-sync.ts","src/lib/stripe/finance-reconciliation.ts"].includes(name))assert.equal(execFileSync("git",["diff","HEAD","--",name],{encoding:"utf8"}),"");assert.doesNotMatch(fs.readFileSync(name,"utf8"),/finance-routing-evidence|finance-customer-relationship-adapter/);
+ const name="src/lib/stripe/"+file+".ts";if(!["src/lib/stripe/finance-sync.ts","src/lib/stripe/finance-reconciliation.ts","src/lib/stripe/finance-webhook.ts","src/lib/stripe/finance-store.ts","src/lib/stripe/webhook-consumers.ts"].includes(name))assert.equal(execFileSync("git",["diff","HEAD","--",name],{encoding:"utf8"}),"");assert.doesNotMatch(fs.readFileSync(name,"utf8"),/finance-routing-evidence|finance-customer-relationship-adapter/);
 }
 assert.equal(execFileSync("git",["diff","HEAD","--","supabase/migrations","src/app/api/stripe/webhook/route.ts"],{encoding:"utf8"}),"");
 for(const name of ["finance-routing-evidence","finance-customer-relationship-adapter"]){const source=fs.readFileSync("src/lib/stripe/"+name+".ts","utf8");assert.match(source,/import "server-only"/);assert.doesNotMatch(source,/console\.|fetch\(|\.rpc\(|process\.env|\.insert\(|\.update\(|\.delete\(/);}

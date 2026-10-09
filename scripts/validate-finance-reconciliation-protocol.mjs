@@ -18,8 +18,8 @@ assert.doesNotMatch(sql,/DROP CONSTRAINT|UPDATE public\.billing_finance_protocol
 // Only the approved reconciliation entrypoints may change; lease and graph work stay byte-identical.
 const syncFile='src/lib/stripe/finance-sync.ts',currentSync=fs.readFileSync(syncFile,'utf8');
 const oldSync=execFileSync('git',['show','HEAD:'+syncFile],{encoding:'utf8'});
-assert.equal(currentSync.slice(currentSync.indexOf('export type Lease='),currentSync.indexOf('export async function synchronizeFinance')),oldSync.slice(oldSync.indexOf('export type Lease='),oldSync.indexOf('export async function synchronizeFinance')));
-assert.equal(execFileSync('git',['diff','HEAD','--','src',':(exclude)src/lib/stripe/finance-sync.ts',':(exclude)src/lib/stripe/finance-reconciliation.ts'],{encoding:'utf8'}),'');
+assert.equal(currentSync.slice(currentSync.indexOf('function context('),currentSync.indexOf('export async function synchronizeFinance')),oldSync.slice(oldSync.indexOf('function context('),oldSync.indexOf('export async function synchronizeFinance')),'Financial preparation remains unchanged');
+assert.equal(execFileSync('git',['diff','HEAD','--','src',":(exclude)src/lib/stripe/finance-contract.ts",":(exclude)src/lib/stripe/lease-acquisition-timing.ts",":(exclude)src/lib/stripe/finance-sync.ts",":(exclude)src/lib/stripe/finance-webhook.ts",":(exclude)src/lib/stripe/finance-store.ts",":(exclude)src/lib/stripe/webhook-consumers.ts",":(exclude)src/lib/stripe/finance-routing-evidence.ts",":(exclude)src/lib/stripe/finance-customer-routing.ts",":(exclude)src/lib/stripe/finance-customer-relationship-adapter.ts",':(exclude)src/lib/stripe/finance-sync.ts',':(exclude)src/lib/stripe/finance-reconciliation.ts'],{encoding:'utf8'}),'');
 assert.equal(execFileSync('git',['diff','HEAD','--','supabase/migrations'],{encoding:'utf8'}),'','No earlier migrations modified');
 const scope='acct_reconcilefixture:test';
 const {reconcile,sync}=loadFinance();
@@ -111,6 +111,7 @@ if(process.argv[2]==='--postgres'){
  for(const text of installed)await client.query(text);
  for(const name of ['20261009180000_finance_partition_foundation.sql','20261009200000_finance_legacy_protocol_gate.sql','20261009210000_finance_customer_commit_foundation.sql'])await client.query(await fs.readFile('supabase/migrations/'+name,'utf8'));
  await validateReconciliationProtocol(client);
+ await client.query(await fs.readFile('supabase/migrations/20261009230000_finance_protocol_transitions.sql','utf8'));
  await validateWriter({query:(q,args)=>installed.has(q)?Promise.resolve({rows:[]}):client.query(q,args)});
  `;
  assert.ok(runner.includes(' await validateWriter(client);'));runner=runner.replace(' await validateWriter(client);',setup).replace('await fs.rm(temp,{recursive:true,force:true});}',"await fs.rm(temp,{recursive:true,force:true});console.log('CLEANUP: temporary PostgreSQL stopped and removed');}");

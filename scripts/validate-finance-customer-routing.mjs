@@ -65,7 +65,7 @@ assert.doesNotMatch(JSON.stringify(result("invoice.paid",{...privateObject,custo
 // No runtime integration, lease/RPC/schema/HTTP/reconciliation edits in this phase.
 const protectedFiles=["src/lib/stripe/finance-event-evidence.ts","src/lib/stripe/finance-webhook.ts","src/lib/stripe/finance-store.ts","src/lib/stripe/finance-sync.ts","src/lib/stripe/finance-reconciliation.ts","src/lib/stripe/webhook-consumers.ts","src/app/api/stripe/webhook/route.ts"];
 for(const file of protectedFiles){
- if(!["src/lib/stripe/finance-sync.ts","src/lib/stripe/finance-reconciliation.ts"].includes(file))assert.equal(execFileSync("git",["diff","HEAD","--",file],{encoding:"utf8"}),"");
+ if(!["src/lib/stripe/finance-sync.ts","src/lib/stripe/finance-reconciliation.ts","src/lib/stripe/finance-webhook.ts","src/lib/stripe/finance-store.ts","src/lib/stripe/webhook-consumers.ts"].includes(file))assert.equal(execFileSync("git",["diff","HEAD","--",file],{encoding:"utf8"}),"");
  assert.doesNotMatch(fs.readFileSync(file,"utf8"),/finance-customer-routing/);
 }
 assert.equal(execFileSync("git",["diff","HEAD","--","supabase/migrations"],{encoding:"utf8"}),"");

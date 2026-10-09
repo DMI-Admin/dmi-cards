@@ -32,8 +32,8 @@ export function createFinanceRelationshipAdapter(db: Pick<SupabaseClient, "from"
   } catch {throw new Error("FINANCE_RELATIONSHIP_UNAVAILABLE");}
  }};
 }
-/** UNUSED composition. Routing establishes a candidate, never financial-write authority.
- * Both initial lookup and any fallback share <=2 reads / 2 seconds. No live imports.
+/** Server-internal composition. Routing establishes a candidate, never financial-write authority.
+ * Both initial lookup and any fallback share <=2 reads / 2 seconds. No provider fallback.
  */
 export async function resolveVerifiedFinanceRouting(db: Pick<SupabaseClient, "from">, scope: string,
  evidence: VerifiedFinanceRoutingEvidence, options: {signal?: AbortSignal} = {}): Promise<CustomerRouting | RelationshipResult> {

@@ -100,7 +100,7 @@ export const LEASE_RETRY_MAX_WAIT_MS = 400;
 export type LeaseRetryOutcome = "acquired_after_retry" | "retry_exhausted" | "budget_exhausted" | "non_busy_failure";
 export type LeaseRetryMetadata = {
   consumer: AcquisitionMetadata["consumer"];
-  lease_kind: "account" | "scope";
+  lease_kind: "account" | "scope" | "customer";
   attempts_used: number;
   retries_used: number;
   deliberate_wait_ms: number;

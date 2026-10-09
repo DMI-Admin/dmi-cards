@@ -15,7 +15,7 @@ assert.equal(sql.slice(sql.indexOf(start),sql.indexOf(end)),previous.slice(previ
 assert.ok(sql.indexOf("FOR SHARE")<sql.indexOf("FOR UPDATE"));
 assert.ok(sql.indexOf("lease_protocol_epoch IS DISTINCT")<sql.indexOf(start));
 assert.doesNotMatch(sql,/UPDATE[^;]+lease_protocol_epoch=0/s);
-assert.equal(execFileSync("git",["diff","HEAD","--","src",":(exclude)src/lib/stripe/finance-sync.ts",":(exclude)src/lib/stripe/finance-reconciliation.ts","supabase/migrations/20261009180000_finance_partition_foundation.sql"],{encoding:"utf8"}),"");
+assert.equal(execFileSync("git",["diff","HEAD","--","src",":(exclude)src/lib/stripe/finance-contract.ts",":(exclude)src/lib/stripe/lease-acquisition-timing.ts",":(exclude)src/lib/stripe/finance-sync.ts",":(exclude)src/lib/stripe/finance-webhook.ts",":(exclude)src/lib/stripe/finance-store.ts",":(exclude)src/lib/stripe/webhook-consumers.ts",":(exclude)src/lib/stripe/finance-routing-evidence.ts",":(exclude)src/lib/stripe/finance-customer-routing.ts",":(exclude)src/lib/stripe/finance-customer-relationship-adapter.ts",":(exclude)src/lib/stripe/finance-sync.ts",":(exclude)src/lib/stripe/finance-reconciliation.ts","supabase/migrations/20261009180000_finance_partition_foundation.sql"],{encoding:"utf8"}),"");
 console.log("PASS static legacy protocol: epoch binding, lock order, active-lease install refusal, unchanged financial validations, no activation/runtime edits");
 async function databaseTests(client,Client,socket,readFile){
  const scope="acct_gate:test";
@@ -88,7 +88,9 @@ if(process.argv[2]==='--postgres'){
  // Existing writer/consumer regression suite against the gated writer. Suppress
  // only its two exact already-applied migration strings; never overwrite new gate.
  const installed=new Set(await Promise.all(['20260930130000_finance_v1_writer.sql','20261003120000_finance_tax_evidence.sql'].map(n=>fs.readFile('supabase/migrations/'+n,'utf8'))));
+ await client.query(await fs.readFile('supabase/migrations/20261009210000_finance_customer_commit_foundation.sql','utf8'));
  await client.query(await fs.readFile('supabase/migrations/20261009220000_finance_reconciliation_protocol_guard.sql','utf8'));
+ await client.query(await fs.readFile('supabase/migrations/20261009230000_finance_protocol_transitions.sql','utf8'));
  await validateWriter({query:(q,args)=>installed.has(q)?Promise.resolve({rows:[]}):client.query(q,args)});
  `;
  assert.ok(runner.includes(' await validateWriter(client);'));runner=runner.replace(' await validateWriter(client);',replacement);

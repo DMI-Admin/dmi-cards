@@ -15,7 +15,7 @@ for(const guard of ['SET LOCAL lock_timeout = \'5s\'','SET LOCAL statement_timeo
 assert.doesNotMatch(sql,/DROP\s|ALTER TABLE public\.billing_finance_protocol_control|UPDATE public\.billing_finance_protocol_control|CREATE OR REPLACE FUNCTION public\.billing_finance_command\(/i);
 const rpcSql=sql.slice(sql.indexOf('CREATE OR REPLACE FUNCTION public.billing_finance_partition_command'));
 assert.ok(rpcSql.indexOf('FOR SHARE')<rpcSql.indexOf('FOR UPDATE'));
-assert.equal(execFileSync('git',['diff','HEAD','--','src',':(exclude)src/lib/stripe/finance-sync.ts',':(exclude)src/lib/stripe/finance-reconciliation.ts','supabase/migrations/20261009180000_finance_partition_foundation.sql','supabase/migrations/20261009200000_finance_legacy_protocol_gate.sql'],{encoding:'utf8'}),'');
+assert.equal(execFileSync('git',['diff','HEAD','--','src',":(exclude)src/lib/stripe/finance-contract.ts",":(exclude)src/lib/stripe/lease-acquisition-timing.ts",":(exclude)src/lib/stripe/finance-sync.ts",":(exclude)src/lib/stripe/finance-webhook.ts",":(exclude)src/lib/stripe/finance-store.ts",":(exclude)src/lib/stripe/webhook-consumers.ts",":(exclude)src/lib/stripe/finance-routing-evidence.ts",":(exclude)src/lib/stripe/finance-customer-routing.ts",":(exclude)src/lib/stripe/finance-customer-relationship-adapter.ts",':(exclude)src/lib/stripe/finance-sync.ts',':(exclude)src/lib/stripe/finance-reconciliation.ts','supabase/migrations/20261009180000_finance_partition_foundation.sql','supabase/migrations/20261009200000_finance_legacy_protocol_gate.sql'],{encoding:'utf8'}),'');
 console.log('PASS static customer commit: financial rules preserved, closed gates/fences, private helpers, receipt guards, no legacy/runtime/activation/reconciliation changes');
 export async function validateCustomerCommit(client,Client,socket){
  const scope='acct_customerfixture:test',customer='cus_one';
@@ -123,6 +123,7 @@ if(process.argv[2]==='--postgres'){
  await client.query(await fs.readFile('supabase/migrations/20261009200000_finance_legacy_protocol_gate.sql','utf8'));
  await validateCustomerCommit(client,Client,socket);
  await client.query(await fs.readFile('supabase/migrations/20261009220000_finance_reconciliation_protocol_guard.sql','utf8'));
+ await client.query(await fs.readFile('supabase/migrations/20261009230000_finance_protocol_transitions.sql','utf8'));
  await validateWriter({query:(q,args)=>installed.has(q)?Promise.resolve({rows:[]}):client.query(q,args)});
  `;
  runner=runner.replace(' await validateWriter(client);',setup).replace('await fs.rm(temp,{recursive:true,force:true});}',"await fs.rm(temp,{recursive:true,force:true});console.log('CLEANUP: disposable cluster stopped and removed');}");

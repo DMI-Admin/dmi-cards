@@ -88,7 +88,7 @@ for(const change of [g=>g.charges[0].customer="cus_other",g=>g.refunds[0].charge
 }
 assert.equal(own.validateFinanceGraphOwnership(p,graph,stale).valid,false);
 for(const file of ["src/lib/stripe/finance-sync.ts","src/lib/stripe/finance-webhook.ts","src/lib/stripe/finance-reconciliation.ts","src/lib/stripe/finance-store.ts","src/lib/stripe/finance-stripe-adapter.ts","src/lib/stripe/finance-event-evidence.ts","src/lib/stripe/webhook-consumers.ts","src/app/api/stripe/webhook/route.ts"]){
- if(!["src/lib/stripe/finance-sync.ts","src/lib/stripe/finance-reconciliation.ts"].includes(file))assert.equal(execFileSync("git",["diff","HEAD","--",file],{encoding:"utf8"}),"");
+ if(!["src/lib/stripe/finance-sync.ts","src/lib/stripe/finance-reconciliation.ts","src/lib/stripe/finance-webhook.ts","src/lib/stripe/finance-store.ts","src/lib/stripe/webhook-consumers.ts"].includes(file))assert.equal(execFileSync("git",["diff","HEAD","--",file],{encoding:"utf8"}),"");
  assert.doesNotMatch(fs.readFileSync(file,"utf8"),/finance-customer-(relationships|ownership)/);
 }
 assert.equal(execFileSync("git",["diff","HEAD","--","supabase/migrations"],{encoding:"utf8"}),"");

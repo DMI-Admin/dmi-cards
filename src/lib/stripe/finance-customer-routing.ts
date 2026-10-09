@@ -2,7 +2,7 @@ import "server-only";
 import { reviewedFinanceEvent } from "./finance-event-evidence";
 import type { EventEvidence } from "./finance-contract";
 
-// Separate, unused routing contract. Never changes the live reviewed event projection.
+// Separate routing contract. Never changes the live reviewed event projection.
 export const financeRoutingEvents = {
   "customer.subscription.created": "subscription", "customer.subscription.updated": "subscription",
   "customer.subscription.deleted": "subscription", "invoice.finalized": "invoice",

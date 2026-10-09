@@ -29,14 +29,16 @@ export async function handleStripeWebhookConsumers(event:Stripe.Event, requestId
    // Fail closed rather than write Finance into a different database or live account.
    if(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()!=="https://uohdkewufeivdpaljnng.supabase.co")throw Error("FINANCE_STAGING_TARGET");
    if(!/^(sk|rk)_test_/.test(process.env.STRIPE_SECRET_KEY?.trim()||""))throw Error("FINANCE_STAGING_CREDENTIAL");
-   const runtime=await createFinanceRuntime(stripeFinanceSource(getStripeServerClient()),createFinanceStore(createSupabaseAdminClient(),acquisitionTiming));
+   const db=createSupabaseAdminClient();
+   const runtime=await createFinanceRuntime(stripeFinanceSource(getStripeServerClient()),createFinanceStore(db,acquisitionTiming));
+   runtime.relationshipDb=db;
    if(!runtime.scope.endsWith(":test"))throw Error("FINANCE_STAGING_MODE");
    runtime.leaseRetry=leaseRetry;
    if(finance){
     const store=runtime.store;
     runtime.observer=finance;
     runtime.store={...store,
-     command:<T>(action:string,scope:string,token:string|null,input:object={})=>finance.run(action as Stage,()=>store.command<T>(action,scope,token,input)),
+     command:<T>(action:string,scope:string,token:string|null,input:object={})=>finance.run(({read_protocol:"other_rpc",partition_claim:"claim",partition_release:"release",partition_bind:"bind",partition_commit:"commit",partition_ignored:"event_finish"} as Record<string,Stage>)[action]??action as Stage,()=>store.command<T>(action,scope,token,input)),
      read:(...args)=>finance.run("mirror_read",()=>store.read(...args)),
      items:(...args)=>finance.run("item_read",()=>store.items(...args)),
      binding:(...args)=>finance.run("identity_binding",()=>store.binding(...args)),

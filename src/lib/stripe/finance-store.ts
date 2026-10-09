@@ -23,10 +23,15 @@ const columns:Record<Resource,string>={
 export function createFinanceStore(db:ReturnType<typeof createSupabaseAdminClient>, acquisitionTiming?:AcquisitionTiming):FinanceStore {
   return {
     async command<T>(action:string,scope:string,token:string|null,input:object={}) {
-      const rpc=()=>db.rpc("billing_finance_command",{p_action:action,p_scope:scope,p_token:token,p_input:input});
+      const partition=action.startsWith("partition_");
+      const partitionActions:Record<string,string>={partition_claim:"claim_customer",partition_release:"release_customer",partition_bind:"bind_receipt",partition_commit:"commit_customer",partition_ignored:"complete_unsupported"};
+      const request=input as Record<string,unknown>;
+      if(partition&&!Object.hasOwn(partitionActions,action))throw Error("FINANCE_COMMAND");
+      const {customer,...partitionInput}=request;
+      const rpc=()=>partition?db.rpc("billing_finance_partition_command",{p_action:partitionActions[action],p_scope:scope,p_customer:customer??null,p_token:token,p_input:partitionInput}):db.rpc("billing_finance_command",{p_action:action,p_scope:scope,p_token:token,p_input:input});
       const result=async()=>{
         try {
-          return action==="claim" && acquisitionTiming
+          return (action==="claim"||action==="partition_claim") && acquisitionTiming
             ? await boundedLeaseAcquisition(acquisitionTiming,"finance",signal=>rpc().abortSignal(signal))
             : await rpc();
         } catch(error) {
@@ -36,7 +41,7 @@ export function createFinanceStore(db:ReturnType<typeof createSupabaseAdminClien
       };
       const {data,error}=await result();
       if(error){
-        if(action==="claim"&&error.message==="FINANCE_BUSY")throw new FinanceLeaseBusyFailure();
+        if((action==="claim"||action==="partition_claim")&&error.message==="FINANCE_BUSY")throw new FinanceLeaseBusyFailure();
         throw Error(/^FINANCE_[A-Z_]+$/.test(error.message||"")?error.message:"FINANCE_STORE_UNAVAILABLE");
       }
       return data as T;
