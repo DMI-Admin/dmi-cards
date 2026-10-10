@@ -6,6 +6,9 @@ import ts from 'typescript';
 import * as crypto from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {AsyncLocalStorage} from 'node:async_hooks';
+import {PassThrough} from 'node:stream';
+import {createRequire} from 'node:module';
+const {NextRequestAdapter}=createRequire(import.meta.url)('next/dist/server/web/spec-extension/adapters/next-request.js');
 globalThis.AsyncLocalStorage=AsyncLocalStorage;
 const {unstable_doesMiddlewareMatch}=await import('next/experimental/testing/server.js');
 import {schedulerFixtureEvidence} from './validate-billing-work-evidence.mjs';
@@ -39,6 +42,42 @@ await test('admission timeout ambiguity has no second attempt or late receipt re
 await test('invalid missing short bearer denied before dependency construction',async()=>{for(const token of [null,'Bearer wrong','bearer '+secret,'Bearer '+secret+'x'])assert.equal((await recovery.recoverBillingWork(req(token),secret,enabled,()=>{throw Error('UNEXPECTED');})).status,401);assert.equal((await recovery.recoverBillingWork(req(),undefined,enabled,()=>{throw Error('UNEXPECTED');})).status,401);});
 await test('route disabled or rejected target never claims',async()=>{for(const config of [disabled,{state:'rejected'}])assert.equal((await recovery.recoverBillingWork(req(),secret,config,()=>{throw Error('UNEXPECTED');})).status,503);});
 await test('no arbitrary request parameters body or wrong method',async()=>{for(const request of [req(undefined,'https://staging.dmicards.com/api/internal/billing-work?scope=other'),req(undefined,undefined,{body:'{}'}),req(undefined,undefined,{method:'GET'})])assert.ok([400,405].includes((await recovery.recoverBillingWork(request,secret,enabled,()=>{throw Error('UNEXPECTED');})).status));});
+function adaptedEmpty(headers={}){
+ const body=new PassThrough();body.end();
+ return NextRequestAdapter.fromNodeNextRequest({method:'POST',url:'https://staging.dmicards.com/api/internal/billing-work',headers:{authorization:`Bearer ${secret}`,...headers},body},new AbortController().signal);
+}
+const streamedRequest=body=>req(undefined,undefined,{body,duplex:'half'});
+const idleExecution=()=>async()=>({state:'idle'});
+await test('Next.js-adapted zero-byte POST accepts its non-null stream',async()=>{const request=adaptedEmpty();assert.notEqual(request.body,null);assert.equal((await recovery.recoverBillingWork(request,secret,enabled,idleExecution)).status,200);});
+await test('Next.js-adapted Content-Length zero POST accepts EOF',async()=>{assert.equal((await recovery.recoverBillingWork(adaptedEmpty({'content-length':'0'}),secret,enabled,idleExecution)).status,200);});
+await test('plain empty Request still accepts',async()=>{const request=req();assert.equal(request.body,null);assert.equal((await recovery.recoverBillingWork(request,secret,enabled,idleExecution)).status,200);});
+await test('every non-zero body rejects before dependencies and emits only fixed error',async()=>{
+ for(const body of ['x',' ','{}','{"secret":"PRIVATE_BODY"}','field=PRIVATE_BODY',new Uint8Array([0]),new FormData()]){
+  const result=await recovery.recoverBillingWork(req(undefined,undefined,{body}),secret,enabled,()=>{throw Error('UNEXPECTED_DEPENDENCIES');});
+  assert.equal(result.status,400);assert.deepEqual(await result.json(),{error:'Parameters are not supported'});
+ }
+});
+await test('query rejection does not inspect body or construct dependencies',async()=>{let reads=0;const request={url:'https://staging.dmicards.com/api/internal/billing-work?batch=1',method:'POST',headers:new Headers({authorization:`Bearer ${secret}`}),get body(){reads++;throw Error('UNEXPECTED_BODY_READ');}};assert.equal((await recovery.recoverBillingWork(request,secret,enabled,()=>{throw Error('UNEXPECTED');})).status,400);assert.equal(reads,0);});
+await test('body read error fails closed without raw error disclosure',async()=>{const body=new ReadableStream({start(controller){controller.error(Error('PRIVATE_BODY_ERROR'));}});const result=await recovery.recoverBillingWork(streamedRequest(body),secret,enabled,()=>{throw Error('UNEXPECTED');});assert.equal(result.status,400);assert.deepEqual(await result.json(),{error:'Parameters are not supported'});});
+await test('locked body fails closed before dependency construction',async()=>{const body=new ReadableStream();const request=streamedRequest(body);const lock=request.body.getReader();assert.equal((await recovery.recoverBillingWork(request,secret,enabled,()=>{throw Error('UNEXPECTED');})).status,400);lock.releaseLock();});
+await test('zero-length chunks require EOF and finite read count',async()=>{
+ const empty=new ReadableStream({start(controller){controller.enqueue(new Uint8Array());controller.close();}});
+ assert.equal((await recovery.recoverBillingWork(streamedRequest(empty),secret,enabled,idleExecution)).status,200);
+ let cancelled=0;const endless=new ReadableStream({pull(controller){controller.enqueue(new Uint8Array());},cancel(){cancelled++;}});
+ assert.equal((await recovery.recoverBillingWork(streamedRequest(endless),secret,enabled,()=>{throw Error('UNEXPECTED');})).status,400);assert.equal(cancelled,1);
+});
+await test('body deadline rejects and late EOF cannot start dependencies',async()=>{
+ let fire,cancelled=0,cleared=0,dependencies=0,controller;
+ const bounded=load(root+'billing-work-recovery.ts',{'node:crypto':crypto},{setTimeout:(fn,ms)=>{assert.equal(ms,1000);fire=fn;return 1;},clearTimeout:()=>cleared++});
+ const body=new ReadableStream({start(c){controller=c;},cancel(){cancelled++;return new Promise(()=>{});}});
+ const pending=bounded.recoverBillingWork(streamedRequest(body),secret,enabled,()=>{dependencies++;return idleExecution();});
+ for(let i=0;i<20;i++)await Promise.resolve();assert.equal(dependencies,0);assert.ok(fire);fire();
+ const result=await pending;assert.equal(result.status,400);assert.equal(cancelled,1);assert.equal(cleared,1);
+ try{controller.close();}catch{/* Cancelled stream is already closed. */}
+ for(let i=0;i<20;i++)await Promise.resolve();assert.equal(dependencies,0);
+});
+await test('dependencies wait for verified zero-byte EOF',async()=>{let controller,dependencies=0;const body=new ReadableStream({start(c){controller=c;}});const pending=recovery.recoverBillingWork(streamedRequest(body),secret,enabled,()=>{dependencies++;return idleExecution();});for(let i=0;i<20;i++)await Promise.resolve();assert.equal(dependencies,0);controller.close();assert.equal((await pending).status,200);assert.equal(dependencies,1);});
+await test('authentication and method reject before touching streams',async()=>{for(const [authorization,method,status] of [['Bearer wrong','POST',401],[`Bearer ${secret}`,'GET',405]]){const request={url:'https://staging.dmicards.com/api/internal/billing-work',method,headers:new Headers({authorization}),get body(){throw Error('UNEXPECTED_BODY_READ');}};assert.equal((await recovery.recoverBillingWork(request,secret,enabled,()=>{throw Error('UNEXPECTED');})).status,status);}});
 await test('recovery waits for exactly two concurrent single-consumer executions',async()=>{let active=0,max=0,releases=[];const calls=[];const p=recovery.recoverBillingWork(req(),secret,enabled,()=>async c=>{calls.push(c);max=Math.max(max,++active);return new Promise(r=>releases.push(()=>{active--;r({state:'completed'});}));});for(let i=0;i<20;i++)await Promise.resolve();assert.deepEqual(calls,['finance','entitlement']);assert.equal(max,2);let ended=false;p.then(()=>ended=true);await Promise.resolve();assert.equal(ended,false);releases[0]();await Promise.resolve();assert.equal(ended,false);releases[1]();const r=await p;assert.equal(r.status,200);assert.equal((await r.json()).counts.completed,2);});
 await test('partial success worker ambiguity and throws have only safe aggregate response',async()=>{for(const outcome of ['retry_wait','dependency_wait','needs_attention','stopped','throw']){const r=await recovery.recoverBillingWork(req(),secret,enabled,()=>async c=>{if(c==='finance')return {state:'completed',customer:'cus_private'};if(outcome==='throw')throw Error('PRIVATE_SECRET');return {state:outcome,category:'ambiguous_outcome',event:'evt_private'};});assert.equal(r.status,503);const text=await r.text();assert.doesNotMatch(text,/PRIVATE|SECRET|cus_|evt_|acct_|ambiguous|category/);assert.equal(JSON.parse(text).counts.completed,1);}});
 await test('runtime wiring defaults disabled and executes one claim per consumer',()=>{const route=fs.readFileSync('src/app/api/internal/billing-work/route.ts','utf8');assert.match(route,/billingWorkConfiguration\("recovery"\)/);assert.match(route,/executeBillingWorker\(deps,config.scope,consumer,undefined,config.worker\)/);assert.match(route,/maxDuration=90/);assert.doesNotMatch(route,/transition|invoiceProofProduction|logInfo|console\.|cron|setInterval/);});

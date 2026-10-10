@@ -126,7 +126,12 @@ await test('live scope or malformed/unsupported evidence cannot invoke admission
 await test('only reviewed disabled route imports; no provider calls, mutation, logging, or sensitive outputs',()=>{
  for(const p of paths){const source=fs.readFileSync(p,'utf8').replace('.update(canonicalWorkEvidence(evidence))','');assert.doesNotMatch(source,/console\.|logInfo|logError|fetch\(|process\.env|\.insert\(|\.update\(|\.delete\(|stripe\./);}
  for(const p of execFileSync('git',['ls-files','--cached','--others','--exclude-standard','src'],{encoding:'utf8'}).trim().split('\n'))if(!['src/app/api/stripe/webhook/route.ts', 'src/app/api/internal/billing-work/route.ts', 'src/lib/stripe/billing-work-admission.ts', 'src/lib/stripe/billing-work-config.ts', 'src/lib/stripe/billing-work-evidence.ts', 'src/lib/stripe/billing-work-handoff.ts', 'src/lib/stripe/billing-work-recovery.ts', 'src/lib/stripe/billing-work-routing.ts', 'src/lib/stripe/billing-work-runtime.ts', 'src/lib/stripe/billing-work-store.ts', 'src/lib/stripe/billing-work-worker.ts'].includes(p))assert.doesNotMatch(fs.readFileSync(p,'utf8'),/billing-work-(?:evidence|admission)/);
- for(const changed of execFileSync('git',['diff','--name-only','HEAD','--','src','supabase/migrations'],{encoding:'utf8'}).trim().split('\n').filter(Boolean))assert.ok(['src/app/api/stripe/webhook/route.ts','src/middleware.ts'].includes(changed),'Only the reviewed disabled wiring may differ from HEAD');
+ // Recovery's reviewed body check is independent of admission/evidence. Preserve
+ // its authentication, configuration and execution tail outside that exact check.
+ const recoveryPath='src/lib/stripe/billing-work-recovery.ts';
+ const recoveryTail=source=>source.slice(source.indexOf('/** No session auth')).replace('!await hasEmptyBody(request)','request.body!==null');
+ assert.equal(recoveryTail(fs.readFileSync(recoveryPath,'utf8')),recoveryTail(execFileSync('git',['show','HEAD:'+recoveryPath],{encoding:'utf8'})));
+ for(const changed of execFileSync('git',['diff','--name-only','HEAD','--','src','supabase/migrations'],{encoding:'utf8'}).trim().split('\n').filter(Boolean))assert.ok(['src/app/api/stripe/webhook/route.ts','src/middleware.ts','src/lib/stripe/billing-work-recovery.ts'].includes(changed),'Only the reviewed disabled wiring may differ from HEAD');
 });
 console.log(`PASS billing work evidence/admission: ${count}/${count}`);
 
