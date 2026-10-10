@@ -1,7 +1,7 @@
 import "server-only";
 import { boundedLeaseAcquisition, AcquisitionTimingFailure, type AcquisitionTiming } from "./lease-acquisition-timing";
 import {createSupabaseAdminClient} from "@/lib/supabase-admin";
-import {resources,type FinanceStore,type StoredRow,type Resource,type Runtime,type FinanceSource,FINANCE_API_VERSION} from "./finance-contract";
+import {resources,type FinanceStore,type StoredRow,type Resource,type Runtime,type FinanceSource,type InvoiceProofOptIn,FINANCE_API_VERSION} from "./finance-contract";
 
 // Created only from a received RPC error response, never from transport exceptions.
 export class FinanceLeaseBusyFailure extends Error {
@@ -28,7 +28,7 @@ export function createFinanceStore(db:ReturnType<typeof createSupabaseAdminClien
       const request=input as Record<string,unknown>;
       if(partition&&!Object.hasOwn(partitionActions,action))throw Error("FINANCE_COMMAND");
       const {customer,...partitionInput}=request;
-      const rpc=()=>action==="foreign_complete"?db.rpc("billing_finance_complete_foreign",{p_scope:scope,p_event:request.event_id,p_token:token,p_epoch:request.expected_epoch,p_evidence:request.evidence,p_proofs:request.proofs}):partition?db.rpc("billing_finance_partition_command",{p_action:partitionActions[action],p_scope:scope,p_customer:customer??null,p_token:token,p_input:partitionInput}):db.rpc("billing_finance_command",{p_action:action,p_scope:scope,p_token:token,p_input:input});
+      const rpc=()=>action==="invoice_proof_commit"?db.rpc("billing_finance_customer_commit_with_proofs",{p_scope:scope,p_customer:request.customer,p_token:token,p_input:request.input,p_candidates:request.candidates,p_authority:request.authority}):action==="foreign_complete"?db.rpc("billing_finance_complete_foreign",{p_scope:scope,p_event:request.event_id,p_token:token,p_epoch:request.expected_epoch,p_evidence:request.evidence,p_proofs:request.proofs}):partition?db.rpc("billing_finance_partition_command",{p_action:partitionActions[action],p_scope:scope,p_customer:customer??null,p_token:token,p_input:partitionInput}):db.rpc("billing_finance_command",{p_action:action,p_scope:scope,p_token:token,p_input:input});
       const result=async()=>{
         try {
           return (action==="claim"||action==="partition_claim") && acquisitionTiming
@@ -66,8 +66,9 @@ export function createFinanceStore(db:ReturnType<typeof createSupabaseAdminClien
   };
 }
 /** Called only by trusted server orchestration, not exposed by any HTTP endpoint. */
-export async function createFinanceRuntime(source:FinanceSource,store:FinanceStore,now=()=>new Date().toISOString()):Promise<Runtime> {
+export async function createFinanceRuntime(source:FinanceSource,store:FinanceStore,now=()=>new Date().toISOString(),invoiceProofProduction?:InvoiceProofOptIn):Promise<Runtime> {
   const identity=await source.identity();
   if(!/^acct_[A-Za-z0-9]+:(test|live)$/.test(identity.scope)||identity.apiVersion!==FINANCE_API_VERSION)throw Error("FINANCE_RUNTIME_VERSION_OR_SCOPE");
-  return {source,store,...identity,now};
+  if(invoiceProofProduction&&(invoiceProofProduction.approval!=="reviewed_staging_invoice_proofs_v1"||invoiceProofProduction.approvedScope!==identity.scope||!identity.scope.endsWith(":test")))throw Error("FINANCE_PROOF_OPT_IN");
+  return {source,store,...identity,now,...(invoiceProofProduction?{invoiceProofProduction}:{})};
 }

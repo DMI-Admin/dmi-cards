@@ -1,4 +1,5 @@
 import "server-only";
+import {produceInvoiceProofCandidates} from "./finance-invoice-proof-producer";
 import {decideFinanceApplication} from "./finance-foreign-event";
 import {FinanceLeaseBusyFailure} from "./finance-store";
 import {acquireLeaseWithRetry} from "./lease-acquisition-timing";
@@ -13,6 +14,7 @@ const unsupported=new Set(["checkout.session.completed","invoice.payment_succeed
  */
 export async function consumeCustomerFinanceEvent(verified:EventEvidence,event:EventEvidence,r:Runtime,roots:Record<string,Root["kind"]>) {
  const epoch=r.financeProtocol!.epoch;
+ if(r.invoiceProofProduction&&(r.invoiceProofProduction.approval!=="reviewed_staging_invoice_proofs_v1"||r.invoiceProofProduction.approvedScope!==r.scope||!r.scope.endsWith(":test")))throw Error("FINANCE_PROOF_OPT_IN");
  const receipt=await r.store.command<{duplicate?:boolean;token:string}>("event_claim",r.scope,null,{id:event.id,type:event.type,subject:objectId(event.data.object),created:new Date(event.created*1000).toISOString()});
  if(receipt.duplicate)return {outcome:"duplicate"};
  try {
@@ -55,7 +57,12 @@ export async function consumeCustomerFinanceEvent(verified:EventEvidence,event:E
    if(!graph||!validateFinanceGraphOwnership(partition,graph,stored).valid||!validateFinanceBundleOwnership(partition,prepared.bundle,stored).valid)throw Error("FINANCE_CUSTOMER_BUNDLE_OWNERSHIP");
    const input={customer:partition.customer,expected_epoch:epoch,expected_partition_revision:lease.revision,event_id:event.id,event_token:receipt.token,bundle:prepared.bundle};
    await r.store.command("partition_bind",r.scope,lease.token,input);
-   await r.store.command("partition_commit",r.scope,lease.token,input);
+   if(r.invoiceProofProduction){
+    if(decision.state!=="dmi"||!("proofs" in decision))throw Error("FINANCE_PROOF_AUTHORITY");
+    const candidates=produceInvoiceProofCandidates(r.scope,partition.customer,graph,prepared.bundle,decision.proofs);
+    const {customer,...commitInput}=input;
+    await r.store.command("invoice_proof_commit",r.scope,lease.token,{customer,input:commitInput,candidates,authority:{evidence:decision.evidence,proofs:decision.proofs}});
+   }else await r.store.command("partition_commit",r.scope,lease.token,input);
    committed=true;
    return {outcome:"processed",complete:prepared.complete};
   }finally{

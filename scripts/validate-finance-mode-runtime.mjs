@@ -72,6 +72,23 @@ for(const mode of ['draining_to_customer','draining_to_legacy']){const h=fixture
  assert.equal((await consumer.consumeFinanceEvent(event('paralleltwo','customer.subscription.created',second.subscription),h.runtime)).outcome,'processed');
  assert.equal(h.leases.has('cus_one'),true);assert.equal(h.leases.has('cus_two'),false);open();await first;assert.equal(h.counts().commits,2);assert.equal(h.counts().legacy,0);
 }
+// Explicit test-only proof option; live constructors still supply no option.
+for(const ambiguous of [false,true]){
+ const h=fixture();h.runtime.invoiceProofProduction={approvedScope:h.runtime.scope,approval:'reviewed_staging_invoice_proofs_v1'};
+ const base=h.runtime.store.command;let proofCalls=0;
+ h.runtime.store.command=async(action,scope,token,input={})=>{
+  if(action==='invoice_proof_commit'){
+   proofCalls++;assert.equal(JSON.stringify(input.candidates),'[]');assert.equal(input.authority.evidence.kind,'subscription');
+   if(ambiguous)throw Error('FINANCE_STORE_UNAVAILABLE');
+   return base('partition_commit',scope,token,{customer:input.customer,...input.input});
+  }
+  return base(action,scope,token,input);
+ };
+ const call=consumer.consumeFinanceEvent(event('proofmode'+ambiguous,'customer.subscription.created',h.f.subscription),h.runtime);
+ if(ambiguous){await assert.rejects(call,/FINANCE_STORE_UNAVAILABLE/);assert.equal(h.counts().commits,0);assert.equal(h.counts().releases,1);}
+ else {assert.equal((await call).outcome,'processed');assert.equal(h.counts().commits,1);assert.equal(h.counts().releases,0);}
+ assert.equal(proofCalls,1);assert.equal(h.counts().graphs,1);assert.equal(h.counts().claims,1);assert.equal(h.counts().legacy,0);
+}
 // Adapter proves customer claim is bounded, HTTP busy is definite, and response metadata never returns raw errors.
 {
  const calls=[];const db={rpc:(name,input)=>{calls.push({name,input});const response=Promise.resolve({data:{token:'lease',epoch:1,revision:'1'},error:null});response.abortSignal=()=>response;return response;}};

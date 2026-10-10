@@ -64,8 +64,11 @@ for(const name of ['finance-foreign-event','finance-customer-webhook'])assert.do
 const legacyBefore=execFileSync('git',['show','HEAD:src/lib/stripe/finance-webhook.ts'],{encoding:'utf8'});assert.equal(fs.readFileSync('src/lib/stripe/finance-webhook.ts','utf8'),legacyBefore);
 const head=file=>execFileSync('git',['show','HEAD:src/lib/stripe/'+file],{encoding:'utf8'});
 // These additions are now committed architecture; compare without stripping them.
-for(const name of ['webhook-observer.ts','webhook-consumers.ts','finance-customer-webhook.ts'])
- assert.equal(fs.readFileSync('src/lib/stripe/'+name,'utf8'),head(name),'Approved runtime must remain unchanged: '+name);
+assert.equal(fs.readFileSync('src/lib/stripe/webhook-observer.ts','utf8'),head('webhook-observer.ts'),'Safe diagnostic contract unchanged');
+assert.equal(fs.readFileSync('src/lib/stripe/webhook-consumers.ts','utf8').replace('invoice_proof_commit:"commit",',''),head('webhook-consumers.ts'),'Only fixed commit-stage mapping added; no configuration opt-in');
+const foreignBranch=source=>source.slice(source.indexOf('  if(decision.state==="foreign")'),source.indexOf('  const evidence=projectVerifiedFinanceRouting'));
+assert.equal(foreignBranch(fs.readFileSync('src/lib/stripe/finance-customer-webhook.ts','utf8')),foreignBranch(head('finance-customer-webhook.ts')),'Foreign completion remains byte-identical');
+assert.match(fs.readFileSync('src/lib/stripe/finance-customer-webhook.ts','utf8'),/else await r\.store\.command\("partition_commit",r\.scope,lease\.token,input\)/,'Disabled path retains ordinary commit');
 const observerSource=fs.readFileSync('src/lib/stripe/webhook-observer.ts','utf8');
 const observerExports={};
 vm.runInNewContext(ts.transpileModule(observerSource,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{exports:observerExports,Error,Set,require:name=>{assert.equal(name,'server-only');return {};}});
