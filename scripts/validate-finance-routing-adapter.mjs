@@ -86,8 +86,26 @@ for(const file of ["finance-sync","finance-webhook","finance-store","finance-rec
 }
 assert.equal(execFileSync("git",["diff","HEAD","--","supabase/migrations","src/app/api/stripe/webhook/route.ts",':(exclude)src/app/api/stripe/webhook/route.ts',':(exclude)src/middleware.ts'],{encoding:"utf8"}),"");
 for(const name of ["finance-routing-evidence","finance-customer-relationship-adapter"]){const source=fs.readFileSync("src/lib/stripe/"+name+".ts","utf8");assert.match(source,/import "server-only"/);assert.doesNotMatch(source,/console\.|fetch\(|\.rpc\(|process\.env|\.insert\(|\.update\(|\.delete\(/);}
-// The approved mode-runtime phase introduced the sole server-side partition RPC adapter.
+// The store remains the direct partition adapter. The committed disabled worker
+// intercepts only the reviewed Finance command and dispatches through scheduler fencing.
 const partitionCalls=execFileSync("git",["grep","-n","billing_finance_partition_command","HEAD","--","src"],{encoding:"utf8",stdio:"pipe"}).trim().split("\n");
 assert.ok(partitionCalls.length>0);
-for(const line of partitionCalls)assert.ok(line.startsWith("HEAD:src/lib/stripe/finance-store.ts:"),"Partition RPC stays inside the reviewed server store adapter");
+const workerPartitionSite=/^HEAD:src\/lib\/stripe\/billing-work-runtime\.ts:\d+:   else if\(name==='billing_finance_partition_command'&&w\.consumer==='finance'\)\{$/;
+for(const line of partitionCalls)assert.ok(line.startsWith("HEAD:src/lib/stripe/finance-store.ts:")||workerPartitionSite.test(line),"Partition RPC stays inside the reviewed store or exact disabled worker interception");
+assert.equal(partitionCalls.filter(line=>workerPartitionSite.test(line)).length,1);
+for(const name of ["billing-work-runtime","billing-work-config"]){
+ const file="src/lib/stripe/"+name+".ts";
+ assert.equal(fs.readFileSync(file,"utf8"),execFileSync("git",["show","HEAD:"+file],{encoding:"utf8"}),"Reviewed worker runtime/config must remain unchanged");
+}
+const workerSource=fs.readFileSync("src/lib/stripe/billing-work-runtime.ts","utf8");
+for(const required of [
+ "if(!optIn)return null;",
+ "c.check();if(!f)throw new WorkerFailure('ownership_conflict',true);",
+ "const actions:Record<string,string>={read_protocol:'read_protocol',claim_customer:'partition_claim',release_customer:'partition_release',bind_receipt:'partition_bind',commit_customer:'partition_commit',complete_unsupported:'partition_ignored'};",
+ "if(!Object.hasOwn(actions,String(args.p_action)))throw new WorkerFailure('invalid_evidence',true);",
+ "if(args.p_scope!==w.stripe_scope)throw new WorkerFailure('ownership_conflict',true);",
+ "return query(target.rpc('billing_consumer_worker_authority',{p_scope:w.stripe_scope,p_event:w.stripe_event_id,p_consumer:w.consumer,p_context:f,p_action:action,p_user:user,p_token:token,p_input:input}),action!=='read_protocol');",
+])assert.ok(workerSource.includes(required),"Disabled dispatcher retains explicit opt-in, closed actions and scheduler/scope fencing");
+assert.deepEqual([...workerSource.matchAll(/target\.rpc\(([^,]+)/g)].map(match=>match[1]),["'billing_consumer_worker_authority'"],"Worker cannot directly invoke an unfenced partition RPC");
+assert.ok(fs.readFileSync("src/lib/stripe/billing-work-config.ts","utf8").includes('if(flag!=="true")return {state:"disabled"};'));
 console.log("PASS: all 17 verified projections; exact read-only adapter; shared two-read/two-second deadline; conflicts/missing/errors/cancellation/late responses; no sensitive logs; legacy runtime/RPC/HTTP/reconciliation unchanged (mocked only).");
