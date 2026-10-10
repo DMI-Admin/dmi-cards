@@ -17,9 +17,14 @@ console.log('PASS: local-only structural projection, static helper/call-site tra
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-const load=(file,deps={},source=fs.readFileSync(file,'utf8'))=>{const exports={};vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{exports,Error,Date,Intl,BigInt,require:name=>{if(name==='server-only')return {};if(name==='stripe')return {default:Stripe};assert.ok(name in deps,name);return deps[name];}});return exports;};
+const load=(file,deps={},source=fs.readFileSync(file,'utf8'))=>{const exports={};vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{exports,Error,Date,Intl,BigInt,require:name=>{if(name==='server-only')return {};if(name==='stripe')return {default:Stripe};if(!Object.hasOwn(deps,name))throw Error('UNEXPECTED_LOCAL_IMPORT');return deps[name];}});return exports;};
 const metrics=load('src/lib/stripe/finance-metrics.ts');
-const normalizer=load('src/lib/stripe/finance-normalize.ts',{'./finance-metrics':metrics});
+const tax=load('src/lib/stripe/finance-tax.ts');
+const normalizerDeps={'./finance-metrics':metrics,'./finance-tax':tax};
+const normalizer=load('src/lib/stripe/finance-normalize.ts',normalizerDeps);
+// Adding one reviewed dependency must not authorize arbitrary/prototype imports.
+for(const name of ['./finance-tax-unapproved','./unknown-local','constructor','toString'])
+ assert.throws(()=>load('src/lib/stripe/finance-normalize.ts',normalizerDeps,`require(${JSON.stringify(name)});`),/UNEXPECTED_LOCAL_IMPORT/);
 const {createWebhookObserver}=load('src/lib/stripe/webhook-observer.ts');
 const base=flexibleStagingShape().subscription;
 const logs=[];
@@ -92,6 +97,6 @@ for(const test of cases){
 // A future missed wrapper must still report once, preserving the exact thrown object.
 const sentinel=new Error('FINANCE_MALFORMED_STRIPE_DATA');
 const source=fs.readFileSync('src/lib/stripe/finance-normalize.ts','utf8').replace('const mixed=new Set','throw require("fault").sentinel; const mixed=new Set');
-const faulted=load('src/lib/stripe/finance-normalize.ts',{'./finance-metrics':metrics,fault:{sentinel}},source);
+const faulted=load('src/lib/stripe/finance-normalize.ts',{...normalizerDeps,fault:{sentinel}},source);
 const fallback=[];assert.throws(()=>faulted.normalizeSubscription(base,c,user,x=>fallback.push(x)),e=>e===sentinel);assert.equal(fallback.length,1);assert.equal(fallback[0].check,'normalization_boundary');assert.equal(fallback[0].fieldPath,'subscription');
 console.log(`PASS: ${checked} malformed subscription/helper cases; one correlated diagnostic each; original code and fail-safe observer; boundary preserves error identity.`);

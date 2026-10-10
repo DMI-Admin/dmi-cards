@@ -38,9 +38,11 @@ export function diagnoseSubscription(input,context,verifiedUser){
    return updated;
   };return ts.visitNode(sf,visit);
  };
- function load(file,deps={},instrument=false){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS},transformers:instrument?{before:[transform]}:undefined}).outputText,{exports,Error,Date,Intl,BigInt,__trace:trace,require:name=>{if(name==='server-only')return {};if(name==='stripe')return {default:Stripe};if(!(name in deps))throw Error('UNEXPECTED_LOCAL_IMPORT');return deps[name];}});return exports;}
+ function load(file,deps={},instrument=false){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS},transformers:instrument?{before:[transform]}:undefined}).outputText,{exports,Error,Date,Intl,BigInt,__trace:trace,require:name=>{if(name==='server-only')return {};if(name==='stripe')return {default:Stripe};if(!Object.hasOwn(deps,name))throw Error('UNEXPECTED_LOCAL_IMPORT');return deps[name];}});return exports;}
  const metrics=load('src/lib/stripe/finance-metrics.ts');
- const normalizer=load('src/lib/stripe/finance-normalize.ts',{'./finance-metrics':metrics},true);
+ // Explicit committed dependency; no dynamic local-import resolution or stubs.
+ const tax=load('src/lib/stripe/finance-tax.ts');
+ const normalizer=load('src/lib/stripe/finance-normalize.ts',{'./finance-metrics':metrics,'./finance-tax':tax},true);
  try { const result=normalizer.normalizeSubscription(input,context,verifiedUser);return {status:'passed',valuationStatus:result.subscription.valuation_status,valuationReason:result.subscription.valuation_reason}; }
  catch {return {status:'failed',...(failure||{helper:'normalizeSubscription',fieldPath:['normalizeSubscription'],errorCode:'UNCLASSIFIED'})};}
 }
