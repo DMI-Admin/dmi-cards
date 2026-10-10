@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import vm from 'node:vm';
+import ts from 'typescript';
 import {execFileSync} from 'node:child_process';
 import {loadFinance} from './validate-finance-consumer.mjs';
 import {graphFixture,event,fixtureNow} from './fixtures/finance-v1.mjs';
@@ -61,10 +63,26 @@ for(const variant of ['unknown','missing','mixed','revoked','incomplete','metada
 for(const name of ['finance-foreign-event','finance-customer-webhook'])assert.doesNotMatch(fs.readFileSync('src/lib/stripe/'+name+'.ts','utf8'),/console\.|logInfo|fetch\(/);
 const legacyBefore=execFileSync('git',['show','HEAD:src/lib/stripe/finance-webhook.ts'],{encoding:'utf8'});assert.equal(fs.readFileSync('src/lib/stripe/finance-webhook.ts','utf8'),legacyBefore);
 const head=file=>execFileSync('git',['show','HEAD:src/lib/stripe/'+file],{encoding:'utf8'});
-assert.equal(fs.readFileSync('src/lib/stripe/webhook-observer.ts','utf8').replace('"FINANCE_OWNERSHIP_UNRESOLVED", "FINANCE_OWNERSHIP_CONFLICT", "FINANCE_OWNERSHIP_STALE", ',''),head('webhook-observer.ts'));
-assert.equal(fs.readFileSync('src/lib/stripe/webhook-consumers.ts','utf8').replace(',foreign_complete:"event_finish"',''),head('webhook-consumers.ts'));
-const priorCustomer=head('finance-customer-webhook.ts');
-assert.equal(fs.readFileSync('src/lib/stripe/finance-customer-webhook.ts','utf8').slice(fs.readFileSync('src/lib/stripe/finance-customer-webhook.ts','utf8').indexOf('  const evidence=projectVerifiedFinanceRouting')).replace('   // Includes existing financial/attribution rules and retirement of stored items.\n',''),priorCustomer.slice(priorCustomer.indexOf('  const evidence=projectVerifiedFinanceRouting')).replace('   // Includes existing financial/attribution rules and retirement of stored items.\n','').replace('   // FINANCE_FOREIGN_APPLICATION deliberately remains retryable here: SQL has no reviewed foreign proof action.\n',''),'DMI customer path preserves acquisition/preparation/ownership/commit/release semantics');
+// These additions are now committed architecture; compare without stripping them.
+for(const name of ['webhook-observer.ts','webhook-consumers.ts','finance-customer-webhook.ts'])
+ assert.equal(fs.readFileSync('src/lib/stripe/'+name,'utf8'),head(name),'Approved runtime must remain unchanged: '+name);
+const observerSource=fs.readFileSync('src/lib/stripe/webhook-observer.ts','utf8');
+const observerExports={};
+vm.runInNewContext(ts.transpileModule(observerSource,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{exports:observerExports,Error,Set,require:name=>{assert.equal(name,'server-only');return {};}});
+const ownershipCodes=['FINANCE_OWNERSHIP_UNRESOLVED','FINANCE_OWNERSHIP_CONFLICT','FINANCE_OWNERSHIP_STALE'];
+for(const code of [...ownershipCodes,'PRIVATE_RAW_ERROR cus_private price_private token_private']){
+ const logs=[],observer=observerExports.createWebhookObserver({requestId:'offline-request',stripeEventId:'evt_fixture',stripeEventType:'charge.succeeded',consumer:'finance'},fields=>logs.push(fields));
+ const failure=Object.assign(new Error(code),{details:'PRIVATE_DETAIL',hint:'PRIVATE_HINT',customer:'cus_private',resource:'price_private',proofs:[{id:'price_private'}],payload:'PRIVATE_PAYLOAD',secret:'token_private'});
+ await assert.rejects(observer.run('event_finish',async()=>{throw failure;}),error=>error===failure);
+ assert.equal(logs.length,2);
+ assert.equal(logs[1].errorCode,ownershipCodes.includes(code)?code:'UNCLASSIFIED');
+ assert.deepEqual(Object.keys(logs[1]).sort(),['consumer','errorCode','outcome','requestId','stage','stripeEventId','stripeEventType'].sort());
+ assert.doesNotMatch(JSON.stringify(logs),/PRIVATE_|cus_private|price_private|token_private/);
+}
+const consumersSource=fs.readFileSync('src/lib/stripe/webhook-consumers.ts','utf8');
+assert.match(consumersSource,/foreign_complete:"event_finish"/);
+const foreignSites=execFileSync('git',['ls-files','src'],{encoding:'utf8'}).trim().split('\n').filter(file=>fs.readFileSync(file,'utf8').includes('foreign_complete'));
+assert.deepEqual(foreignSites.sort(),['src/lib/stripe/finance-customer-webhook.ts','src/lib/stripe/finance-store.ts','src/lib/stripe/webhook-consumers.ts']);
 console.log('PASS foreign runtime: 17 event types, price/exclusive-customer/refund proof, DMI normal acquisition, unknown/missing/mixed/revoked/truncated/metadata fail closed, stale completion retryable, duplicate, no provider/lease/binding/financial writes for foreign');
 export async function validateForeignDatabase(client,Client,socket){
  const legacyBefore=(await client.query("SELECT pg_get_functiondef('billing_finance_command(text,text,uuid,jsonb)'::regprocedure) d")).rows[0].d;
