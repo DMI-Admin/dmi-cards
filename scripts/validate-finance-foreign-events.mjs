@@ -65,7 +65,7 @@ const legacyBefore=execFileSync('git',['show','HEAD:src/lib/stripe/finance-webho
 const head=file=>execFileSync('git',['show','HEAD:src/lib/stripe/'+file],{encoding:'utf8'});
 // These additions are now committed architecture; compare without stripping them.
 assert.equal(fs.readFileSync('src/lib/stripe/webhook-observer.ts','utf8'),head('webhook-observer.ts'),'Safe diagnostic contract unchanged');
-assert.equal(fs.readFileSync('src/lib/stripe/webhook-consumers.ts','utf8').replace('invoice_proof_commit:"commit",',''),head('webhook-consumers.ts'),'Only fixed commit-stage mapping added; no configuration opt-in');
+assert.equal(fs.readFileSync('src/lib/stripe/webhook-consumers.ts','utf8'),head('webhook-consumers.ts'),'Approved committed consumer wiring is byte-identical; no configuration opt-in');
 const foreignBranch=source=>source.slice(source.indexOf('  if(decision.state==="foreign")'),source.indexOf('  const evidence=projectVerifiedFinanceRouting'));
 assert.equal(foreignBranch(fs.readFileSync('src/lib/stripe/finance-customer-webhook.ts','utf8')),foreignBranch(head('finance-customer-webhook.ts')),'Foreign completion remains byte-identical');
 assert.match(fs.readFileSync('src/lib/stripe/finance-customer-webhook.ts','utf8'),/else await r\.store\.command\("partition_commit",r\.scope,lease\.token,input\)/,'Disabled path retains ordinary commit');
@@ -84,8 +84,8 @@ for(const code of [...ownershipCodes,'PRIVATE_RAW_ERROR cus_private price_privat
 }
 const consumersSource=fs.readFileSync('src/lib/stripe/webhook-consumers.ts','utf8');
 assert.match(consumersSource,/foreign_complete:"event_finish"/);
-const foreignSites=execFileSync('git',['ls-files','src'],{encoding:'utf8'}).trim().split('\n').filter(file=>fs.readFileSync(file,'utf8').includes('foreign_complete'));
-assert.deepEqual(foreignSites.sort(),['src/lib/stripe/finance-customer-webhook.ts','src/lib/stripe/finance-store.ts','src/lib/stripe/webhook-consumers.ts']);
+const foreignSites=execFileSync('git',['ls-files','--cached','--others','--exclude-standard','src'],{encoding:'utf8'}).trim().split('\n').filter(file=>fs.readFileSync(file,'utf8').includes('foreign_complete'));
+assert.deepEqual(foreignSites.sort(),['src/lib/stripe/billing-work-runtime.ts','src/lib/stripe/finance-customer-webhook.ts','src/lib/stripe/finance-store.ts','src/lib/stripe/webhook-consumers.ts']);
 console.log('PASS foreign runtime: 17 event types, price/exclusive-customer/refund proof, DMI normal acquisition, unknown/missing/mixed/revoked/truncated/metadata fail closed, stale completion retryable, duplicate, no provider/lease/binding/financial writes for foreign');
 export async function validateForeignDatabase(client,Client,socket){
  const legacyBefore=(await client.query("SELECT pg_get_functiondef('billing_finance_command(text,text,uuid,jsonb)'::regprocedure) d")).rows[0].d;

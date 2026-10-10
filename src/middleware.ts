@@ -50,7 +50,7 @@ export default clerkMiddleware(async (auth, req) => {
 
 export const config = {
   matcher: [
-    "/((?!api/health|api/internal/system-health-monitor|_next|.*\\..*).*)",
-    "/(api/(?!health|internal/system-health-monitor$)|trpc)(.*)",
+    "/((?!api/health|api/internal/system-health-monitor|api/internal/billing-work(?:/|$)|_next|.*\\..*).*)",
+    "/(api/(?!health|internal/system-health-monitor$|internal/billing-work(?:/|$))|trpc)(.*)",
   ],
 };

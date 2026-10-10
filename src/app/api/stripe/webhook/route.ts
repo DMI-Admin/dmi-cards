@@ -1,3 +1,7 @@
+import {billingWorkConfiguration} from "@/lib/stripe/billing-work-config";
+import type {VerifiedWorkEvent} from "@/lib/stripe/billing-work-evidence";
+import {handoffBillingWork} from "@/lib/stripe/billing-work-handoff";
+import {createSupabaseAdminClient} from "@/lib/supabase-admin";
 import { NextResponse } from "next/server";
 import { constructStripeWebhookEvent } from "@/lib/stripe/config";
 import { handleStripeWebhookConsumers } from "@/lib/stripe/webhook-consumers";
@@ -16,6 +20,15 @@ export async function POST(request: Request) {
 
   try {
     const event = constructStripeWebhookEvent({ payload, signature });
+    const handoffConfig = billingWorkConfiguration("handoff");
+    if (handoffConfig.state !== "disabled") {
+      const handoff = await handoffBillingWork(event as unknown as VerifiedWorkEvent, handoffConfig, createSupabaseAdminClient);
+      // Never expose event/partition identities or fall back to inline processing.
+      return withRequestIdHeader(NextResponse.json(
+        { received: handoff.state === "completed", applicable: handoff.applicable, terminal: handoff.terminal },
+        { status: handoff.state === "completed" ? 200 : 500 }
+      ), requestId);
+    }
     const result = await handleStripeWebhookConsumers(event, requestId, invocationStartedAt);
 
     logInfo({

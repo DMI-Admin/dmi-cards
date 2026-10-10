@@ -121,5 +121,5 @@ await test("raw errors and unexpected identifier-bearing properties excluded",as
 });
 assert.doesNotMatch(source,/console\.|logInfo|logError|fetch\(|\.rpc\(|\.insert\(|\.update\(|\.delete\(|process\.env|stripe\./);
 for(const name of execFileSync("git",["ls-files","src"],{encoding:"utf8"}).trim().split("\n"))assert.doesNotMatch(fs.readFileSync(name,"utf8"),/finance-charge-ownership-proof/);
-assert.equal(execFileSync("git",["diff","--name-only","HEAD","--","src","supabase/migrations",':(exclude)src/lib/stripe/finance-contract.ts',':(exclude)src/lib/stripe/finance-customer-webhook.ts',':(exclude)src/lib/stripe/finance-store.ts',':(exclude)src/lib/stripe/webhook-consumers.ts'],{encoding:"utf8"}),"","Tracked runtime/schema unchanged");
+assert.equal(execFileSync("git",["diff","--name-only","HEAD","--","src","supabase/migrations",':(exclude)src/lib/stripe/finance-contract.ts',':(exclude)src/lib/stripe/finance-customer-webhook.ts',':(exclude)src/lib/stripe/finance-store.ts',':(exclude)src/lib/stripe/webhook-consumers.ts',':(exclude)src/app/api/stripe/webhook/route.ts',':(exclude)src/middleware.ts'],{encoding:"utf8"}),"","Tracked runtime/schema unchanged");
 console.log(`PASS ${tests}/${tests} charge-proof cases; inactive, bounded, no provider/mutation/logging/runtime integration`);
