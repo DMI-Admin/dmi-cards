@@ -120,6 +120,16 @@ await test("raw errors and unexpected identifier-bearing properties excluded",as
  const good=fixture();good.data.payment.rawSecret="secret_payload";const result=await resolve(good);assert.equal(result.state,"dmi");assert.doesNotMatch(JSON.stringify(result),/secret_payload|rawSecret/);
 });
 assert.doesNotMatch(source,/console\.|logInfo|logError|fetch\(|\.rpc\(|\.insert\(|\.update\(|\.delete\(|process\.env|stripe\./);
-for(const name of execFileSync("git",["ls-files","src"],{encoding:"utf8"}).trim().split("\n"))assert.doesNotMatch(fs.readFileSync(name,"utf8"),/finance-charge-ownership-proof/);
+// Remove only the exact reviewed import at its one approved caller, then retain the ban.
+const dmiHelper="src/lib/stripe/finance-dmi-charge-integration.ts";
+const reviewedChargeImport='import {resolveChargeOwnershipProof, type VerifiedInvoicePriceEvidence} from "./finance-charge-ownership-proof";';
+function assertChargeImports(name,text){
+ if(name===dmiHelper){assert.ok(text.includes(reviewedChargeImport));text=text.replace(reviewedChargeImport,"");}
+ assert.doesNotMatch(text,/finance-charge-ownership-proof/);
+}
+assertChargeImports(dmiHelper,reviewedChargeImport);
+assert.throws(()=>assertChargeImports("src/lib/stripe/unexpected.ts",reviewedChargeImport));
+for(const unexpected of [reviewedChargeImport,'import {resolveChargeOwnershipProof} from "./finance-charge-ownership-proof";'])assert.throws(()=>assertChargeImports(dmiHelper,reviewedChargeImport+"\n"+unexpected));
+for(const name of execFileSync("git",["ls-files","--cached","--others","--exclude-standard","src"],{encoding:"utf8"}).trim().split("\n"))assertChargeImports(name,fs.readFileSync(name,"utf8"));
 assert.equal(execFileSync("git",["diff","--name-only","HEAD","--","src","supabase/migrations",':(exclude)src/lib/stripe/finance-contract.ts',':(exclude)src/lib/stripe/finance-customer-webhook.ts',':(exclude)src/lib/stripe/finance-store.ts',':(exclude)src/lib/stripe/webhook-consumers.ts',':(exclude)src/app/api/stripe/webhook/route.ts',':(exclude)src/middleware.ts',':(exclude)src/lib/stripe/billing-work-recovery.ts',':(exclude)src/lib/stripe/billing-work-runtime.ts',':(exclude)src/lib/stripe/billing-work-store.ts',':(exclude)src/lib/stripe/billing-work-worker.ts'],{encoding:"utf8"}),"","Tracked runtime/schema unchanged");
 console.log(`PASS ${tests}/${tests} charge-proof cases; inactive, bounded, no provider/mutation/logging/runtime integration`);

@@ -54,7 +54,17 @@ for(const cancel of [false,true]){
 }
 for(const name of ['finance-application-ownership','finance-application-ownership-adapter','finance-charge-ownership-proof'])assert.doesNotMatch(fs.readFileSync('src/lib/stripe/'+name+'.ts','utf8'),/console\.|\.rpc\(|\.insert\(|\.update\(|\.delete\(|stripe\./);
 assert.equal(execFileSync('git',['diff','--name-only','HEAD','--','src',':(exclude)src/lib/stripe/finance-contract.ts',':(exclude)src/lib/stripe/finance-customer-webhook.ts',':(exclude)src/lib/stripe/finance-store.ts',':(exclude)src/lib/stripe/webhook-consumers.ts',':(exclude)src/lib/stripe/webhook-observer.ts','supabase/migrations',':(exclude)src/app/api/stripe/webhook/route.ts',':(exclude)src/middleware.ts',':(exclude)src/lib/stripe/billing-work-recovery.ts',':(exclude)src/lib/stripe/billing-work-runtime.ts',':(exclude)src/lib/stripe/billing-work-store.ts',':(exclude)src/lib/stripe/billing-work-worker.ts'],{encoding:'utf8'}),'','Tracked runtime and prior migrations unchanged');
-for(const file of execFileSync('git',['ls-files','src'],{encoding:'utf8'}).trim().split('\n').filter(f=>!f.endsWith('/finance-foreign-event.ts')&&!f.endsWith('/finance-application-ownership-adapter.ts')&&!f.endsWith('/finance-charge-ownership-proof.ts')))assert.doesNotMatch(fs.readFileSync(file,'utf8'),/from ["']\.\/finance-application-ownership|billing_stripe_register_ownership|billing_stripe_revoke_ownership/);
+// Only the reviewed DMI helper may use this exact read-only adapter import.
+const dmiHelper='src/lib/stripe/finance-dmi-charge-integration.ts';
+const reviewedOwnershipImport='import {readFinanceOwnership} from "./finance-application-ownership-adapter";';
+function assertOwnershipImports(file,text){
+ if(file===dmiHelper){assert.ok(text.includes(reviewedOwnershipImport));text=text.replace(reviewedOwnershipImport,'');}
+ assert.doesNotMatch(text,/from ["']\.\/finance-application-ownership|billing_stripe_register_ownership|billing_stripe_revoke_ownership/);
+}
+assertOwnershipImports(dmiHelper,reviewedOwnershipImport);
+assert.throws(()=>assertOwnershipImports('src/lib/stripe/unexpected.ts',reviewedOwnershipImport));
+for(const unexpected of [reviewedOwnershipImport,'import {classifyFinanceApplication} from "./finance-application-ownership";','billing_stripe_register_ownership','billing_stripe_revoke_ownership'])assert.throws(()=>assertOwnershipImports(dmiHelper,reviewedOwnershipImport+'\n'+unexpected));
+for(const file of execFileSync('git',['ls-files','--cached','--others','--exclude-standard','src'],{encoding:'utf8'}).trim().split('\n').filter(f=>!f.endsWith('/finance-foreign-event.ts')&&!f.endsWith('/finance-application-ownership-adapter.ts')&&!f.endsWith('/finance-charge-ownership-proof.ts')))assertOwnershipImports(file,fs.readFileSync(file,'utf8'));
 assert.equal(fs.readdirSync('supabase/migrations').filter(n=>n.startsWith('20261010000000_')).length,1);
 assert.ok(sql.startsWith('-- Inactive'));assert.ok(sql.trim().endsWith('COMMIT;'));assert.doesNotMatch(sql,/DELETE FROM|DROP TABLE|ALTER TABLE public\.billing_finance|billing_finance_partition_command/);
 console.log('PASS ownership classifier/adapter: positive DMI/foreign, unknown/conflict, complete indirect proof, exclusive customer, revocation/stale/scope isolation, two-read/depth bounds, timeout/late-response, no runtime integration/provider/mutation/logging');
