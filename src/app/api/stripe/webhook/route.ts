@@ -1,3 +1,4 @@
+import {invoiceProofProductionOptions} from "@/lib/stripe/finance-invoice-proof-config";
 import {billingWorkConfiguration} from "@/lib/stripe/billing-work-config";
 import type {VerifiedWorkEvent} from "@/lib/stripe/billing-work-evidence";
 import {handoffBillingWork} from "@/lib/stripe/billing-work-handoff";
@@ -29,7 +30,10 @@ export async function POST(request: Request) {
         { status: handoff.state === "completed" ? 200 : 500 }
       ), requestId);
     }
-    const result = await handleStripeWebhookConsumers(event, requestId, invocationStartedAt);
+    const invoiceProofOptions = invoiceProofProductionOptions();
+    const result = invoiceProofOptions
+      ? await handleStripeWebhookConsumers(event, requestId, invocationStartedAt, invoiceProofOptions)
+      : await handleStripeWebhookConsumers(event, requestId, invocationStartedAt);
 
     logInfo({
       code: "STRIPE_WEBHOOK_PROCESSED",

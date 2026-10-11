@@ -49,6 +49,7 @@ function setup(){
   'next/server':{NextResponse:{json:(body,options)=>new Response(JSON.stringify(body),{status:options?.status||200})}},
   '@/lib/stripe/config':{constructStripeWebhookEvent:({payload,signature})=>{signatures++;return sdk.webhooks.constructEvent(payload,signature,signingSecret);}},
   '@/lib/stripe/webhook-consumers':orchestrator,
+  '@/lib/stripe/finance-invoice-proof-config':{invoiceProofProductionOptions:()=>undefined},
   '@/lib/stripe/billing-work-config':{billingWorkConfiguration:()=>({state:'disabled'})},
   '@/lib/stripe/billing-work-handoff':{handoffBillingWork:()=>{throw Error('DISABLED_HANDOFF_MUST_NOT_RUN');}},
   '@/lib/supabase-admin':{createSupabaseAdminClient:()=>{throw Error('DISABLED_HANDOFF_MUST_NOT_CONSTRUCT');}},
