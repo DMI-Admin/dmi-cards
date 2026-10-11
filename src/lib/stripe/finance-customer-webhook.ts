@@ -1,4 +1,6 @@
 import "server-only";
+import {resolveDmiCharge,type DmiHistoricalProof} from "./finance-dmi-charge-integration";
+import type {SupabaseClient} from "@supabase/supabase-js";
 import {produceInvoiceProofCandidates} from "./finance-invoice-proof-producer";
 import {decideFinanceApplication} from "./finance-foreign-event";
 import {FinanceLeaseBusyFailure} from "./finance-store";
@@ -14,6 +16,7 @@ const unsupported=new Set(["checkout.session.completed","invoice.payment_succeed
  */
 export async function consumeCustomerFinanceEvent(verified:EventEvidence,event:EventEvidence,r:Runtime,roots:Record<string,Root["kind"]>) {
  const epoch=r.financeProtocol!.epoch;
+ if(r.dmiProofOptions&&(r.dmiProofOptions.approval!=="reviewed_staging_dmi_charge_v1"||r.dmiProofOptions.approvedScope!==r.scope||!r.scope.endsWith(":test")))throw Error("FINANCE_PROOF_OPT_IN");
  if(r.invoiceProofProduction&&(r.invoiceProofProduction.approval!=="reviewed_staging_invoice_proofs_v1"||r.invoiceProofProduction.approvedScope!==r.scope||!r.scope.endsWith(":test")))throw Error("FINANCE_PROOF_OPT_IN");
  const receipt=await r.store.command<{duplicate?:boolean;token:string}>("event_claim",r.scope,null,{id:event.id,type:event.type,subject:objectId(event.data.object),created:new Date(event.created*1000).toISOString()});
  if(receipt.duplicate)return {outcome:"duplicate"};
@@ -25,7 +28,17 @@ export async function consumeCustomerFinanceEvent(verified:EventEvidence,event:E
    return {outcome:"ignored",complete:false};
   }
   if(!r.relationshipDb)throw Error("FINANCE_CUSTOMER_ROUTING_UNAVAILABLE");
-  const decision=await decideFinanceApplication(r.relationshipDb,r.scope,verified);
+  let decision=await decideFinanceApplication(r.relationshipDb,r.scope,verified);
+  let chargeProof:DmiHistoricalProof|undefined;
+  if(decision.state==="unresolved"&&r.dmiProofOptions?.consumption&&kind==="charge"){
+   const proof=await resolveDmiCharge(r.relationshipDb as SupabaseClient,verified,r.scope);
+   if(proof.state==="conflict")throw Error("FINANCE_OWNERSHIP_CONFLICT");
+   if(proof.state==="dmi"){
+    chargeProof=proof.proof;
+    const prices=proof.proof.prices.map(p=>({scope:r.scope,type:"price" as const,id:p.id}));
+    decision={state:"dmi",evidence:{scope:r.scope,id:objectId(verified.data.object),kind:"charge",complete:true,relationships:[proof.proof.invoice],dependencies:[{scope:r.scope,id:proof.proof.invoice,kind:"invoice",complete:true,prices}]},proofs:proof.proof.prices.map(p=>({scope:r.scope,type:"price" as const,id:p.id,application:p.application,revision:p.revision}))};
+   }
+  }
   if(decision.state==="unresolved")throw Error("FINANCE_OWNERSHIP_UNRESOLVED");
   if(decision.state==="conflict")throw Error("FINANCE_OWNERSHIP_CONFLICT");
   if(decision.state==="foreign"){
@@ -54,17 +67,29 @@ export async function consumeCustomerFinanceEvent(verified:EventEvidence,event:E
    }},store:{...r.store,read:async(...args)=>{const row=await r.store.read(...args);if(row)remember(args[0],row);return row;},items:async(...args)=>{const rows=await r.store.items(...args);for(const row of rows)remember("items",row);return rows;}}};
    // Includes existing financial/attribution rules and retirement of stored items.
    const prepared=await prepareFinanceSync(guarded,{kind,id:objectId(event.data.object)},event,"webhook");
-   if(!graph||!validateFinanceGraphOwnership(partition,graph,stored).valid||!validateFinanceBundleOwnership(partition,prepared.bundle,stored).valid)throw Error("FINANCE_CUSTOMER_BUNDLE_OWNERSHIP");
+   // Raw PaymentIntent allocations omit the charge relationship derived by normalization.
+   // The opt-in proof path checks stored identity against the complete normalized bundle,
+   // which retains that derived relationship; raw graph ownership is checked separately.
+   const graphStored=r.dmiProofOptions?.production||r.dmiProofOptions?.consumption?undefined:stored;
+   if(!graph||!validateFinanceGraphOwnership(partition,graph,graphStored).valid||!validateFinanceBundleOwnership(partition,prepared.bundle,stored).valid)throw Error("FINANCE_CUSTOMER_BUNDLE_OWNERSHIP");
    const input={customer:partition.customer,expected_epoch:epoch,expected_partition_revision:lease.revision,event_id:event.id,event_token:receipt.token,bundle:prepared.bundle};
    await r.store.command("partition_bind",r.scope,lease.token,input);
-   if(r.invoiceProofProduction){
+   let proofInvoices:string[]=[];
+   if(chargeProof){
+    if(!("proofs" in decision))throw Error("FINANCE_PROOF_AUTHORITY");
+    const {customer,...commitInput}=input;
+    const candidates=r.invoiceProofProduction?produceInvoiceProofCandidates(r.scope,partition.customer,graph,prepared.bundle,decision.proofs):undefined;
+    proofInvoices=candidates?.filter(c=>c.state==="proven").map(c=>c.invoice)??[];
+    await r.store.command("dmi_charge_commit",r.scope,lease.token,{customer,input:commitInput,proof:chargeProof,...(candidates?{candidates,authority:{evidence:decision.evidence,proofs:decision.proofs}}:{})});
+   }else if(r.invoiceProofProduction){
     if(decision.state!=="dmi"||!("proofs" in decision))throw Error("FINANCE_PROOF_AUTHORITY");
     const candidates=produceInvoiceProofCandidates(r.scope,partition.customer,graph,prepared.bundle,decision.proofs);
     const {customer,...commitInput}=input;
+    proofInvoices=candidates.filter(c=>c.state==="proven").map(c=>c.invoice);
     await r.store.command("invoice_proof_commit",r.scope,lease.token,{customer,input:commitInput,candidates,authority:{evidence:decision.evidence,proofs:decision.proofs}});
    }else await r.store.command("partition_commit",r.scope,lease.token,input);
    committed=true;
-   return {outcome:"processed",complete:prepared.complete};
+   return {outcome:"processed",complete:prepared.complete,...(r.dmiProofOptions?.wake&&proofInvoices.length?{proofInvoices}:{})};
   }finally{
    // Successful commit clears the lease atomically; do not release it a second time.
    if(!committed)await r.store.command("partition_release",r.scope,lease.token,{customer:partition.customer,expected_epoch:epoch}).catch(()=>undefined);

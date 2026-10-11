@@ -37,7 +37,7 @@ export interface FinanceStore {
 }
 export type InvoiceProofOptIn = {approvedScope:string;approval:"reviewed_staging_invoice_proofs_v1"};
 // Undefined is disabled. Only trusted server construction may supply an explicit opt-in.
-export type Runtime = {invoiceProofProduction?:InvoiceProofOptIn;relationshipDb?:Pick<SupabaseClient,"from">;financeProtocol?:{mode:"legacy"|"customer";epoch:number};leaseRetry?:LeaseRetryPolicy;observer?:Observer;source:FinanceSource;store:FinanceStore;scope:string;apiVersion:string;now:()=>string};
+export type Runtime = {dmiProofOptions?:import("./finance-dmi-charge-integration").DmiProofOptions;invoiceProofProduction?:InvoiceProofOptIn;relationshipDb?:Pick<SupabaseClient,"from">;financeProtocol?:{mode:"legacy"|"customer";epoch:number};leaseRetry?:LeaseRetryPolicy;observer?:Observer;source:FinanceSource;store:FinanceStore;scope:string;apiVersion:string;now:()=>string};
 export function emptyBundle():Bundle {return {subscriptions:[],items:[],invoices:[],payments:[],allocations:[],attempts:[],refunds:[],activity:[]};}
 export function objectId(value:unknown):string {return typeof value==="string"?value:value&&typeof value==="object"&&"id" in value?String(value.id):"";}
 export function record(value:unknown):Raw {if(!value||typeof value!=="object"||Array.isArray(value))throw Error("FINANCE_SHAPE");return value as Raw;}

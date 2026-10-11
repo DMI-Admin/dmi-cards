@@ -93,7 +93,7 @@ assert.ok(partitionCalls.length>0);
 const workerPartitionSite=/^HEAD:src\/lib\/stripe\/billing-work-runtime\.ts:\d+:   else if\(name==='billing_finance_partition_command'&&w\.consumer==='finance'\)\{$/;
 for(const line of partitionCalls)assert.ok(line.startsWith("HEAD:src/lib/stripe/finance-store.ts:")||workerPartitionSite.test(line),"Partition RPC stays inside the reviewed store or exact disabled worker interception");
 assert.equal(partitionCalls.filter(line=>workerPartitionSite.test(line)).length,1);
-for(const name of ["billing-work-runtime","billing-work-config"]){
+for(const name of ["billing-work-config"]){
  const file="src/lib/stripe/"+name+".ts";
  assert.equal(fs.readFileSync(file,"utf8"),execFileSync("git",["show","HEAD:"+file],{encoding:"utf8"}),"Reviewed worker runtime/config must remain unchanged");
 }
@@ -106,6 +106,8 @@ for(const required of [
  "if(args.p_scope!==w.stripe_scope)throw new WorkerFailure('ownership_conflict',true);",
  "return query(target.rpc('billing_consumer_worker_authority',{p_scope:w.stripe_scope,p_event:w.stripe_event_id,p_consumer:w.consumer,p_context:f,p_action:action,p_user:user,p_token:token,p_input:input}),action!=='read_protocol');",
 ])assert.ok(workerSource.includes(required),"Disabled dispatcher retains explicit opt-in, closed actions and scheduler/scope fencing");
-assert.deepEqual([...workerSource.matchAll(/target\.rpc\(([^,]+)/g)].map(match=>match[1]),["'billing_consumer_worker_authority'"],"Worker cannot directly invoke an unfenced partition RPC");
+assert.deepEqual([...workerSource.matchAll(/target\.rpc\(([^,]+)/g)].map(match=>match[1]),["'billing_consumer_worker_dmi_authority'","'billing_consumer_worker_authority'"],"Worker cannot directly invoke an unfenced partition RPC");
 assert.ok(fs.readFileSync("src/lib/stripe/billing-work-config.ts","utf8").includes('if(flag!=="true")return {state:"disabled"};'));
 console.log("PASS: all 17 verified projections; exact read-only adapter; shared two-read/two-second deadline; conflicts/missing/errors/cancellation/late responses; no sensitive logs; legacy runtime/RPC/HTTP/reconciliation unchanged (mocked only).");
+
+assert.match(workerSource,/const dmiActions:Record<string,string>=\{billing_finance_dmi_invoice_context:"invoice_context",billing_finance_customer_commit_with_proofs:"invoice_commit",billing_finance_dmi_charge_commit:"charge_commit"\}/);

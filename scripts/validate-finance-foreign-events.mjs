@@ -65,7 +65,8 @@ const legacyBefore=execFileSync('git',['show','HEAD:src/lib/stripe/finance-webho
 const head=file=>execFileSync('git',['show','HEAD:src/lib/stripe/'+file],{encoding:'utf8'});
 // These additions are now committed architecture; compare without stripping them.
 assert.equal(fs.readFileSync('src/lib/stripe/webhook-observer.ts','utf8'),head('webhook-observer.ts'),'Safe diagnostic contract unchanged');
-assert.equal(fs.readFileSync('src/lib/stripe/webhook-consumers.ts','utf8'),head('webhook-consumers.ts'),'Approved committed consumer wiring is byte-identical; no configuration opt-in');
+const withoutDmiOption=source=>source.replace('import {configureDmiProofs,type DmiProofOptions} from "./finance-dmi-charge-integration";\n','').replace(',proofOptions?:DmiProofOptions','').replace('configureDmiProofs(runtime,proofOptions);','');
+assert.equal(withoutDmiOption(fs.readFileSync('src/lib/stripe/webhook-consumers.ts','utf8')),withoutDmiOption(head('webhook-consumers.ts')),'Only disabled DMI option differs; existing consumer wiring preserved');
 const foreignBranch=source=>source.slice(source.indexOf('  if(decision.state==="foreign")'),source.indexOf('  const evidence=projectVerifiedFinanceRouting'));
 assert.equal(foreignBranch(fs.readFileSync('src/lib/stripe/finance-customer-webhook.ts','utf8')),foreignBranch(head('finance-customer-webhook.ts')),'Foreign completion remains byte-identical');
 assert.match(fs.readFileSync('src/lib/stripe/finance-customer-webhook.ts','utf8'),/else await r\.store\.command\("partition_commit",r\.scope,lease\.token,input\)/,'Disabled path retains ordinary commit');

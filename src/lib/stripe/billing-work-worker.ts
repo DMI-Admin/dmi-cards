@@ -34,7 +34,7 @@ const mapping:Record<string,WorkerCategory>={
 };
 export function classifyWorkerError(error:unknown):WorkerFailure{if(error instanceof WorkerFailure)return error;const e=error&&typeof error==="object"?error as {reason?:unknown;message?:unknown}:{};const code=typeof e.reason==="string"?e.reason:e.message;return new WorkerFailure(typeof code==="string"&&Object.hasOwn(mapping,code)?mapping[code]:"store_unavailable");}
 export type WorkerDependencies={store:BillingWorkerStore;route:(w:WorkerItem,context:WorkerContext)=>Promise<string|null>;consume:(w:WorkerItem,context:WorkerContext,fence:WorkerFence)=>Promise<unknown>};
-export type WorkerOptIn={target:"staging";project:"uohdkewufeivdpaljnng";approvedScope:string;approval:"reviewed_staging_billing_worker_v1"};
+export type WorkerOptIn={target:"staging";project:"uohdkewufeivdpaljnng";approvedScope:string;approval:"reviewed_staging_billing_worker_v1";proofs?:import("./finance-dmi-charge-integration").DmiProofOptions};
 export type WorkerResult={state:"disabled"|"idle"|"bound"|"completed"|"retry_wait"|"dependency_wait"|"needs_attention"|"stopped";category?:WorkerCategory};
 export async function executeBillingWorker(deps:WorkerDependencies,scope:string,consumer:WorkConsumer,event?:string,optIn?:WorkerOptIn,clock:WorkerClock=realClock):Promise<WorkerResult>{
  if(!optIn)return {state:"disabled"};
@@ -55,7 +55,8 @@ export async function executeBillingWorker(deps:WorkerDependencies,scope:string,
    await context.bounded(()=>deps.store.bind(w!,fence,key),'mutation');return {state:'bound'};
   }
   // Consumer invoked ONCE. Awaited renewal is coordination only, never billing authority.
-  const consuming=Promise.resolve().then(()=>deps.consume(w!,context,fence));
+  let consumerResult:unknown;
+  const consuming=Promise.resolve().then(()=>deps.consume(w!,context,fence)).then(result=>{consumerResult=result;return result;});
   let heartbeat:ReturnType<typeof setTimeout>|undefined;
   const renewal=new Promise<'renew'>((resolve)=>{heartbeat=clock.setTimer(()=>resolve('renew'),Math.max(0,WORKER_RENEW_AT_MS-(clock.now()-context.started)));});
   try{
@@ -69,7 +70,13 @@ export async function executeBillingWorker(deps:WorkerDependencies,scope:string,
    }
   }finally{if(heartbeat!==undefined)clock.clearTimer(heartbeat);}
   const final=await context.bounded(()=>deps.store.receipt(w!),"read");
-  if(final.state==='processed'||consumer==='finance'&&final.state==='ignored')return await settle('complete',{terminal_result:final.state});
+  if(final.state==='processed'||consumer==='finance'&&final.state==='ignored'){
+   const invoices=consumerResult&&typeof consumerResult==="object"&&"proofInvoices" in consumerResult?consumerResult.proofInvoices:undefined;
+   if(consumer==="finance"&&optIn.proofs?.wake&&Array.isArray(invoices)&&invoices.length){
+    try{await context.bounded(()=>deps.store.completeDmi(w!,fence,invoices),"settlement");return {state:"completed"};}catch{return {state:"stopped",category:"ambiguous_outcome"};}
+   }
+   return await settle('complete',{terminal_result:final.state});
+  }
   return await settle('retry_wait',{failure_category:'store_unavailable',delay_seconds:130});
  }catch(error){
   const failure=context.failure??classifyWorkerError(error);

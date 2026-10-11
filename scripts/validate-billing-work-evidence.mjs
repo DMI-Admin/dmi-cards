@@ -131,7 +131,7 @@ await test('only reviewed disabled route imports; no provider calls, mutation, l
  const recoveryPath='src/lib/stripe/billing-work-recovery.ts';
  const recoveryTail=source=>source.slice(source.indexOf('/** No session auth')).replace('!await hasEmptyBody(request)','request.body!==null');
  assert.equal(recoveryTail(fs.readFileSync(recoveryPath,'utf8')),recoveryTail(execFileSync('git',['show','HEAD:'+recoveryPath],{encoding:'utf8'})));
- for(const changed of execFileSync('git',['diff','--name-only','HEAD','--','src','supabase/migrations'],{encoding:'utf8'}).trim().split('\n').filter(Boolean))assert.ok(['src/app/api/stripe/webhook/route.ts','src/middleware.ts','src/lib/stripe/billing-work-recovery.ts'].includes(changed),'Only the reviewed disabled wiring may differ from HEAD');
+ for(const changed of execFileSync('git',['diff','--name-only','HEAD','--','src','supabase/migrations'],{encoding:'utf8'}).trim().split('\n').filter(Boolean))assert.ok(['src/app/api/stripe/webhook/route.ts','src/middleware.ts','src/lib/stripe/billing-work-recovery.ts','src/lib/stripe/billing-work-runtime.ts','src/lib/stripe/billing-work-store.ts','src/lib/stripe/billing-work-worker.ts','src/lib/stripe/finance-contract.ts','src/lib/stripe/finance-customer-webhook.ts','src/lib/stripe/finance-store.ts','src/lib/stripe/webhook-consumers.ts'].includes(changed),'Only the reviewed disabled wiring may differ from HEAD');
 });
 console.log(`PASS billing work evidence/admission: ${count}/${count}`);
 

@@ -1,4 +1,5 @@
 import "server-only";
+import {configureDmiProofs} from "./finance-dmi-charge-integration";
 import type Stripe from "stripe";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import {handleStripeWebhookEvent} from "./webhook";
@@ -16,7 +17,8 @@ import {type WorkerContext,type WorkerOptIn,type WorkerDependencies} from "./bil
 export function createDisabledBillingWorkerRuntime(db:SupabaseClient,stripe:Stripe,optIn?:WorkerOptIn):WorkerDependencies|null{
  if(!optIn)return null;
  if(optIn.target!=='staging'||optIn.project!=='uohdkewufeivdpaljnng'||optIn.approval!=='reviewed_staging_billing_worker_v1'||!/^acct_[A-Za-z0-9]{1,240}:test$/.test(optIn.approvedScope))throw new WorkerFailure('invalid_evidence',true);
- const store=createBillingWorkerStore(db);
+ if(optIn.proofs&&(optIn.proofs.approval!=='reviewed_staging_dmi_charge_v1'||optIn.proofs.approvedScope!==optIn.approvedScope))throw new WorkerFailure('invalid_evidence',true);
+ const store=createBillingWorkerStore(db,optIn.proofs?.consumption===true);
  return {store,route:(w,c)=>resolveBillingWorkerPartition(guardWorkerDatabase(db,w,c,undefined),w,c),consume:async(w,c,f)=>{
   if(w.stripe_scope!==optIn.approvedScope)throw new WorkerFailure('ownership_conflict',true);
   const guardedDb=guardWorkerDatabase(db,w,c,f),guardedStripe=guardWorkerStripe(stripe,c),event=replayBillingWorkEvidence(w.evidence);
@@ -24,7 +26,7 @@ export function createDisabledBillingWorkerRuntime(db:SupabaseClient,stripe:Stri
   const protocol=await c.bounded(()=>store.authority<{mode:string;epoch:number}>(w,f,'read_protocol',null,null,{}),'read');
   if(protocol.mode!=='customer')throw new WorkerFailure('store_unavailable');
   if(w.execution_kind==='receipt_only'){const receipt=await c.bounded(()=>store.authority<{duplicate?:boolean;token:string}>(w,f,'event_claim',null,null,{id:w.stripe_event_id,type:w.event_type,subject:w.evidence.subject_id,created:new Date(w.event_created*1000).toISOString()}),'mutation');if(!receipt.duplicate)await c.bounded(()=>store.authority(w,f,'partition_ignored',null,receipt.token,{expected_epoch:protocol.epoch,event_id:w.stripe_event_id,reason:'unsupported_event'}),'mutation');return;}
-  const runtime=await createFinanceRuntime(stripeFinanceSource(guardedStripe),createFinanceStore(guardedDb));runtime.relationshipDb=guardedDb;
+  const runtime=await createFinanceRuntime(stripeFinanceSource(guardedStripe),createFinanceStore(guardedDb));runtime.relationshipDb=guardedDb;configureDmiProofs(runtime,optIn.proofs);
   return consumeFinanceEvent(event as EventEvidence,runtime);
  }};
 }
@@ -44,6 +46,13 @@ export function guardWorkerDatabase(db:SupabaseClient,w:WorkerItem,c:WorkerConte
  return new Proxy(db,{get(target,key){
   if(key==='rpc')return (name:string,args:Record<string,unknown>)=>{
    c.check();if(!f)throw new WorkerFailure('ownership_conflict',true);
+   const dmiActions:Record<string,string>={billing_finance_dmi_invoice_context:"invoice_context",billing_finance_customer_commit_with_proofs:"invoice_commit",billing_finance_dmi_charge_commit:"charge_commit"};
+   if(w.consumer==='finance'&&Object.hasOwn(dmiActions,name)){
+    if(args.p_scope!==w.stripe_scope)throw new WorkerFailure('ownership_conflict',true);
+    const action=dmiActions[name];
+    const input=action==='invoice_context'?{invoice:args.p_invoice}:{input:args.p_input,candidates:args.p_candidates,authority:args.p_authority,proof:args.p_proof};
+    return query(target.rpc('billing_consumer_worker_dmi_authority',{p_scope:w.stripe_scope,p_event:w.stripe_event_id,p_consumer:w.consumer,p_context:f,p_action:action,p_customer:w.partition_key,p_token:args.p_token??null,p_input:input}),action!=='invoice_context');
+   }
    let action:string;let input:unknown=args.p_input??{};const user=args.p_user??null,token=args.p_token??null;
    if(name==='billing_foundation_command'&&w.consumer==='entitlement')action=String(args.p_action);
    else if(name==='billing_finance_command'&&w.consumer==='finance')action=String(args.p_action);

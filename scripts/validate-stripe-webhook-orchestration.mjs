@@ -31,7 +31,7 @@ function setup(){
  const capture=line=>logs.push(JSON.parse(line.replace(/^\[DMI\] /,'')));
  const logger=load('src/lib/observability/logger.ts',{},env,{info:capture,warn:capture,error:capture});
  const source={identity:async()=>({scope:'acct_fixture:test',apiVersion}),graph:async()=>{reads++;if(failFinance)throw Error('PRIVATE_PROVIDER_ERROR');return structuredClone(f.graph);}};
- const orchestrator=load('src/lib/stripe/webhook-consumers.ts',{
+ const orchestrator=load('src/lib/stripe/webhook-consumers.ts',{'./finance-dmi-charge-integration':{configureDmiProofs:()=>{}},
   './lease-acquisition-timing':load('src/lib/stripe/lease-acquisition-timing.ts',{'server-only':{}},env),
   '@/lib/observability/logger':logger,
   './webhook-observer':load('src/lib/stripe/webhook-observer.ts',{'server-only':{}},env),

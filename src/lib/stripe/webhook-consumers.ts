@@ -1,4 +1,5 @@
 import "server-only";
+import {configureDmiProofs,type DmiProofOptions} from "./finance-dmi-charge-integration";
 import {createAcquisitionTiming,createLeaseRetryPolicy} from "./lease-acquisition-timing";
 import {logInfo} from "@/lib/observability/logger";
 import {createWebhookObserver, type Stage} from "./webhook-observer";
@@ -13,7 +14,7 @@ import {orchestrateBillingConsumers} from "./finance-webhook";
 import type {EventEvidence} from "./finance-contract";
 
 /** Called only after the route verifies the signature. Checkpoint 4 is staging-only. */
-export async function handleStripeWebhookConsumers(event:Stripe.Event, requestId="unavailable", invocationStartedAt=performance.now()) {
+export async function handleStripeWebhookConsumers(event:Stripe.Event, requestId="unavailable", invocationStartedAt=performance.now(),proofOptions?:DmiProofOptions) {
  if(!isFinanceTargetEnabled())return handleStripeWebhookEvent(event);
  const acquisitionTiming=createAcquisitionTiming(invocationStartedAt,metadata=>logInfo({code:"BILLING_LEASE_ACQUISITION_TIMING",route:"/api/stripe/webhook",metadata}));
  const leaseRetry=createLeaseRetryPolicy(acquisitionTiming,metadata=>logInfo({code:"BILLING_LEASE_ACQUISITION_RETRY",route:"/api/stripe/webhook",metadata}));
@@ -31,7 +32,7 @@ export async function handleStripeWebhookConsumers(event:Stripe.Event, requestId
    if(!/^(sk|rk)_test_/.test(process.env.STRIPE_SECRET_KEY?.trim()||""))throw Error("FINANCE_STAGING_CREDENTIAL");
    const db=createSupabaseAdminClient();
    const runtime=await createFinanceRuntime(stripeFinanceSource(getStripeServerClient()),createFinanceStore(db,acquisitionTiming));
-   runtime.relationshipDb=db;
+   runtime.relationshipDb=db;configureDmiProofs(runtime,proofOptions);
    if(!runtime.scope.endsWith(":test"))throw Error("FINANCE_STAGING_MODE");
    runtime.leaseRetry=leaseRetry;
    if(finance){
