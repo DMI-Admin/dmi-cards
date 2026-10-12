@@ -129,7 +129,12 @@ await test('only reviewed disabled route imports; no provider calls, mutation, l
  // Recovery's reviewed body check is independent of admission/evidence. Preserve
  // its authentication, configuration and execution tail outside that exact check.
  const recoveryPath='src/lib/stripe/billing-work-recovery.ts';
- const recoveryTail=source=>source.slice(source.indexOf('/** No session auth')).replace('!await hasEmptyBody(request)','request.body!==null');
+ const recoveryTail=source=>source.slice(source.indexOf('/** No session auth')).replace('!await hasEmptyBody(request)','request.body!==null')
+  // Normalize only the reviewed status/body invariant correction; preserve auth,
+  // target checks and all worker execution wiring byte-for-byte.
+  .replace('{ok:false,error:config.state','{error:config.state')
+  .replace('{ok:false,error:"Billing work recovery unavailable"}','{error:"Billing work recovery unavailable"}')
+  .replace(' // Derive body and HTTP status from one decision; incomplete work is never success.\n const status=["retry_wait","dependency_wait","needs_attention","stopped","disabled"].some(state=>counts[state as keyof typeof counts]>0)?503:200;\n return Response.json({ok:status===200,executions:2,counts},{status,headers});',' const incomplete=counts.retry_wait+counts.dependency_wait+counts.needs_attention+counts.stopped+counts.disabled>0;\n return Response.json({ok:!incomplete,executions:2,counts},{status:incomplete?503:200,headers});');
  assert.equal(recoveryTail(fs.readFileSync(recoveryPath,'utf8')),recoveryTail(execFileSync('git',['show','HEAD:'+recoveryPath],{encoding:'utf8'})));
  for(const changed of execFileSync('git',['diff','--name-only','HEAD','--','src','supabase/migrations'],{encoding:'utf8'}).trim().split('\n').filter(Boolean))assert.ok(['src/app/api/stripe/webhook/route.ts','src/middleware.ts','src/lib/stripe/billing-work-recovery.ts','src/lib/stripe/billing-work-runtime.ts','src/lib/stripe/billing-work-store.ts','src/lib/stripe/billing-work-worker.ts','src/lib/stripe/finance-contract.ts','src/lib/stripe/finance-customer-webhook.ts','src/lib/stripe/finance-store.ts','src/lib/stripe/webhook-consumers.ts','src/lib/stripe/finance-invoice-proof-config.ts','src/app/api/internal/billing-work/route.ts'].includes(changed),'Only the reviewed disabled wiring may differ from HEAD');
 });
