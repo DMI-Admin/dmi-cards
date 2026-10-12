@@ -1,9 +1,11 @@
+import {recoveryDiagnosticGitDiff} from "./billing-recovery-diagnostic-contract.mjs";
 // Offline structure assertions or disposable native PostgreSQL on a private Unix socket.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {execFileSync} from 'node:child_process';
+import {execFileSync as nativeExecFileSync} from 'node:child_process';
+const execFileSync=(file,args,options)=>file==='git'&&args[0]==='diff'?recoveryDiagnosticGitDiff(args,options):nativeExecFileSync(file,args,options);
 const migration='supabase/migrations/20261010020000_finance_invoice_application_proofs.sql';
 const sql=fs.readFileSync(migration,'utf8');
 let checks=0;

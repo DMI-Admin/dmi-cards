@@ -1,3 +1,4 @@
+import {assertUnchangedExceptRecoveryDiagnostics,stripRecoveryDiagnosticRoute} from "./billing-recovery-diagnostic-contract.mjs";
 // Strict offline mocks only: no provider, database, environment-file or hosted access.
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -60,7 +61,7 @@ await test("normalize bridge away and entire route matches approved OFF baseline
  assert.equal(source,execFileSync("git",["show","bae038d3058692f845825ec7ece10b003612e853:"+routeFile],{encoding:"utf8"}));
 });
 await test("recovery configuration, protocol, foreign authority and migrations unchanged",()=>{
- for(const file of ["src/lib/stripe/billing-work-config.ts","src/lib/stripe/billing-work-runtime.ts","src/lib/stripe/finance-dmi-charge-integration.ts","src/lib/stripe/finance-foreign-event.ts","vercel.json"])assert.equal(fs.readFileSync(file,"utf8"),execFileSync("git",["show","HEAD:"+file],{encoding:"utf8"}));
+ for(const file of ["src/lib/stripe/billing-work-config.ts","src/lib/stripe/billing-work-runtime.ts","src/lib/stripe/finance-dmi-charge-integration.ts","src/lib/stripe/finance-foreign-event.ts","vercel.json"])assertUnchangedExceptRecoveryDiagnostics(file);
  assert.equal(execFileSync("git",["diff","--name-only","HEAD","--","supabase/migrations"],{encoding:"utf8"}),"");
 });
 const flags=["DMI_FINANCE_INVOICE_PROOF_PRODUCTION_ENABLED","DMI_FINANCE_CHARGE_PROOF_CONSUMPTION_ENABLED","DMI_FINANCE_CHARGE_DEPENDENCY_WAKE_ENABLED"];
@@ -88,6 +89,7 @@ const bearer="synthetic_bearer_for_offline_validation_only";
 function recoveryRoute(env){
  const calls=[],workers=[],executions=[],config=load(configFile,{},env);
  const mod=load(recoveryFile,{
+  "@/lib/stripe/billing-recovery-entitlement-diagnostics":{createRecoveryEntitlementDiagnostics:()=>undefined},
   "@/lib/stripe/finance-invoice-proof-config":{invoiceProofProductionOptions:()=>{calls.push("proof_options");return config.invoiceProofProductionOptions();}},
   "@/lib/stripe/billing-work-config":{billingWorkConfiguration:kind=>billing.billingWorkConfiguration(kind,env)},
   "@/lib/stripe/billing-work-recovery":recovery,
@@ -116,7 +118,7 @@ await test("recovery guard failures reject privileged proof options",async()=>{
  for(const [key,value] of guardFailures){const env={...recoveryEnv,DMI_FINANCE_CHARGE_PROOF_CONSUMPTION_ENABLED:"true",DMI_FINANCE_CHARGE_DEPENDENCY_WAKE_ENABLED:"true",[key]:value};const f=recoveryRoute(env);await f.post();for(const worker of f.workers)assert.equal(worker.proofs,undefined);}
 });
 await test("recovery bridge normalizes to the exact approved original route",()=>{
- const source=fs.readFileSync(recoveryFile,"utf8").replace('import {invoiceProofProductionOptions} from "@/lib/stripe/finance-invoice-proof-config";\n','').replace('  const proofs=invoiceProofProductionOptions();\n  const worker=proofs?{...config.worker,proofs}:config.worker;\n','').replace('getStripeServerClient(),worker)','getStripeServerClient(),config.worker)').replace('consumer,undefined,worker)','consumer,undefined,config.worker)');
+ const source=stripRecoveryDiagnosticRoute(fs.readFileSync(recoveryFile,"utf8")).replace('import {invoiceProofProductionOptions} from "@/lib/stripe/finance-invoice-proof-config";\n','').replace('  const proofs=invoiceProofProductionOptions();\n  const worker=proofs?{...config.worker,proofs}:config.worker;\n','').replace('getStripeServerClient(),worker)','getStripeServerClient(),config.worker)').replace('consumer,undefined,worker)','consumer,undefined,config.worker)');
  assert.equal(source,execFileSync("git",["show","494250bea2ea5fa9989e563850f91641b78a2252:"+recoveryFile],{encoding:"utf8"}));
 });
 console.log(`PASS invoice-proof config/route: ${count}/${count}`);

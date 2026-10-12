@@ -1,3 +1,4 @@
+import {recoveryDiagnosticGitDiff} from "./billing-recovery-diagnostic-contract.mjs";
 // Offline and disposable Unix-socket PostgreSQL only. No hosted connection path.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -6,9 +7,10 @@ import os from 'node:os';
 import vm from 'node:vm';
 import * as crypto from 'node:crypto';
 import ts from 'typescript';
-import {execFileSync} from 'node:child_process';
+import {execFileSync as nativeExecFileSync} from 'node:child_process';
 import {graphFixture,apiVersion,fixtureNow,event} from './fixtures/finance-v1.mjs';
 import {loadFinance} from './validate-finance-consumer.mjs';
+const execFileSync=(file,args,options)=>file==='git'&&args[0]==='diff'?recoveryDiagnosticGitDiff(args,options):nativeExecFileSync(file,args,options);
 const root='src/lib/stripe/',migration='supabase/migrations/20261011000000_finance_dmi_charge_integration.sql';
 const sql=fs.readFileSync(migration,'utf8');
 const cache={};function load(file){if(cache[file])return cache[file];const exports={};cache[file]=exports;vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{exports,Buffer,Error,Map,Set,Date,Promise,performance,AbortController,setTimeout,clearTimeout,require:n=>n==='server-only'?{}:n==='node:crypto'?crypto:n.startsWith('.')?load(path.join(path.dirname(file),n)+'.ts'):(()=>{throw Error('UNEXPECTED_IMPORT');})()});return exports;}

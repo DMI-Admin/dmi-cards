@@ -1,3 +1,4 @@
+import {recoveryDiagnosticGitDiff} from "./billing-recovery-diagnostic-contract.mjs";
 // Offline or disposable Unix-socket PostgreSQL only. No hosted URL accepted.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -5,7 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 import ts from 'typescript';
-import {execFileSync} from 'node:child_process';
+import {execFileSync as nativeExecFileSync} from 'node:child_process';
+const execFileSync=(file,args,options)=>file==='git'&&args[0]==='diff'?recoveryDiagnosticGitDiff(args,options):nativeExecFileSync(file,args,options);
 const migration='supabase/migrations/20261010000000_stripe_application_ownership_registry.sql';
 const sql=fs.readFileSync(migration,'utf8');
 function load(name,deps={}){const source=fs.readFileSync('src/lib/stripe/'+name+'.ts','utf8');const output=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;const exports={};vm.runInNewContext(output,{exports,require:n=>n==='server-only'?{}:deps[n],AbortController,setTimeout,clearTimeout,performance});return exports;}

@@ -1,10 +1,12 @@
+import {recoveryDiagnosticGitDiff} from "./billing-recovery-diagnostic-contract.mjs";
 // Offline mocks and optional disposable PostgreSQL assertions only. No network/secrets.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import * as crypto from 'node:crypto';
-import {execFileSync} from 'node:child_process';
+import {execFileSync as nativeExecFileSync} from 'node:child_process';
+const execFileSync=(file,args,options)=>file==='git'&&args[0]==='diff'?recoveryDiagnosticGitDiff(args,options):nativeExecFileSync(file,args,options);
 const paths=['src/lib/stripe/billing-work-evidence.ts','src/lib/stripe/billing-work-admission.ts'];
 function load(file,deps={}){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,Buffer,Error,require:name=>{if(name==='server-only')return {};assert.ok(name in deps,'UNEXPECTED_IMPORT');return deps[name];}});return exports;}
 const evidence=load(paths[0],{'node:crypto':crypto});

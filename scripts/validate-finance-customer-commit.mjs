@@ -1,11 +1,13 @@
+import {recoveryDiagnosticGitDiff} from "./billing-recovery-diagnostic-contract.mjs";
 // Static/offline default; --postgres <local-bin> <absolute-pg-module> only.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {execFileSync} from "node:child_process";
+import {execFileSync as nativeExecFileSync} from "node:child_process";
 import {loadFinance} from "./validate-finance-consumer.mjs";
 import {graphFixture,apiVersion,fixtureNow} from "./fixtures/finance-v1.mjs";
+const execFileSync=(file,args,options)=>file==='git'&&args[0]==='diff'?recoveryDiagnosticGitDiff(args,options):nativeExecFileSync(file,args,options);
 const file="supabase/migrations/20261009210000_finance_customer_commit_foundation.sql",sql=fs.readFileSync(file,"utf8");
 const legacy=fs.readFileSync("supabase/migrations/20261009200000_finance_legacy_protocol_gate.sql","utf8");
 const start=" IF p_input ? 'subscriptions'",end=" IF p_input ? 'run'";

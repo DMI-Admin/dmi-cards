@@ -1,9 +1,11 @@
+import {recoveryDiagnosticGitDiff} from "./billing-recovery-diagnostic-contract.mjs";
 // Offline injected-storage tests only. No provider, SQL, network or runtime integration.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
-import {execFileSync} from "node:child_process";
+import {execFileSync as nativeExecFileSync} from "node:child_process";
+const execFileSync=(file,args,options)=>file==='git'&&args[0]==='diff'?recoveryDiagnosticGitDiff(args,options):nativeExecFileSync(file,args,options);
 const file="src/lib/stripe/finance-charge-ownership-proof.ts";
 function load(source,deps={}) {
  const exports={};

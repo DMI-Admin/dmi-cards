@@ -22,7 +22,10 @@ export function createDisabledBillingWorkerRuntime(db:SupabaseClient,stripe:Stri
  return {store,route:(w,c)=>resolveBillingWorkerPartition(guardWorkerDatabase(db,w,c,undefined),w,c),consume:async(w,c,f)=>{
   if(w.stripe_scope!==optIn.approvedScope)throw new WorkerFailure('ownership_conflict',true);
   const guardedDb=guardWorkerDatabase(db,w,c,f),guardedStripe=guardWorkerStripe(stripe,c),event=replayBillingWorkEvidence(w.evidence);
-  if(w.consumer==='entitlement')return handleStripeWebhookEvent(event as unknown as Stripe.Event,{db:guardedDb,stripe:guardedStripe,scope:w.stripe_scope,live:false});
+  if(w.consumer==='entitlement'){
+   const recoveryDiagnostics=w.stripe_scope==="acct_1OoTzlG71GpCYtA4:test"?optIn.entitlementDiagnostics:undefined;
+   return handleStripeWebhookEvent(event as unknown as Stripe.Event,{db:guardedDb,stripe:guardedStripe,scope:w.stripe_scope,live:false,...(recoveryDiagnostics?{recoveryDiagnostics}:{})});
+  }
   const protocol=await c.bounded(()=>store.authority<{mode:string;epoch:number}>(w,f,'read_protocol',null,null,{}),'read');
   if(protocol.mode!=='customer')throw new WorkerFailure('store_unavailable');
   if(w.execution_kind==='receipt_only'){const receipt=await c.bounded(()=>store.authority<{duplicate?:boolean;token:string}>(w,f,'event_claim',null,null,{id:w.stripe_event_id,type:w.event_type,subject:w.evidence.subject_id,created:new Date(w.event_created*1000).toISOString()}),'mutation');if(!receipt.duplicate)await c.bounded(()=>store.authority(w,f,'partition_ignored',null,receipt.token,{expected_epoch:protocol.epoch,event_id:w.stripe_event_id,reason:'unsupported_event'}),'mutation');return;}

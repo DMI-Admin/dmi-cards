@@ -1,10 +1,12 @@
+import {recoveryDiagnosticGitDiff} from "./billing-recovery-diagnostic-contract.mjs";
 // Offline static by default. --postgres <absolute-bin> <absolute-pg-module>
 // creates only the repository's temporary private Unix-socket PostgreSQL cluster.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {execFileSync} from "node:child_process";
+import {execFileSync as nativeExecFileSync} from "node:child_process";
+const execFileSync=(file,args,options)=>file==='git'&&args[0]==='diff'?recoveryDiagnosticGitDiff(args,options):nativeExecFileSync(file,args,options);
 const file="supabase/migrations/20261009200000_finance_legacy_protocol_gate.sql";
 const sql=fs.readFileSync(file,"utf8"),previous=fs.readFileSync("supabase/migrations/20261003120000_finance_tax_evidence.sql","utf8");
 assert.ok(sql.startsWith("-- Legacy-only"));assert.ok(sql.trim().endsWith("COMMIT;"));

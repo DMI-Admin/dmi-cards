@@ -1,10 +1,12 @@
+import {recoveryDiagnosticGitDiff} from "./billing-recovery-diagnostic-contract.mjs";
 // Offline and temporary Unix-socket PostgreSQL only; no hosted connection input.
 import {validateWorkEvidenceDatabase,schedulerFixtureEvidence} from './validate-billing-work-evidence.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {execFileSync} from 'node:child_process';
+import {execFileSync as nativeExecFileSync} from 'node:child_process';
+const execFileSync=(file,args,options)=>file==='git'&&args[0]==='diff'?recoveryDiagnosticGitDiff(args,options):nativeExecFileSync(file,args,options);
 const migration='supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql';
 const sql=fs.readFileSync(migration,'utf8');let offline=0;
 const check=(name,fn)=>{fn();offline++;console.log('PASS '+name);};

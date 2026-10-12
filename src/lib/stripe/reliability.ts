@@ -1,4 +1,5 @@
 import "server-only";
+import type {RecoveryEntitlementDiagnostics,RecoveryEntitlementStage} from "./billing-recovery-entitlement-diagnostics";
 import { boundedLeaseAcquisition, acquireLeaseWithRetry, AcquisitionTimingFailure, type LeaseRetryPolicy, type AcquisitionTiming } from "./lease-acquisition-timing";
 import { classifyClaimStoreError } from "./webhook-observer";
 import type {ClaimFailureCategory, Observer, Stage} from "./webhook-observer";
@@ -13,7 +14,16 @@ export class BillingFailure extends ApiRouteError {
     super(status, status === 409 ? "CONFLICT" : "INTERNAL_ERROR", `Billing operation unavailable (${reason}). Please retry or contact support.`);
   }
 }
-export type BillingRuntime = { observer?: Observer; acquisitionTiming?: AcquisitionTiming; leaseRetry?: LeaseRetryPolicy; db: ReturnType<typeof createSupabaseAdminClient>; stripe: Stripe; scope: string; live: boolean };
+export type BillingRuntime = { recoveryDiagnostics?: RecoveryEntitlementDiagnostics; observer?: Observer; acquisitionTiming?: AcquisitionTiming; leaseRetry?: LeaseRetryPolicy; db: ReturnType<typeof createSupabaseAdminClient>; stripe: Stripe; scope: string; live: boolean };
+// Optional recovery-only observation; OFF executes the original operation directly.
+export function recoveryStage<T>(r:BillingRuntime,stage:RecoveryEntitlementStage,work:()=>Promise<T>,shape?:(value:T)=>boolean):Promise<T>{
+ return r.recoveryDiagnostics?r.recoveryDiagnostics.run(stage,work,shape,error=>error instanceof BillingFailure):work();
+}
+function recoverySync<T>(r:BillingRuntime,stage:RecoveryEntitlementStage,work:()=>T):T{
+ return r.recoveryDiagnostics?r.recoveryDiagnostics.sync(stage,work,error=>error instanceof BillingFailure):work();
+}
+const objectShape=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==="object";
+const subscriptionShape=(v:unknown)=>objectShape(v)&&typeof v.id==="string"&&objectShape(v.metadata)&&objectShape(v.items)&&Array.isArray(v.items.data)&&v.items.data.every((i:unknown)=>objectShape(i)&&objectShape(i.price)&&typeof i.price.id==="string");
 export type BillingAccount = {
   user_id: string; stripe_customer_id: string | null; lease_token: string;
   customer_attempt: string | null; customer_attempt_at: string | null; customer_parameters: Stripe.CustomerCreateParams | null;
@@ -53,12 +63,14 @@ export async function command<T>(r: BillingRuntime, action: string, user: string
   return r.observer ? r.observer.run(action as Stage, work) : work();
 }
 export async function withAccount<T>(r: BillingRuntime, userId: string, run: (account: BillingAccount) => Promise<T>): Promise<T> {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) throw new BillingFailure("IDENTITY_CONFLICT", 409);
   const acquire = () => command<BillingAccount>(r, "claim", userId, null);
-  const account = r.leaseRetry
-    ? await acquireLeaseWithRetry(r.leaseRetry, "entitlement", acquire,
+  const account = await recoveryStage(r,"account_claim",()=>{
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) throw new BillingFailure("IDENTITY_CONFLICT", 409);
+    return r.leaseRetry
+    ? acquireLeaseWithRetry(r.leaseRetry, "entitlement", acquire,
       error => error instanceof BillingFailure && error.reason === "BILLING_BUSY")
-    : await acquire();
+    : acquire();
+  },value=>objectShape(value)&&typeof value.user_id==="string"&&typeof value.lease_token==="string");
   try { return await run(account); }
   finally { await command(r, "release", userId, account.lease_token).catch(() => undefined); }
 }
@@ -96,12 +108,14 @@ export function invoiceSubscription(invoice: Stripe.Invoice): string | null {
   return null;
 }
 export async function verifyCustomer(r: BillingRuntime, userId: string, customerId: string) {
-  const customer = await r.stripe.customers.retrieve(customerId);
+  const customer = await recoveryStage(r,"customer_read",()=>r.stripe.customers.retrieve(customerId),value=>objectShape(value)&&(value.deleted===true||objectShape(value.metadata)));
+  return recoveryStage(r,"customer_validate",async()=>{
   if (customer.deleted || customer.livemode !== r.live) throw new BillingFailure("CUSTOMER_UNAVAILABLE");
   const rows = await mirrorsFor(r, "stripe_customer_id", customerId);
   if (rows.some(row => row.user_id !== userId || (row.stripe_scope && row.stripe_scope !== r.scope)) || (customer.metadata.dmi_user_id && customer.metadata.dmi_user_id !== userId)
     || (customer.metadata.dmi_app && !hasDmiStripeAppNamespace(customer.metadata))) throw new BillingFailure("IDENTITY_CONFLICT", 409);
   return { customer, mirrored: rows.some(row => row.user_id === userId) };
+  });
 }
 export async function verifiedCustomerForUser(r: BillingRuntime, account: BillingAccount, persist = true): Promise<string | null> {
   const rows = await mirrorsFor(r, "user_id", account.user_id);
@@ -125,9 +139,10 @@ export async function subscriptionsForCustomer(r: BillingRuntime, customer: stri
 }
 function iso(n: number | null | undefined) { return n ? new Date(n * 1000).toISOString() : null; }
 export async function subscriptionSnapshot(r: BillingRuntime, subscription: Stripe.Subscription): Promise<Snapshot> {
+ return recoveryStage(r,"snapshot_prepare",async()=>{
   if (!hasDmiStripeAppNamespace(subscription.metadata) || subscription.livemode !== r.live) throw new BillingFailure("SCOPE_CONFLICT", 409);
   if (subscription.items.has_more) throw new BillingFailure("AMBIGUOUS_ITEMS", 409);
-  const prices = await approvedPrices(r);
+  const prices = await recoveryStage(r,"approved_price_read",()=>approvedPrices(r),Array.isArray);
   const approved = subscription.items.data.filter(item => prices.some(price => price.stripe_price_id === item.price.id && price.entitlement_enabled));
   if (approved.length > 1) throw new BillingFailure("AMBIGUOUS_ITEMS", 409);
   const paid = subscription.status === "active" || subscription.status === "trialing";
@@ -136,13 +151,14 @@ export async function subscriptionSnapshot(r: BillingRuntime, subscription: Stri
   return { subscription_id: subscription.id, customer_id: objectId(subscription.customer), status: subscription.status, price_id: item?.price.id || null,
     plan: paid && approved.length ? "pro" : "free", period_start: iso(item?.current_period_start), period_end: iso(item?.current_period_end), trial_end: iso(subscription.trial_end),
     ended_at: iso(subscription.ended_at), cancel_at_period_end: subscription.cancel_at_period_end, invoice_id: objectId(subscription.latest_invoice) || null, terminal: subscription.status === "canceled" };
+ });
 }
 export async function synchronizeSubscription(r: BillingRuntime, subscriptionId: string, options: { userId?: string; event?: EventClaim; deleted?: Stripe.Subscription; dryRun?: boolean } = {}) {
   // This first retrieval resolves identity only. Retrieve AGAIN under the account
   // lease so a pre-lock snapshot can never overwrite a later completed writer.
-  async function retrieve() {
+  async function retrieve(stage:RecoveryEntitlementStage) {
     try {
-      const current = await r.stripe.subscriptions.retrieve(subscriptionId, { expand: ["items.data.price"] });
+      const current = await recoveryStage(r,stage,()=>r.stripe.subscriptions.retrieve(subscriptionId, { expand: ["items.data.price"] }),subscriptionShape);
       return options.deleted?.id === subscriptionId && options.deleted.status === "canceled" ? options.deleted : current;
     }
     catch (error) {
@@ -151,18 +167,25 @@ export async function synchronizeSubscription(r: BillingRuntime, subscriptionId:
       throw new BillingFailure("STRIPE_UNAVAILABLE");
     }
   }
-  const initial = await retrieve();
+  const initial = await retrieve("subscription_identity_read");
+  const userId = recoverySync(r,"subscription_identity_validate",()=>{
   if (!hasDmiStripeAppNamespace(initial.metadata) || initial.livemode !== r.live) throw new BillingFailure("SCOPE_CONFLICT", 409);
   const userId = initial.metadata.dmi_user_id;
   if (!userId || (options.userId && options.userId !== userId) || (initial.metadata.dmi_profile_id && initial.metadata.dmi_profile_id !== userId)) throw new BillingFailure("IDENTITY_CONFLICT", 409);
+  return userId;
+  });
   return withAccount(r, userId, async account => {
-    const subscription = await retrieve();
+    const subscription = await retrieve("subscription_fenced_read");
+    recoverySync(r,"subscription_identity_validate",()=>{
     if (subscription.metadata.dmi_user_id !== userId || (subscription.metadata.dmi_profile_id && subscription.metadata.dmi_profile_id !== userId)) throw new BillingFailure("IDENTITY_CONFLICT", 409);
+    });
     const customerId = objectId(subscription.customer);
     await verifyCustomer(r, userId, customerId);
+    const before = await recoveryStage(r,"user_mirror_read",async()=>{
     const mirrors = await mirrorsFor(r, "user_id", userId);
     if (mirrors.some(row => row.stripe_customer_id !== customerId || (row.stripe_scope && row.stripe_scope !== r.scope)) || (account.stripe_customer_id && account.stripe_customer_id !== customerId)) throw new BillingFailure("IDENTITY_CONFLICT", 409);
-    const before = mirrors.find(row => row.stripe_subscription_id === subscriptionId);
+    return mirrors.find(row => row.stripe_subscription_id === subscriptionId);
+    });
     const stale = options.event && before?.last_event_created != null && options.event.created < before.last_event_created;
     if (stale) {
       if (options.event) await command(r, "event_finish", null, options.event.token, { id: options.event.id, outcome: "stale_ignored" });
@@ -172,11 +195,11 @@ export async function synchronizeSubscription(r: BillingRuntime, subscriptionId:
     const terminal = before?.terminal && !snapshot.terminal;
     const unchanged = Boolean(before?.sync_snapshot && Object.entries(snapshot).every(([key, value]) => before.sync_snapshot?.[key as keyof Snapshot] === value));
     if (options.dryRun) return { outcome: terminal ? "terminal_ignored" : unchanged ? "unchanged" : "would_repair", beforeRevision: before?.revision || 0, revision: before?.revision || 0 };
-    await command(r, "bind", userId, account.lease_token, { customer: customerId });
-    const result = await command<{ outcome: string; revision: number }>(r, "commit", userId, account.lease_token, {
+    await recoveryStage(r,"customer_bind",()=>command(r, "bind", userId, account.lease_token, { customer: customerId }),value=>objectShape(value)&&typeof value.user_id==="string");
+    const result = await recoveryStage(r,"subscription_commit",()=>command<{ outcome: string; revision: number }>(r, "commit", userId, account.lease_token, {
       snapshot, expected_revision: before?.revision || 0,
       ...(options.event ? { event_id: options.event.id, event_created: options.event.created, event_token: options.event.token } : {}),
-    });
+    }),value=>objectShape(value)&&typeof value.outcome==="string"&&typeof value.revision==="number");
     return { ...result, beforeRevision: before?.revision || 0 };
   });
 }

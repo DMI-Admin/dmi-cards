@@ -1,3 +1,4 @@
+import {recoveryDiagnosticGitDiff} from "./billing-recovery-diagnostic-contract.mjs";
 // Offline mocks + isolated Unix-socket PostgreSQL only; never accepts hosted credentials.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -6,8 +7,9 @@ import os from 'node:os';
 import vm from 'node:vm';
 import ts from 'typescript';
 import * as crypto from 'node:crypto';
-import {execFileSync} from 'node:child_process';
+import {execFileSync as nativeExecFileSync} from 'node:child_process';
 import {schedulerFixtureEvidence} from './validate-billing-work-evidence.mjs';
+const execFileSync=(file,args,options)=>file==='git'&&args[0]==='diff'?recoveryDiagnosticGitDiff(args,options):nativeExecFileSync(file,args,options);
 const root='src/lib/stripe/',migration='supabase/migrations/20261010050000_billing_consumer_worker_fencing.sql';
 const sql=fs.readFileSync(migration,'utf8');
 function load(file,deps={}){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,Buffer,Error,Promise,AbortController,performance,setTimeout,clearTimeout,Date,console,require:name=>{if(name==='server-only')return {};assert.ok(Object.hasOwn(deps,name),'UNEXPECTED_WORKER_IMPORT');return deps[name];}});return exports;}

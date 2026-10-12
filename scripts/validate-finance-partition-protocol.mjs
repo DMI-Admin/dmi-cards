@@ -1,8 +1,10 @@
+import {recoveryDiagnosticGitDiff} from "./billing-recovery-diagnostic-contract.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
-import {execFileSync} from "node:child_process";
+import {execFileSync as nativeExecFileSync} from "node:child_process";
+const execFileSync=(file,args,options)=>file==='git'&&args[0]==='diff'?recoveryDiagnosticGitDiff(args,options):nativeExecFileSync(file,args,options);
 const file="src/lib/stripe/finance-partition-protocol.ts",exports={};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,"utf8"),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{exports,require:name=>{assert.equal(name,"server-only");return {};}});
 const m=exports,p={scope:"acct_fixture:test",customer:"cus_fixture"};

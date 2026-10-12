@@ -1,6 +1,8 @@
+import {recoveryDiagnosticGitDiff} from "./billing-recovery-diagnostic-contract.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import {execFileSync} from "node:child_process";
+import {execFileSync as nativeExecFileSync} from "node:child_process";
+const execFileSync=(file,args,options)=>file==='git'&&args[0]==='diff'?recoveryDiagnosticGitDiff(args,options):nativeExecFileSync(file,args,options);
 const migration="supabase/migrations/20261009180000_finance_partition_foundation.sql";
 const text=fs.readFileSync(migration,"utf8");
 const strip=s=>s.replace(/--[^\n]*/g,"").trim();

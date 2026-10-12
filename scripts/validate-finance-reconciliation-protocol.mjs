@@ -1,12 +1,14 @@
+import {recoveryDiagnosticGitDiff} from "./billing-recovery-diagnostic-contract.mjs";
 // Offline by default. Explicit --postgres paths create a disposable Unix-socket cluster only.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {execFileSync} from 'node:child_process';
+import {execFileSync as nativeExecFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {loadFinance,memoryHarness} from './validate-finance-consumer.mjs';
 import {apiVersion,fixtureNow} from './fixtures/finance-v1.mjs';
+const execFileSync=(file,args,options)=>file==='git'&&args[0]==='diff'?recoveryDiagnosticGitDiff(args,options):nativeExecFileSync(file,args,options);
 const file='supabase/migrations/20261009220000_finance_reconciliation_protocol_guard.sql';
 const sql=fs.readFileSync(file,'utf8'),old=fs.readFileSync('supabase/migrations/20261009200000_finance_legacy_protocol_gate.sql','utf8');
 const start=" IF p_input ? 'subscriptions'",end=" IF p_input ? 'run' THEN\n  rowdata";

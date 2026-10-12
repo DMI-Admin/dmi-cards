@@ -3,7 +3,7 @@ import type {AcquisitionTiming, LeaseRetryPolicy} from "./lease-acquisition-timi
 import type {Observer} from "./webhook-observer";
 import type Stripe from "stripe";
 import { hasDmiStripeAppNamespace } from "@/lib/stripe/app-namespace";
-import { billingRuntime, BillingFailure, command, invoiceSubscription, objectId, synchronizeSubscription, type BillingRuntime } from "@/lib/stripe/reliability";
+import { billingRuntime, BillingFailure, command, invoiceSubscription, objectId, synchronizeSubscription, recoveryStage, type BillingRuntime } from "@/lib/stripe/reliability";
 
 const subscriptionEvents = new Set(["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"]);
 const invoiceEvents = new Set(["invoice.payment_failed", "invoice.payment_succeeded", "invoice.paid"]);
@@ -12,7 +12,7 @@ export async function handleStripeWebhookEvent(event: Stripe.Event, runtime?: Bi
   const resolved = observer ? await observer.run("runtime", initialize) : await initialize();
   const r = {...resolved, ...(observer ? {observer} : {}), ...(acquisitionTiming ? {acquisitionTiming} : {}), ...(leaseRetry ? {leaseRetry} : {})};
   if (event.livemode !== r.live) throw new BillingFailure("SCOPE_CONFLICT", 409);
-  const claim = await command<{ duplicate?: boolean; token: string }>(r, "event_claim", null, null, { id: event.id, type: event.type, created: event.created, subject: (event.data.object as { id?: string }).id });
+  const claim = await recoveryStage(r,"receipt_claim",()=>command<{ duplicate?: boolean; token: string }>(r, "event_claim", null, null, { id: event.id, type: event.type, created: event.created, subject: (event.data.object as { id?: string }).id }),value=>value!==null&&typeof value==="object"&&(value.duplicate===true||typeof value.token==="string"));
   if (claim.duplicate) return { handled: true, skipped: true, reason: "duplicate_event" };
   const knownSubscription = async (id: string) => {
     const { data, error } = await r.db.from("billing_subscriptions").select("stripe_subscription_id").eq("stripe_subscription_id", id).maybeSingle();
@@ -46,7 +46,7 @@ export async function handleStripeWebhookEvent(event: Stripe.Event, runtime?: Bi
     return { handled: true, skipped: result.outcome.endsWith("ignored"), reason: result.outcome };
   } catch (error) {
     const reason = error instanceof BillingFailure ? error.reason : "RETRYABLE_FAILURE";
-    await command(r, "event_fail", null, claim.token, { id: event.id, outcome: "retryable_failure", error: reason }).catch(() => undefined);
+    await recoveryStage(r,"receipt_fail",()=>command(r, "event_fail", null, claim.token, { id: event.id, outcome: "retryable_failure", error: reason })).catch(() => undefined);
     throw new BillingFailure(reason);
   }
 }
