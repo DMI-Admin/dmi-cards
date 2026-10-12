@@ -21,7 +21,43 @@ await test('exact flag defaults OFF and malformed values never enable',()=>{for(
 await test('all custom Staging project database scope credentials and recovery guards required',()=>{for(const [key,value] of [['VERCEL_ENV','production'],['VERCEL_ENV','development'],['VERCEL_TARGET_ENV','preview'],['VERCEL_TARGET_ENV','production'],['VERCEL_PROJECT_ID','prj_other'],['NEXT_PUBLIC_SUPABASE_URL','https://other.supabase.co'],['BILLING_WORK_STRIPE_SCOPE','acct_other:test'],['STRIPE_ACCOUNT_SCOPE','acct_other:test'],['STRIPE_SECRET_KEY','sk_live_synthetic'],['STRIPE_SECRET_KEY','sk_test_'],['BILLING_WORK_RECOVERY_ENABLED',undefined]])assert.equal(diagnostics.createRecoveryEntitlementDiagnostics({...approved,[key]:value},()=>assert.fail('NO_LOG')),undefined);});
 await test('diagnostic flag never enables handoff recovery or proof features',()=>{assert.equal(config.billingWorkConfiguration('handoff',approved).state,'disabled');assert.equal(diagnostics.createRecoveryEntitlementDiagnostics({...approved,BILLING_WORK_RECOVERY_ENABLED:undefined}),undefined);assert.ok(diagnostics.createRecoveryEntitlementDiagnostics(approved,()=>{}));});
 await test('every stage emits exactly started/succeeded and only allowed keys',async()=>{const {observer,records}=observe();for(const stage of diagnostics.recoveryEntitlementStages){assert.equal(await observer.run(stage,async()=>42),42);assert.equal(observer.sync(stage,()=>42),42);}for(const entry of records){assert.deepEqual(Object.keys(entry).sort(),['outcome','stage']);assert.ok(diagnostics.recoveryEntitlementStages.includes(entry.stage));assert.ok(['started','succeeded'].includes(entry.outcome));}assert.equal(records.length,52);});
-await test('all failures emit closed categories, never original text or identity',async()=>{const samples=[[Object.assign(Error('cus_private token PRIVATE'),{type:'StripeConnectionError'}),'customer_read','provider_transport'],[Object.assign(Error('PRIVATE'),{type:'StripeRateLimitError'}),'customer_read','provider_unavailable'],[Object.assign(Error('PRIVATE'),{code:'08006'}),'user_mirror_read','database_transport'],[Object.assign(Error('PRIVATE'),{code:'57014'}),'account_claim','database_timeout'],[Object.assign(Error('PRIVATE'),{code:'ECONNRESET'}),'customer_read','provider_transport'],[new TypeError('PRIVATE'),'snapshot_prepare','type_error'],[new RangeError('PRIVATE'),'snapshot_prepare','range_error'],[Error('PRIVATE'),'snapshot_prepare','unclassified']];for(const [error,stage,category] of samples){const {observer,records}=observe();await assert.rejects(observer.run(stage,async()=>{throw error;}),e=>e===error);assert.equal(records[1].failure_category,category);assert.deepEqual(Object.keys(records[1]).sort(),['failure_category','outcome','stage']);assert.doesNotMatch(JSON.stringify(records),/PRIVATE|cus_|token/);}});
+await test('all failures emit closed categories, never original text or identity',async()=>{const samples=[[Object.assign(Error('cus_private token PRIVATE'),{type:'StripeConnectionError'}),'customer_read','provider_transport'],[Object.assign(Error('PRIVATE'),{type:'StripeRateLimitError'}),'customer_read','provider_rate_limited'],[Object.assign(Error('PRIVATE'),{code:'08006'}),'user_mirror_read','database_transport'],[Object.assign(Error('PRIVATE'),{code:'57014'}),'account_claim','database_timeout'],[Object.assign(Error('PRIVATE'),{code:'ECONNRESET'}),'customer_read','provider_transport'],[new TypeError('PRIVATE'),'snapshot_prepare','type_error'],[new RangeError('PRIVATE'),'snapshot_prepare','range_error'],[Error('PRIVATE'),'snapshot_prepare','unclassified']];for(const [error,stage,category] of samples){const {observer,records}=observe();await assert.rejects(observer.run(stage,async()=>{throw error;}),e=>e===error);assert.equal(records[1].failure_category,category);assert.deepEqual(Object.keys(records[1]).sort(),['failure_category','outcome','stage']);assert.doesNotMatch(JSON.stringify(records),/PRIVATE|cus_|token/);}});
+await test('provider refinement uses exact structured types and codes only',async()=>{
+ const samples=[
+  [{type:'StripeInvalidRequestError',code:'resource_missing'},'provider_resource_missing'],
+  [{type:'StripeInvalidRequestError',code:'parameter_invalid'},'provider_invalid_request'],
+  [{type:'StripeInvalidRequestError'},'provider_invalid_request'],
+  [{type:'StripeInvalidRequestError',code:'RESOURCE_MISSING'},'provider_invalid_request'],
+  [{type:'StripeInvalidRequestError',code:'resource_missing '},'provider_invalid_request'],
+  [{code:'resource_missing'},'unclassified'],
+  [{type:'StripeAPIError',code:'resource_missing'},'provider_unavailable'],
+  [{type:'StripeAuthenticationError'},'provider_authentication'],
+  [{type:'StripePermissionError'},'provider_permission'],
+  [{type:'StripeRateLimitError'},'provider_rate_limited'],
+  [{type:'StripeConnectionError'},'provider_transport'],
+  [{code:'ETIMEDOUT'},'provider_transport'],
+  [{category:'provider_unavailable'},'provider_unavailable'],
+ ];
+ for(const [fields,category] of samples){
+  const error=Object.assign(Error('PRIVATE evt_private cus_private'),fields);
+  for(const key of ['message','stack','cause','headers','requestId','raw','name','constructor'])Object.defineProperty(error,key,{get:()=>{throw Error('FORBIDDEN_FIELD');}});
+  const {observer,records}=observe();
+  await assert.rejects(observer.run('customer_read',async()=>{throw error;}),e=>e===error);
+  assert.deepEqual(records,[{stage:'customer_read',outcome:'started'},{stage:'customer_read',outcome:'failed',failure_category:category}]);
+ }
+});
+await test('refined customer failures preserve receipts and billing outcomes even if sink throws',async()=>{
+ for(const type of ['StripeInvalidRequestError','StripeAuthenticationError','StripePermissionError','StripeRateLimitError','StripeAPIError']){
+  const a=actual.fixture(),b=actual.fixture();
+  for(const f of [a,b])f.r.stripe.customers.retrieve=async()=>{throw Object.assign(Error('PRIVATE'),{type,code:'resource_missing'});};
+  b.r.recoveryDiagnostics=observe(()=>{throw Error('PRIVATE_SINK');}).observer;
+  for(const f of [a,b])await assert.rejects(actual.webhook.handleStripeWebhookEvent(event(f),f.r),e=>e.reason==='RETRYABLE_FAILURE');
+  const receipt=f=>{const r=f.events.get('evt_diagnostic');return {state:r.state,attempts:r.attempts,outcome:r.outcome};};
+  assert.deepEqual(receipt(a),receipt(b));
+  assert.deepEqual(receipt(b),{state:'failed',attempts:1,outcome:'retryable_failure'});
+  assert.deepEqual(plain(a.mirrors),plain(b.mirrors));
+ }
+});
 await test('arbitrary names constructors messages and hostile getters never leak',async()=>{const {observer,records}=observe();const error=Error('PRIVATE');for(const key of ['name','constructor','stack','message'])Object.defineProperty(error,key,{get:()=>{throw Error('MUST_NOT_READ');}});await assert.rejects(observer.run('customer_read',async()=>{throw error;}),e=>e===error);assert.equal(records[1].failure_category,'unclassified');const hostile={get code(){throw Error('PRIVATE');}};assert.equal(diagnostics.classifyRecoveryEntitlementFailure(hostile,'customer_read'),'unclassified');await observer.run('evt_private',async()=>true);assert.equal(records.length,2);});
 await test('shape probes never throw or change returned values',async()=>{const {observer,records}=observe();const result={secret:'PRIVATE'};assert.equal(await observer.run('subscription_commit',async()=>result,()=>false),result);assert.equal(records[1].failure_category,'response_shape');assert.equal(await observer.run('customer_read',async()=>result,()=>{throw Error('PRIVATE');}),result);assert.doesNotMatch(JSON.stringify(records),/PRIVATE|secret/);});
 await test('actual first subscription creation has all success stages, same business calls and result',async()=>{const a=actual.fixture(),b=actual.fixture(),{observer,records}=observe();const ac=instrument(a),bc=instrument(b);b.r.recoveryDiagnostics=observer;const first=await actual.webhook.handleStripeWebhookEvent(event(a),a.r),second=await actual.webhook.handleStripeWebhookEvent(event(b),b.r);assert.deepEqual(plain(second),plain(first));assert.deepEqual(bc,ac);assert.deepEqual(plain(b.mirrors.map(x=>x.sync_snapshot)),plain(a.mirrors.map(x=>x.sync_snapshot)));const successful=records.filter(x=>x.outcome==='succeeded').map(x=>x.stage);assert.deepEqual(successful,['receipt_claim','subscription_identity_read','subscription_identity_validate','account_claim','subscription_fenced_read','subscription_identity_validate','customer_read','customer_validate','user_mirror_read','approved_price_read','snapshot_prepare','customer_bind','subscription_commit']);assert.equal(records.some(x=>x.failure_category),false);assert.doesNotMatch(JSON.stringify(records),/evt_|cus_|sub_|acct_|11111111|metadata|payload|token/);});

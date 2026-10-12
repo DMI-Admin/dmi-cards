@@ -2,7 +2,7 @@ import "server-only";
 import {billingWorkConfiguration,BILLING_WORK_SCOPE} from "./billing-work-config";
 
 export const recoveryEntitlementStages=["receipt_claim","subscription_identity_read","subscription_identity_validate","account_claim","subscription_fenced_read","customer_read","customer_validate","user_mirror_read","approved_price_read","snapshot_prepare","customer_bind","subscription_commit","receipt_fail"] as const;
-export const recoveryFailureCategories=["provider_transport","provider_unavailable","database_transport","database_timeout","response_shape","type_error","range_error","billing_failure","unclassified"] as const;
+export const recoveryFailureCategories=["provider_transport","provider_unavailable","provider_resource_missing","provider_invalid_request","provider_authentication","provider_permission","provider_rate_limited","database_transport","database_timeout","response_shape","type_error","range_error","billing_failure","unclassified"] as const;
 export type RecoveryEntitlementStage=typeof recoveryEntitlementStages[number];
 export type RecoveryFailureCategory=typeof recoveryFailureCategories[number];
 export type RecoveryDiagnostic={stage:RecoveryEntitlementStage;outcome:"started"|"succeeded"|"failed";failure_category?:RecoveryFailureCategory};
@@ -22,7 +22,11 @@ export function classifyRecoveryEntitlementFailure(error:unknown,stage:RecoveryE
    if(e.code==="57014"||e.claimFailureCategory==="DATABASE_TIMEOUT_OR_CANCELLED")return "database_timeout";
    if(["08000","08001","08003","08004","08006","08007","08P01","57P01","57P02","57P03","PGRST000","PGRST001","PGRST002"].includes(e.code as string)||e.claimFailureCategory==="DATABASE_UNAVAILABLE")return "database_transport";
    if(e.type==="StripeConnectionError")return "provider_transport";
-   if(["StripeAPIError","StripeAuthenticationError","StripePermissionError","StripeRateLimitError","StripeInvalidRequestError"].includes(e.type as string)||e.category==="provider_unavailable")return "provider_unavailable";
+   if(e.type==="StripeInvalidRequestError")return e.code==="resource_missing"?"provider_resource_missing":"provider_invalid_request";
+   if(e.type==="StripeAuthenticationError")return "provider_authentication";
+   if(e.type==="StripePermissionError")return "provider_permission";
+   if(e.type==="StripeRateLimitError")return "provider_rate_limited";
+   if(e.type==="StripeAPIError"||e.category==="provider_unavailable")return "provider_unavailable";
    if(["ECONNRESET","ECONNREFUSED","ETIMEDOUT","ENOTFOUND","EAI_AGAIN"].includes(e.code as string))return providerStages.has(stage)?"provider_transport":"database_transport";
   }
   if(isBillingFailure?.(error))return "billing_failure";

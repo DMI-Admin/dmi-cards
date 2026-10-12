@@ -9,7 +9,7 @@ const reviewed={
  'src/lib/stripe/billing-work-worker.ts': 'ef565180d6946c9772239190a2a413c730ec080f89ee90c30f6ab3b48a8ad4c0',
  'src/lib/stripe/reliability.ts': 'be37bed6b5a379ba1ca70b6ed335f1fc79577ea88274f07691e58e93c1922c9c',
  'src/lib/stripe/webhook.ts': '143fbeb7f69cadb10fb312c0df30b13ee195c85723557fcf5def8b4801816f8c',
- 'src/lib/stripe/billing-recovery-entitlement-diagnostics.ts': 'd5a69af0baae1edc5c4f4e6a4cd3afd21bb35ee689caaeee9f485d752d89b55e',
+ 'src/lib/stripe/billing-recovery-entitlement-diagnostics.ts': 'bb95c4157e91384147560d03f4223a8c3639c05e7b7b5d57f8f9add77041f026',
 };
 export function assertRecoveryDiagnosticFiles(){
  for(const [file,digest] of Object.entries(reviewed))assert.equal(createHash('sha256').update(fs.readFileSync(file)).digest('hex'),digest,'Unexpected recovery diagnostic runtime drift: '+file);
