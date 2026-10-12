@@ -74,15 +74,20 @@ export function guardWorkerDatabase(db:SupabaseClient,w:WorkerItem,c:WorkerConte
 // Read methods only. SDK request options retain Finance's pinned version while
 // overriding network retries and bounding each read by the invocation's headroom.
 export function guardWorkerStripe(stripe:Stripe,c:WorkerContext):Stripe{
- const optionsKeys=['apiVersion','timeout','maxNetworkRetries'];
- function resource(target:object):object{return new Proxy(target,{get(obj,key){
-  const value=Reflect.get(obj,key);if(value&&typeof value==='object')return resource(value);
+ // Reviewed Stripe 22.5.0 read signatures: retrieve(id,params,options),
+ // list(params,options), and balance.retrieve(params,options).
+ const resources=new Set(['accounts','balance','customers','subscriptions','invoices','taxRates','invoicePayments','charges','refunds']);
+ function resource(target:object,path=''):object{return new Proxy(target,{get(obj,key){
+  const value=Reflect.get(obj,key);if(value&&typeof value==='object')return resource(value,path?path+'.'+String(key):String(key));
   if(typeof value!=='function')return value;
-  if(key!=='retrieve'&&key!=='list')return ()=>{throw new WorkerFailure('invalid_evidence',true);};
+  if(!resources.has(path)||(key!=='retrieve'&&key!=='list')||(path==='balance'&&key!=='retrieve'))return ()=>{throw new WorkerFailure('invalid_evidence',true);};
   return (...original:unknown[])=>c.bounded(()=>{
-   c.check();const args=[...original],last=args.at(-1);let options:Record<string,unknown>={};
-   if(last&&typeof last==='object'&&optionsKeys.some(k=>Object.hasOwn(last,k)))options=args.pop() as Record<string,unknown>;
-   args.push({...options,timeout:Math.max(1,Math.floor(Math.min(10000,c.remaining()))),maxNetworkRetries:0});
+   c.check();const args=[...original],paramsIndex=key==='list'||path==='balance'?0:1,optionsIndex=paramsIndex+1;
+   const options=args[optionsIndex];
+   if(args.length>optionsIndex+1||(options!==undefined&&(options===null||typeof options!=='object'||Array.isArray(options))))throw new WorkerFailure('invalid_evidence',true);
+   // Never mistake API params for SDK options, including ID-only retrievals.
+   if(args.length<=paramsIndex)args[paramsIndex]=undefined;
+   args[optionsIndex]={...(options as Record<string,unknown>|undefined),timeout:Math.max(1,Math.floor(Math.min(10000,c.remaining()))),maxNetworkRetries:0};
    return Promise.resolve(Reflect.apply(value,obj,args));
   },'provider');
  }});}
