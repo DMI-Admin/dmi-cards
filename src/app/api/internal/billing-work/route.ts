@@ -1,3 +1,4 @@
+import {invoiceProofProductionOptions} from "@/lib/stripe/finance-invoice-proof-config";
 import {billingWorkConfiguration} from "@/lib/stripe/billing-work-config";
 import {recoverBillingWork} from "@/lib/stripe/billing-work-recovery";
 import {createDisabledBillingWorkerRuntime} from "@/lib/stripe/billing-work-runtime";
@@ -13,8 +14,10 @@ export async function POST(request:Request){
  const config=billingWorkConfiguration("recovery");
  return recoverBillingWork(request,process.env.BILLING_WORK_RECOVERY_SECRET,config,()=>{
   if(config.state!=="enabled")throw Error("BILLING_WORK_DISABLED");
-  const deps=createDisabledBillingWorkerRuntime(createSupabaseAdminClient(),getStripeServerClient(),config.worker);
+  const proofs=invoiceProofProductionOptions();
+  const worker=proofs?{...config.worker,proofs}:config.worker;
+  const deps=createDisabledBillingWorkerRuntime(createSupabaseAdminClient(),getStripeServerClient(),worker);
   if(!deps)throw Error("BILLING_WORK_DISABLED");
-  return consumer=>executeBillingWorker(deps,config.scope,consumer,undefined,config.worker);
+  return consumer=>executeBillingWorker(deps,config.scope,consumer,undefined,worker);
  });
 }
