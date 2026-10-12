@@ -1,4 +1,4 @@
-import {recoveryDiagnosticGitDiff} from "./billing-recovery-diagnostic-contract.mjs";
+import {recoveryDiagnosticGitDiff,stripRecoverySelector} from "./billing-recovery-diagnostic-contract.mjs";
 // Offline mocks and optional disposable PostgreSQL assertions only. No network/secrets.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -131,7 +131,7 @@ await test('only reviewed disabled route imports; no provider calls, mutation, l
  // Recovery's reviewed body check is independent of admission/evidence. Preserve
  // its authentication, configuration and execution tail outside that exact check.
  const recoveryPath='src/lib/stripe/billing-work-recovery.ts';
- const recoveryTail=source=>source.slice(source.indexOf('/** No session auth')).replace('!await hasEmptyBody(request)','request.body!==null')
+ const recoveryTail=source=>stripRecoverySelector(source).slice(source.indexOf('/** No session auth')).replace('!await hasEmptyBody(request)','request.body!==null')
   // Normalize only the reviewed status/body invariant correction; preserve auth,
   // target checks and all worker execution wiring byte-for-byte.
   .replace('{ok:false,error:config.state','{error:config.state')

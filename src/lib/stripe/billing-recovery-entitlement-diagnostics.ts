@@ -53,3 +53,8 @@ export function createRecoveryEntitlementDiagnostics(env:Record<string,string|un
   sync(stage,work,isBillingFailure){emit(stage,"started");try{const value=work();emit(stage,"succeeded");return value;}catch(error){emit(stage,"failed",classifyRecoveryEntitlementFailure(error,stage,isBillingFailure));throw error;}}
  };
 }
+
+/** Server-only permission for the exact entitlement selector; no worker is started. */
+export function entitlementOnlyDiagnosticEnabled(env:Record<string,string|undefined>):boolean{
+ return env.BILLING_WORK_ENTITLEMENT_ONLY_DIAGNOSTIC_ENABLED==="true"&&createRecoveryEntitlementDiagnostics(env)!==undefined;
+}

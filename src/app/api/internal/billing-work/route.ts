@@ -1,4 +1,4 @@
-import {createRecoveryEntitlementDiagnostics} from "@/lib/stripe/billing-recovery-entitlement-diagnostics";
+import {createRecoveryEntitlementDiagnostics,entitlementOnlyDiagnosticEnabled} from "@/lib/stripe/billing-recovery-entitlement-diagnostics";
 import {invoiceProofProductionOptions} from "@/lib/stripe/finance-invoice-proof-config";
 import {billingWorkConfiguration} from "@/lib/stripe/billing-work-config";
 import {recoverBillingWork} from "@/lib/stripe/billing-work-recovery";
@@ -22,5 +22,5 @@ export async function POST(request:Request){
   const deps=createDisabledBillingWorkerRuntime(createSupabaseAdminClient(),getStripeServerClient(),worker);
   if(!deps)throw Error("BILLING_WORK_DISABLED");
   return consumer=>executeBillingWorker(deps,config.scope,consumer,undefined,worker);
- });
+ },()=>entitlementOnlyDiagnosticEnabled(process.env));
 }

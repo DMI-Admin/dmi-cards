@@ -36,21 +36,30 @@ export type RecoveryExecution=(consumer:WorkConsumer)=>Promise<WorkerResult>;
 /** No session auth, request configuration, IDs, logs, or raw errors. Hashing gives
  * timingSafeEqual fixed-size inputs even for differently sized bearer values.
  */
-export async function recoverBillingWork(request:Request,secret:string|undefined,config:BillingWorkConfiguration,createExecution:()=>RecoveryExecution):Promise<Response>{
+export async function recoverBillingWork(request:Request,secret:string|undefined,config:BillingWorkConfiguration,createExecution:()=>RecoveryExecution,allowEntitlementOnly:()=>boolean=()=>false):Promise<Response>{
  const provided=request.headers.get("authorization")??"";
  const expected=secret?`Bearer ${secret}`:"";
  const matches=timingSafeEqual(createHash("sha256").update(provided).digest(),createHash("sha256").update(expected).digest());
  if(!secret||secret.length<32||!matches)return Response.json({error:"Unauthorized"},{status:401,headers});
  if(request.method!=="POST")return Response.json({error:"Method not allowed"},{status:405,headers});
- if(new URL(request.url).search||!await hasEmptyBody(request))return Response.json({error:"Parameters are not supported"},{status:400,headers});
+ const url=new URL(request.url),parameters=[...url.searchParams.entries()];
+ const entitlementOnly=parameters.length===1&&parameters[0][0]==="consumer"&&parameters[0][1]==="entitlement";
+ if(url.search&&!entitlementOnly)return Response.json({error:"Parameters are not supported"},{status:400,headers});
+ if(!await hasEmptyBody(request))return Response.json({error:"Parameters are not supported"},{status:400,headers});
+ if(url.search){
+  let allowed=false;
+  try{allowed=entitlementOnly&&allowEntitlementOnly();}catch{/* Diagnostic permission fails closed. */}
+  if(!allowed)return Response.json({error:"Parameters are not supported"},{status:400,headers});
+ }
  if(config.state!=="enabled")return Response.json({ok:false,error:config.state==="disabled"?"Billing work recovery is disabled":"Billing work target rejected"},{status:503,headers});
  let execute:RecoveryExecution;try{execute=createExecution();}catch{return Response.json({ok:false,error:"Billing work recovery unavailable"},{status:503,headers});}
  // Exactly one claim/execution per consumer, awaited together. No polling loop,
  // background continuation, request-triggered worker, or inline fallback.
- const settled=await Promise.allSettled((["finance","entitlement"] as const).map(consumer=>Promise.resolve().then(()=>execute(consumer))));
+ const consumers:readonly WorkConsumer[]=entitlementOnly?["entitlement"]:["finance","entitlement"];
+ const settled=await Promise.allSettled(consumers.map(consumer=>Promise.resolve().then(()=>execute(consumer))));
  const counts:Record<typeof states[number],number>={disabled:0,idle:0,bound:0,completed:0,retry_wait:0,dependency_wait:0,needs_attention:0,stopped:0};
  for(const result of settled){if(result.status==="fulfilled"&&states.includes(result.value.state))counts[result.value.state]++;else counts.stopped++;}
  // Derive body and HTTP status from one decision; incomplete work is never success.
  const status=["retry_wait","dependency_wait","needs_attention","stopped","disabled"].some(state=>counts[state as keyof typeof counts]>0)?503:200;
- return Response.json({ok:status===200,executions:2,counts},{status,headers});
+ return Response.json({ok:status===200,executions:consumers.length,counts},{status,headers});
 }
