@@ -75,12 +75,13 @@ export function guardWorkerDatabase(db:SupabaseClient,w:WorkerItem,c:WorkerConte
 // overriding network retries and bounding each read by the invocation's headroom.
 export function guardWorkerStripe(stripe:Stripe,c:WorkerContext):Stripe{
  // Reviewed Stripe 22.5.0 read signatures: retrieve(id,params,options),
- // list(params,options), and balance.retrieve(params,options).
+ // list(params,options), balance.retrieve(params,options), and
+ // invoices.listLineItems(id,params,options) only.
  const resources=new Set(['accounts','balance','customers','subscriptions','invoices','taxRates','invoicePayments','charges','refunds']);
  function resource(target:object,path=''):object{return new Proxy(target,{get(obj,key){
   const value=Reflect.get(obj,key);if(value&&typeof value==='object')return resource(value,path?path+'.'+String(key):String(key));
   if(typeof value!=='function')return value;
-  if(!resources.has(path)||(key!=='retrieve'&&key!=='list')||(path==='balance'&&key!=='retrieve'))return ()=>{throw new WorkerFailure('invalid_evidence',true);};
+  if(!resources.has(path)||(key!=='retrieve'&&key!=='list'&&!(path==='invoices'&&key==='listLineItems'))||(path==='balance'&&key!=='retrieve'))return ()=>{throw new WorkerFailure('invalid_evidence',true);};
   return (...original:unknown[])=>c.bounded(()=>{
    c.check();const args=[...original],paramsIndex=key==='list'||path==='balance'?0:1,optionsIndex=paramsIndex+1;
    const options=args[optionsIndex];

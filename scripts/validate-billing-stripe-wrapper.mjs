@@ -24,4 +24,26 @@ await test('same thrown provider error propagates unchanged',async()=>{const f=f
 await test('headroom timeout value preserved',async()=>{const f=fixture(),guarded=runtime.guardWorkerStripe(f.stripe,{...context,remaining:()=>4321});await guarded.customers.retrieve('cus_synthetic');assert.equal(f.calls[0].options.settings.timeout,4321);});
 await test('unreviewed resources and mutations fail before dispatch',()=>{const f=fixture();assert.throws(()=>f.guarded.customers.update('cus_synthetic',{}));assert.throws(()=>f.guarded.paymentIntents.retrieve('pi_synthetic'));assert.equal(f.calls.length,0);});
 await test('normal SDK use remains untouched',async()=>{const f=fixture();await f.stripe.customers.retrieve('cus_synthetic');assert.equal(f.calls[0].path,'/v1/customers/cus_synthetic');assert.equal(f.calls[0].options.settings.timeout,undefined);assertRecoveryDiagnosticFiles();});
+await test('invoice line retrieval has exact ID params options positions',async()=>{const f=fixture(),params={limit:100,starting_after:'il_synthetic'};let seen;f.stripe.invoices.listLineItems=async(...args)=>{seen=args;return {data:[],has_more:false};};await f.guarded.invoices.listLineItems('in_synthetic',params);assert.equal(seen.length,3);assert.equal(seen[0],'in_synthetic');assert.equal(seen[1],params);assert.deepEqual(params,{limit:100,starting_after:'il_synthetic'});assert.deepEqual(JSON.parse(JSON.stringify(seen[2])),{timeout:10000,maxNetworkRetries:0});});
+await test('installed line SDK serializes only original pagination params',async()=>{const f=fixture();await f.guarded.invoices.listLineItems('in_synthetic',{limit:100,starting_after:'il_synthetic'});const url=new URL(f.calls[0].path,'https://synthetic.invalid');assert.equal(url.pathname,'/v1/invoices/in_synthetic/lines');assert.equal(url.searchParams.get('limit'),'100');assert.equal(url.searchParams.get('starting_after'),'il_synthetic');assert.equal(url.searchParams.has('timeout'),false);assert.equal(url.searchParams.has('maxNetworkRetries'),false);assert.equal(f.calls[0].options.settings.timeout,10000);assert.equal(f.calls[0].options.settings.maxNetworkRetries,0);});
+await test('same method on unrelated resources and unreviewed invoice methods rejected',()=>{const f=fixture();let dispatched=0;f.stripe.customers.listLineItems=()=>{dispatched++;};f.stripe.invoices.unreviewedRead=()=>{dispatched++;};assert.throws(()=>f.guarded.customers.listLineItems('cus_synthetic'));assert.throws(()=>f.guarded.invoices.unreviewedRead('in_synthetic'));assert.equal(dispatched,0);assert.equal(f.calls.length,0);});
+const adapter=load('src/lib/stripe/finance-stripe-adapter.ts',{'./finance-contract':{FINANCE_API_VERSION:'2023-10-16',record:x=>x,objectId:x=>typeof x==='string'?x:x?.id??''}});
+function invoiceFixture(alwaysMore=false){const f=fixture();let pages=0;
+ f.stripe._requestSender._request=(method,host,path,body,auth,options,usage,callback)=>{
+  f.calls.push({method,path,body,options});const url=new URL(path,'https://synthetic.invalid');
+  assert.equal(options.headers['Stripe-Version'],'2023-10-16');
+  assert.equal(options.settings.timeout,10000);assert.equal(options.settings.maxNetworkRetries,0);
+  assert.equal(url.searchParams.has('timeout'),false);assert.equal(url.searchParams.has('maxNetworkRetries'),false);
+  let response;
+  if(url.pathname==='/v1/invoices/in_synthetic')response={id:'in_synthetic',currency:'gbp',livemode:false,customer:'cus_synthetic',parent:null,total_taxes:[]};
+  else if(url.pathname==='/v1/invoices/in_synthetic/lines'){
+   pages++;assert.equal(url.searchParams.get('limit'),'100');assert.equal(url.searchParams.get('starting_after'),pages===1?null:'il_page1');
+   response={data:[{id:'il_page'+pages,currency:'gbp',invoice:'in_synthetic',livemode:false}],has_more:alwaysMore||pages===1};
+  }else if(url.pathname==='/v1/customers/cus_synthetic')response={id:'cus_synthetic',livemode:false,metadata:{}};
+  else if(url.pathname==='/v1/invoice_payments')response={data:[],has_more:false};
+  else assert.fail('UNEXPECTED_MOCK_REQUEST');
+  callback(null,response);
+ };return {...f,pages:()=>pages,source:adapter.stripeFinanceSource(f.guarded)};}
+await test('actual Finance invoice graph passes guarded installed SDK with two pages',async()=>{const f=invoiceFixture();const graph=await f.source.graph({kind:'invoice',id:'in_synthetic'});assert.equal(f.pages(),2);assert.equal(f.calls.length,5);assert.equal(graph.complete,true);assert.equal(graph.invoices.length,1);assert.equal(graph.invoices[0].lines.data.length,2);assert.equal(graph.invoices[0].lines.has_more,false);assert.equal(graph.customers.length,1);});
+await test('Finance pagination still stops after two pages and fails closed',async()=>{const f=invoiceFixture(true);await assert.rejects(f.source.graph({kind:'invoice',id:'in_synthetic'}),e=>e.message==='FINANCE_PAGINATION_BOUND');assert.equal(f.pages(),2);assert.equal(f.calls.length,3);});
 console.log(`PASS Stripe recovery wrapper: ${n}/${n}`);
