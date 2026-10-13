@@ -1,3 +1,4 @@
+import {stripAutomaticWebhook} from './billing-work-auto-contract.mjs';
 import {assertUnchangedExceptRecoveryDiagnostics,stripRecoveryDiagnosticRoute} from "./billing-recovery-diagnostic-contract.mjs";
 // Strict offline mocks only: no provider, database, environment-file or hosted access.
 import assert from "node:assert/strict";
@@ -33,9 +34,9 @@ function route(env,options={}){
  const deps={
   "@/lib/stripe/finance-invoice-proof-config":{invoiceProofProductionOptions:()=>{calls.push("proof_options");return config.invoiceProofProductionOptions();}},
   "@/lib/stripe/billing-work-config":{billingWorkConfiguration:()=>{calls.push("handoff_config");return options.handoff?{state:"enabled"}:{state:"disabled"};}},
-  "@/lib/stripe/billing-work-handoff":{handoffBillingWork:async()=>{calls.push("handoff");return {state:"unfinished",applicable:2,terminal:0};}},
+  '@/lib/stripe/billing-work-auto-kick':{registerAutomaticBillingKick:()=>{}},"@/lib/stripe/billing-work-handoff":{handoffBillingWork:async()=>{calls.push("handoff");return {state:"unfinished",applicable:2,terminal:0};}},
   "@/lib/supabase-admin":{createSupabaseAdminClient:()=>{throw Error("UNEXPECTED_DATABASE");}},
-  "next/server":{NextResponse:{json:(value,init)=>new Response(JSON.stringify(value),{status:init?.status??200})}},
+  "next/server":{after:()=>{},NextResponse:{json:(value,init)=>new Response(JSON.stringify(value),{status:init?.status??200})}},
   "@/lib/stripe/config":{constructStripeWebhookEvent:()=>{calls.push("signature");if(options.signatureError)throw Error("Invalid signature");return {id:"evt_synthetic",type:"invoice.paid"};}},
   "@/lib/stripe/webhook-consumers":{handleStripeWebhookConsumers:async(...args)=>{calls.push("consumer");consumerArgs.push(args);if(options.consumerError)throw Error("FINANCE_PROOF_AUTHORITY");return {handled:true};}},
   "@/lib/observability/logger":{logInfo:()=>calls.push("info"),logError:()=>calls.push("error"),safeErrorMetadata:()=>({})},
@@ -57,7 +58,7 @@ await test("wake cannot implicitly enable consumption or production",()=>{
 });
 await test("helper has no I/O, mutation, logging or browser inputs",()=>assert.doesNotMatch(fs.readFileSync(configFile,"utf8"),/console\.|logInfo|logError|fetch\(|\.rpc\(|\.insert\(|\.update\(|\.delete\(|Request|window|document/));
 await test("normalize bridge away and entire route matches approved OFF baseline",()=>{
- const source=fs.readFileSync(routeFile,"utf8").replace('import {invoiceProofProductionOptions} from "@/lib/stripe/finance-invoice-proof-config";\n','').replace('    const invoiceProofOptions = invoiceProofProductionOptions();\n    const result = invoiceProofOptions\n      ? await handleStripeWebhookConsumers(event, requestId, invocationStartedAt, invoiceProofOptions)\n      : await handleStripeWebhookConsumers(event, requestId, invocationStartedAt);','    const result = await handleStripeWebhookConsumers(event, requestId, invocationStartedAt);');
+ const source=stripAutomaticWebhook(fs.readFileSync(routeFile,"utf8")).replace('import {invoiceProofProductionOptions} from "@/lib/stripe/finance-invoice-proof-config";\n','').replace('    const invoiceProofOptions = invoiceProofProductionOptions();\n    const result = invoiceProofOptions\n      ? await handleStripeWebhookConsumers(event, requestId, invocationStartedAt, invoiceProofOptions)\n      : await handleStripeWebhookConsumers(event, requestId, invocationStartedAt);','    const result = await handleStripeWebhookConsumers(event, requestId, invocationStartedAt);');
  assert.equal(source,execFileSync("git",["show","bae038d3058692f845825ec7ece10b003612e853:"+routeFile],{encoding:"utf8"}));
 });
 await test("recovery configuration, protocol, foreign authority and migrations unchanged",()=>{

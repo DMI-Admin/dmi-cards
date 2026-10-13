@@ -1,3 +1,4 @@
+import {assertAutomaticWorkerFiles,automaticWorkerReviewedPaths} from './billing-work-auto-contract.mjs';
 // Exact reviewed recovery diagnostic changes only. Any other runtime drift fails.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -17,10 +18,12 @@ export function assertRecoveryDiagnosticFiles(){
 }
 export function recoveryDiagnosticGitDiff(args,options){
  assertRecoveryDiagnosticFiles();
+ assertAutomaticWorkerFiles();
  const command=args.includes('--')?args:[...args,'--'];
- return execFileSync('git',[...command,...Object.keys(reviewed).map(file=>':(exclude)'+file)],options);
+ return execFileSync('git',[...command,...[...Object.keys(reviewed),...automaticWorkerReviewedPaths].map(file=>':(exclude)'+file)],options);
 }
 export function assertUnchangedExceptRecoveryDiagnostics(file){
+ if(automaticWorkerReviewedPaths.includes(file)){assertAutomaticWorkerFiles();return;}
  if(Object.hasOwn(reviewed,file)){assertRecoveryDiagnosticFiles();return;}
  assert.equal(fs.readFileSync(file,'utf8'),execFileSync('git',['show','HEAD:'+file],{encoding:'utf8'}));
 }

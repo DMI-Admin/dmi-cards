@@ -46,12 +46,12 @@ function setup(){
  },env);
  let signatures=0;
  const route=load('src/app/api/stripe/webhook/route.ts',{
-  'next/server':{NextResponse:{json:(body,options)=>new Response(JSON.stringify(body),{status:options?.status||200})}},
+  'next/server':{after:()=>{},NextResponse:{json:(body,options)=>new Response(JSON.stringify(body),{status:options?.status||200})}},
   '@/lib/stripe/config':{constructStripeWebhookEvent:({payload,signature})=>{signatures++;return sdk.webhooks.constructEvent(payload,signature,signingSecret);}},
   '@/lib/stripe/webhook-consumers':orchestrator,
   '@/lib/stripe/finance-invoice-proof-config':{invoiceProofProductionOptions:()=>undefined},
   '@/lib/stripe/billing-work-config':{billingWorkConfiguration:()=>({state:'disabled'})},
-  '@/lib/stripe/billing-work-handoff':{handoffBillingWork:()=>{throw Error('DISABLED_HANDOFF_MUST_NOT_RUN');}},
+  '@/lib/stripe/billing-work-auto-kick':{registerAutomaticBillingKick:()=>{}},'@/lib/stripe/billing-work-handoff':{handoffBillingWork:()=>{throw Error('DISABLED_HANDOFF_MUST_NOT_RUN');}},
   '@/lib/supabase-admin':{createSupabaseAdminClient:()=>{throw Error('DISABLED_HANDOFF_MUST_NOT_CONSTRUCT');}},
   '@/lib/observability/logger':logger,
   '@/lib/observability/request':{requestIdFromRequest:()=> 'offline-request',withRequestIdHeader:r=>r},

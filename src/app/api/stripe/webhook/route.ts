@@ -1,3 +1,5 @@
+import {after} from "next/server";
+import {registerAutomaticBillingKick} from "@/lib/stripe/billing-work-auto-kick";
 import {invoiceProofProductionOptions} from "@/lib/stripe/finance-invoice-proof-config";
 import {billingWorkConfiguration} from "@/lib/stripe/billing-work-config";
 import type {VerifiedWorkEvent} from "@/lib/stripe/billing-work-evidence";
@@ -11,6 +13,7 @@ import { requestIdFromRequest, withRequestIdHeader } from "@/lib/observability/r
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const maxDuration = 90;
 
 export async function POST(request: Request) {
   const invocationStartedAt = performance.now();
@@ -23,7 +26,9 @@ export async function POST(request: Request) {
     const event = constructStripeWebhookEvent({ payload, signature });
     const handoffConfig = billingWorkConfiguration("handoff");
     if (handoffConfig.state !== "disabled") {
-      const handoff = await handoffBillingWork(event as unknown as VerifiedWorkEvent, handoffConfig, createSupabaseAdminClient);
+      let confirmedAdmissions = 0;
+      const handoff = await handoffBillingWork(event as unknown as VerifiedWorkEvent, handoffConfig, createSupabaseAdminClient, count => { confirmedAdmissions = count; });
+      registerAutomaticBillingKick(after, confirmedAdmissions, invocationStartedAt);
       // Never expose event/partition identities or fall back to inline processing.
       return withRequestIdHeader(NextResponse.json(
         { received: handoff.state === "completed", applicable: handoff.applicable, terminal: handoff.terminal },

@@ -22,7 +22,7 @@ async function bounded<T>(run:(signal:AbortSignal)=>PromiseLike<T>):Promise<T>{l
 /** Caller MUST verify the Stripe signature first. No worker/provider/partition
  * inference here: unbound work is bound later by the SQL-verified routing worker.
  */
-export async function handoffBillingWork(event:VerifiedWorkEvent,config:BillingWorkConfiguration,storage:()=>HandoffStorage):Promise<HandoffResult>{
+export async function handoffBillingWork(event:VerifiedWorkEvent,config:BillingWorkConfiguration,storage:()=>HandoffStorage,onAdmission?:(count:number)=>void):Promise<HandoffResult>{
  if(config.state==="disabled")return {state:"disabled",applicable:0,terminal:0};
  if(config.state!=="enabled"||event.livemode!==false||(event.account!==undefined&&event.account!==config.scope.split(":")[0]))return {state:"rejected",applicable:0,terminal:0};
  const consumers=applicableBillingConsumers(event.type);
@@ -30,13 +30,16 @@ export async function handoffBillingWork(event:VerifiedWorkEvent,config:BillingW
  if(consumers.some(consumer=>prepareBillingWorkEvidence(config.scope,event,consumer).state!=="prepared"))return {state:"rejected",applicable:consumers.length,terminal:0};
  if(!consumers.length)return {state:"completed",applicable:0,terminal:0};
  let db:HandoffStorage;try{db=storage();}catch{return {state:"rejected",applicable:consumers.length,terminal:0};}
+ let confirmedAdmissions=0;
  const results=await Promise.allSettled(consumers.map(async consumer=>{
   const admitted=await bounded(signal=>admitBillingConsumerWork({rpc:(name,args)=>cancellableCall(db,name,args,signal)},config.scope,event,consumer,{approvedScope:config.scope,approval:"reviewed_staging_work_admission_v2"}));
   if(admitted.state!=="admitted")return false;
+  confirmedAdmissions++;
   const {data,error}=await bounded(signal=>cancellableCall(db,"billing_consumer_worker_receipt",{p_scope:config.scope,p_event:event.id,p_consumer:consumer},signal));
   if(error||!data||typeof data!=="object"||!("state" in data)||!("lease_active" in data)||data.lease_active!==false)return false;
   return data.state==="processed"||(consumer==="finance"&&data.state==="ignored");
  }));
+ try{onAdmission?.(confirmedAdmissions);}catch{/* Best-effort coordination only. */}
  const terminal=results.filter(r=>r.status==="fulfilled"&&r.value===true).length;
  return {state:terminal===consumers.length?"completed":"unfinished",applicable:consumers.length,terminal};
 }
