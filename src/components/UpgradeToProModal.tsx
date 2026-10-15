@@ -142,6 +142,16 @@ export default function UpgradeToProModal({
         throw new Error("Please sign in again before upgrading to Pro.");
       }
 
+      // This authenticated read makes no Stripe Session and exposes no key or
+      // client secret. A failed availability check retains the hosted fallback.
+      const availability = await fetch("/api/v1/billing/checkout/embedded", {
+        cache: "no-store", headers: { Authorization: `Bearer ${session.access_token}` },
+      }).then(async response => response.ok ? response.json() : null).catch(() => null);
+      if (availability?.data?.available === true) {
+        window.location.assign(`/client/billing/pay?interval=${interval}`);
+        return;
+      }
+
       const response = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: {

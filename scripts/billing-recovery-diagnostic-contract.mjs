@@ -1,4 +1,5 @@
 import {assertAutomaticWorkerFiles,automaticWorkerReviewedPaths} from './billing-work-auto-contract.mjs';
+import {assertEmbeddedCheckoutFiles,embeddedCheckoutReviewedPaths} from './billing-embedded-checkout-contract.mjs';
 // Exact reviewed recovery diagnostic changes only. Any other runtime drift fails.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -19,19 +20,10 @@ export function assertRecoveryDiagnosticFiles(){
 export function recoveryDiagnosticGitDiff(args,options){
  assertRecoveryDiagnosticFiles();
  assertAutomaticWorkerFiles();
- // Checkout UX may change only the reviewed return URL. Authentication,
- // cancellation and all billing creation/authority code remain byte-for-byte.
- const activationReturns={
-  'src/app/api/stripe/checkout/route.ts':'/client/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}',
-  'src/app/api/v1/billing/checkout/route.ts':'/client/billing?checkout=success',
- };
- for(const [file,previous] of Object.entries(activationReturns)){
-  const baseline=execFileSync('git',['show','HEAD:'+file],{encoding:'utf8'});
-  assert.equal(fs.readFileSync(file,'utf8'),baseline.replace('successUrl: `${origin}'+previous+'`',
-   'successUrl: `${origin}/client/billing/activating?session_id={CHECKOUT_SESSION_ID}`'),'Unexpected checkout change: '+file);
- }
+ // Narrow hash-pinned checkout presentation changes, not a general exemption.
+ assertEmbeddedCheckoutFiles(fs.readFileSync);
  const command=args.includes('--')?args:[...args,'--'];
- return execFileSync('git',[...command,...[...Object.keys(reviewed),...automaticWorkerReviewedPaths,...Object.keys(activationReturns)].map(file=>':(exclude)'+file)],options);
+ return execFileSync('git',[...command,...[...Object.keys(reviewed),...automaticWorkerReviewedPaths,...embeddedCheckoutReviewedPaths].map(file=>':(exclude)'+file)],options);
 }
 export function assertUnchangedExceptRecoveryDiagnostics(file){
  if(automaticWorkerReviewedPaths.includes(file)){assertAutomaticWorkerFiles();return;}

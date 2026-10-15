@@ -66,7 +66,8 @@ export async function POST(request: Request) {
 
     return apiSuccess({
       checkoutSessionId: session.id,
-      url: session.url,
+      url: session.ui_mode === "embedded_page"
+        ? `${origin}/client/billing/pay?session_id=${encodeURIComponent(session.id)}` : session.url,
       plan,
       billing_interval: billingInterval,
     });

@@ -5,7 +5,44 @@ import { getStripeServerClient } from "@/lib/stripe/config";
 import type { CheckoutBillingPlan, StripeBillingInterval } from "@/lib/stripe/billing-state";
 import { approvedPrices, billingRuntime, BillingFailure, command, objectId, subscriptionsForCustomer, verifiedCustomerForUser, verifyCustomer, withAccount, type BillingAccount, type BillingRuntime } from "@/lib/stripe/reliability";
 
-type CheckoutSessionInput = { userId: string; profileId?: string | null; email: string | null; plan: CheckoutBillingPlan; billingInterval: StripeBillingInterval; priceId: string; successUrl: string; cancelUrl: string };
+type CheckoutSessionInput = { userId: string; profileId?: string | null; email: string | null; plan: CheckoutBillingPlan; billingInterval: StripeBillingInterval; priceId: string } & (
+  | { presentation?: "hosted"; successUrl: string; cancelUrl: string }
+  | { presentation: "embedded"; returnUrl: string }
+);
+
+function presentation(mode: Stripe.Checkout.Session["ui_mode"] | undefined) {
+  if (mode == null || mode === "hosted_page") return "hosted";
+  if (mode === "embedded_page") return "embedded";
+  throw new BillingFailure("CHECKOUT_PRESENTATION_UNAVAILABLE", 409);
+}
+
+function assertCheckoutOwner(session: Stripe.Checkout.Session, account: Pick<BillingAccount, "stripe_customer_id" | "checkout_attempt" | "checkout_parameters">, userId: string, live: boolean) {
+  if (objectId(session.customer) !== account.stripe_customer_id || session.client_reference_id !== userId ||
+      session.mode !== "subscription" || session.metadata?.dmi_app !== DMI_STRIPE_APP_NAMESPACE ||
+      session.metadata?.dmi_user_id !== userId || session.metadata?.dmi_checkout_attempt !== account.checkout_attempt ||
+      session.livemode !== live || presentation(session.ui_mode) !== presentation(account.checkout_parameters?.ui_mode)) {
+    throw new BillingFailure("IDENTITY_CONFLICT", 409);
+  }
+}
+
+// Read-only resumption of an already recorded attempt. Never creates around an
+// arbitrary browser-supplied Session or acquires/mutates billing authority.
+export async function readOwnedCheckoutSession(userId: string, sessionId: string, runtime?: BillingRuntime) {
+  if (!/^cs_(?:test_|live_)?[A-Za-z0-9]{1,240}$/.test(sessionId)) throw new BillingFailure("INVALID_CHECKOUT", 409);
+  const r = runtime || await billingRuntime();
+  const { data, error } = await r.db.from("billing_accounts")
+    .select("user_id,stripe_customer_id,verified_at,checkout_attempt,checkout_session_id,checkout_parameters")
+    .eq("stripe_scope", r.scope).eq("user_id", userId).maybeSingle();
+  if (error) throw new BillingFailure("BILLING_STORE_UNAVAILABLE");
+  if (!data?.verified_at || !data.checkout_attempt || data.checkout_session_id !== sessionId) throw new BillingFailure("IDENTITY_CONFLICT", 409);
+  const price = data.checkout_parameters?.line_items?.[0]?.price;
+  if (!(await approvedPrices(r)).some(p => p.stripe_price_id === price && p.entitlement_enabled && p.checkout_enabled)) {
+    throw new BillingFailure("UNKNOWN_CHECKOUT_PRICE", 409);
+  }
+  const session = await r.stripe.checkout.sessions.retrieve(sessionId, undefined, { timeout: 8000, maxNetworkRetries: 0 });
+  assertCheckoutOwner(session, data, userId, r.live);
+  return session;
+}
 const replayWindow = 20 * 60 * 60 * 1000;
 function replayAllowed(at: string | null) { return Boolean(at && Date.now() - Date.parse(at) < replayWindow); }
 async function assertIndividual(r: BillingRuntime, user: string) {
@@ -65,9 +102,9 @@ export async function createStripeCheckoutSession(input: CheckoutSessionInput, r
         }
       }
       if (session) {
-        if ((typeof session.customer === "string" ? session.customer : session.customer?.id) !== customer || session.client_reference_id !== input.userId || session.metadata?.dmi_checkout_attempt !== account.checkout_attempt || session.livemode !== r.live) throw new BillingFailure("IDENTITY_CONFLICT", 409);
+        assertCheckoutOwner(session, account, input.userId, r.live);
         await command(r, "checkout_record", input.userId, account.lease_token, { attempt: account.checkout_attempt, session: session.id });
-        if (session.status === "open" && session.url) {
+        if (session.status === "open" && (presentation(session.ui_mode) === "embedded" ? session.client_secret : session.url)) {
           if (current && objectId(session.subscription) !== current.id) throw new BillingFailure("BILLING_RECOVERY_REQUIRED", 409);
           if (account.checkout_parameters?.line_items?.[0]?.price !== input.priceId) throw new BillingFailure("CHECKOUT_ALREADY_OPEN", 409);
           return session;
@@ -97,11 +134,15 @@ export async function createStripeCheckoutSession(input: CheckoutSessionInput, r
       mode: "subscription", customer, client_reference_id: input.userId, line_items: [{ price: input.priceId, quantity: 1 }],
       metadata: { dmi_app: DMI_STRIPE_APP_NAMESPACE, dmi_user_id: input.userId, dmi_plan: "pro", billing_interval: input.billingInterval },
       subscription_data: { metadata: { dmi_app: DMI_STRIPE_APP_NAMESPACE, dmi_user_id: input.userId, dmi_profile_id: input.userId, dmi_plan: "pro", billing_interval: input.billingInterval } },
-      allow_promotion_codes: true, success_url: input.successUrl, cancel_url: input.cancelUrl,
+      allow_promotion_codes: true,
+      ...(input.presentation === "embedded"
+        ? { ui_mode: "embedded_page" as const, return_url: input.returnUrl, redirect_on_completion: "if_required" as const, payment_method_types: ["card" as const] }
+        : { success_url: input.successUrl, cancel_url: input.cancelUrl }),
     });
     if (!account.checkout_attempt || !account.checkout_parameters || !replayAllowed(account.checkout_attempt_at)) throw new BillingFailure("CHECKOUT_OUTCOME_UNKNOWN", 409);
     await command(r, "touch", input.userId, account.lease_token);
     const session = await r.stripe.checkout.sessions.create({ ...account.checkout_parameters, metadata: { ...account.checkout_parameters.metadata, dmi_checkout_attempt: account.checkout_attempt } }, { idempotencyKey: `dmi:checkout:${r.scope}:${account.checkout_attempt}` });
+    assertCheckoutOwner(session, account, input.userId, r.live);
     await command(r, "checkout_record", input.userId, account.lease_token, { attempt: account.checkout_attempt, session: session.id });
     return session;
   });

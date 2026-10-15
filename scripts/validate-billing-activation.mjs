@@ -7,6 +7,7 @@ import ts from 'typescript';
 import * as crypto from 'node:crypto';
 import * as childProcess from 'node:child_process';
 import * as automaticContract from './billing-work-auto-contract.mjs';
+import * as embeddedContract from './billing-embedded-checkout-contract.mjs';
 
 function load(path, deps, globals = {}) {
   const exports = {};
@@ -234,11 +235,12 @@ await test('cancelled or missing/duplicate session query never enters activation
     assert.match(source, /cancelUrl: `\$\{origin\}\/client\/billing\?checkout=cancelled`/);
   }
 });
-await test('regression diff exception permits only exact success URLs; unrelated checkout edits still reject', () => {
+await test('regression diff exception permits only exact reviewed checkout presentation; unrelated edits still reject', () => {
   const checkoutPath = 'src/app/api/stripe/checkout/route.ts';
   for (const tamper of [false, true]) {
     const contract = load('scripts/billing-recovery-diagnostic-contract.mjs', {
       './billing-work-auto-contract.mjs': automaticContract,
+      './billing-embedded-checkout-contract.mjs': embeddedContract,
       'node:assert/strict': { default: assert }, 'node:crypto': crypto, 'node:child_process': childProcess,
       'node:fs': { default: { ...fs, readFileSync(file, encoding) {
         const source = fs.readFileSync(file, encoding);

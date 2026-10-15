@@ -62,12 +62,16 @@ export async function POST(request: Request) {
       cancelUrl: `${origin}/client/billing?checkout=cancelled`,
     });
 
-    if (!session.url) {
+    // A rollback must resume an existing embedded attempt, never create a
+    // replacement hosted Session or expose its client secret through this API.
+    const checkoutUrl = session.ui_mode === "embedded_page"
+      ? `${origin}/client/billing/pay?session_id=${encodeURIComponent(session.id)}` : session.url;
+    if (!checkoutUrl) {
       throw new Error("Stripe checkout session did not return a URL.");
     }
 
     return NextResponse.json({
-      url: session.url,
+      url: checkoutUrl,
     });
   } catch (error) {
     if (
