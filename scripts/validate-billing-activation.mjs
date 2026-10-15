@@ -8,12 +8,13 @@ import * as crypto from 'node:crypto';
 import * as childProcess from 'node:child_process';
 import * as automaticContract from './billing-work-auto-contract.mjs';
 import * as embeddedContract from './billing-embedded-checkout-contract.mjs';
+import * as latencyContract from './billing-latency-contract.mjs';
 
 function load(path, deps, globals = {}) {
   const exports = {};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(path, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText, { exports, URL, URLSearchParams, AbortController, setTimeout, clearTimeout,
+  }).outputText, { exports, URL, URLSearchParams, AbortController, setTimeout, clearTimeout, performance,
     require(name) { assert.ok(name in deps, `Unexpected dependency: ${name}`); return deps[name]; }, ...globals });
   return exports;
 }
@@ -92,6 +93,7 @@ await test('Pro needs existing authority plus verified current-scope mirror and 
 
 let authenticated = true, authority = true, acknowledgements = 0, stateReads = 0;
 const route = load('src/app/api/v1/billing/activation/route.ts', {
+  '@/lib/stripe/billing-latency-diagnostics': { createBillingLatencyObserver: () => undefined },
   '@/lib/stripe/client-identity': { requireBillingIdentity: async () => { if (!authenticated) throw new ApiRouteError(401, 'UNAUTHENTICATED', 'Sign in'); return { userId: 'owner' }; } },
   '@/lib/api/client-context': { requireApiClient: async () => ({ userId: 'owner', plan: authority ? 'pro' : 'free', planSource: authority ? 'stripe_billing' : 'temporary_free_cap' }) },
   '@/lib/api/responses': { ApiRouteError, apiSuccess: (data, init) => Response.json({ data }, init), apiError: (status, code, message) => Response.json({ error: { code, message } }, { status }) },
@@ -139,10 +141,10 @@ function polling(overrides = {}) {
     onState: state => states.push(state), onReady: () => redirects++, ...overrides });
   return { timer, states, stop, get redirects() { return redirects; }, get reads() { return reads; } };
 }
-await test('already active -> success -> one-second redirect, no later polls', async () => {
+await test('already active -> success -> 250ms redirect, no later polls', async () => {
   const f = polling({ readReady: async () => true }); await flush();
   assert.deepEqual(f.states, ['checking', 'activating', 'ready']); assert.equal(f.redirects, 0);
-  await f.timer.advance(999); assert.equal(f.redirects, 0); await f.timer.advance(1); assert.equal(f.redirects, 1); assert.equal(f.timer.size, 0);
+  await f.timer.advance(249); assert.equal(f.redirects, 0); await f.timer.advance(1); assert.equal(f.redirects, 1); assert.equal(f.timer.size, 0);
 });
 await test('pending -> later verified Pro -> success', async () => {
   let reads = 0; const f = polling({ readReady: async () => ++reads === 3 }); await flush();
@@ -241,6 +243,7 @@ await test('regression diff exception permits only exact reviewed checkout prese
     const contract = load('scripts/billing-recovery-diagnostic-contract.mjs', {
       './billing-work-auto-contract.mjs': automaticContract,
       './billing-embedded-checkout-contract.mjs': embeddedContract,
+      './billing-latency-contract.mjs': latencyContract,
       'node:assert/strict': { default: assert }, 'node:crypto': crypto, 'node:child_process': childProcess,
       'node:fs': { default: { ...fs, readFileSync(file, encoding) {
         const source = fs.readFileSync(file, encoding);

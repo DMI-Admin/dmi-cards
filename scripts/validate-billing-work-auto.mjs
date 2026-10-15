@@ -8,7 +8,7 @@ import * as crypto from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {assertAutomaticWorkerFiles} from './billing-work-auto-contract.mjs';
 const root='src/lib/stripe/';
-function load(file,deps={},globals={}){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,Error,Promise,Buffer,Date,Request,Response,URL,AbortController,performance,setTimeout,clearTimeout,...globals,require:name=>{if(name==='server-only')return {};assert.ok(Object.hasOwn(deps,name),'UNEXPECTED_AUTO_IMPORT '+name);return deps[name];}});return exports;}
+function load(file,deps={},globals={}){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,Error,Promise,Buffer,Date,Request,Response,URL,AbortController,performance,setTimeout,clearTimeout,...globals,require:name=>{if(name==='server-only')return {};if(name==='./billing-latency-diagnostics'&&!Object.hasOwn(deps,name))return {createBillingLatencyObserver:()=>undefined};assert.ok(Object.hasOwn(deps,name),'UNEXPECTED_AUTO_IMPORT '+name);return deps[name];}});return exports;}
 const base=load(root+'billing-work-config.ts');
 const config=load(root+'billing-work-auto-config.ts',{'./billing-work-config':base});
 const runner=load(root+'billing-work-auto-runner.ts',{'./billing-work-auto-config':config,'./billing-work-worker':{WORKER_TOTAL_MS:75000,executeBillingWorker:()=>assert.fail('INJECT_OFFLINE_EXECUTION')}});

@@ -28,7 +28,7 @@ export function startActivationPolling(options: {
         if (stopped) return;
         cancel(deadline);
         emit("ready");
-        next = schedule(() => { if (!stopped) options.onReady(); stop(); }, 1000);
+        next = schedule(() => { if (!stopped) options.onReady(); stop(); }, 250);
         return;
       }
     } catch { /* Temporary read failure stays pending until the bounded deadline. */ }

@@ -1,5 +1,6 @@
 import {assertAutomaticWorkerFiles,automaticWorkerReviewedPaths} from './billing-work-auto-contract.mjs';
 import {assertEmbeddedCheckoutFiles,embeddedCheckoutReviewedPaths} from './billing-embedded-checkout-contract.mjs';
+import {assertBillingLatencyFiles,billingLatencyReviewedPaths} from './billing-latency-contract.mjs';
 // Exact reviewed recovery diagnostic changes only. Any other runtime drift fails.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -22,8 +23,9 @@ export function recoveryDiagnosticGitDiff(args,options){
  assertAutomaticWorkerFiles();
  // Narrow hash-pinned checkout presentation changes, not a general exemption.
  assertEmbeddedCheckoutFiles(fs.readFileSync);
+ assertBillingLatencyFiles(fs.readFileSync);
  const command=args.includes('--')?args:[...args,'--'];
- return execFileSync('git',[...command,...[...Object.keys(reviewed),...automaticWorkerReviewedPaths,...embeddedCheckoutReviewedPaths].map(file=>':(exclude)'+file)],options);
+ return execFileSync('git',[...command,...[...Object.keys(reviewed),...automaticWorkerReviewedPaths,...embeddedCheckoutReviewedPaths,...billingLatencyReviewedPaths].map(file=>':(exclude)'+file)],options);
 }
 export function assertUnchangedExceptRecoveryDiagnostics(file){
  if(automaticWorkerReviewedPaths.includes(file)){assertAutomaticWorkerFiles();return;}

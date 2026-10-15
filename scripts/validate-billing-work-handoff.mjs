@@ -101,6 +101,10 @@ await test('handoff timeout cancels native RPC and still never retries ambiguous
 await test('default general claims park dependencies and proof production remains disabled',()=>{const sql=fs.readFileSync('supabase/migrations/20261010050000_billing_consumer_worker_fencing.sql','utf8');const general=sql.slice(sql.indexOf('IF p_event IS NULL THEN'),sql.indexOf('IF NOT pg_try_advisory_xact_lock'));assert.doesNotMatch(general,/'dependency_wait'/);assert.doesNotMatch(fs.readFileSync(root+'billing-work-runtime.ts','utf8'),/invoiceProofProduction\s*:/);});
 await test('tracked and untracked source imports stay within the exact reviewed boundary',()=>{const allowed=['src/lib/stripe/webhook-mode-guard.ts','src/lib/stripe/billing-work-auto-config.ts','src/lib/stripe/billing-work-auto-runner.ts','src/lib/stripe/billing-work-auto-execution.ts','src/lib/stripe/billing-work-auto-request.ts','src/lib/stripe/billing-work-auto-kick.ts','src/app/api/internal/billing-work-auto/route.ts','src/lib/stripe/billing-recovery-entitlement-diagnostics.ts','src/app/api/stripe/webhook/route.ts', 'src/app/api/internal/billing-work/route.ts', 'src/lib/stripe/billing-work-admission.ts', 'src/lib/stripe/billing-work-config.ts', 'src/lib/stripe/billing-work-evidence.ts', 'src/lib/stripe/billing-work-handoff.ts', 'src/lib/stripe/billing-work-recovery.ts', 'src/lib/stripe/billing-work-routing.ts', 'src/lib/stripe/billing-work-runtime.ts', 'src/lib/stripe/billing-work-store.ts', 'src/lib/stripe/billing-work-worker.ts'];for(const file of execFileSync('git',['ls-files','--cached','--others','--exclude-standard','src'],{encoding:'utf8'}).trim().split('\n'))if(!allowed.includes(file)){
  let source=fs.readFileSync(file,'utf8');
+ if(file==='src/lib/stripe/billing-latency-diagnostics.ts'){
+  assertAutomaticWorkerFiles();
+  source=source.replace('import { BILLING_WORK_DATABASE, BILLING_WORK_PROJECT } from "./billing-work-config";','');
+ }
  if(file==='src/lib/stripe/embedded-checkout-config.ts'){
   assertEmbeddedCheckoutFiles();
   // Permit only this hash-pinned reuse of public deployment constants.

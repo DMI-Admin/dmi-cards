@@ -2,6 +2,7 @@ import "server-only";
 import {createHash,timingSafeEqual} from "node:crypto";
 import type {BillingWorkConfiguration} from "./billing-work-config";
 import {runAutomaticBillingWork,type AutomaticRuntime} from "./billing-work-auto-runner";
+import {createBillingLatencyObserver} from "./billing-latency-diagnostics";
 const EMPTY_POST_READ_TIMEOUT_MS=1_000,EMPTY_POST_MAX_READS=32;
 async function hasEmptyBody(request:Request):Promise<boolean>{
  if(request.body===null)return true;
@@ -36,6 +37,6 @@ export async function automaticBillingRequest(request:Request,secret:string|unde
  if(request.method!=="POST")return Response.json({error:"Method not allowed"},{status:405,headers});
  if(new URL(request.url).search||!await hasEmptyBody(request))return Response.json({error:"Parameters are not supported"},{status:400,headers});
  if(config.state!=="enabled")return Response.json({ok:false,error:"Billing automatic execution is disabled"},{status:503,headers});
- const result=await runAutomaticBillingWork(config,createRuntime);
+ const result=await runAutomaticBillingWork(config,createRuntime,undefined,undefined,undefined,createBillingLatencyObserver("automatic_endpoint"));
  return Response.json(result,{status:result.ok?200:503,headers});
 }
