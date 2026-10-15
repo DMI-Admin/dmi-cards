@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 const reviewed={
+ "src/lib/stripe/webhook-mode-guard.ts": "d67f63c7f85c183fb44a979103c25b69da521748c1a1b4021009d298c9d64f7f",
  "src/app/api/internal/billing-work-auto/route.ts": "68945d9d0a948a2f21b54a3384a8283d1b393b6a077ae3e92d47d0fd974cbcdb",
- "src/app/api/stripe/webhook/route.ts": "de900ed4aba9f52efcae5bb6ddf6f6013a162b545af58a5365f317eb5eef9f67",
+ "src/app/api/stripe/webhook/route.ts": "3d55d30d76d8fcc79fab5875e1f1824fe38be22200fdce9a25a4c6b6cafd5889",
  "src/lib/stripe/billing-work-auto-config.ts": "f1bb439ddbddc7aaa60df62fdaefd2a8bcaec6917396bc135188055feffc73ac",
  "src/lib/stripe/billing-work-auto-execution.ts": "7a9a91d717663def2aa001fbc9855e0d1ddab6d69af9f397714768ca409cd565",
  "src/lib/stripe/billing-work-auto-kick.ts": "fa3b6f49580d57bca2a0abe910579c41cd954771f9fd25b6b6ca6bab49b57eca",
@@ -17,6 +18,6 @@ export const automaticWorkerReviewedPaths=Object.keys(reviewed);
 export function assertAutomaticWorkerFiles(){for(const [file,digest] of Object.entries(reviewed))assert.equal(createHash('sha256').update(fs.readFileSync(file)).digest('hex'),digest,'Unexpected automatic worker drift: '+file);}
 export function stripAutomaticWebhook(source){
  assertAutomaticWorkerFiles();
- return source.replace('import {after} from "next/server";\n','').replace('import {registerAutomaticBillingKick} from "@/lib/stripe/billing-work-auto-kick";\n','').replace('export const maxDuration = 90;\n','')
+ return source.replace('import {stripeWebhookModeDecision} from "@/lib/stripe/webhook-mode-guard";\n','').replace(/    const modeDecision = stripeWebhookModeDecision\(event.livemode\);[\s\S]*?(?=    const handoffConfig)/,'').replace('import {after} from "next/server";\n','').replace('import {registerAutomaticBillingKick} from "@/lib/stripe/billing-work-auto-kick";\n','').replace('export const maxDuration = 90;\n','')
  .replace('let confirmedAdmissions = 0;\n      const handoff = await handoffBillingWork(event as unknown as VerifiedWorkEvent, handoffConfig, createSupabaseAdminClient, count => { confirmedAdmissions = count; });\n      registerAutomaticBillingKick(after, confirmedAdmissions, invocationStartedAt);','const handoff = await handoffBillingWork(event as unknown as VerifiedWorkEvent, handoffConfig, createSupabaseAdminClient);');
 }

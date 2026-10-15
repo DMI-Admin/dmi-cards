@@ -1,3 +1,4 @@
+import {webhookModeGuard} from './lib/stripe-webhook-mode.mjs';
 import {stripAutomaticWebhook} from './billing-work-auto-contract.mjs';
 import {assertUnchangedExceptRecoveryDiagnostics,stripRecoveryDiagnosticRoute} from "./billing-recovery-diagnostic-contract.mjs";
 // Strict offline mocks only: no provider, database, environment-file or hosted access.
@@ -32,12 +33,13 @@ await test("handoff and recovery switches stay independent",()=>{
 function route(env,options={}){
  const calls=[],consumerArgs=[];const config=load(configFile,{},env);
  const deps={
+  "@/lib/stripe/webhook-mode-guard":webhookModeGuard(env),
   "@/lib/stripe/finance-invoice-proof-config":{invoiceProofProductionOptions:()=>{calls.push("proof_options");return config.invoiceProofProductionOptions();}},
   "@/lib/stripe/billing-work-config":{billingWorkConfiguration:()=>{calls.push("handoff_config");return options.handoff?{state:"enabled"}:{state:"disabled"};}},
   '@/lib/stripe/billing-work-auto-kick':{registerAutomaticBillingKick:()=>{}},"@/lib/stripe/billing-work-handoff":{handoffBillingWork:async()=>{calls.push("handoff");return {state:"unfinished",applicable:2,terminal:0};}},
   "@/lib/supabase-admin":{createSupabaseAdminClient:()=>{throw Error("UNEXPECTED_DATABASE");}},
   "next/server":{after:()=>{},NextResponse:{json:(value,init)=>new Response(JSON.stringify(value),{status:init?.status??200})}},
-  "@/lib/stripe/config":{constructStripeWebhookEvent:()=>{calls.push("signature");if(options.signatureError)throw Error("Invalid signature");return {id:"evt_synthetic",type:"invoice.paid"};}},
+  "@/lib/stripe/config":{constructStripeWebhookEvent:()=>{calls.push("signature");if(options.signatureError)throw Error("Invalid signature");return {id:"evt_synthetic",type:"invoice.paid",livemode:false};}},
   "@/lib/stripe/webhook-consumers":{handleStripeWebhookConsumers:async(...args)=>{calls.push("consumer");consumerArgs.push(args);if(options.consumerError)throw Error("FINANCE_PROOF_AUTHORITY");return {handled:true};}},
   "@/lib/observability/logger":{logInfo:()=>calls.push("info"),logError:()=>calls.push("error"),safeErrorMetadata:()=>({})},
   "@/lib/observability/request":{requestIdFromRequest:()=>"synthetic-request",withRequestIdHeader:r=>r},
@@ -46,7 +48,7 @@ function route(env,options={}){
 }
 await test("OFF route retains exactly three original consumer arguments",async()=>{const f=route({...approved,DMI_FINANCE_INVOICE_PROOF_PRODUCTION_ENABLED:undefined});assert.equal((await f.post()).status,200);assert.equal(f.consumerArgs.length,1);assert.equal(f.consumerArgs[0].length,3);assert.deepEqual(f.calls,["signature","handoff_config","proof_options","consumer","info"]);});
 await test("ON route passes only exact reviewed fourth argument",async()=>{const f=route(approved);assert.equal((await f.post()).status,200);assert.equal(f.consumerArgs.length,1);assert.equal(f.consumerArgs[0].length,4);assert.deepEqual(plain(f.consumerArgs[0][3]),expected);});
-await test("invalid configuration keeps route ordinary without options",async()=>{const f=route({...approved,VERCEL_ENV:"production"});assert.equal((await f.post()).status,200);assert.equal(f.consumerArgs[0].length,3);});
+await test("ambiguous Production/Staging runtime stops before proof options or consumers",async()=>{const f=route({...approved,VERCEL_ENV:"production"});assert.equal((await f.post()).status,503);assert.equal(f.consumerArgs.length,0);assert.deepEqual(f.calls,["signature"]);});
 await test("signature rejection precedes configuration and consumer",async()=>{const f=route(approved,{signatureError:true});assert.equal((await f.post()).status,400);assert.equal(f.consumerArgs.length,0);assert.ok(!f.calls.includes("proof_options"));});
 await test("handoff branch does not construct proof options or run inline",async()=>{const f=route(approved,{handoff:true});assert.equal((await f.post()).status,500);assert.equal(f.consumerArgs.length,0);assert.ok(!f.calls.includes("proof_options"));});
 await test("proof failure stays retryable without ordinary fallback",async()=>{const f=route(approved,{consumerError:true});assert.equal((await f.post()).status,500);assert.equal(f.consumerArgs.length,1);assert.equal(f.consumerArgs[0].length,4);});
@@ -73,7 +75,7 @@ for(let mask=0;mask<8;mask++)await test("flag combination "+mask+" config and re
  const result=production||consumption?{...expected,production,consumption,wake}:undefined;
  assert.deepEqual(plain(configuration.invoiceProofProductionOptions(env)),result);
  const f=route(env);assert.equal((await f.post()).status,200);assert.equal(f.consumerArgs.length,1);assert.equal(f.consumerArgs[0].length,result?4:3);assert.deepEqual(plain(f.consumerArgs[0][3]),result);
- for(const [key,value] of guardFailures){const invalid={...env,[key]:value};assert.equal(configuration.invoiceProofProductionOptions(invalid),undefined);const rejected=route(invalid);assert.equal((await rejected.post()).status,200);assert.equal(rejected.consumerArgs[0].length,3);}
+ for(const [key,value] of guardFailures){const invalid={...env,[key]:value};assert.equal(configuration.invoiceProofProductionOptions(invalid),undefined);const rejected=route(invalid);const trusted=webhookModeGuard(invalid).stripeWebhookModeDecision(false)==="accepted";assert.equal((await rejected.post()).status,trusted?200:503);if(trusted)assert.equal(rejected.consumerArgs[0].length,3);else assert.equal(rejected.consumerArgs.length,0);}
 });
 for(const flag of flags)await test("exact true only for "+flag,()=>{
  for(const value of [undefined,"false","FALSE","TRUE","True"," true","true ","1","yes","",true,1,null]){

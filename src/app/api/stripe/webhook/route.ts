@@ -7,6 +7,7 @@ import {handoffBillingWork} from "@/lib/stripe/billing-work-handoff";
 import {createSupabaseAdminClient} from "@/lib/supabase-admin";
 import { NextResponse } from "next/server";
 import { constructStripeWebhookEvent } from "@/lib/stripe/config";
+import {stripeWebhookModeDecision} from "@/lib/stripe/webhook-mode-guard";
 import { handleStripeWebhookConsumers } from "@/lib/stripe/webhook-consumers";
 import { logError, logInfo, safeErrorMetadata } from "@/lib/observability/logger";
 import { requestIdFromRequest, withRequestIdHeader } from "@/lib/observability/request";
@@ -24,6 +25,21 @@ export async function POST(request: Request) {
 
   try {
     const event = constructStripeWebhookEvent({ payload, signature });
+    const modeDecision = stripeWebhookModeDecision(event.livemode);
+    if (modeDecision === "mode_mismatch") {
+      // Acknowledge intentional rejection; never record, enqueue or kick it.
+      return withRequestIdHeader(NextResponse.json(
+        { received: true, handled: false, skipped: true, reason: "stripe_livemode_mismatch" },
+        { status: 200 }
+      ), requestId);
+    }
+    if (modeDecision !== "accepted") {
+      // Configuration may be corrected; preserve Stripe's normal retry path.
+      return withRequestIdHeader(NextResponse.json(
+        { error: { code: "STRIPE_WEBHOOK_ENVIRONMENT_UNTRUSTED", message: "Stripe webhook runtime is not configured." } },
+        { status: 503 }
+      ), requestId);
+    }
     const handoffConfig = billingWorkConfiguration("handoff");
     if (handoffConfig.state !== "disabled") {
       let confirmedAdmissions = 0;

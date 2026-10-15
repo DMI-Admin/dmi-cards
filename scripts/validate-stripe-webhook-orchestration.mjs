@@ -1,3 +1,4 @@
+import {webhookModeGuard,modeStagingEnvironment} from './lib/stripe-webhook-mode.mjs';
 // Offline: real route/orchestrator/entitlement/Finance modules, signed synthetic events.
 // Existing atomic billing test fixture is reused; no network or environment files.
 import assert from 'node:assert/strict';
@@ -27,7 +28,7 @@ function setup(){
  const f=JSON.parse(JSON.stringify(graphFixture()).replaceAll('sub_one','sub_owned').replaceAll('cus_one','cus_owned').replaceAll('price_month','price_current'));
  f.graph.subscriptions=[f.subscription];Object.assign(billing.sub,f.subscription);
  let failFinance=false,timingMode=null,reads=0,entitlementCalls=0;const logs=[],timingContexts=[],financeTimings=[];
- const env={VERCEL_ENV:'preview',VERCEL_TARGET_ENV:'staging',NEXT_PUBLIC_SUPABASE_URL:'https://uohdkewufeivdpaljnng.supabase.co',STRIPE_SECRET_KEY:'sk_test_offline_fixture'};
+ const env={...modeStagingEnvironment,VERCEL_ENV:'preview',VERCEL_TARGET_ENV:'staging',NEXT_PUBLIC_SUPABASE_URL:'https://uohdkewufeivdpaljnng.supabase.co',STRIPE_SECRET_KEY:'sk_test_offline_fixture'};
  const capture=line=>logs.push(JSON.parse(line.replace(/^\[DMI\] /,'')));
  const logger=load('src/lib/observability/logger.ts',{},env,{info:capture,warn:capture,error:capture});
  const source={identity:async()=>({scope:'acct_fixture:test',apiVersion}),graph:async()=>{reads++;if(failFinance)throw Error('PRIVATE_PROVIDER_ERROR');return structuredClone(f.graph);}};
@@ -46,6 +47,7 @@ function setup(){
  },env);
  let signatures=0;
  const route=load('src/app/api/stripe/webhook/route.ts',{
+  '@/lib/stripe/webhook-mode-guard':webhookModeGuard(env),
   'next/server':{after:()=>{},NextResponse:{json:(body,options)=>new Response(JSON.stringify(body),{status:options?.status||200})}},
   '@/lib/stripe/config':{constructStripeWebhookEvent:({payload,signature})=>{signatures++;return sdk.webhooks.constructEvent(payload,signature,signingSecret);}},
   '@/lib/stripe/webhook-consumers':orchestrator,
@@ -89,10 +91,10 @@ e=s.make('evt_badversion','customer.subscription.updated',s.f.subscription);e.ap
 s=setup();e=s.make('evt_signature','customer.subscription.created',s.f.subscription);assert.equal((await s.send(e,true)).status,400);assert.equal(s.entitlementCalls,0);assert.equal(s.reads,0);
 // Finance configuration failures cannot prevent already-authorized entitlement work.
 s=setup();s.env.NEXT_PUBLIC_SUPABASE_URL='https://wrong.invalid';e=s.make('evt_target','customer.subscription.created',s.f.subscription);assert.equal((await s.send(e)).status,500);assert.equal(s.billing.events.get(e.id).state,'processed');assert.equal(s.reads,0);
-// Production retains the existing entitlement-only path; no Finance instantiation.
-s=setup();s.env.VERCEL_ENV='production';e=s.make('evt_productionguard','customer.subscription.created',s.f.subscription);assert.equal((await s.send(e)).status,200);assert.equal(await s.h.delivery(e.id),null);assert.equal(s.reads,0);assert.equal(s.timingContexts[0],undefined);assert.equal(s.financeTimings.length,0);
+// Production now acknowledges and skips TEST events before either consumer.
+s=setup();s.env.VERCEL_ENV='production';s.env.VERCEL_TARGET_ENV='production';e=s.make('evt_productionguard','customer.subscription.created',s.f.subscription);assert.equal((await s.send(e)).status,200);assert.equal(await s.h.delivery(e.id),null);assert.equal(s.reads,0);assert.equal(s.entitlementCalls,0);assert.equal(s.timingContexts[0],undefined);assert.equal(s.financeTimings.length,0);
 assert.doesNotMatch(JSON.stringify(s.logs),/sk_test|whsec|PRIVATE_PROVIDER_ERROR/);
-console.log('PASS: signed real webhook route; both real consumers; failure isolation/retry/duplicate; five configured events; ignored allocation; compatibility failure; staging guards; Production entitlement-only; sanitized responses.');
+console.log('PASS: signed real webhook route; both real consumers; failure isolation/retry/duplicate; five configured events; ignored allocation; compatibility failure; staging guards; Production TEST rejection; sanitized responses.');
 
 // Temporary staging observer: trace both real consumers without changing failures.
 s=setup();e=s.make('evt_diagnostic','customer.subscription.updated',s.f.subscription);
