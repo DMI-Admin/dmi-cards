@@ -58,7 +58,7 @@ export async function POST(request: Request) {
       plan: "pro",
       billingInterval: interval,
       priceId,
-      successUrl: `${origin}/client/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+      successUrl: `${origin}/client/billing/activating?session_id={CHECKOUT_SESSION_ID}`,
       cancelUrl: `${origin}/client/billing?checkout=cancelled`,
     });
 
