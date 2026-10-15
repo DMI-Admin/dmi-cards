@@ -7,10 +7,12 @@ import { Check, LockKeyhole } from "lucide-react";
 import EmbeddedPayment from "@/components/EmbeddedPayment";
 import { supabase } from "@/lib/supabase";
 import { activationReturnUrl, paymentCheckout, paymentPageInput, type PaymentCheckout, type CheckoutInterval } from "@/lib/embedded-checkout-client";
+import { checkoutStartupObserver } from "@/lib/checkout-startup-timing";
 
 const endpoint = "/api/v1/billing/checkout/embedded";
 
 export default function BillingPaymentPage() {
+  const [renderStarted] = useState(() => performance.now());
   const [checkout, setCheckout] = useState<PaymentCheckout | null>(null);
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -30,25 +32,43 @@ export default function BillingPaymentPage() {
     });
     async function initialize() {
       const input = paymentPageInput(window.location.search);
+      const authStarted = performance.now();
       const { data: { session } } = await supabase.auth.getSession();
+      let authDuration = performance.now() - authStarted;
       if (!session) throw new Error("Unavailable");
       owner.current = session.user.id;
+      let requestDuration = 0;
       const read = async (path: string, options: RequestInit = {}) => {
+        const beforeStarted = performance.now();
         const { data: { session: before } } = await supabase.auth.getSession();
+        authDuration += performance.now() - beforeStarted;
         if (before?.user.id !== session!.user.id) throw new Error("Unavailable");
+        const requestStarted = performance.now();
         const response = await fetch(path, {
           ...options, cache: "no-store", referrerPolicy: "no-referrer",
           headers: { Authorization: `Bearer ${before.access_token}`, ...(options.body ? { "Content-Type": "application/json" } : {}) },
         });
         const body = await response.json();
+        requestDuration = performance.now() - requestStarted;
+        const afterStarted = performance.now();
         const { data: { session: after } } = await supabase.auth.getSession();
+        authDuration += performance.now() - afterStarted;
         if (!response.ok || after?.user.id !== session!.user.id) throw new Error("Unavailable");
         return body.data;
       };
-      if ("sessionId" in input) return paymentCheckout(await read(`${endpoint}?session_id=${encodeURIComponent(input.sessionId)}`));
-      const config = await read(endpoint);
-      if (config?.available !== true) return { kind: "disabled" } as const;
-      return paymentCheckout(await read(endpoint, { method: "POST", body: JSON.stringify({ interval: input.interval }) }));
+      // The authenticated POST already enforces enablement and every runtime
+      // guard. No duplicate availability round trip, no blind creation retry.
+      const result = paymentCheckout(await ("sessionId" in input
+        ? read(`${endpoint}?session_id=${encodeURIComponent(input.sessionId)}`)
+        : read(endpoint, { method: "POST", body: JSON.stringify({ interval: input.interval }) })));
+      if (result.kind === "embedded") {
+        // Capability comes only from this owner's guarded Staging API response.
+        const observe = checkoutStartupObserver(result.startupDiagnostics === true);
+        observe?.("client_auth", authDuration);
+        observe?.("session_request", requestDuration);
+        observe?.("page_initialization", performance.now() - renderStarted);
+      }
+      return result;
     }
     initialization.current ||= initialize();
     void initialization.current.then(result => {
@@ -64,7 +84,7 @@ export default function BillingPaymentPage() {
       setCheckout(result);
     }).catch(() => { if (!disposed) setError(true); });
     return () => { disposed = true; subscription.unsubscribe(); };
-  }, [attempt]);
+  }, [attempt, renderStarted]);
 
   return <main className="mx-auto grid min-h-[85vh] max-w-6xl items-start gap-7 px-5 py-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:py-16">
     <section aria-labelledby="payment-heading" className="rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-7 sm:p-9">

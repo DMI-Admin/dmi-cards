@@ -1,7 +1,7 @@
 export type CheckoutInterval = "monthly" | "annual";
 export type PaymentCheckout =
   | { kind: "disabled" }
-  | { kind: "embedded"; sessionId: string; interval: CheckoutInterval; clientSecret: string; publishableKey: string }
+  | { kind: "embedded"; sessionId: string; interval: CheckoutInterval; clientSecret: string; publishableKey: string; startupDiagnostics?: boolean }
   | { kind: "hosted"; sessionId: string; interval: CheckoutInterval; url: string }
   | { kind: "complete" | "processing" | "expired"; sessionId: string; interval: CheckoutInterval };
 
@@ -34,7 +34,7 @@ export function paymentCheckout(value: unknown): PaymentCheckout {
   const base: { sessionId: string; interval: CheckoutInterval } = { sessionId: v.sessionId, interval: v.interval };
   if (v.kind === "embedded" && typeof v.clientSecret === "string" && v.clientSecret.startsWith(v.sessionId + "_secret_") &&
       typeof v.publishableKey === "string" && /^pk_test_[A-Za-z0-9]+$/.test(v.publishableKey)) {
-    return { ...base, kind: "embedded", clientSecret: v.clientSecret, publishableKey: v.publishableKey };
+    return { ...base, kind: "embedded", clientSecret: v.clientSecret, publishableKey: v.publishableKey, startupDiagnostics: v.startupDiagnostics === true };
   }
   if (v.kind === "hosted" && typeof v.url === "string") {
     const url = new URL(v.url);

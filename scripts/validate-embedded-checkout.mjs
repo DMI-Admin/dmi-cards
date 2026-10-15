@@ -9,7 +9,7 @@ import {assertEmbeddedCheckoutFiles,embeddedCheckoutReviewedPaths} from './billi
 function load(path,deps={},globals={}) {
  const exports={};
  vm.runInNewContext(ts.transpileModule(fs.readFileSync(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,
-  {exports,URL,URLSearchParams,Response,Request,Error,Promise,setTimeout,clearTimeout,...globals,require(name){assert.ok(name in deps,`Unexpected dependency ${name}`);return deps[name];}});
+  {exports,URL,URLSearchParams,Response,Request,Error,Promise,performance,console,setTimeout,clearTimeout,...globals,require(name){assert.ok(name in deps,`Unexpected dependency ${name}`);return deps[name];}});
  return exports;
 }
 let count=0;
@@ -46,6 +46,7 @@ const responses={ApiRouteError,apiSuccess:(data,options)=>Response.json({data},o
 const billingState={isStripeBillingInterval:v=>v==='monthly'||v==='annual',stripePriceForCheckoutPlan:(_plan,interval)=>interval==='monthly'?'price_monthly':'price_annual'};
 const dto=load('src/lib/stripe/embedded-checkout-response.ts',{'server-only':{},'@/lib/api/responses':responses,'./billing-state':billingState});
 const client=load('src/lib/embedded-checkout-client.ts');
+const startup=load('src/lib/checkout-startup-timing.ts',{}, {console:{info(){}}});
 await test('flag defaults OFF and all exact Staging deployment/key guards are required',()=>{
  assert.equal(config.embeddedCheckoutEnabled(env),true);
  assert.equal(config.embeddedCheckoutEnabled({...env,BILLING_EMBEDDED_CHECKOUT_ENABLED:undefined}),false);
@@ -107,6 +108,7 @@ function apiFixture({auth=true,enabled=true,actualScope=constants.BILLING_WORK_S
  const cfg=load('src/lib/stripe/embedded-checkout-config.ts',{'server-only':{},'./billing-work-config':constants},{process:{env:environment}});
  const route=load('src/app/api/v1/billing/checkout/embedded/route.ts',{
   '@/lib/stripe/client-identity':{async requireBillingIdentity(){calls.push('auth');if(!auth)throw new ApiRouteError(401,'UNAUTHENTICATED','private');return {userId:user,email:null};}},
+  '@/lib/checkout-startup-timing':startup,
   '@/lib/api/responses':responses,'@/lib/stripe/embedded-checkout-config':cfg,'@/lib/stripe/embedded-checkout-response':dto,'@/lib/stripe/billing-state':billingState,'@/lib/stripe/billing-work-config':constants,
   '@/lib/stripe/reliability':{async billingRuntime(){calls.push('runtime');return {scope:actualScope,live:actualLive};}},
   '@/lib/stripe/checkout':{async createStripeCheckoutSession(i){calls.push(i);return session;},async readOwnedCheckoutSession(...args){calls.push(args);return session;}},
@@ -157,16 +159,16 @@ await test('client rejects malformed/secret-bearing URLs and completion goes onl
 // Exercise the real React components with hook/DOM/SDK boundaries mocked.
 const jsx={jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props}),Fragment:'fragment'};
 const flush=async()=>{for(let i=0;i<12;i++)await new Promise(setImmediate);};
-function hooks(){let index=0;const slots=[],effects=[];const react={useState(initial){const i=index++;slots[i]??={value:initial};return [slots[i].value,v=>{slots[i].value=typeof v==='function'?v(slots[i].value):v;}];},useRef(initial){const i=index++;slots[i]??={current:initial};return slots[i];},useEffect(fn){effects.push(fn);},useMemo:fn=>fn(),useId:()=>String(index++)};return {react,slots,effects,reset(){index=0;effects.length=0;}};}
+function hooks(){let index=0;const slots=[],effects=[];const react={useState(initial){const i=index++;slots[i]??={value:typeof initial==='function'?initial():initial};return [slots[i].value,v=>{slots[i].value=typeof v==='function'?v(slots[i].value):v;}];},useRef(initial){const i=index++;slots[i]??={current:initial};return slots[i];},useEffect(fn){effects.push(fn);},useMemo:fn=>fn(),useId:()=>String(index++)};return {react,slots,effects,reset(){index=0;effects.length=0;}};}
 function nodes(tree){if(!tree||typeof tree!=='object')return [];return [tree,...[tree.props?.children].flat(Infinity).flatMap(nodes)];}
 function pageFixture({available=true,query='?interval=annual',authenticated=true,result=dto.embeddedCheckoutResponse(session,'pk_test_fixture')}={}){
  const h=hooks(),requests=[],navigation=[],history=[];let authCallback;const identity=authenticated?{user:{id:user},access_token:'offline-token'}:null;
- const page=load('src/app/client/billing/pay/page.tsx',{'react':h.react,'react/jsx-runtime':jsx,'next/image':{default:'img'},'next/link':{default:'a'},'lucide-react':{Check:'check',LockKeyhole:'lock'},'@/components/EmbeddedPayment':{default:'embedded'},'@/lib/embedded-checkout-client':client,'@/lib/supabase':{supabase:{auth:{async getSession(){return {data:{session:identity}};},onAuthStateChange(fn){authCallback=fn;return {data:{subscription:{unsubscribe(){}}}};}}}}},
- {window:{location:{search:query,assign:url=>navigation.push(url)},history:{replaceState:(_a,_b,url)=>history.push(url)}},fetch:async(url,init)=>{requests.push([url,init]);return {ok:true,json:async()=>({data:init.method==='POST'||url.includes('session_id=')?result:{available}})};}}).default;
+ const page=load('src/app/client/billing/pay/page.tsx',{'react':h.react,'react/jsx-runtime':jsx,'next/image':{default:'img'},'next/link':{default:'a'},'lucide-react':{Check:'check',LockKeyhole:'lock'},'@/components/EmbeddedPayment':{default:'embedded'},'@/lib/checkout-startup-timing':startup,'@/lib/embedded-checkout-client':client,'@/lib/supabase':{supabase:{auth:{async getSession(){return {data:{session:identity}};},onAuthStateChange(fn){authCallback=fn;return {data:{subscription:{unsubscribe(){}}}};}}}}},
+ {window:{location:{search:query,assign:url=>navigation.push(url)},history:{replaceState:(_a,_b,url)=>history.push(url)}},fetch:async(url,init)=>{requests.push([url,init]);return {ok:available,json:async()=>({data:result})};}}).default;
  const render=()=>{h.reset();return page();};render();const effect=h.effects[0];return {...h,requests,navigation,history,render,effect,changeIdentity(){authCallback('SIGNED_OUT',null);}};
 }
-await test('payment page OFF and unauthenticated paths never create a Session',async()=>{
- for(const opts of [{available:false},{authenticated:false}]){const f=pageFixture(opts);f.effect();await flush();assert.equal(f.requests.filter(([,i])=>i.method==='POST').length,0);assert.equal(f.navigation.length,0);}
+await test('payment page rejected POST and unauthenticated paths never mount a Session',async()=>{
+ for(const opts of [{available:false},{authenticated:false}]){const f=pageFixture(opts);f.effect();await flush();assert.equal(f.requests.length,opts.authenticated===false?0:1);assert.equal(f.navigation.length,0);assert.ok(!nodes(f.render()).some(n=>n.type==='embedded'));}
 });
 await test('authenticated page creates once across Strict Mode probe, sends only interval and stores only Session ID',async()=>{
  const f=pageFixture();const cleanup=f.effect();cleanup();f.effect();await flush();
@@ -181,12 +183,12 @@ await test('refresh resumes with GET; paid completion redirects to activation, n
 await test('unmounted page ignores late results and does not navigate',async()=>{
  const f=pageFixture({result:{kind:'complete',sessionId:session.id,interval:'monthly'}});f.effect()();await flush();assert.equal(f.navigation.length,0);assert.equal(f.history.length,0);
 });
-function paymentFixture({reject=false,delayed=false}={}){
- const h=hooks(),navigation=[],calls=[];let complete,release;
+function paymentFixture({reject=false,delayed=false,startupDiagnostics=false,timing=startup}={}){
+ const h=hooks(),navigation=[],calls=[];let complete,release,analytics;
  const gate=delayed?new Promise(resolve=>release=resolve):Promise.resolve();
- const payment=load('src/components/EmbeddedPayment.tsx',{'react':h.react,'react/jsx-runtime':jsx,'@/lib/embedded-checkout-client':client,'@stripe/stripe-js/pure':{async loadStripe(){calls.push('load');return {async createEmbeddedCheckoutPage(options){calls.push('create');complete=options.onComplete;await gate;if(reject)throw new Error('private provider exception');return {mount:()=>calls.push('mount'),destroy:()=>calls.push('destroy')};}};}}},{window:{location:{assign:url=>navigation.push(url)}}}).default;
- payment({sessionId:session.id,clientSecret:session.client_secret,publishableKey:'pk_test_fixture'});h.slots[0].current={};
- return {...h,calls,navigation,effect:h.effects[0],complete:()=>complete(),release:()=>release?.()};
+ const payment=load('src/components/EmbeddedPayment.tsx',{'react':h.react,'react/jsx-runtime':jsx,'@/lib/checkout-startup-timing':timing,'@/lib/embedded-checkout-client':client,'@stripe/stripe-js/pure':{async loadStripe(){calls.push('load');return {async createEmbeddedCheckoutPage(options){calls.push('create');complete=options.onComplete;analytics=options.onAnalyticsEvent;await gate;if(reject)throw new Error('private provider exception');return {mount:()=>calls.push('mount'),destroy:()=>calls.push('destroy')};}};}}},{window:{location:{assign:url=>navigation.push(url)}}}).default;
+ payment({sessionId:session.id,clientSecret:session.client_secret,publishableKey:'pk_test_fixture',startupDiagnostics});h.slots[0].current={};
+ return {...h,calls,navigation,effect:h.effects[0],complete:()=>complete(),analytics:()=>analytics,release:()=>release?.()};
 }
 await test('Stripe iframe mount/completion has no authority or recovery side effect',async()=>{
  const f=paymentFixture();const cleanup=f.effect();await flush();assert.deepEqual(f.calls,['load','create','mount']);f.complete();assert.deepEqual(f.navigation,['/client/billing/activating?session_id=cs_test_owned']);cleanup();assert.equal(f.calls.at(-1),'destroy');
@@ -226,3 +228,4 @@ await test('exact presentation diff contract still rejects arbitrary edits in ev
  assertEmbeddedCheckoutFiles();for(const target of embeddedCheckoutReviewedPaths)assert.throws(()=>assertEmbeddedCheckoutFiles((file,encoding)=>fs.readFileSync(file,encoding)+(file===target?'\n// unrelated\n':'')),/Unexpected checkout change/);
 });
 console.log(`Embedded checkout: ${count}/${count} passed (offline).`);
+export {load,startup,apiFixture,request,pageFixture,paymentFixture,flush,nodes,fixture,checkout,embedded,input,session,client};

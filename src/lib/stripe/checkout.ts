@@ -1,5 +1,6 @@
 import "server-only";
 import type Stripe from "stripe";
+import type { CheckoutTiming } from "@/lib/checkout-startup-timing";
 import { DMI_STRIPE_APP_NAMESPACE } from "@/lib/stripe/app-namespace";
 import { getStripeServerClient } from "@/lib/stripe/config";
 import type { CheckoutBillingPlan, StripeBillingInterval } from "@/lib/stripe/billing-state";
@@ -27,19 +28,20 @@ function assertCheckoutOwner(session: Stripe.Checkout.Session, account: Pick<Bil
 
 // Read-only resumption of an already recorded attempt. Never creates around an
 // arbitrary browser-supplied Session or acquires/mutates billing authority.
-export async function readOwnedCheckoutSession(userId: string, sessionId: string, runtime?: BillingRuntime) {
+export async function readOwnedCheckoutSession(userId: string, sessionId: string, runtime?: BillingRuntime, timing?: CheckoutTiming) {
+  const time: CheckoutTiming = timing || ((_stage, run) => run());
   if (!/^cs_(?:test_|live_)?[A-Za-z0-9]{1,240}$/.test(sessionId)) throw new BillingFailure("INVALID_CHECKOUT", 409);
   const r = runtime || await billingRuntime();
-  const { data, error } = await r.db.from("billing_accounts")
+  const { data, error } = await time("session_lookup", async () => await r.db.from("billing_accounts")
     .select("user_id,stripe_customer_id,verified_at,checkout_attempt,checkout_session_id,checkout_parameters")
-    .eq("stripe_scope", r.scope).eq("user_id", userId).maybeSingle();
+    .eq("stripe_scope", r.scope).eq("user_id", userId).maybeSingle());
   if (error) throw new BillingFailure("BILLING_STORE_UNAVAILABLE");
   if (!data?.verified_at || !data.checkout_attempt || data.checkout_session_id !== sessionId) throw new BillingFailure("IDENTITY_CONFLICT", 409);
   const price = data.checkout_parameters?.line_items?.[0]?.price;
-  if (!(await approvedPrices(r)).some(p => p.stripe_price_id === price && p.entitlement_enabled && p.checkout_enabled)) {
+  if (!(await time("approved_price", () => approvedPrices(r))).some(p => p.stripe_price_id === price && p.entitlement_enabled && p.checkout_enabled)) {
     throw new BillingFailure("UNKNOWN_CHECKOUT_PRICE", 409);
   }
-  const session = await r.stripe.checkout.sessions.retrieve(sessionId, undefined, { timeout: 8000, maxNetworkRetries: 0 });
+  const session = await time("session_retrieve", () => r.stripe.checkout.sessions.retrieve(sessionId, undefined, { timeout: 8000, maxNetworkRetries: 0 }));
   assertCheckoutOwner(session, data, userId, r.live);
   return session;
 }
@@ -57,31 +59,32 @@ async function assertIndividual(r: BillingRuntime, user: string) {
     return client?.account_type !== "individual";
   })) throw new BillingFailure("INDIVIDUAL_ACCOUNT_REQUIRED", 409);
 }
-async function customerForCheckout(r: BillingRuntime, initial: BillingAccount, input: CheckoutSessionInput): Promise<BillingAccount> {
-  const existing = await verifiedCustomerForUser(r, initial);
+async function customerForCheckout(r: BillingRuntime, initial: BillingAccount, input: CheckoutSessionInput, time: CheckoutTiming): Promise<BillingAccount> {
+  const existing = await time("customer_lookup", () => verifiedCustomerForUser(r, initial));
   if (existing) return initial;
-  let account = await command<BillingAccount>(r, "customer_prepare", input.userId, initial.lease_token, {
+  let account = await time("customer_prepare", () => command<BillingAccount>(r, "customer_prepare", input.userId, initial.lease_token, {
     ...(input.email ? { email: input.email } : {}), metadata: { dmi_app: DMI_STRIPE_APP_NAMESPACE, dmi_user_id: input.userId },
-  });
+  }));
   if (!account.customer_attempt || !account.customer_parameters) throw new BillingFailure("CUSTOMER_ATTEMPT_UNAVAILABLE");
   if (!replayAllowed(account.customer_attempt_at)) throw new BillingFailure("CUSTOMER_OUTCOME_UNKNOWN", 409);
   // Repeated attempts use the persisted parameters, not changed browser/profile values.
   await command(r, "touch", input.userId, account.lease_token);
-  const customer = await r.stripe.customers.create({ ...account.customer_parameters, metadata: { ...account.customer_parameters.metadata, dmi_customer_attempt: account.customer_attempt } }, { idempotencyKey: `dmi:customer:${r.scope}:${account.customer_attempt}` });
-  const verified = await verifyCustomer(r, input.userId, customer.id);
+  const customer = await time("customer_create", () => r.stripe.customers.create({ ...account.customer_parameters!, metadata: { ...account.customer_parameters!.metadata, dmi_customer_attempt: account.customer_attempt } }, { idempotencyKey: `dmi:customer:${r.scope}:${account.customer_attempt}` }));
+  const verified = await time("customer_verify", () => verifyCustomer(r, input.userId, customer.id));
   if (verified.customer.metadata.dmi_user_id !== input.userId || verified.customer.metadata.dmi_app !== DMI_STRIPE_APP_NAMESPACE) throw new BillingFailure("IDENTITY_CONFLICT", 409);
-  account = await command<BillingAccount>(r, "bind", input.userId, account.lease_token, { customer: customer.id });
+  account = await time("customer_bind", () => command<BillingAccount>(r, "bind", input.userId, account.lease_token, { customer: customer.id }));
   return account;
 }
-export async function createStripeCheckoutSession(input: CheckoutSessionInput, runtime?: BillingRuntime): Promise<Stripe.Checkout.Session> {
+export async function createStripeCheckoutSession(input: CheckoutSessionInput, runtime?: BillingRuntime, timing?: CheckoutTiming): Promise<Stripe.Checkout.Session> {
+  const time: CheckoutTiming = timing || ((_stage, run) => run());
   const r = runtime || await billingRuntime();
-  return withAccount(r, input.userId, async initial => {
-    await assertIndividual(r, input.userId);
-    const prices = await approvedPrices(r);
+  return time("account_operation", () => withAccount(r, input.userId, async initial => {
+    await time("individual_check", () => assertIndividual(r, input.userId));
+    const prices = await time("approved_price", () => approvedPrices(r));
     if (!prices.some(price => price.stripe_price_id === input.priceId && price.entitlement_enabled && price.checkout_enabled)) throw new BillingFailure("UNKNOWN_CHECKOUT_PRICE", 409);
-    let account = await customerForCheckout(r, initial, input);
+    let account = await customerForCheckout(r, initial, input, time);
     const customer = account.stripe_customer_id!;
-    const subscriptions = await subscriptionsForCustomer(r, customer);
+    const subscriptions = await time("subscription_inventory", () => subscriptionsForCustomer(r, customer));
     // A dedicated customer must not contain ambiguous live subscriptions, even
     // if a foreign subscription cannot grant DMI access.
     const live = subscriptions.filter(sub => !["canceled", "incomplete_expired"].includes(sub.status));
@@ -90,20 +93,23 @@ export async function createStripeCheckoutSession(input: CheckoutSessionInput, r
     if (current && (current.metadata.dmi_user_id !== input.userId || current.metadata.dmi_app !== DMI_STRIPE_APP_NAMESPACE)) throw new BillingFailure("IDENTITY_CONFLICT", 409);
     if (current && current.status !== "incomplete") throw new BillingFailure(["past_due", "unpaid", "paused"].includes(current.status) ? "BILLING_RECOVERY_REQUIRED" : "SUBSCRIPTION_EXISTS", 409);
     if (account.checkout_attempt) {
-      let session: Stripe.Checkout.Session | null = account.checkout_session_id ? await r.stripe.checkout.sessions.retrieve(account.checkout_session_id) : null;
+      let session: Stripe.Checkout.Session | null = account.checkout_session_id ? await time("session_retrieve", () => r.stripe.checkout.sessions.retrieve(account.checkout_session_id!)) : null;
       if (!session) {
         let seen = 0;
-        for await (const candidate of r.stripe.checkout.sessions.list({ customer, limit: 100 })) {
-          if (++seen > 10000) throw new BillingFailure("INVENTORY_LIMIT");
-          if (candidate.metadata?.dmi_checkout_attempt === account.checkout_attempt) {
-            if (session) throw new BillingFailure("MULTIPLE_CHECKOUTS", 409);
-            session = candidate;
+        session = await time("session_lookup", async () => {
+          for await (const candidate of r.stripe.checkout.sessions.list({ customer, limit: 100 })) {
+            if (++seen > 10000) throw new BillingFailure("INVENTORY_LIMIT");
+            if (candidate.metadata?.dmi_checkout_attempt === account.checkout_attempt) {
+              if (session) throw new BillingFailure("MULTIPLE_CHECKOUTS", 409);
+              session = candidate;
+            }
           }
-        }
+          return session;
+        });
       }
       if (session) {
         assertCheckoutOwner(session, account, input.userId, r.live);
-        await command(r, "checkout_record", input.userId, account.lease_token, { attempt: account.checkout_attempt, session: session.id });
+        await time("attempt_record", () => command(r, "checkout_record", input.userId, account.lease_token, { attempt: account.checkout_attempt, session: session!.id }));
         if (session.status === "open" && (presentation(session.ui_mode) === "embedded" ? session.client_secret : session.url)) {
           if (current && objectId(session.subscription) !== current.id) throw new BillingFailure("BILLING_RECOVERY_REQUIRED", 409);
           if (account.checkout_parameters?.line_items?.[0]?.price !== input.priceId) throw new BillingFailure("CHECKOUT_ALREADY_OPEN", 409);
@@ -125,12 +131,14 @@ export async function createStripeCheckoutSession(input: CheckoutSessionInput, r
     if (!account.checkout_attempt) {
       // Do not create around an unrelated/unrecorded open Checkout session.
       let seen = 0;
-      for await (const session of r.stripe.checkout.sessions.list({ customer, status: "open", limit: 100 })) {
-        if (++seen > 10000) throw new BillingFailure("INVENTORY_LIMIT");
-        if (session.mode === "subscription") throw new BillingFailure("UNRESOLVED_CHECKOUT", 409);
-      }
+      await time("session_lookup", async () => {
+        for await (const session of r.stripe.checkout.sessions.list({ customer, status: "open", limit: 100 })) {
+          if (++seen > 10000) throw new BillingFailure("INVENTORY_LIMIT");
+          if (session.mode === "subscription") throw new BillingFailure("UNRESOLVED_CHECKOUT", 409);
+        }
+      });
     }
-    account = await command<BillingAccount>(r, "checkout_prepare", input.userId, account.lease_token, {
+    account = await time("checkout_prepare", () => command<BillingAccount>(r, "checkout_prepare", input.userId, account.lease_token, {
       mode: "subscription", customer, client_reference_id: input.userId, line_items: [{ price: input.priceId, quantity: 1 }],
       metadata: { dmi_app: DMI_STRIPE_APP_NAMESPACE, dmi_user_id: input.userId, dmi_plan: "pro", billing_interval: input.billingInterval },
       subscription_data: { metadata: { dmi_app: DMI_STRIPE_APP_NAMESPACE, dmi_user_id: input.userId, dmi_profile_id: input.userId, dmi_plan: "pro", billing_interval: input.billingInterval } },
@@ -138,14 +146,14 @@ export async function createStripeCheckoutSession(input: CheckoutSessionInput, r
       ...(input.presentation === "embedded"
         ? { ui_mode: "embedded_page" as const, return_url: input.returnUrl, redirect_on_completion: "if_required" as const, payment_method_types: ["card" as const] }
         : { success_url: input.successUrl, cancel_url: input.cancelUrl }),
-    });
+    }));
     if (!account.checkout_attempt || !account.checkout_parameters || !replayAllowed(account.checkout_attempt_at)) throw new BillingFailure("CHECKOUT_OUTCOME_UNKNOWN", 409);
-    await command(r, "touch", input.userId, account.lease_token);
-    const session = await r.stripe.checkout.sessions.create({ ...account.checkout_parameters, metadata: { ...account.checkout_parameters.metadata, dmi_checkout_attempt: account.checkout_attempt } }, { idempotencyKey: `dmi:checkout:${r.scope}:${account.checkout_attempt}` });
+    await time("checkout_touch", () => command(r, "touch", input.userId, account.lease_token));
+    const session = await time("session_create", () => r.stripe.checkout.sessions.create({ ...account.checkout_parameters!, metadata: { ...account.checkout_parameters!.metadata, dmi_checkout_attempt: account.checkout_attempt } }, { idempotencyKey: `dmi:checkout:${r.scope}:${account.checkout_attempt}` }));
     assertCheckoutOwner(session, account, input.userId, r.live);
-    await command(r, "checkout_record", input.userId, account.lease_token, { attempt: account.checkout_attempt, session: session.id });
+    await time("attempt_record", () => command(r, "checkout_record", input.userId, account.lease_token, { attempt: account.checkout_attempt, session: session.id }));
     return session;
-  });
+  }));
 }
 export async function billingCustomerForUser(userId: string, runtime?: BillingRuntime) {
   const r = runtime || await billingRuntime();

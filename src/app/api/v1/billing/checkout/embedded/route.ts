@@ -5,6 +5,7 @@ import { createStripeCheckoutSession, readOwnedCheckoutSession } from "@/lib/str
 import { embeddedCheckoutResponse } from "@/lib/stripe/embedded-checkout-response";
 import { isStripeBillingInterval, stripePriceForCheckoutPlan } from "@/lib/stripe/billing-state";
 import { billingRuntime } from "@/lib/stripe/reliability";
+import { checkoutStartupObserver, checkoutStartupTiming } from "@/lib/checkout-startup-timing";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -25,8 +26,11 @@ function failure(error: unknown) {
 }
 
 export async function GET(request: Request) {
+  const observe = checkoutStartupObserver(embeddedCheckoutEnvironment() !== null);
+  const time = checkoutStartupTiming(observe);
+  const started = performance.now();
   try {
-    const user = await requireBillingIdentity(request);
+    const user = await time("auth", () => requireBillingIdentity(request));
     const params = new URL(request.url).searchParams;
     if ([...params.keys()].some(key => key !== "session_id") || params.getAll("session_id").length > 1) {
       throw new ApiRouteError(400, "INVALID_REQUEST", "Invalid request.");
@@ -37,14 +41,18 @@ export async function GET(request: Request) {
     const config = embeddedCheckoutEnvironment();
     if (!config) throw new ApiRouteError(403, "FORBIDDEN", "Checkout unavailable.");
     if (!/^cs_(?:test_|live_)?[A-Za-z0-9]{1,240}$/.test(params.get("session_id")!)) throw new ApiRouteError(400, "INVALID_REQUEST", "Invalid request.");
-    const session = await readOwnedCheckoutSession(user.userId, params.get("session_id")!, await runtime());
-    return apiSuccess(embeddedCheckoutResponse(session, config.publishableKey), { headers });
+    const session = await readOwnedCheckoutSession(user.userId, params.get("session_id")!, await time("runtime", runtime), time);
+    return apiSuccess({ ...embeddedCheckoutResponse(session, config.publishableKey), startupDiagnostics: true }, { headers });
   } catch (error) { return failure(error); }
+  finally { observe?.("api_response_prepare", performance.now() - started); }
 }
 
 export async function POST(request: Request) {
+  const observe = checkoutStartupObserver(embeddedCheckoutEnvironment() !== null);
+  const time = checkoutStartupTiming(observe);
+  const started = performance.now();
   try {
-    const user = await requireBillingIdentity(request);
+    const user = await time("auth", () => requireBillingIdentity(request));
     const config = embeddedCheckoutEnvironment();
     if (!config || !embeddedCheckoutEnabled()) throw new ApiRouteError(403, "FORBIDDEN", "Checkout unavailable.");
     if (new URL(request.url).search || (request.headers.get("origin") && request.headers.get("origin") !== config.origin)) {
@@ -65,7 +73,8 @@ export async function POST(request: Request) {
       userId: user.userId, profileId: user.profileId, email: user.email,
       plan: "pro", billingInterval: body.interval, priceId, presentation: "embedded",
       returnUrl: `${config.origin}/client/billing/pay?session_id={CHECKOUT_SESSION_ID}`,
-    }, await runtime());
-    return apiSuccess(embeddedCheckoutResponse(session, config.publishableKey), { headers });
+    }, await time("runtime", runtime), time);
+    return apiSuccess({ ...embeddedCheckoutResponse(session, config.publishableKey), startupDiagnostics: true }, { headers });
   } catch (error) { return failure(error); }
+  finally { observe?.("api_response_prepare", performance.now() - started); }
 }
