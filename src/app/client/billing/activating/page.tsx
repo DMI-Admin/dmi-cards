@@ -12,6 +12,7 @@ export default function BillingActivationPage() {
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    let disposed = false;
     // Query input is only an opaque lookup reference, never an entitlement.
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.getAll("session_id").length === 1 ? params.get("session_id") || "" : "";
@@ -30,7 +31,7 @@ export default function BillingActivationPage() {
       if (!response.ok || current?.user.id !== session.user.id || signal.aborted) throw new Error("Unavailable");
       return payload.data;
     };
-    return startActivationPolling({
+    const stop = startActivationPolling({
       acknowledge: async signal => {
         if (!sessionId || params.has("checkout")) return false;
         return (await read(`/api/v1/billing/activation?session_id=${encodeURIComponent(sessionId)}`, signal))?.paymentReceived === true;
@@ -41,15 +42,23 @@ export default function BillingActivationPage() {
       // as Billing, avoiding a cached Free plan between the two pages.
       onReady: () => { window.location.replace("/client/billing"); },
     });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!disposed && checkoutUser && session?.user.id !== checkoutUser) {
+        stop();
+        setState("unavailable");
+      }
+    });
+    return () => { disposed = true; subscription.unsubscribe(); stop(); };
   }, [attempt]);
 
   const ready = state === "ready";
-  const acknowledged = ["activating", "waiting", "ready"].includes(state);
+  const acknowledged = ["activating", "delayed", "waiting", "ready"].includes(state);
   const paused = state === "waiting" || state === "unavailable";
-  const heading = ready ? "You're Pro" : acknowledged ? "Payment successful" : "Finishing your upgrade";
+  const heading = ready ? "You're Pro" : state === "waiting" ? "Payment received" : acknowledged ? "Payment successful" : "Finishing your upgrade";
   const description = ready ? "Your Individual Pro features are ready. Taking you to Billing…"
-    : state === "waiting" ? "Your Pro account is still being activated. This normally only takes a moment."
-    : state === "unavailable" ? "We couldn't confirm your upgrade just yet. Check again in a moment."
+    : state === "delayed" ? "Your Pro account is taking a little longer to activate. You don't need to do anything — we'll keep checking automatically."
+    : state === "waiting" ? "We're still finishing your Pro activation. Choose Check again shortly to check the latest status."
+    : state === "unavailable" ? "We couldn't confirm your upgrade just yet. Please return to Billing to check your subscription."
     : acknowledged ? "We're activating your Individual Pro account." : "We're securely confirming your checkout.";
 
   return (
@@ -78,7 +87,7 @@ export default function BillingActivationPage() {
             </li>;
           })}
         </ol>
-        {paused && <button type="button" onClick={() => setAttempt(value => value + 1)} className="w-full rounded-xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-purple-500">Check again</button>}
+        {state === "waiting" && <button type="button" onClick={() => setAttempt(value => value + 1)} className="w-full rounded-xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-purple-500">Check again</button>}
         {!ready && <Link href="/client/dashboard" className="mt-5 block text-center text-sm text-[var(--dmi-muted)] underline underline-offset-4">Return to Dashboard</Link>}
       </section>
     </main>

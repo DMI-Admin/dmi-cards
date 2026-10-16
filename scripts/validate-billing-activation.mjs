@@ -131,7 +131,7 @@ function clock() {
         time = next[1].at; timers.delete(next[0]); next[1].fn(); await flush();
       }
       time = end; await flush();
-    }, get size() { return timers.size; },
+    }, get size() { return timers.size; }, get now() { return time; },
   };
 }
 function polling(overrides = {}) {
@@ -151,17 +151,24 @@ await test('pending -> later verified Pro -> success', async () => {
   await f.timer.advance(1999); assert.equal(reads, 2); await f.timer.advance(1); assert.equal(f.states.at(-1), 'ready');
   await f.timer.advance(1000); assert.equal(f.redirects, 1); assert.equal(reads, 3);
 });
-await test('20-second deadline stays activating; Check again can start a fresh bounded window', async () => {
+await test('20 seconds switches to delayed automatic four-second observation; only 90 seconds stops', async () => {
   const f = polling(); await flush(); await f.timer.advance(20000);
-  assert.equal(f.states.at(-1), 'waiting'); assert.equal(f.redirects, 0); assert.equal(f.timer.size, 0);
+  assert.equal(f.states.at(-1), 'delayed'); assert.equal(f.redirects, 0); assert.equal(f.timer.size, 2);
   assert.equal(f.reads, 20); assert.ok(!f.states.includes('free'));
+  await f.timer.advance(3999); assert.equal(f.reads, 20);
+  await f.timer.advance(1); assert.equal(f.reads, 21);
+  await f.timer.advance(65999); assert.equal(f.states.at(-1), 'delayed');
+  await f.timer.advance(1); assert.equal(f.states.at(-1), 'waiting');assert.equal(f.timer.size, 0);assert.equal(f.reads,37);
+  await f.timer.advance(90000);assert.equal(f.reads,37);
   const retry = polling({ readReady: async () => true }); await flush(); assert.equal(retry.states.at(-1), 'ready'); retry.stop();
 });
-await test('slow requests never overlap; deadline aborts inflight request', async () => {
+await test('20-second transition never overlaps or aborts a slow read; final deadline aborts it', async () => {
   let resolveRead, activeSignal, reads = 0;
   const f = polling({ readReady: signal => { activeSignal = signal; reads++; return new Promise(resolve => { resolveRead = resolve; }); } });
   await flush(); await f.timer.advance(19000); assert.equal(reads, 1);
-  await f.timer.advance(1000); assert.equal(activeSignal.aborted, true); resolveRead(true); await flush();
+  await f.timer.advance(1000); assert.equal(activeSignal.aborted, false);assert.equal(f.states.at(-1),'delayed');
+  await f.timer.advance(69999);assert.equal(reads,1);assert.equal(activeSignal.aborted,false);
+  await f.timer.advance(1);assert.equal(activeSignal.aborted, true); resolveRead(true); await flush();
   assert.equal(f.states.at(-1), 'waiting'); assert.equal(f.redirects, 0);
 });
 await test('unmount aborts pending acknowledgement/read and cancels success redirect', async () => {
@@ -181,33 +188,75 @@ await test('unpaid/foreign/unavailable acknowledgement never starts entitlement 
 });
 await test('transient polling failure stays calm and bounded', async () => {
   const f = polling({ readReady: async () => { throw Error('offline'); } }); await flush();
-  await f.timer.advance(20000); assert.equal(f.states.at(-1), 'waiting'); assert.equal(f.redirects, 0);
+  await f.timer.advance(20000); assert.equal(f.states.at(-1), 'delayed');
+  await f.timer.advance(70000);assert.equal(f.states.at(-1), 'waiting'); assert.equal(f.redirects, 0);assert.equal(f.timer.size,0);
+});
+
+await test('authoritative Pro at 60–65 seconds redirects automatically with no manual restart', async () => {
+  for (const readyAt of [60000,63514,65000]) {
+    const timer=clock(),states=[];let redirects=0,acks=0;
+    startActivationPolling({schedule:timer.schedule,cancel:timer.cancel,
+      acknowledge:async()=>{acks++;return true;},readReady:async()=>timer.now>=readyAt,
+      onState:state=>states.push(state),onReady:()=>redirects++});
+    await flush();await timer.advance(readyAt+4250);
+    assert.ok(states.includes('delayed'));assert.equal(states.at(-1),'ready');
+    assert.ok(!states.includes('waiting'));assert.equal(redirects,1);assert.equal(acks,1);assert.equal(timer.size,0);
+  }
+});
+await test('slow phase waits four seconds after completion, never stacks calls behind a slow response', async () => {
+  let complete,reads=0;
+  const f=polling({readReady:()=>{reads++;return new Promise(resolve=>complete=resolve);}});
+  await flush();await f.timer.advance(30000);assert.equal(reads,1);
+  complete(false);await flush();await f.timer.advance(3999);assert.equal(reads,1);
+  await f.timer.advance(1);assert.equal(reads,2);
+  await f.timer.advance(30000);assert.equal(reads,2);f.stop();complete(true);await flush();
+  assert.equal(f.redirects,0);assert.equal(f.timer.size,0);
+});
+await test('unmount cancels slow-phase timer and active slow request, ignoring late readiness',async()=>{
+  for(const inflight of [false,true]){
+    let complete,activeSignal;
+    const f=polling({readReady:signal=>{
+      if(!inflight||f.timer.now<24000)return Promise.resolve(false);
+      activeSignal=signal;return new Promise(resolve=>complete=resolve);
+    }});
+    await flush();await f.timer.advance(inflight?24000:20000);
+    f.stop();const states=[...f.states];if(complete){assert.equal(activeSignal.aborted,true);complete(true);}
+    await flush();await f.timer.advance(90000);assert.deepEqual(f.states,states);assert.equal(f.redirects,0);assert.equal(f.timer.size,0);
+  }
+});
+await test('acknowledgement delay consumes the same total deadline and never claims paid before confirmation',async()=>{
+  let confirm,activeSignal;
+  const f=polling({acknowledge:signal=>{activeSignal=signal;return new Promise(resolve=>confirm=resolve);}});
+  await flush();await f.timer.advance(25000);assert.deepEqual(f.states,['checking']);
+  confirm(true);await flush();assert.equal(f.states.at(-1),'delayed');
+  await f.timer.advance(65000);assert.equal(activeSignal.aborted,true);assert.equal(f.states.at(-1),'waiting');assert.equal(f.timer.size,0);
 });
 
 const pageSource = fs.readFileSync('src/app/client/billing/activating/page.tsx', 'utf8');
 function pageFixture(state, search = '?session_id=cs_test_owned') {
   let effect, options; const requests = [], navigation = [];
-  let identity = 'owner';
+  let identity = 'owner',authCallback,stops=0,unsubscribed=false;const updates=[];
   const jsx = (type, props) => ({ type, props }); let hook = 0;
   const page = load('src/app/client/billing/activating/page.tsx', {
     'react/jsx-runtime': { jsx, jsxs: jsx }, react: {
-      useState: initial => [hook++ === 0 ? state : initial, () => {}], useEffect: fn => { effect = fn; },
+      useState: initial => {const i=hook++;return [i===0?state:initial,value=>updates.push([i,value])];}, useEffect: fn => { effect = fn; },
     }, 'next/image': { default: 'image' }, 'next/link': { default: 'link' },
     'lucide-react': { Check: 'check', LoaderCircle: 'loader', ShieldCheck: 'shield' },
-    '@/lib/supabase': { supabase: { auth: { getSession: async () => ({ data: { session: { access_token: 'offline-token', user: { id: identity } } } }) } } },
-    '@/lib/billing-activation-poller': { startActivationPolling: value => { options = value; return () => {}; } },
+    '@/lib/supabase': { supabase: { auth: { getSession: async () => ({ data: { session: { access_token: 'offline-token', user: { id: identity } } } }),onAuthStateChange:fn=>{authCallback=fn;return {data:{subscription:{unsubscribe(){unsubscribed=true;}}}};} } } },
+    '@/lib/billing-activation-poller': { startActivationPolling: value => { options = value; return () => {stops++;}; } },
   }, { window: { location: { search, replace: path => navigation.push(path) } },
     fetch: async (url, init) => { requests.push([url, init]); return { ok: true, json: async () => ({ data: { paymentReceived: true, proReady: true } }) }; },
   });
   const tree = page.default(); const cleanup = effect();
   function text(node) { if (node == null || typeof node === 'boolean') return ''; if (typeof node !== 'object') return String(node);
     if (Array.isArray(node)) return node.map(text).join(' '); return text(node.props?.children); }
-  return { text: text(tree), options, requests, navigation, cleanup, changeIdentity() { identity = 'another-user'; } };
+  return { text: text(tree), tree,updates,options, requests, navigation, cleanup,get stops(){return stops;},get unsubscribed(){return unsubscribed;},changeIdentity() { identity = 'another-user';authCallback('SIGNED_IN',{user:{id:identity}}); } };
 }
 await test('branded accessible pending/timeout/success page never displays Free or asks for payment', () => {
-  for (const state of ['checking', 'activating', 'waiting', 'unavailable', 'ready']) {
+  for (const state of ['checking', 'activating', 'delayed', 'waiting', 'unavailable', 'ready']) {
     const f = pageFixture(state); assert.match(f.text, /DMI Cards/); assert.doesNotMatch(f.text, /\bFree\b|pay again|Upgrade to Pro/);
-    if (state === 'waiting') assert.match(f.text, /still being activated.*Check again/);
+    if (state === 'waiting') assert.match(f.text, /still finishing.*Check again/);
+    if(state==='delayed'){assert.match(f.text,/Payment successful/);assert.match(f.text,/keep checking automatically/);assert.doesNotMatch(f.text,/Check again/);}
     if (state === 'ready') assert.match(f.text, /You're Pro/);
     f.cleanup();
   }
@@ -225,7 +274,18 @@ await test('page uses authenticated GET-only reads, stops via effect cleanup, re
 });
 await test('changing account after checkout acknowledgement stops further reads', async () => {
   const f = pageFixture('activating'); await f.options.acknowledge(signal); f.changeIdentity();
+  assert.equal(f.stops,1);assert.equal(f.updates.at(-1)[1],'unavailable');
   await assert.rejects(f.options.readReady(signal)); assert.equal(f.requests.length, 1);
+  f.cleanup();assert.equal(f.unsubscribed,true);
+});
+await test('only final waiting state exposes manual fallback and cleanup unsubscribes auth listener',()=>{
+  function nodes(node){if(!node||typeof node!=='object')return [];return [node,...[node.props?.children].flat(Infinity).flatMap(nodes)];}
+  for(const state of ['checking','activating','delayed','ready','unavailable','waiting']){
+    const f=pageFixture(state),buttons=nodes(f.tree).filter(n=>n.type==='button');
+    assert.equal(buttons.length,state==='waiting'?1:0);
+    if(buttons[0]){buttons[0].props.onClick();assert.equal(f.updates.at(-1)[0],1);}
+    f.cleanup();assert.equal(f.stops,1);assert.equal(f.unsubscribed,true);
+  }
 });
 await test('cancelled or missing/duplicate session query never enters activation polling', async () => {
   for (const query of ['?checkout=cancelled', '?checkout=cancelled&session_id=cs_test_owned', '', '?session_id=a&session_id=b']) {
