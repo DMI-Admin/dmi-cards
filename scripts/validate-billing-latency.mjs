@@ -31,7 +31,7 @@ await test('records have only fixed keys/categories and generated UTC timestamps
  assert.equal(f.records.length,1);assert.deepEqual(Object.keys(f.records[0]).sort(),['component','source','stage','at','consumer','ordinal','outcome','category','duration_ms','remaining_ms','minimum_start_ms'].sort());assert.match(f.records[0].at,/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);assert.equal(f.records[0].duration_ms,123);assert.doesNotMatch(JSON.stringify(f.records),/cus_|private|payload|secret/);
 });
 await test('arbitrary strings invalid numbers and hostile getters never enter diagnostics',()=>{
- const f=observer();for(const field of ['stage','consumer','outcome','reason','category','ordinal','duration_ms','remaining_ms','minimum_start_ms'])f.observe({stage:'runner_start',[field]:'PRIVATE'});
+ const f=observer();for(const field of ['stage','consumer','outcome','reason','category','ordinal','duration_ms','remaining_ms','minimum_start_ms','delay_ms'])f.observe({stage:'runner_start',[field]:'PRIVATE'});
  for(const value of [NaN,Infinity,-1])f.observe({stage:'runner_start',duration_ms:value});
  f.observe({get stage(){throw Error('PRIVATE');}});assert.equal(f.records.length,0);
  assert.equal(diagnostics.createBillingLatencyObserver('PRIVATE',environment),undefined);
@@ -47,9 +47,41 @@ await test('all runner stop outcomes preserve aggregate and execution ordering w
   const run=async(observe)=>{const calls=[],n={finance:0,entitlement:0};let nowCalls=0;const result=await runner.runAutomaticBillingWork(config,runtime,85000,()=>{nowCalls++;return 0;},async(_d,_s,c,event)=>{calls.push([c,event]);return {state:++n[c]===1?'bound':n[c]===2?'completed':stop,category:'routing_unresolved'};},observe);return {result:plain(result),calls,nowCalls};};
   const f=observer();assert.deepEqual(await run(f.observe),await run());
   for(const consumer of ['finance','entitlement']){
-   const ends=f.records.filter(r=>r.stage==='execution_end'&&r.consumer===consumer);assert.deepEqual(ends.map(r=>r.outcome),['bound','completed',stop]);assert.deepEqual(ends.map(r=>r.ordinal),[1,2,3]);
+   const ends=f.records.filter(r=>r.stage==='execution_end'&&r.consumer===consumer);const rechecks=consumer==='entitlement'&&stop==='idle';assert.deepEqual(ends.map(r=>r.outcome),rechecks?['bound','completed','idle','idle']:['bound','completed',stop]);assert.deepEqual(ends.map(r=>r.ordinal),rechecks?[1,2,3,4]:[1,2,3]);
    const exit=f.records.find(r=>r.stage==='lane_stop'&&r.consumer===consumer);assert.equal(exit.reason,'outcome_stop');assert.equal(exit.outcome,stop);
   }
+ }
+});
+await test('idle telemetry distinguishes initial idle, scheduled delay, executed recheck and its outcome with fixed fields only',async()=>{
+ const f=observer();let e=0;
+ await runner.runAutomaticBillingWork(config,runtime,85000,()=>0,async(_d,_s,c)=>({state:c==='finance'?'idle':++e===2?'bound':'idle',category:'routing_unresolved',event_id:'evt_PRIVATE'}),f.observe,async()=>{});
+ const stages=f.records.filter(r=>r.stage.startsWith('idle_recheck'));
+ assert.deepEqual(stages.map(r=>r.stage),['idle_recheck_scheduled','idle_recheck_start','idle_recheck_end']);
+ assert.ok(stages.every(r=>r.consumer==='entitlement'&&r.ordinal===2));assert.equal(stages[0].delay_ms,250);assert.equal(stages[2].outcome,'bound');
+ assert.ok(f.records.find(r=>r.stage==='execution_end'&&r.consumer==='entitlement'&&r.ordinal===1&&r.outcome==='idle'));
+ const allowed=['component','source','stage','at','consumer','ordinal','outcome','reason','category','duration_ms','remaining_ms','minimum_start_ms','delay_ms'];
+ for(const r of f.records)assert.ok(Object.keys(r).every(k=>allowed.includes(k)));
+ assert.doesNotMatch(JSON.stringify(f.records),/evt_|PRIVATE|event_id/);
+});
+await test('idle recheck headroom skip is observable before delay and after an overshooting delay',async()=>{
+ for(const overshoot of [false,true]){
+  let time=0,e=0;const f=observer();
+  await runner.runAutomaticBillingWork(config,runtime,85000,()=>time,async(_d,_s,c)=>{if(c==='entitlement'){e++;time=overshoot?9750:10000;}return {state:'idle'};},f.observe,async()=>{assert.ok(overshoot);time+=251;});
+  assert.equal(e,1);const skip=f.records.find(r=>r.stage==='idle_recheck_skipped');assert.equal(skip.reason,'insufficient_headroom');assert.equal(skip.ordinal,2);
+  assert.equal(f.records.filter(r=>r.stage==='idle_recheck_start').length,0);
+ }
+});
+await test('eighth-slot idle emits execution-limit skip without scheduling a delayed ninth execution',async()=>{
+ let e=0;const f=observer();
+ await runner.runAutomaticBillingWork(config,runtime,85000,()=>0,async(_d,_s,c)=>({state:c==='finance'?'idle':++e===8?'idle':'completed'}),f.observe,()=>assert.fail('NO_WAIT'));
+ assert.equal(e,8);assert.ok(f.records.some(r=>r.stage==='idle_recheck_skipped'&&r.reason==='execution_limit'));
+ assert.ok(!f.records.some(r=>r.stage==='idle_recheck_scheduled'));
+});
+await test('throwing and rejecting diagnostic sinks cannot alter the idle recheck or its ordinary results',async()=>{
+ for(const sink of [()=>{throw Error('PRIVATE');},async()=>{throw Error('PRIVATE');}]){
+  const f=observer('webhook_kick',sink);let waits=0;
+  const r=await runner.runAutomaticBillingWork(config,runtime,85000,()=>0,async()=>({state:'idle'}),f.observe,async()=>{waits++;});
+  assert.equal(r.executions,3);assert.equal(r.counts.idle,3);assert.equal(waits,1);await flush();
  }
 });
 await test('initial insufficient 75-second headroom skip is observable without constructing runtime',async()=>{

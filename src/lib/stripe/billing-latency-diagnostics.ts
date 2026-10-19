@@ -3,7 +3,7 @@ import { BILLING_WORK_DATABASE, BILLING_WORK_PROJECT } from "./billing-work-conf
 
 export type LatencySource = "webhook_kick" | "automatic_endpoint" | "activation";
 export type LatencyEvent = {
-  stage: "runner_start" | "runner_end" | "execution_start" | "execution_end" | "lane_stop" | "runner_skip" | "activation_start" | "activation_end" | "acknowledgement_start" | "acknowledgement_end" | "readiness_start" | "readiness_end";
+  stage: "runner_start" | "runner_end" | "execution_start" | "execution_end" | "lane_stop" | "runner_skip" | "idle_recheck_scheduled" | "idle_recheck_start" | "idle_recheck_end" | "idle_recheck_skipped" | "activation_start" | "activation_end" | "acknowledgement_start" | "acknowledgement_end" | "readiness_start" | "readiness_end";
   consumer?: "finance" | "entitlement";
   ordinal?: number;
   outcome?: "disabled" | "bound" | "completed" | "idle" | "retry_wait" | "dependency_wait" | "needs_attention" | "stopped" | "payment_acknowledged" | "payment_unconfirmed" | "pro_ready" | "pro_not_ready" | "safe_error";
@@ -12,9 +12,10 @@ export type LatencyEvent = {
   duration_ms?: number;
   remaining_ms?: number;
   minimum_start_ms?: number;
+  delay_ms?: number;
 };
 export type LatencyObserver = (event: LatencyEvent) => void;
-const stages = ["runner_start", "runner_end", "execution_start", "execution_end", "lane_stop", "runner_skip", "activation_start", "activation_end", "acknowledgement_start", "acknowledgement_end", "readiness_start", "readiness_end"];
+const stages = ["runner_start", "runner_end", "execution_start", "execution_end", "lane_stop", "runner_skip", "idle_recheck_scheduled", "idle_recheck_start", "idle_recheck_end", "idle_recheck_skipped", "activation_start", "activation_end", "acknowledgement_start", "acknowledgement_end", "readiness_start", "readiness_end"];
 const outcomes = ["disabled", "bound", "completed", "idle", "retry_wait", "dependency_wait", "needs_attention", "stopped", "payment_acknowledged", "payment_unconfirmed", "pro_ready", "pro_not_ready", "safe_error"];
 const reasons = ["outcome_stop", "insufficient_headroom", "execution_limit", "configuration_disabled", "invalid_budget", "runtime_unavailable"];
 const categories = ["lease_busy", "dependency_unresolved", "ownership_conflict", "ownership_stale", "ambiguous_outcome", "provider_unavailable", "store_unavailable", "invalid_evidence", "worker_expired", "retry_exhausted", "routing_unresolved"];
@@ -43,7 +44,7 @@ export function createBillingLatencyObserver(source: LatencySource, env: Record<
         if (!Number.isInteger(ordinal) || ordinal < 1 || ordinal > 8) return;
         record.ordinal = ordinal;
       }
-      for (const key of ["duration_ms", "remaining_ms", "minimum_start_ms"] as const) {
+      for (const key of ["duration_ms", "remaining_ms", "minimum_start_ms", "delay_ms"] as const) {
         const value = event[key];
         if (value !== undefined) {
           if (!Number.isFinite(value) || value < (key === "remaining_ms" ? -240_000 : 0) || value > 86_400_000) return;

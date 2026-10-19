@@ -6,6 +6,7 @@ import {AUTOMATIC_FUNCTION_SECONDS,AUTOMATIC_RESPONSE_RESERVE_MS,AUTOMATIC_ADMIS
 import type {LatencyObserver,LatencyEvent} from "./billing-latency-diagnostics";
 
 const states=["disabled","idle","bound","completed","retry_wait","dependency_wait","needs_attention","stopped"] as const;
+const ENTITLEMENT_IDLE_RECHECK_MS=250;
 export type AutomaticResult={ok:boolean;executions:number;counts:Record<typeof states[number],number>};
 export type AutomaticRuntime={deps:WorkerDependencies;worker:WorkerOptIn};
 export type AutomaticExecution=(deps:WorkerDependencies,scope:string,consumer:WorkConsumer,event:undefined,worker:WorkerOptIn)=>Promise<WorkerResult>;
@@ -31,7 +32,8 @@ function coordinatedClaims(deps:WorkerDependencies):WorkerDependencies {
 }
 export async function runAutomaticBillingWork(config:BillingWorkConfiguration,createRuntime:()=>AutomaticRuntime,
  budgetMs=AUTOMATIC_FUNCTION_SECONDS*1_000-AUTOMATIC_RESPONSE_RESERVE_MS,
- now:()=>number=()=>performance.now(),execute:AutomaticExecution=executeBillingWorker,observe?:LatencyObserver):Promise<AutomaticResult>{
+ now:()=>number=()=>performance.now(),execute:AutomaticExecution=executeBillingWorker,observe?:LatencyObserver,
+ wait:(ms:number)=>Promise<void>=ms=>new Promise(resolve=>setTimeout(resolve,ms))):Promise<AutomaticResult>{
  const emit=(event:()=>LatencyEvent)=>{try{observe?.(event());}catch{/* Observational only. */}};
  const measuredStart=observe?performance.now():0;
  emit(()=>({stage:"runner_start"}));
@@ -47,9 +49,15 @@ export async function runAutomaticBillingWork(config:BillingWorkConfiguration,cr
  let runtime:AutomaticRuntime;try{runtime=createRuntime();}catch{emit(()=>({stage:"runner_skip",reason:"runtime_unavailable"}));unavailable=true;return result();}
  const deps=coordinatedClaims(runtime.deps);
  const lane=async(consumer:WorkConsumer)=>{
+  let idleRechecked=false,recheckPending=false;
   for(let n=0;n<8;n++){
    const remaining=deadline-now();
-   if(remaining<WORKER_TOTAL_MS){emit(()=>({stage:"lane_stop",consumer,ordinal:n+1,reason:"insufficient_headroom",remaining_ms:remaining,minimum_start_ms:WORKER_TOTAL_MS}));return;}
+   if(remaining<WORKER_TOTAL_MS){
+    if(recheckPending)emit(()=>({stage:"idle_recheck_skipped",consumer,ordinal:n+1,reason:"insufficient_headroom",remaining_ms:remaining,minimum_start_ms:WORKER_TOTAL_MS}));
+    emit(()=>({stage:"lane_stop",consumer,ordinal:n+1,reason:"insufficient_headroom",remaining_ms:remaining,minimum_start_ms:WORKER_TOTAL_MS}));return;
+   }
+   const isRecheck=recheckPending;recheckPending=false;
+   if(isRecheck)emit(()=>({stage:"idle_recheck_start",consumer,ordinal:n+1,remaining_ms:remaining,minimum_start_ms:WORKER_TOTAL_MS}));
    executions++;
    const executionStart=observe?performance.now():0;
    emit(()=>({stage:"execution_start",consumer,ordinal:n+1,remaining_ms:remaining,minimum_start_ms:WORKER_TOTAL_MS}));
@@ -58,6 +66,23 @@ export async function runAutomaticBillingWork(config:BillingWorkConfiguration,cr
    try{const r=await execute(deps,config.scope,consumer,undefined,runtime.worker);if(states.includes(r.state))state=r.state;workerResult=r;}catch{/* Fixed aggregate only. */}
    counts[state]++;
    emit(()=>({stage:"execution_end",consumer,ordinal:n+1,outcome:state,category:workerResult?.category,duration_ms:performance.now()-executionStart}));
+   if(isRecheck)emit(()=>({stage:"idle_recheck_end",consumer,ordinal:n+1,outcome:state,category:workerResult?.category,duration_ms:performance.now()-executionStart}));
+   // One fresh ordinary claim after idle, never a replay of claimed work.
+   // The delay and the recheck both consume this lane's existing limits/budget.
+   if(state==="idle"&&consumer==="entitlement"&&!idleRechecked){
+    idleRechecked=true;
+    if(n===7){emit(()=>({stage:"idle_recheck_skipped",consumer,ordinal:8,reason:"execution_limit"}));break;}
+    const headroom=deadline-now();
+    if(headroom-ENTITLEMENT_IDLE_RECHECK_MS<WORKER_TOTAL_MS){
+     emit(()=>({stage:"idle_recheck_skipped",consumer,ordinal:n+2,reason:"insufficient_headroom",remaining_ms:headroom,minimum_start_ms:WORKER_TOTAL_MS}));
+     emit(()=>({stage:"lane_stop",consumer,ordinal:n+2,reason:"insufficient_headroom",remaining_ms:headroom,minimum_start_ms:WORKER_TOTAL_MS}));return;
+    }
+    emit(()=>({stage:"idle_recheck_scheduled",consumer,ordinal:n+2,delay_ms:ENTITLEMENT_IDLE_RECHECK_MS,remaining_ms:headroom,minimum_start_ms:WORKER_TOTAL_MS}));
+    try{await wait(ENTITLEMENT_IDLE_RECHECK_MS);}catch{
+     unavailable=true;emit(()=>({stage:"idle_recheck_skipped",consumer,ordinal:n+2,reason:"runtime_unavailable"}));return;
+    }
+    recheckPending=true;continue;
+   }
    if(state!=="bound"&&state!=="completed"){emit(()=>({stage:"lane_stop",consumer,ordinal:n+1,outcome:state,reason:"outcome_stop"}));return;}
   }
   emit(()=>({stage:"lane_stop",consumer,ordinal:8,reason:"execution_limit"}));

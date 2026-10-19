@@ -10,10 +10,10 @@ const reviewed={
   "src/lib/stripe/billing-work-auto-execution.ts": "7a9a91d717663def2aa001fbc9855e0d1ddab6d69af9f397714768ca409cd565",
   "src/lib/stripe/billing-work-auto-kick.ts": "8b1f2b36c71a85df46d320593c70b773256a27cb23a96cbf3c8da47ed8c54f1c",
   "src/lib/stripe/billing-work-auto-request.ts": "268b65a5aed599af053d0cc6d74e3fd5c271868e1132dd52dcad4f936768a40e",
-  "src/lib/stripe/billing-work-auto-runner.ts": "fe4533550877110a29de1a256ec90d169be76b0920e21fa87fe605111c0ad7e1",
+  "src/lib/stripe/billing-work-auto-runner.ts": "eebe81848ab9f1954cb756b8aad204207f3b7572ecd95abd8110f56f856b9a1e",
   "src/lib/stripe/billing-work-handoff.ts": "fcc5a8b566ce0b5ca96681cbc553584586d28d5215975524253ff5665059abbb",
   "src/middleware.ts": "c5a24b13f0877ba8e38d90e722869b86bf63ed5ddb4341d5589569d8c9026b0e",
-  "src/lib/stripe/billing-latency-diagnostics.ts": "e41d1964da1d1c978d6ca42855928a9e0fc845c4f52d269472a0aca458692e7a"
+  "src/lib/stripe/billing-latency-diagnostics.ts": "abe7e00da3a2ca9a50a4838166ae848faa41b76a3f0dc329948d9fe0d6e7d807"
 };
 export const automaticWorkerReviewedPaths=Object.keys(reviewed);
 export function assertAutomaticWorkerFiles(){for(const [file,digest] of Object.entries(reviewed))assert.equal(createHash('sha256').update(fs.readFileSync(file)).digest('hex'),digest,'Unexpected automatic worker drift: '+file);}
