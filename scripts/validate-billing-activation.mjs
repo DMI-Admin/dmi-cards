@@ -6,6 +6,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as crypto from 'node:crypto';
 import * as childProcess from 'node:child_process';
+import * as claimContract from './billing-claim-diagnostic-contract.mjs';
 import * as automaticContract from './billing-work-auto-contract.mjs';
 import * as embeddedContract from './billing-embedded-checkout-contract.mjs';
 import * as latencyContract from './billing-latency-contract.mjs';
@@ -302,6 +303,7 @@ await test('regression diff exception permits only exact reviewed checkout prese
   for (const tamper of [false, true]) {
     const contract = load('scripts/billing-recovery-diagnostic-contract.mjs', {
       './billing-work-auto-contract.mjs': automaticContract,
+      './billing-claim-diagnostic-contract.mjs': claimContract,
       './billing-embedded-checkout-contract.mjs': embeddedContract,
       './billing-latency-contract.mjs': latencyContract,
       'node:assert/strict': { default: assert }, 'node:crypto': crypto, 'node:child_process': childProcess,

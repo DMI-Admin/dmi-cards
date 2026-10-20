@@ -1,3 +1,4 @@
+import {assertClaimDiagnosticFiles,claimDiagnosticReviewedPaths} from './billing-claim-diagnostic-contract.mjs';
 import {assertAutomaticWorkerFiles,automaticWorkerReviewedPaths} from './billing-work-auto-contract.mjs';
 import {assertEmbeddedCheckoutFiles,embeddedCheckoutReviewedPaths} from './billing-embedded-checkout-contract.mjs';
 import {assertBillingLatencyFiles,billingLatencyReviewedPaths} from './billing-latency-contract.mjs';
@@ -21,11 +22,12 @@ export function assertRecoveryDiagnosticFiles(){
 export function recoveryDiagnosticGitDiff(args,options){
  assertRecoveryDiagnosticFiles();
  assertAutomaticWorkerFiles();
+ assertClaimDiagnosticFiles();
  // Narrow hash-pinned checkout presentation changes, not a general exemption.
  assertEmbeddedCheckoutFiles(fs.readFileSync);
  assertBillingLatencyFiles(fs.readFileSync);
  const command=args.includes('--')?args:[...args,'--'];
- return execFileSync('git',[...command,...[...Object.keys(reviewed),...automaticWorkerReviewedPaths,...embeddedCheckoutReviewedPaths,...billingLatencyReviewedPaths].map(file=>':(exclude)'+file)],options);
+ return execFileSync('git',[...command,...[...Object.keys(reviewed),...claimDiagnosticReviewedPaths,...automaticWorkerReviewedPaths,...embeddedCheckoutReviewedPaths,...billingLatencyReviewedPaths].map(file=>':(exclude)'+file)],options);
 }
 export function assertUnchangedExceptRecoveryDiagnostics(file){
  if(automaticWorkerReviewedPaths.includes(file)){assertAutomaticWorkerFiles();return;}

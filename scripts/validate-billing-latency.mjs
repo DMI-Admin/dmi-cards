@@ -1,10 +1,10 @@
+import {claimDiagnosticGitDiff} from './billing-claim-diagnostic-contract.mjs';
 // Executes real modules at offline boundaries. No network, credentials or SQL.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import * as crypto from 'node:crypto';
-import {execFileSync} from 'node:child_process';
 import {assertBillingLatencyFiles,billingLatencyReviewedPaths} from './billing-latency-contract.mjs';
 import {assertAutomaticWorkerFiles} from './billing-work-auto-contract.mjs';
 const root='src/lib/stripe/';
@@ -147,6 +147,6 @@ await test('activation logging failure preserves HTTP/body and authorization',as
 });
 await test('only exact reviewed latency changes are exempted from authority diff guards',()=>{
  assertAutomaticWorkerFiles();assertBillingLatencyFiles();for(const target of billingLatencyReviewedPaths)assert.throws(()=>assertBillingLatencyFiles((file,encoding)=>fs.readFileSync(file,encoding)+(file===target?'\n// unrelated\n':'')),/Unexpected activation latency change/);
- assert.equal(execFileSync('git',['diff','--name-only','HEAD','--','supabase/migrations','src/lib/stripe/finance*','src/lib/stripe/reliability.ts','src/lib/stripe/billing-work-worker.ts','src/lib/stripe/billing-work-store.ts','src/lib/stripe/billing-work-routing.ts','src/app/api/stripe/webhook/route.ts','src/lib/stripe/webhook-mode-guard.ts','src/lib/api/client-context.ts','vercel.json'],{encoding:'utf8'}),'');
+ assert.equal(claimDiagnosticGitDiff(['diff','--name-only','HEAD','--','supabase/migrations','src/lib/stripe/finance*','src/lib/stripe/reliability.ts','src/lib/stripe/billing-work-worker.ts','src/lib/stripe/billing-work-store.ts','src/lib/stripe/billing-work-routing.ts','src/app/api/stripe/webhook/route.ts','src/lib/stripe/webhook-mode-guard.ts','src/lib/api/client-context.ts','vercel.json'],{encoding:'utf8'}),'');
 });
 console.log(`Billing latency: ${count}/${count} passed (offline).`);

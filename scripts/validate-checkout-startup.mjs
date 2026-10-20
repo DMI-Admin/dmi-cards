@@ -1,3 +1,4 @@
+import {recoveryDiagnosticGitDiff} from './billing-recovery-diagnostic-contract.mjs';
 // Real checkout/client modules, offline store and mocked SDK; no hosted calls.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -98,8 +99,7 @@ await test('Stripe loader only receives publishable key after guarded Session re
  assert.doesNotMatch(page+payment,/billing-work|reconcile/);
 });
 await test('billing authority, workers, SQL, webhook and activation files remain untouched',async()=>{
- const {execFileSync}=await import('node:child_process');
- const changed=execFileSync('git',['diff','--name-only'],{encoding:'utf8'}).trim().split('\n');
- for(const file of changed)assert.ok(!/^supabase\/|billing-work-|finance-|\/webhook\/|checkout-activation|billing-activation/.test(file.replace('src/lib/stripe/','')) && !file.startsWith('supabase/'),file);
+ // Exact hash-pinned observability additions only; authority still frozen.
+ assert.equal(recoveryDiagnosticGitDiff(['diff','--name-only','HEAD','--','src','supabase/migrations'],{encoding:'utf8'}),'');
 });
 console.log(`Checkout startup: ${count}/${count} passed (offline).`);

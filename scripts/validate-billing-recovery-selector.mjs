@@ -1,3 +1,4 @@
+import {assertClaimDiagnosticMigrationChanges,claimDiagnosticMigration} from './billing-claim-diagnostic-contract.mjs';
 // Offline mocks only; no network, credentials, SQL or work execution.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,7 +11,7 @@ const root='src/lib/stripe/';
 const reviewedMigration='supabase/migrations/20261013000000_billing_dmi_completion_wake_provenance.sql';
 const reviewedMigrationDigest='d37d522694f3124f3e503025e6ccc8543cc80ff0a405fa2da94ea14e786c0c74';
 function assertReviewedMigrationChanges(paths,digest){
- assert.ok(paths.every(file=>file===reviewedMigration),'Unexpected migration change');
+ assertClaimDiagnosticMigrationChanges(paths.filter(file=>file!==reviewedMigration));
  assert.equal(digest,reviewedMigrationDigest,'Reviewed completion migration drift');
 }
 
@@ -40,5 +41,5 @@ await test('normal execution remains concurrent and awaited',async()=>{const sta
 await test('all selector outcome statuses and counts remain consistent',async()=>{for(const state of ['disabled','idle','bound','completed','retry_wait','dependency_wait','needs_attention','stopped']){const r=await fixture(approved,state).post();const b=await r.json();const healthy=['idle','bound','completed'].includes(state);assert.equal(r.status,healthy?200:503);assert.equal(b.ok,healthy);assert.equal(b.executions,1);assert.equal(b.counts[state],1);assert.equal(Object.values(b.counts).reduce((a,v)=>a+v,0),1);assert.deepEqual(Object.keys(b).sort(),['counts','executions','ok']);}});
 await test('permission errors fail closed before dependencies',async()=>{let made=false;const r=await recovery.recoverBillingWork(new Request('https://staging.invalid/api/internal/billing-work?consumer=entitlement',{method:'POST',headers:{authorization:'Bearer '+secret}}),secret,{state:'enabled'},()=>{made=true;throw Error('PRIVATE');},()=>{throw Error('PRIVATE');});assert.equal(r.status,400);assert.equal(made,false);});
 await test('worker authority scheduler Finance and entitlement implementation unchanged',()=>{assertRecoveryDiagnosticFiles();for(const file of ['billing-work-worker.ts','billing-work-store.ts','billing-work-routing.ts','billing-work-config.ts','reliability.ts','webhook.ts','finance-dmi-charge-integration.ts'])assert.equal(fs.readFileSync(root+file,'utf8'),execFileSync('git',['show','9b898a69f10c7588a9571a057a7e4a34f3a04855:'+root+file],{encoding:'utf8'}));const changed=execFileSync('git',['diff','--name-only','9b898a69f10c7588a9571a057a7e4a34f3a04855','--','supabase/migrations'],{encoding:'utf8'}).trim().split('\n').filter(Boolean);const untracked=execFileSync('git',['ls-files','--others','--exclude-standard','supabase/migrations'],{encoding:'utf8'}).trim().split('\n').filter(Boolean);assertReviewedMigrationChanges([...changed,...untracked],crypto.createHash('sha256').update(fs.readFileSync(reviewedMigration)).digest('hex'));});
-await test('migration exception rejects unrelated additions edits and reviewed-file drift',()=>{assertReviewedMigrationChanges([reviewedMigration],reviewedMigrationDigest);for(const file of ['supabase/migrations/20990101000000_unreviewed.sql','supabase/migrations/20261011000000_finance_dmi_charge_integration.sql'])assert.throws(()=>assertReviewedMigrationChanges([reviewedMigration,file],reviewedMigrationDigest),/Unexpected migration change/);assert.throws(()=>assertReviewedMigrationChanges([reviewedMigration],'0'.repeat(64)),/Reviewed completion migration drift/);});
+await test('migration exception rejects unrelated additions edits and reviewed-file drift',()=>{assertReviewedMigrationChanges([reviewedMigration,claimDiagnosticMigration],reviewedMigrationDigest);for(const file of ['supabase/migrations/20990101000000_unreviewed.sql','supabase/migrations/20261011000000_finance_dmi_charge_integration.sql'])assert.throws(()=>assertReviewedMigrationChanges([reviewedMigration,file],reviewedMigrationDigest),/Unexpected claim diagnostic migration change/);assert.throws(()=>assertReviewedMigrationChanges([reviewedMigration],'0'.repeat(64)),/Reviewed completion migration drift/);});
 console.log(`PASS recovery selector: ${n}/${n}`);
