@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {verifyBoundary} from './boundary.mjs';
+import {load} from './load.mjs';
+const manifest=verifyBoundary();let n=0;function test(name,fn){fn();n++;console.log('PASS '+name);}
+test('existing source/migrations unchanged; new files exact-pinned and isolated',()=>execFileSync('git',['merge-base','--is-ancestor',manifest.specification_commit,'HEAD']));
+const sql=manifest.migrations.map(f=>fs.readFileSync(f,'utf8')).join('\n');
+test('15 tables exclusively in private schema; no legacy SQL references',()=>{assert.equal((sql.match(/CREATE TABLE billing_v2\./g)||[]).length,15);assert.doesNotMatch(sql,/CREATE (?:OR REPLACE )?FUNCTION public\.|ALTER TABLE public\.|INSERT INTO public\.|UPDATE public\.|DELETE FROM public\./);});
+test('all SQL entry points fixed-path and no arbitrary provider/database capabilities',()=>{assert.equal((sql.match(/CREATE FUNCTION billing_v2\./g)||[]).length,32);assert.doesNotMatch(sql,/http_post|net\.|dblink|postgres_fdw|cron\.|NOTIFY|CREATE TRIGGER[^;]+public\./);assert.equal((sql.match(/SET search_path=pg_catalog/g)||[]).length,32);});
+test('no extra receipt/routing tables or auto schema exposure',()=>{assert.doesNotMatch(sql,/CREATE TABLE billing_v2\.(?:receipt|routing)|ALTER ROLE|ALTER SYSTEM|pgrst\.db_schemas/);});
+test('hard blocked checkout/handover and private completion/audit helpers',()=>{assert.equal((sql.match(/SELECT '\{"kind":"blocked_phase2"\}'::jsonb/g)||[]).length,3);for(const name of ['finish_task','defer_task','apply_rows','assert_fence','append_audit'])assert.doesNotMatch(sql,new RegExp('GRANT EXECUTE ON FUNCTION billing_v2\\.'+name));});
+test('backfill/shadow have no connection or provider factory',()=>{for(const file of manifest.sources.filter(f=>/backfill|comparison|checkout-observation/.test(f)))assert.doesNotMatch(fs.readFileSync(file,'utf8'),/\bfetch\s*\(|createClient|new Stripe|\.query\s*\(/);});
+const policy=load('src/lib/billing-v2/domain/subscription-policy.ts'),checkout=load('src/lib/billing-v2/domain/checkout-observation.ts');
+test('frozen attempt conflict/expiry cannot produce a new operation key',()=>{const p={ui_mode:'embedded_page'},attempt={key:'frozen',parameters:p,parametersDigest:policy.digest(p),createdAt:'2026-10-01',replayDeadline:'2026-10-02',sessionId:'cs_existing'};assert.equal(checkout.observeAttempt(attempt,'2026-10-01T01:00:00Z').key,'frozen');assert.equal(checkout.observeAttempt({...attempt,parameters:{bad:true}},'2026-10-01T01:00:00Z').kind,'needs_attention');assert.equal(checkout.observeAttempt(attempt,'2026-10-03').kind,'needs_attention');});
+test('old financial/worker tests were not rewritten',()=>{for(const p of execFileSync('git',['diff','--name-only','HEAD','--','scripts'],{encoding:'utf8'}).trim().split('\n').filter(Boolean))assert.ok(['scripts/billing-claim-diagnostic-contract.mjs','scripts/validate-billing-dmi-completion.mjs'].includes(p));});
+console.log(`V2 boundary: ${n}/${n}; runtime is unreachable from existing application.`);

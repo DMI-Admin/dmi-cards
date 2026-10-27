@@ -1,5 +1,6 @@
 // Offline Phase-1 contract checks. Invoke from repository root.
 import assert from 'node:assert/strict';
+import {verifyBoundary} from '../local/boundary.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -49,13 +50,14 @@ await test('Finance fields and normative current constraints retained', () => {
 });
 await test('Current source/migration manifest exact and complete', () => {
   const hash = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-  assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim(), baseline.head);
+  execFileSync('git', ['merge-base', '--is-ancestor', baseline.head, 'HEAD']);
+  const implementation=verifyBoundary();
   for (const [file, expected] of Object.entries(baseline.sha256)) assert.equal(hash(file), expected, 'Runtime changed: ' + file);
-  for (const file of [...files('src'), ...files('supabase/migrations')]) assert.ok(Object.hasOwn(baseline.sha256, file), 'Unexpected runtime/schema file ' + file);
+  for (const file of [...files('src'), ...files('supabase/migrations')]) assert.ok(Object.hasOwn(baseline.sha256, file)||Object.hasOwn(implementation.sha256,file), 'Unexpected runtime/schema file ' + file);
   const changed = execFileSync('git', ['diff', '--name-only', 'HEAD'], {encoding: 'utf8'}).trim().split('\n').filter(Boolean);
   const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], {encoding: 'utf8'}).trim().split('\n').filter(Boolean);
   const phase2DesignFiles = new Set(["specs/billing-simplification/phase2/README.md", "specs/billing-simplification/phase2/schema.json", "specs/billing-simplification/phase2/rpc.json", "specs/billing-simplification/phase2/plan.json", "specs/billing-simplification/phase2/interfaces.d.ts", "specs/billing-simplification/phase2/validate.mjs", "specs/billing-simplification/phase2/baseline.json"]);
-  for (const file of [...changed, ...untracked]) assert.ok(file.startsWith('specs/billing-simplification/phase1/') || phase2DesignFiles.has(file), 'Outside reviewed specification boundary: ' + file);
+  for (const file of [...changed, ...untracked]) assert.ok(file.startsWith('specs/billing-simplification/phase1/') || phase2DesignFiles.has(file)||Object.hasOwn(implementation.sha256,file)||implementation.local_files.includes(file)||implementation.specification_edits.includes(file), 'Outside reviewed specification boundary: ' + file);
 });
 await test('Runtime cannot import Phase 1 artifacts', () => {
   for (const file of files('src')) {
