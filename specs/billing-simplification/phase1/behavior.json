@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "authority": "specification_only",
+  "states": [
+    "queued",
+    "processing",
+    "retry_wait",
+    "dependency_wait",
+    "completed",
+    "needs_attention"
+  ],
+  "transitions": {
+    "queued": [
+      "processing"
+    ],
+    "processing": [
+      "processing",
+      "retry_wait",
+      "dependency_wait",
+      "completed",
+      "needs_attention"
+    ],
+    "retry_wait": [
+      "processing"
+    ],
+    "dependency_wait": [
+      "retry_wait",
+      "needs_attention"
+    ],
+    "completed": [],
+    "needs_attention": []
+  },
+  "transition_actors": {
+    "claim": [
+      "queued->processing",
+      "retry_wait->processing",
+      "processing->processing"
+    ],
+    "holder": [
+      "processing->retry_wait",
+      "processing->dependency_wait",
+      "processing->completed",
+      "processing->needs_attention"
+    ],
+    "dependency_coordinator": [
+      "dependency_wait->retry_wait",
+      "dependency_wait->needs_attention"
+    ]
+  },
+  "errors": [
+    "provider_unavailable",
+    "provider_rate_limited",
+    "provider_transport",
+    "store_unavailable",
+    "ambiguous_provider_result",
+    "ownership_unresolved",
+    "ownership_conflict",
+    "unknown_price",
+    "invalid_evidence",
+    "retry_exhausted",
+    "dependency_unresolved",
+    "handover_blocked"
+  ],
+  "outcomes": [
+    "processed",
+    "ignored",
+    "unchanged",
+    "stale_ignored",
+    "terminal_ignored"
+  ],
+  "invariants": [
+    "signature_then_trusted_mode_then_database",
+    "one_authoritative_writer_per_account_domain",
+    "same_scope_identity_everywhere",
+    "no_pro_without_verified_owner_approved_price",
+    "subscription_projection_task_audit_one_transaction",
+    "finance_bundle_task_audit_one_transaction",
+    "completed_result_is_replayable",
+    "token_generation_engine_and_unexpired_lease_required",
+    "expiry_alone_does_not_prove_non_commit",
+    "no_stripe_side_effect_from_reconciliation_or_shadow",
+    "no_finance_dependency_for_access",
+    "no_new_key_after_ambiguous_provider_effect"
+  ],
+  "retry_proposal": {
+    "implemented": false,
+    "transient_failure_limit": 12,
+    "maximum_failure_age_hours": 24,
+    "backoff_seconds": [
+      5,
+      15,
+      30,
+      60,
+      120,
+      300,
+      600,
+      900,
+      1800,
+      3600,
+      3600
+    ],
+    "jitter": "uniform [0.8,1.2] times delay; respect longer structured Retry-After; never exceed deadline",
+    "dependency_fallback_seconds": 300,
+    "dependency_age_hours": 24,
+    "contention_counts_as_failure": false,
+    "manual_recovery": "new causally linked task after evidence review; no blind reset, targeting/order override, new provider key or reopening completed task",
+    "migration_age_policy": "failure/dependency age begins on new-engine admission or explicit reviewed import; historical timestamps do not instantly exhaust new budget"
+  },
+  "lease_proposal": {
+    "implemented": false,
+    "ttl_seconds": 90,
+    "renew_at_seconds": 30,
+    "scope": "single canonical operation lease; renewal before expiry with same token/generation; no revival after expiry",
+    "handover": "drain then increment authority generation; all legacy commit paths must participate before any new authority"
+  },
+  "shadow_outcomes": [
+    "equivalent",
+    "expected_representation_difference",
+    "policy_mismatch",
+    "missing_projection",
+    "ownership_mismatch",
+    "unexpected_business_effect"
+  ],
+  "shadow_fields": [
+    "status",
+    "plan",
+    "entitlement",
+    "owner_verified",
+    "order_decision",
+    "finance",
+    "terminal"
+  ],
+  "gates": {
+    "phase2_design": [
+      "15 table contracts structurally valid",
+      "all fixtures have explicit expected facts/effects and current evidence or future-only label",
+      "existing offline suites pass",
+      "runtime and migrations unchanged",
+      "atomic and handover gaps acknowledged"
+    ],
+    "phase3_shadow": [
+      "100% deterministic fixture equivalence with target adapter",
+      "0 duplicate Stripe objects across lost-response/concurrency tests",
+      "100% stale token/generation/engine rejection under disposable PostgreSQL concurrency",
+      "crash at every transaction boundary leaves either all or none",
+      "handover plus rollback tested for access, checkout and Finance",
+      "0 shadow provider mutations or customer-visible writes"
+    ],
+    "staging_cutover": [
+      "7 consecutive days shadow and at least 100 synthetic complete event families",
+      "0 unapproved policy/ownership/missing projection differences",
+      "100% reconciled task coverage; no unreviewed attention items",
+      "one-engine commit barrier proven at database level",
+      "fresh monthly/annual/cancel/payment-failure/reconciliation acceptance with no manual worker"
+    ],
+    "production_cutover": [
+      "Staging gates pass",
+      "14 consecutive days shadow and at least 1000 synthetic or natural complete families; synthetic evidence labelled separately",
+      "0 unexplained business effects or ownership mismatches",
+      "100% audited handover/rollback rehearsal; old engine caught up before rollback",
+      "reviewed production isolation, backups, retention, on-call and reconciliation capacity plan",
+      "explicit operator approval; cohort 1% then 10% then 100% with at least 24h and zero unresolved mismatches per stage"
+    ]
+  }
+}

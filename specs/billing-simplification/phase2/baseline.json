@@ -1,0 +1,24 @@
+{
+  "head": "d9e19c3887919990f5aba4c2bb79cd207e9448ad",
+  "phase1_sha256": {
+    "specs/billing-simplification/phase1/README.md": "babb6e215a86ab04db7fb88e3fa68b5cb529c4c373050f7e3bfeb00de8a49b64",
+    "specs/billing-simplification/phase1/baseline.json": "8e88fc60395ca45a3b958cd9de6ce2db4a54c5621d2a037e31c822df71e9eb8b",
+    "specs/billing-simplification/phase1/behavior.json": "d3a6eff8cc51e366799b5d04937645ae7b66b8dfb00b8a29d4382823218942f4",
+    "specs/billing-simplification/phase1/comparison.mjs": "6442e26fffece4e1ce026da205125d2474b32e3295985b355bc83618978f26ee",
+    "specs/billing-simplification/phase1/current-system.mjs": "c815a9a168b2bb58d6c6327756f315549af5dae1069f5befe6f02b56e866869a",
+    "specs/billing-simplification/phase1/fixtures.json": "9c769d0874eeaedd32efc07b3cc20daaaac2b4c49707d6d3039362059b1225c4",
+    "specs/billing-simplification/phase1/schema.json": "976f6feeda2467eb2914dca4696e1c1ed2874a3b35675490738a1aa58940515d",
+    "specs/billing-simplification/phase1/validate.mjs": "459f391f04ef686683682db662245a6684d875efd3f889cb2b3e965e0d33e255"
+  },
+  "allowed_phase2_files": [
+    "README.md",
+    "schema.json",
+    "rpc.json",
+    "plan.json",
+    "interfaces.d.ts",
+    "validate.mjs",
+    "baseline.json"
+  ],
+  "current_runtime_baseline": "../phase1/baseline.json",
+  "permitted_phase1_change": "validate.mjs only: exact seven-file Phase 2 design allowlist; existing source/migration pins and assertions unchanged"
+}

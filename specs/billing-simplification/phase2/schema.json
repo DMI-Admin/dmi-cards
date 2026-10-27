@@ -1,0 +1,4696 @@
+{
+  "version": 1,
+  "status": "design_only_not_installable",
+  "namespace": "billing_v2",
+  "postgrest_exposed": false,
+  "phase2_mode": "shadow_only",
+  "live_authority_enabled": false,
+  "logical_source": "../phase1/schema.json",
+  "security": {
+    "rls_enabled": true,
+    "rls_forced": true,
+    "policies": [
+      {
+        "role": "billing_v2_owner",
+        "command": "ALL",
+        "using": "true",
+        "with_check": "true"
+      }
+    ],
+    "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+    "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+    "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+    "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+    "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+    "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+  },
+  "tables": [
+    {
+      "name": "billing_v2.accounts",
+      "columns": {
+        "stripe_scope": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "gen_random_uuid()"
+        },
+        "principal_kind": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "individual",
+            "business",
+            "unresolved"
+          ],
+          "default_sql": null
+        },
+        "principal_id": {
+          "type": "uuid",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_customer_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "binding_state": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "unresolved",
+            "verified",
+            "conflict"
+          ],
+          "default_sql": null
+        },
+        "binding_revision": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "0"
+        },
+        "verified_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "clock_timestamp()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "clock_timestamp()"
+        }
+      },
+      "primary_key": [
+        "stripe_scope",
+        "id"
+      ],
+      "business_identity": "Internal account plus scoped Stripe customer",
+      "unique": [
+        {
+          "columns": [
+            "stripe_scope",
+            "stripe_customer_id"
+          ],
+          "where": "stripe_customer_id IS NOT NULL"
+        },
+        {
+          "columns": [
+            "stripe_scope",
+            "principal_kind",
+            "principal_id"
+          ],
+          "where": "binding_state='verified'"
+        }
+      ],
+      "foreign_keys": [],
+      "status_enums": {
+        "principal_kind": [
+          "individual",
+          "business",
+          "unresolved"
+        ],
+        "binding_state": [
+          "unresolved",
+          "verified",
+          "conflict"
+        ]
+      },
+      "authoritative_writer": "restricted isolated candidate RPCs only; never current public authority",
+      "allowed_readers": "isolated comparison/backfill tools and bounded safe diagnostic RPC; no UI/Billing/activation",
+      "browser_access": false,
+      "retention": "Retain until audited retention approval; no automatic deletion in this contract.",
+      "immutable_fields": [
+        "stripe_scope",
+        "id",
+        "created_at"
+      ],
+      "mutable_fields": [
+        "principal_kind",
+        "principal_id",
+        "stripe_customer_id",
+        "binding_state",
+        "binding_revision",
+        "verified_at",
+        "updated_at"
+      ],
+      "logical_name": "billing_accounts",
+      "sql_checks": [
+        "stripe_scope ~ '^acct_[A-Za-z0-9]+:(test|live)$'",
+        "principal_kind IN ('individual','business','unresolved')",
+        "binding_state IN ('unresolved','verified','conflict')",
+        "binding_revision >= 0",
+        "(binding_state <> 'verified') OR (principal_id IS NOT NULL AND stripe_customer_id IS NOT NULL AND principal_kind <> 'unresolved' AND verified_at IS NOT NULL)",
+        "stripe_customer_id IS NULL OR stripe_customer_id ~ '^cus_[A-Za-z0-9]+$'",
+        "(principal_kind='unresolved') = (principal_id IS NULL)"
+      ],
+      "transactional_checks": [
+        "verified binding requires principal and customer; customer association is immutable after verification except separately audited identity repair",
+        "unresolved Finance accounts cannot grant access",
+        "scope mode must match trusted deployment and credentials",
+        "binding_revision >= 0; projection revisions begin at 1 on first materialized row"
+      ],
+      "security": {
+        "rls_enabled": true,
+        "rls_forced": true,
+        "policies": [
+          {
+            "role": "billing_v2_owner",
+            "command": "ALL",
+            "using": "true",
+            "with_check": "true"
+          }
+        ],
+        "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+        "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+        "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+        "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+        "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+        "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+      },
+      "indexes": [
+        {
+          "name": "v2_accounts_i1",
+          "columns": [
+            "stripe_scope",
+            "stripe_customer_id"
+          ],
+          "where": "stripe_customer_id IS NOT NULL",
+          "method": "btree",
+          "unique": true
+        },
+        {
+          "name": "v2_accounts_i2",
+          "columns": [
+            "stripe_scope",
+            "principal_kind",
+            "principal_id"
+          ],
+          "where": "binding_state='verified'",
+          "method": "btree",
+          "unique": true
+        },
+        {
+          "name": "v2_accounts_i3",
+          "columns": [
+            "stripe_scope",
+            "principal_kind",
+            "principal_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        }
+      ],
+      "retention_and_storage": {
+        "phase2": "no deletion; candidate data disposable only after archived comparison/export and explicit review",
+        "large_documents": "bounded schema-validated JSONB; no GIN index on evidence or secrets; no unbounded payload snapshots",
+        "audit": "insert-only audit trigger; run checkpoints mutable only through RPC, one audit per checkpoint",
+        "partitioning": "none initially; retain scoped B-tree indexes; consider time partitioning only after measured volume and uniqueness/FK implications review",
+        "dedupe": "retain source identity/digest/result and canceled tombstones through rollback and reviewed retention policy"
+      },
+      "logical_end_state_writer": "bindVerifiedCustomer"
+    },
+    {
+      "name": "billing_v2.checkout_attempts",
+      "columns": {
+        "stripe_scope": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "gen_random_uuid()"
+        },
+        "billing_account_id": {
+          "type": "uuid",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "operation_kind": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "enum": [
+            "create_customer",
+            "create_session",
+            "update_subscription"
+          ],
+          "default_sql": null
+        },
+        "presentation": {
+          "type": "text",
+          "nullable": true,
+          "immutable": true,
+          "enum": [
+            "hosted",
+            "embedded"
+          ],
+          "default_sql": null
+        },
+        "idempotency_key": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "parameters": {
+          "type": "jsonb",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "parameters_digest": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "status": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "prepared",
+            "in_flight",
+            "succeeded",
+            "ambiguous",
+            "attention"
+          ],
+          "default_sql": null
+        },
+        "provider_object_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "attempted_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "resolved_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "replay_deadline": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "lease_token": {
+          "type": "uuid",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "lease_until": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "claim_generation": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "0"
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "clock_timestamp()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "clock_timestamp()"
+        }
+      },
+      "primary_key": [
+        "stripe_scope",
+        "id"
+      ],
+      "business_identity": "Scoped persisted provider-operation identity",
+      "unique": [
+        {
+          "columns": [
+            "stripe_scope",
+            "idempotency_key"
+          ]
+        },
+        {
+          "columns": [
+            "stripe_scope",
+            "billing_account_id",
+            "operation_kind"
+          ],
+          "where": "status IN ('prepared','in_flight','ambiguous')"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "stripe_scope",
+            "billing_account_id"
+          ],
+          "table": "billing_v2.accounts",
+          "references": [
+            "stripe_scope",
+            "id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        }
+      ],
+      "status_enums": {
+        "operation_kind": [
+          "create_customer",
+          "create_session",
+          "update_subscription"
+        ],
+        "presentation": [
+          "hosted",
+          "embedded"
+        ],
+        "status": [
+          "prepared",
+          "in_flight",
+          "succeeded",
+          "ambiguous",
+          "attention"
+        ]
+      },
+      "authoritative_writer": "restricted isolated candidate RPCs only; never current public authority",
+      "allowed_readers": "isolated comparison/backfill tools and bounded safe diagnostic RPC; no UI/Billing/activation",
+      "browser_access": false,
+      "retention": "Retain until audited retention approval; no automatic deletion in this contract.",
+      "immutable_fields": [
+        "stripe_scope",
+        "id",
+        "billing_account_id",
+        "operation_kind",
+        "presentation",
+        "idempotency_key",
+        "parameters",
+        "parameters_digest",
+        "replay_deadline",
+        "created_at"
+      ],
+      "mutable_fields": [
+        "status",
+        "provider_object_id",
+        "attempted_at",
+        "resolved_at",
+        "lease_token",
+        "lease_until",
+        "claim_generation",
+        "updated_at"
+      ],
+      "logical_name": "billing_checkout_attempts",
+      "sql_checks": [
+        "stripe_scope ~ '^acct_[A-Za-z0-9]+:(test|live)$'",
+        "operation_kind IN ('create_customer','create_session','update_subscription')",
+        "presentation IN ('hosted','embedded')",
+        "status IN ('prepared','in_flight','succeeded','ambiguous','attention')",
+        "claim_generation >= 0",
+        "(lease_token IS NULL) = (lease_until IS NULL)",
+        "(status='in_flight') = (lease_token IS NOT NULL)",
+        "(operation_kind='create_session') = (presentation IS NOT NULL)",
+        "replay_deadline > created_at",
+        "billing_v2.valid_document('checkout_parameters',parameters)",
+        "parameters_digest ~ '^[0-9a-f]{64}$'"
+      ],
+      "transactional_checks": [
+        "frozen parameters/presentation/key never replaced after an uncertain response",
+        "no client secret in URL, logs, localStorage, sessionStorage or persisted attempt parameters",
+        "replay deadline preserves current conservative replay window; expired uncertainty requires attention, not a new key",
+        "claim_generation >= 0; projection revisions begin at 1 on first materialized row"
+      ],
+      "security": {
+        "rls_enabled": true,
+        "rls_forced": true,
+        "policies": [
+          {
+            "role": "billing_v2_owner",
+            "command": "ALL",
+            "using": "true",
+            "with_check": "true"
+          }
+        ],
+        "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+        "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+        "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+        "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+        "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+        "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+      },
+      "indexes": [
+        {
+          "name": "v2_checkout_attempts_i1",
+          "columns": [
+            "stripe_scope",
+            "idempotency_key"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": true
+        },
+        {
+          "name": "v2_checkout_attempts_i2",
+          "columns": [
+            "stripe_scope",
+            "billing_account_id",
+            "operation_kind"
+          ],
+          "where": "status IN ('prepared','in_flight','ambiguous')",
+          "method": "btree",
+          "unique": true
+        },
+        {
+          "name": "v2_checkout_attempts_i3",
+          "columns": [
+            "stripe_scope",
+            "billing_account_id",
+            "created_at DESC"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        }
+      ],
+      "retention_and_storage": {
+        "phase2": "no deletion; candidate data disposable only after archived comparison/export and explicit review",
+        "large_documents": "bounded schema-validated JSONB; no GIN index on evidence or secrets; no unbounded payload snapshots",
+        "audit": "insert-only audit trigger; run checkpoints mutable only through RPC, one audit per checkpoint",
+        "partitioning": "none initially; retain scoped B-tree indexes; consider time partitioning only after measured volume and uniqueness/FK implications review",
+        "dedupe": "retain source identity/digest/result and canceled tombstones through rollback and reviewed retention policy"
+      },
+      "logical_end_state_writer": "prepareCheckoutOperation / recordCheckoutResult"
+    },
+    {
+      "name": "billing_v2.price_catalog",
+      "columns": {
+        "stripe_scope": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_price_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_product_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "application_key": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "plan": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "pro"
+          ],
+          "default_sql": null
+        },
+        "billing_interval": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "monthly",
+            "annual"
+          ],
+          "default_sql": null
+        },
+        "entitlement_enabled": {
+          "type": "boolean",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "checkout_enabled": {
+          "type": "boolean",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "ownership_state": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "active",
+            "revoked"
+          ],
+          "default_sql": null
+        },
+        "ownership_basis": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "enum": [
+            "price_owner"
+          ],
+          "default_sql": null
+        },
+        "revision": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "1"
+        },
+        "verified_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "clock_timestamp()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "clock_timestamp()"
+        },
+        "application_active": {
+          "type": "boolean",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        }
+      },
+      "primary_key": [
+        "stripe_scope",
+        "stripe_price_id"
+      ],
+      "business_identity": "Scoped approved Stripe price",
+      "unique": [],
+      "foreign_keys": [],
+      "status_enums": {
+        "plan": [
+          "pro"
+        ],
+        "billing_interval": [
+          "monthly",
+          "annual"
+        ],
+        "ownership_state": [
+          "active",
+          "revoked"
+        ],
+        "ownership_basis": [
+          "price_owner"
+        ]
+      },
+      "authoritative_writer": "restricted isolated candidate RPCs only; never current public authority",
+      "allowed_readers": "isolated comparison/backfill tools and bounded safe diagnostic RPC; no UI/Billing/activation",
+      "browser_access": false,
+      "retention": "Retain until audited retention approval; no automatic deletion in this contract.",
+      "immutable_fields": [
+        "stripe_scope",
+        "stripe_price_id",
+        "application_key",
+        "ownership_basis",
+        "created_at"
+      ],
+      "mutable_fields": [
+        "stripe_product_id",
+        "plan",
+        "billing_interval",
+        "entitlement_enabled",
+        "checkout_enabled",
+        "ownership_state",
+        "revision",
+        "verified_at",
+        "updated_at",
+        "application_active"
+      ],
+      "logical_name": "billing_price_catalog",
+      "sql_checks": [
+        "stripe_scope ~ '^acct_[A-Za-z0-9]+:(test|live)$'",
+        "plan IN ('pro')",
+        "billing_interval IN ('monthly','annual')",
+        "ownership_state IN ('active','revoked')",
+        "ownership_basis IN ('price_owner')",
+        "revision > 0",
+        "stripe_price_id ~ '^price_[A-Za-z0-9]+$'",
+        "length(application_key)>0"
+      ],
+      "transactional_checks": [
+        "every ownership/approval change increments revision and appends immutable operation audit",
+        "unsupported legacy registry resource types block migration rather than being discarded",
+        "revision >= 0; projection revisions begin at 1 on first materialized row",
+        "application disablement invalidates all its catalog proofs atomically by updating affected price revisions/application_active; checked at every proof commit, not cached as an eternal approval"
+      ],
+      "security": {
+        "rls_enabled": true,
+        "rls_forced": true,
+        "policies": [
+          {
+            "role": "billing_v2_owner",
+            "command": "ALL",
+            "using": "true",
+            "with_check": "true"
+          }
+        ],
+        "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+        "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+        "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+        "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+        "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+        "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+      },
+      "indexes": [
+        {
+          "name": "v2_price_catalog_i1",
+          "columns": [
+            "stripe_scope",
+            "application_key",
+            "ownership_state"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        }
+      ],
+      "retention_and_storage": {
+        "phase2": "no deletion; candidate data disposable only after archived comparison/export and explicit review",
+        "large_documents": "bounded schema-validated JSONB; no GIN index on evidence or secrets; no unbounded payload snapshots",
+        "audit": "insert-only audit trigger; run checkpoints mutable only through RPC, one audit per checkpoint",
+        "partitioning": "none initially; retain scoped B-tree indexes; consider time partitioning only after measured volume and uniqueness/FK implications review",
+        "dedupe": "retain source identity/digest/result and canceled tombstones through rollback and reviewed retention policy"
+      },
+      "logical_end_state_writer": "reviewedCatalogCommand"
+    },
+    {
+      "name": "billing_v2.subscriptions",
+      "columns": {
+        "stripe_scope": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_subscription_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "billing_account_id": {
+          "type": "uuid",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_customer_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_price_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "status": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "active",
+            "trialing",
+            "past_due",
+            "unpaid",
+            "canceled",
+            "incomplete",
+            "incomplete_expired",
+            "paused",
+            "unknown"
+          ],
+          "default_sql": null
+        },
+        "plan": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "free",
+            "pro"
+          ],
+          "default_sql": null
+        },
+        "cancel_at_period_end": {
+          "type": "boolean",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "period_start": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "period_end": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "trial_end": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "ended_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "latest_invoice_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "terminal": {
+          "type": "boolean",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "revision": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "1"
+        },
+        "verified_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "last_event_created": {
+          "type": "bigint",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "last_event_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "snapshot_digest": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "clock_timestamp()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "clock_timestamp()"
+        }
+      },
+      "primary_key": [
+        "stripe_scope",
+        "stripe_subscription_id"
+      ],
+      "business_identity": "Scoped Stripe subscription",
+      "unique": [
+        {
+          "columns": [
+            "stripe_scope",
+            "billing_account_id"
+          ],
+          "where": "plan='pro' AND status IN ('active','trialing') AND NOT terminal"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "stripe_scope",
+            "billing_account_id"
+          ],
+          "table": "billing_v2.accounts",
+          "references": [
+            "stripe_scope",
+            "id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        }
+      ],
+      "status_enums": {
+        "status": [
+          "active",
+          "trialing",
+          "past_due",
+          "unpaid",
+          "canceled",
+          "incomplete",
+          "incomplete_expired",
+          "paused",
+          "unknown"
+        ],
+        "plan": [
+          "free",
+          "pro"
+        ]
+      },
+      "authoritative_writer": "restricted isolated candidate RPCs only; never current public authority",
+      "allowed_readers": "isolated comparison/backfill tools and bounded safe diagnostic RPC; no UI/Billing/activation",
+      "browser_access": false,
+      "retention": "Retain until audited retention approval; no automatic deletion in this contract.",
+      "immutable_fields": [
+        "stripe_scope",
+        "stripe_subscription_id",
+        "billing_account_id",
+        "stripe_customer_id",
+        "created_at"
+      ],
+      "mutable_fields": [
+        "stripe_price_id",
+        "status",
+        "plan",
+        "cancel_at_period_end",
+        "period_start",
+        "period_end",
+        "trial_end",
+        "ended_at",
+        "latest_invoice_id",
+        "terminal",
+        "revision",
+        "verified_at",
+        "last_event_created",
+        "last_event_id",
+        "snapshot_digest",
+        "updated_at"
+      ],
+      "logical_name": "billing_subscriptions",
+      "sql_checks": [
+        "stripe_scope ~ '^acct_[A-Za-z0-9]+:(test|live)$'",
+        "status IN ('active','trialing','past_due','unpaid','canceled','incomplete','incomplete_expired','paused','unknown')",
+        "plan IN ('free','pro')",
+        "revision > 0",
+        "stripe_subscription_id ~ '^sub_[A-Za-z0-9]+$'",
+        "stripe_customer_id ~ '^cus_[A-Za-z0-9]+$'",
+        "plan <> 'pro' OR (status IN ('active','trialing') AND NOT terminal AND stripe_price_id IS NOT NULL)",
+        "period_start IS NULL OR period_end IS NULL OR period_start < period_end"
+      ],
+      "transactional_checks": [
+        "verified customer/account and approved price required for Pro",
+        "multiple live subscriptions block ambiguous entitlement; never resolve by arbitrary row order",
+        "revision advances only for semantic changes; task completion is still audited for unchanged/stale outcomes",
+        "terminal state cannot be resurrected by an obsolete event",
+        "revision >= 0; projection revisions begin at 1 on first materialized row"
+      ],
+      "security": {
+        "rls_enabled": true,
+        "rls_forced": true,
+        "policies": [
+          {
+            "role": "billing_v2_owner",
+            "command": "ALL",
+            "using": "true",
+            "with_check": "true"
+          }
+        ],
+        "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+        "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+        "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+        "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+        "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+        "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+      },
+      "indexes": [
+        {
+          "name": "v2_subscriptions_i1",
+          "columns": [
+            "stripe_scope",
+            "billing_account_id"
+          ],
+          "where": "plan='pro' AND status IN ('active','trialing') AND NOT terminal",
+          "method": "btree",
+          "unique": true
+        },
+        {
+          "name": "v2_subscriptions_i2",
+          "columns": [
+            "stripe_scope",
+            "billing_account_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_subscriptions_i3",
+          "columns": [
+            "stripe_scope",
+            "verified_at"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        }
+      ],
+      "retention_and_storage": {
+        "phase2": "no deletion; candidate data disposable only after archived comparison/export and explicit review",
+        "large_documents": "bounded schema-validated JSONB; no GIN index on evidence or secrets; no unbounded payload snapshots",
+        "audit": "insert-only audit trigger; run checkpoints mutable only through RPC, one audit per checkpoint",
+        "partitioning": "none initially; retain scoped B-tree indexes; consider time partitioning only after measured volume and uniqueness/FK implications review",
+        "dedupe": "retain source identity/digest/result and canceled tombstones through rollback and reviewed retention policy"
+      },
+      "logical_end_state_writer": "synchronizeSubscription -> commitSubscriptionTask"
+    },
+    {
+      "name": "billing_v2.event_inbox",
+      "columns": {
+        "stripe_scope": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "gen_random_uuid()"
+        },
+        "source_kind": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "enum": [
+            "webhook",
+            "reconciliation",
+            "recovery"
+          ],
+          "default_sql": null
+        },
+        "source_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "task_kind": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "enum": [
+            "access",
+            "finance"
+          ],
+          "default_sql": null
+        },
+        "stripe_event_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": true,
+          "default_sql": null
+        },
+        "event_type": {
+          "type": "text",
+          "nullable": true,
+          "immutable": true,
+          "default_sql": null
+        },
+        "event_created": {
+          "type": "bigint",
+          "nullable": true,
+          "immutable": true,
+          "default_sql": null
+        },
+        "evidence_version": {
+          "type": "integer",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "evidence": {
+          "type": "jsonb",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "evidence_digest": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "billing_account_id": {
+          "type": "uuid",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "state": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "queued",
+            "processing",
+            "retry_wait",
+            "dependency_wait",
+            "completed",
+            "needs_attention"
+          ],
+          "default_sql": null
+        },
+        "available_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "arrival_sequence": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "GENERATED ALWAYS AS IDENTITY"
+        },
+        "dependency_kind": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "enum": [
+            "account_binding",
+            "subscription",
+            "invoice",
+            "payment",
+            "ownership_provenance"
+          ],
+          "default_sql": null
+        },
+        "dependency_reference": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "lease_token": {
+          "type": "uuid",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "lease_until": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "claim_generation": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "0"
+        },
+        "authority_generation": {
+          "type": "bigint",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "writer_engine": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "enum": [
+            "shadow"
+          ],
+          "default_sql": null
+        },
+        "processing_started_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "claim_count": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "0"
+        },
+        "failure_count": {
+          "type": "integer",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "0"
+        },
+        "first_failure_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "retry_deadline": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "failure_category": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "result": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "enum": [
+            "processed",
+            "ignored",
+            "unchanged",
+            "stale_ignored",
+            "terminal_ignored"
+          ],
+          "default_sql": null
+        },
+        "completed_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "projection_revision": {
+          "type": "bigint",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "projection_digest": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "run_id": {
+          "type": "uuid",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "clock_timestamp()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "clock_timestamp()"
+        }
+      },
+      "primary_key": [
+        "stripe_scope",
+        "id"
+      ],
+      "business_identity": "Scoped source intent and projection task",
+      "unique": [
+        {
+          "columns": [
+            "stripe_scope",
+            "source_kind",
+            "source_id",
+            "task_kind"
+          ]
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "stripe_scope",
+            "billing_account_id"
+          ],
+          "table": "billing_v2.accounts",
+          "references": [
+            "stripe_scope",
+            "id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        },
+        {
+          "columns": [
+            "stripe_scope",
+            "run_id"
+          ],
+          "table": "billing_v2.operations",
+          "references": [
+            "stripe_scope",
+            "id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        }
+      ],
+      "status_enums": {
+        "source_kind": [
+          "webhook",
+          "reconciliation",
+          "recovery"
+        ],
+        "task_kind": [
+          "access",
+          "finance"
+        ],
+        "state": [
+          "queued",
+          "processing",
+          "retry_wait",
+          "dependency_wait",
+          "completed",
+          "needs_attention"
+        ],
+        "dependency_kind": [
+          "account_binding",
+          "subscription",
+          "invoice",
+          "payment",
+          "ownership_provenance"
+        ],
+        "writer_engine": [
+          "legacy",
+          "simplified",
+          "shadow"
+        ],
+        "result": [
+          "processed",
+          "ignored",
+          "unchanged",
+          "stale_ignored",
+          "terminal_ignored"
+        ]
+      },
+      "authoritative_writer": "restricted isolated candidate RPCs only; never current public authority",
+      "allowed_readers": "isolated comparison/backfill tools and bounded safe diagnostic RPC; no UI/Billing/activation",
+      "browser_access": false,
+      "retention": "Retain until audited retention approval; no automatic deletion in this contract.",
+      "immutable_fields": [
+        "stripe_scope",
+        "id",
+        "source_kind",
+        "source_id",
+        "task_kind",
+        "stripe_event_id",
+        "event_type",
+        "event_created",
+        "evidence_version",
+        "evidence",
+        "evidence_digest",
+        "arrival_sequence",
+        "created_at"
+      ],
+      "mutable_fields": [
+        "billing_account_id",
+        "state",
+        "available_at",
+        "dependency_kind",
+        "dependency_reference",
+        "lease_token",
+        "lease_until",
+        "claim_generation",
+        "authority_generation",
+        "writer_engine",
+        "processing_started_at",
+        "claim_count",
+        "failure_count",
+        "first_failure_at",
+        "retry_deadline",
+        "failure_category",
+        "result",
+        "completed_at",
+        "projection_revision",
+        "projection_digest",
+        "run_id",
+        "updated_at"
+      ],
+      "logical_name": "billing_event_inbox",
+      "sql_checks": [
+        "stripe_scope ~ '^acct_[A-Za-z0-9]+:(test|live)$'",
+        "source_kind IN ('webhook','reconciliation','recovery')",
+        "task_kind IN ('access','finance')",
+        "state IN ('queued','processing','retry_wait','dependency_wait','completed','needs_attention')",
+        "dependency_kind IN ('account_binding','subscription','invoice','payment','ownership_provenance')",
+        "claim_generation >= 0",
+        "writer_engine IN ('shadow')",
+        "claim_count >= 0",
+        "failure_count >= 0",
+        "result IN ('processed','ignored','unchanged','stale_ignored','terminal_ignored')",
+        "(state='processing') = (lease_token IS NOT NULL AND lease_until IS NOT NULL AND writer_engine IS NOT NULL)",
+        "(lease_token IS NULL) = (lease_until IS NULL)",
+        "state='processing' OR (lease_token IS NULL AND writer_engine IS NULL AND authority_generation IS NULL)",
+        "(state='completed') = (completed_at IS NOT NULL AND result IS NOT NULL)",
+        "state <> 'dependency_wait' OR (dependency_kind IS NOT NULL AND dependency_reference IS NOT NULL)",
+        "state <> 'retry_wait' OR failure_category IS NOT NULL",
+        "state <> 'needs_attention' OR failure_category IS NOT NULL",
+        "evidence_digest ~ '^[0-9a-f]{64}$'",
+        "evidence_version=1",
+        "billing_v2.valid_document('task_evidence',evidence)",
+        "failure_category IS NULL OR failure_category IN ('provider_unavailable','provider_rate_limited','provider_transport','store_unavailable','ambiguous_provider_result','ownership_unresolved','ownership_conflict','unknown_price','invalid_evidence','retry_exhausted','dependency_unresolved','handover_blocked')",
+        "state='completed' OR (completed_at IS NULL AND result IS NULL)"
+      ],
+      "transactional_checks": [
+        "same source identity requires matching immutable evidence digest across task kinds",
+        "evidence stays bounded, minimal and versioned; no nested receipt/work/routing state machines",
+        "completed task cannot reopen; approved correction is a new causally linked source intent",
+        "lease is canonical for this task; authority stores reference/generation, not another expiry clock",
+        "claim_generation >= 0; projection revisions begin at 1 on first materialized row",
+        "failure_count >= 0; projection revisions begin at 1 on first materialized row",
+        "claim_count >= 0; projection revisions begin at 1 on first materialized row"
+      ],
+      "security": {
+        "rls_enabled": true,
+        "rls_forced": true,
+        "policies": [
+          {
+            "role": "billing_v2_owner",
+            "command": "ALL",
+            "using": "true",
+            "with_check": "true"
+          }
+        ],
+        "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+        "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+        "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+        "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+        "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+        "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+      },
+      "indexes": [
+        {
+          "name": "v2_event_inbox_i1",
+          "columns": [
+            "stripe_scope",
+            "source_kind",
+            "source_id",
+            "task_kind"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": true
+        },
+        {
+          "name": "v2_event_inbox_i2",
+          "columns": [
+            "stripe_scope",
+            "task_kind",
+            "available_at",
+            "arrival_sequence"
+          ],
+          "where": "state IN ('queued','retry_wait')",
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_event_inbox_i3",
+          "columns": [
+            "stripe_scope",
+            "lease_until"
+          ],
+          "where": "state='processing'",
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_event_inbox_i4",
+          "columns": [
+            "stripe_scope",
+            "dependency_kind",
+            "dependency_reference",
+            "available_at"
+          ],
+          "where": "state='dependency_wait'",
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_event_inbox_i5",
+          "columns": [
+            "stripe_scope",
+            "billing_account_id",
+            "task_kind",
+            "available_at"
+          ],
+          "where": "state IN ('queued','retry_wait')",
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_event_inbox_i6",
+          "columns": [
+            "stripe_scope",
+            "stripe_event_id",
+            "task_kind"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_event_inbox_i7",
+          "columns": [
+            "stripe_scope",
+            "run_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        }
+      ],
+      "retention_and_storage": {
+        "phase2": "no deletion; candidate data disposable only after archived comparison/export and explicit review",
+        "large_documents": "bounded schema-validated JSONB; no GIN index on evidence or secrets; no unbounded payload snapshots",
+        "audit": "insert-only audit trigger; run checkpoints mutable only through RPC, one audit per checkpoint",
+        "partitioning": "none initially; retain scoped B-tree indexes; consider time partitioning only after measured volume and uniqueness/FK implications review",
+        "dedupe": "retain source identity/digest/result and canceled tombstones through rollback and reviewed retention policy"
+      },
+      "logical_end_state_writer": "admitVerifiedEvent / claimTask / atomic commit or defer commands"
+    },
+    {
+      "name": "billing_v2.authority",
+      "columns": {
+        "stripe_scope": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "domain": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "enum": [
+            "access",
+            "finance",
+            "reconciliation",
+            "migration"
+          ],
+          "default_sql": null
+        },
+        "resource_key": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "billing_account_id": {
+          "type": "uuid",
+          "nullable": true,
+          "immutable": true,
+          "default_sql": null
+        },
+        "writer_engine": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "shadow"
+          ],
+          "default_sql": "'shadow'"
+        },
+        "mode": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "shadow_only"
+          ],
+          "default_sql": "'shadow_only'"
+        },
+        "generation": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "0"
+        },
+        "inbox_task_id": {
+          "type": "uuid",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "checkout_attempt_id": {
+          "type": "uuid",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "handover_from": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "handover_started_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "handover_completed_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "last_completed_operation_id": {
+          "type": "uuid",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "clock_timestamp()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "clock_timestamp()"
+        }
+      },
+      "primary_key": [
+        "stripe_scope",
+        "domain",
+        "resource_key"
+      ],
+      "business_identity": "One authority generation per account/domain or coordinator resource",
+      "unique": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "stripe_scope",
+            "billing_account_id"
+          ],
+          "table": "billing_v2.accounts",
+          "references": [
+            "stripe_scope",
+            "id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        },
+        {
+          "columns": [
+            "stripe_scope",
+            "inbox_task_id"
+          ],
+          "table": "billing_v2.event_inbox",
+          "references": [
+            "stripe_scope",
+            "id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        },
+        {
+          "columns": [
+            "stripe_scope",
+            "checkout_attempt_id"
+          ],
+          "table": "billing_v2.checkout_attempts",
+          "references": [
+            "stripe_scope",
+            "id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        },
+        {
+          "columns": [
+            "stripe_scope",
+            "last_completed_operation_id"
+          ],
+          "table": "billing_v2.operations",
+          "references": [
+            "stripe_scope",
+            "id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        }
+      ],
+      "status_enums": {
+        "domain": [
+          "access",
+          "finance",
+          "reconciliation",
+          "migration"
+        ],
+        "writer_engine": [
+          "legacy",
+          "simplified",
+          "shadow"
+        ],
+        "mode": [
+          "active",
+          "draining",
+          "blocked",
+          "shadow_only"
+        ]
+      },
+      "authoritative_writer": "restricted isolated candidate RPCs only; never current public authority",
+      "allowed_readers": "isolated comparison/backfill tools and bounded safe diagnostic RPC; no UI/Billing/activation",
+      "browser_access": false,
+      "retention": "Retain until audited retention approval; no automatic deletion in this contract.",
+      "immutable_fields": [
+        "stripe_scope",
+        "domain",
+        "resource_key",
+        "billing_account_id",
+        "created_at"
+      ],
+      "mutable_fields": [
+        "writer_engine",
+        "mode",
+        "generation",
+        "inbox_task_id",
+        "checkout_attempt_id",
+        "handover_from",
+        "handover_started_at",
+        "handover_completed_at",
+        "last_completed_operation_id",
+        "updated_at"
+      ],
+      "logical_name": "billing_authority",
+      "sql_checks": [
+        "stripe_scope ~ '^acct_[A-Za-z0-9]+:(test|live)$'",
+        "domain IN ('access','finance','reconciliation','migration')",
+        "writer_engine IN ('shadow')",
+        "mode IN ('shadow_only')",
+        "generation >= 0",
+        "num_nonnulls(inbox_task_id,checkout_attempt_id) <= 1",
+        "(domain NOT IN ('access','finance')) OR (billing_account_id IS NOT NULL AND resource_key=billing_account_id::text)"
+      ],
+      "transactional_checks": [
+        "at most one active operation reference; operation owns its sole token and lease expiry",
+        "access and Finance domains are independent; identity binding uses one shared guarded command",
+        "both legacy and simplified commit paths check engine and generation during migration",
+        "shadow engine cannot own access/Finance commit authority",
+        "scope migration default is persisted, not inferred from per-request deployment flags",
+        "checkout operations hold the access domain; Finance cannot rewrite verified account identity",
+        "billing_account_id equals resource_key account identity for access/finance; coordinator keys are a separate closed namespace",
+        "active operation reference resolves to same scope/account/domain and current engine/generation; expired old holder never clears new reference",
+        "generation >= 0; projection revisions begin at 1 on first materialized row"
+      ],
+      "security": {
+        "rls_enabled": true,
+        "rls_forced": true,
+        "policies": [
+          {
+            "role": "billing_v2_owner",
+            "command": "ALL",
+            "using": "true",
+            "with_check": "true"
+          }
+        ],
+        "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+        "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+        "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+        "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+        "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+        "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+      },
+      "indexes": [
+        {
+          "name": "v2_authority_i1",
+          "columns": [
+            "stripe_scope",
+            "billing_account_id",
+            "domain"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_authority_i2",
+          "columns": [
+            "stripe_scope",
+            "inbox_task_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_authority_i3",
+          "columns": [
+            "stripe_scope",
+            "checkout_attempt_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_authority_i4",
+          "columns": [
+            "stripe_scope",
+            "last_completed_operation_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        }
+      ],
+      "retention_and_storage": {
+        "phase2": "no deletion; candidate data disposable only after archived comparison/export and explicit review",
+        "large_documents": "bounded schema-validated JSONB; no GIN index on evidence or secrets; no unbounded payload snapshots",
+        "audit": "insert-only audit trigger; run checkpoints mutable only through RPC, one audit per checkpoint",
+        "partitioning": "none initially; retain scoped B-tree indexes; consider time partitioning only after measured volume and uniqueness/FK implications review",
+        "dedupe": "retain source identity/digest/result and canceled tombstones through rollback and reviewed retention policy"
+      },
+      "logical_end_state_writer": "claimTask / claimCheckoutOperation / handoverAuthority"
+    },
+    {
+      "name": "billing_v2.operations",
+      "columns": {
+        "stripe_scope": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "gen_random_uuid()"
+        },
+        "record_type": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "enum": [
+            "run",
+            "audit"
+          ],
+          "default_sql": null
+        },
+        "operation_kind": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "enum": [
+            "subscription_sync",
+            "finance_projection",
+            "checkout",
+            "ownership_change",
+            "handover",
+            "subscription_reconciliation",
+            "finance_reconciliation",
+            "recovery",
+            "backfill",
+            "shadow_comparison"
+          ],
+          "default_sql": null
+        },
+        "parent_run_id": {
+          "type": "uuid",
+          "nullable": true,
+          "immutable": true,
+          "default_sql": null
+        },
+        "source_kind": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "source_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "billing_account_id": {
+          "type": "uuid",
+          "nullable": true,
+          "immutable": true,
+          "default_sql": null
+        },
+        "task_id": {
+          "type": "uuid",
+          "nullable": true,
+          "immutable": true,
+          "default_sql": null
+        },
+        "status": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "planned",
+            "running",
+            "partial",
+            "completed",
+            "failed",
+            "suspended"
+          ],
+          "default_sql": null
+        },
+        "outcome": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "authority_generation": {
+          "type": "bigint",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "before_revision": {
+          "type": "bigint",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "after_revision": {
+          "type": "bigint",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "cursor": {
+          "type": "jsonb",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "coverage": {
+          "type": "jsonb",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "facts": {
+          "type": "jsonb",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "started_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "completed_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "clock_timestamp()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "clock_timestamp()"
+        }
+      },
+      "primary_key": [
+        "stripe_scope",
+        "id"
+      ],
+      "business_identity": "Typed operation/run identity",
+      "unique": [
+        {
+          "columns": [
+            "stripe_scope",
+            "operation_kind",
+            "source_kind",
+            "source_id",
+            "record_type"
+          ]
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "stripe_scope",
+            "billing_account_id"
+          ],
+          "table": "billing_v2.accounts",
+          "references": [
+            "stripe_scope",
+            "id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        },
+        {
+          "columns": [
+            "stripe_scope",
+            "parent_run_id"
+          ],
+          "table": "billing_v2.operations",
+          "references": [
+            "stripe_scope",
+            "id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        },
+        {
+          "columns": [
+            "stripe_scope",
+            "task_id"
+          ],
+          "table": "billing_v2.event_inbox",
+          "references": [
+            "stripe_scope",
+            "id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        }
+      ],
+      "status_enums": {
+        "record_type": [
+          "run",
+          "audit"
+        ],
+        "operation_kind": [
+          "subscription_sync",
+          "finance_projection",
+          "checkout",
+          "ownership_change",
+          "handover",
+          "subscription_reconciliation",
+          "finance_reconciliation",
+          "recovery"
+        ],
+        "status": [
+          "planned",
+          "running",
+          "partial",
+          "completed",
+          "failed",
+          "suspended"
+        ]
+      },
+      "authoritative_writer": "restricted isolated candidate RPCs only; never current public authority",
+      "allowed_readers": "isolated comparison/backfill tools and bounded safe diagnostic RPC; no UI/Billing/activation",
+      "browser_access": false,
+      "retention": "Retain until audited retention approval; no automatic deletion in this contract.",
+      "immutable_fields": [
+        "stripe_scope",
+        "id",
+        "record_type",
+        "operation_kind",
+        "parent_run_id",
+        "source_kind",
+        "source_id",
+        "billing_account_id",
+        "task_id",
+        "created_at"
+      ],
+      "mutable_fields": [
+        "status",
+        "outcome",
+        "authority_generation",
+        "before_revision",
+        "after_revision",
+        "cursor",
+        "coverage",
+        "facts",
+        "started_at",
+        "completed_at",
+        "updated_at"
+      ],
+      "logical_name": "billing_operations",
+      "sql_checks": [
+        "stripe_scope ~ '^acct_[A-Za-z0-9]+:(test|live)$'",
+        "record_type IN ('run','audit')",
+        "operation_kind IN ('subscription_sync','finance_projection','checkout','ownership_change','handover','subscription_reconciliation','finance_reconciliation','recovery','backfill','shadow_comparison')",
+        "status IN ('planned','running','partial','completed','failed','suspended')",
+        "billing_v2.valid_document('operation_facts',facts)",
+        "record_type <> 'audit' OR (cursor IS NULL AND coverage IS NULL AND outcome IS NOT NULL)",
+        "record_type <> 'run' OR task_id IS NULL",
+        "cursor IS NULL OR billing_v2.valid_document('run_cursor',cursor)",
+        "coverage IS NULL OR billing_v2.valid_document('run_coverage',coverage)"
+      ],
+      "transactional_checks": [
+        "audit records are insert-only in their entirety, including updated_at",
+        "only run records have mutable cursor/coverage/status; each checkpoint appends a distinct audit record",
+        "facts are closed typed summaries, not arbitrary provider payload or hidden task states",
+        "completed task has exactly one successful completion audit; checkpoint identities are deterministic",
+        "for audit rows outcome, generation and revisions are fixed at insertion; run-only columns are NULL",
+        "run/audit outcome values use the closed result/error catalog in behavior.json; no exception text"
+      ],
+      "security": {
+        "rls_enabled": true,
+        "rls_forced": true,
+        "policies": [
+          {
+            "role": "billing_v2_owner",
+            "command": "ALL",
+            "using": "true",
+            "with_check": "true"
+          }
+        ],
+        "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+        "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+        "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+        "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+        "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+        "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+      },
+      "indexes": [
+        {
+          "name": "v2_operations_i1",
+          "columns": [
+            "stripe_scope",
+            "operation_kind",
+            "source_kind",
+            "source_id",
+            "record_type"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": true
+        },
+        {
+          "name": "v2_operations_i2",
+          "columns": [
+            "stripe_scope",
+            "record_type",
+            "operation_kind",
+            "created_at DESC"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_operations_i3",
+          "columns": [
+            "stripe_scope",
+            "task_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_operations_i4",
+          "columns": [
+            "stripe_scope",
+            "parent_run_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_operations_i5",
+          "columns": [
+            "stripe_scope",
+            "billing_account_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_operations_one_completion",
+          "columns": [
+            "stripe_scope",
+            "task_id"
+          ],
+          "where": "record_type='audit' AND task_id IS NOT NULL AND outcome IN ('processed','ignored','unchanged','stale_ignored','terminal_ignored')",
+          "method": "btree",
+          "unique": true
+        }
+      ],
+      "retention_and_storage": {
+        "phase2": "no deletion; candidate data disposable only after archived comparison/export and explicit review",
+        "large_documents": "bounded schema-validated JSONB; no GIN index on evidence or secrets; no unbounded payload snapshots",
+        "audit": "insert-only audit trigger; run checkpoints mutable only through RPC, one audit per checkpoint",
+        "partitioning": "none initially; retain scoped B-tree indexes; consider time partitioning only after measured volume and uniqueness/FK implications review",
+        "dedupe": "retain source identity/digest/result and canceled tombstones through rollback and reviewed retention policy"
+      },
+      "logical_end_state_writer": "transactional appendAudit / checkpointReconciliationRun"
+    },
+    {
+      "name": "billing_v2.finance_subscriptions",
+      "columns": {
+        "stripe_scope": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_object_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "source_event_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "source_event_created_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_api_version": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "normalizer_version": {
+          "type": "integer",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "revision": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "1"
+        },
+        "verified_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "clock_timestamp()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "clock_timestamp()"
+        },
+        "user_id": {
+          "type": "uuid",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_customer_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "status": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "cancel_at_period_end": {
+          "type": "boolean",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "cancel_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "canceled_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "ended_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "trial_end": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "collection_paused": {
+          "type": "boolean",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "linkage_status": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "verified",
+            "unresolved",
+            "conflict"
+          ],
+          "default_sql": null
+        },
+        "valuation_status": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "complete",
+            "unsupported",
+            "incomplete"
+          ],
+          "default_sql": null
+        },
+        "valuation_reason": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "items_complete": {
+          "type": "boolean",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "discount_context": {
+          "type": "jsonb",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        }
+      },
+      "primary_key": [
+        "stripe_scope",
+        "stripe_object_id"
+      ],
+      "business_identity": "Scoped Stripe object; deterministic derived key for attempts/activity",
+      "unique": [],
+      "foreign_keys": [],
+      "status_enums": {
+        "linkage_status": [
+          "verified",
+          "unresolved",
+          "conflict"
+        ],
+        "valuation_status": [
+          "complete",
+          "unsupported",
+          "incomplete"
+        ]
+      },
+      "authoritative_writer": "restricted isolated candidate RPCs only; never current public authority",
+      "allowed_readers": "isolated comparison/backfill tools and bounded safe diagnostic RPC; no UI/Billing/activation",
+      "browser_access": false,
+      "retention": "Retain until audited retention approval; no automatic deletion in this contract.",
+      "immutable_fields": [
+        "stripe_scope",
+        "stripe_object_id",
+        "created_at"
+      ],
+      "mutable_fields": [
+        "stripe_created_at",
+        "source_event_id",
+        "source_event_created_at",
+        "stripe_api_version",
+        "normalizer_version",
+        "revision",
+        "verified_at",
+        "updated_at",
+        "user_id",
+        "stripe_customer_id",
+        "status",
+        "cancel_at_period_end",
+        "cancel_at",
+        "canceled_at",
+        "ended_at",
+        "trial_end",
+        "collection_paused",
+        "linkage_status",
+        "valuation_status",
+        "valuation_reason",
+        "items_complete",
+        "discount_context"
+      ],
+      "logical_name": "billing_finance_subscriptions",
+      "sql_checks": [
+        "stripe_scope ~ '^acct_[A-Za-z0-9]+:(test|live)$'",
+        "revision > 0",
+        "linkage_status IN ('verified','unresolved','conflict')",
+        "valuation_status IN ('complete','unsupported','incomplete')",
+        "source_event_id IS NULL OR source_event_id ~ '^evt_[A-Za-z0-9]+$'",
+        "length(stripe_api_version)>0",
+        "normalizer_version>0",
+        "revision>0",
+        "stripe_customer_id ~ '^cus_[A-Za-z0-9]+$'",
+        "length(status)>0",
+        "jsonb_typeof(discount_context)='array'",
+        "linkage_status<>'verified' OR user_id IS NOT NULL",
+        "valuation_status='complete' OR valuation_reason IS NOT NULL",
+        "stripe_object_id ~ '^sub_[A-Za-z0-9]+$'"
+      ],
+      "transactional_checks": [
+        "retain all current normalization, money, discount, tax, completeness and ownership checks",
+        "all rows written by one task commit atomically with task completion/audit",
+        "IDs alone are not ownership proof; complete exact relationships required",
+        "no browser write and no access/entitlement write",
+        "revision >= 0; projection revisions begin at 1 on first materialized row",
+        "retained_base_table_contract is normative except invoice tax_minor nullability and additive tax evidence changes in the pinned tax migration; naming adapters may not weaken it"
+      ],
+      "security": {
+        "rls_enabled": true,
+        "rls_forced": true,
+        "policies": [
+          {
+            "role": "billing_v2_owner",
+            "command": "ALL",
+            "using": "true",
+            "with_check": "true"
+          }
+        ],
+        "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+        "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+        "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+        "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+        "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+        "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+      },
+      "indexes": [
+        {
+          "name": "v2_finance_subscriptions_i1",
+          "columns": [
+            "stripe_scope",
+            "stripe_customer_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_finance_subscriptions_i2",
+          "columns": [
+            "stripe_scope",
+            "status"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_finance_subscriptions_i3",
+          "columns": [
+            "stripe_scope",
+            "verified_at"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        }
+      ],
+      "retention_and_storage": {
+        "phase2": "no deletion; candidate data disposable only after archived comparison/export and explicit review",
+        "large_documents": "bounded schema-validated JSONB; no GIN index on evidence or secrets; no unbounded payload snapshots",
+        "audit": "insert-only audit trigger; run checkpoints mutable only through RPC, one audit per checkpoint",
+        "partitioning": "none initially; retain scoped B-tree indexes; consider time partitioning only after measured volume and uniqueness/FK implications review",
+        "dedupe": "retain source identity/digest/result and canceled tombstones through rollback and reviewed retention policy"
+      },
+      "logical_end_state_writer": "projectFinanceTask -> commitFinanceTask"
+    },
+    {
+      "name": "billing_v2.finance_subscription_items",
+      "columns": {
+        "stripe_scope": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_object_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "source_event_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "source_event_created_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_api_version": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "normalizer_version": {
+          "type": "integer",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "revision": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "1"
+        },
+        "verified_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "clock_timestamp()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "clock_timestamp()"
+        },
+        "stripe_subscription_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_price_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_product_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "currency": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "quantity": {
+          "type": "bigint",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "unit_amount_minor": {
+          "type": "bigint",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "unit_amount_decimal_minor": {
+          "type": "numeric(38,12)",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "recurring_interval": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "day",
+            "week",
+            "month",
+            "year"
+          ],
+          "default_sql": null
+        },
+        "interval_count": {
+          "type": "integer",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "usage_type": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "billing_scheme": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "tax_behavior": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "period_start": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "period_end": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "effective_cycle_amount_minor": {
+          "type": "bigint",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "valuation_status": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "complete",
+            "unsupported",
+            "incomplete"
+          ],
+          "default_sql": null
+        },
+        "valuation_reason": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "discount_context": {
+          "type": "jsonb",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "removed_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "forecast_tax_evidence": {
+          "type": "jsonb",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        }
+      },
+      "primary_key": [
+        "stripe_scope",
+        "stripe_object_id"
+      ],
+      "business_identity": "Scoped Stripe object; deterministic derived key for attempts/activity",
+      "unique": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "stripe_scope",
+            "stripe_subscription_id"
+          ],
+          "table": "billing_v2.finance_subscriptions",
+          "references": [
+            "stripe_scope",
+            "stripe_object_id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        }
+      ],
+      "status_enums": {
+        "recurring_interval": [
+          "day",
+          "week",
+          "month",
+          "year"
+        ],
+        "valuation_status": [
+          "complete",
+          "unsupported",
+          "incomplete"
+        ]
+      },
+      "authoritative_writer": "restricted isolated candidate RPCs only; never current public authority",
+      "allowed_readers": "isolated comparison/backfill tools and bounded safe diagnostic RPC; no UI/Billing/activation",
+      "browser_access": false,
+      "retention": "Retain until audited retention approval; no automatic deletion in this contract.",
+      "immutable_fields": [
+        "stripe_scope",
+        "stripe_object_id",
+        "created_at"
+      ],
+      "mutable_fields": [
+        "stripe_created_at",
+        "source_event_id",
+        "source_event_created_at",
+        "stripe_api_version",
+        "normalizer_version",
+        "revision",
+        "verified_at",
+        "updated_at",
+        "stripe_subscription_id",
+        "stripe_price_id",
+        "stripe_product_id",
+        "currency",
+        "quantity",
+        "unit_amount_minor",
+        "unit_amount_decimal_minor",
+        "recurring_interval",
+        "interval_count",
+        "usage_type",
+        "billing_scheme",
+        "tax_behavior",
+        "period_start",
+        "period_end",
+        "effective_cycle_amount_minor",
+        "valuation_status",
+        "valuation_reason",
+        "discount_context",
+        "removed_at",
+        "forecast_tax_evidence"
+      ],
+      "logical_name": "billing_finance_subscription_items",
+      "sql_checks": [
+        "stripe_scope ~ '^acct_[A-Za-z0-9]+:(test|live)$'",
+        "revision > 0",
+        "recurring_interval IN ('day','week','month','year')",
+        "valuation_status IN ('complete','unsupported','incomplete')",
+        "source_event_id IS NULL OR source_event_id ~ '^evt_[A-Za-z0-9]+$'",
+        "length(stripe_api_version)>0",
+        "normalizer_version>0",
+        "revision>0",
+        "stripe_price_id ~ '^price_[A-Za-z0-9]+$'",
+        "stripe_product_id ~ '^prod_[A-Za-z0-9]+$'",
+        "currency ~ '^[a-z]{3}$'",
+        "quantity>=0",
+        "unit_amount_minor>=0",
+        "unit_amount_decimal_minor>=0",
+        "interval_count>0",
+        "effective_cycle_amount_minor>=0",
+        "jsonb_typeof(discount_context)='array'",
+        "period_start IS NULL OR period_end IS NULL OR period_start<period_end",
+        "valuation_status<>'complete' OR effective_cycle_amount_minor IS NOT NULL",
+        "valuation_status='complete' OR valuation_reason IS NOT NULL",
+        "stripe_object_id ~ '^si_[A-Za-z0-9]+$'",
+        "billing_v2.valid_document('forecast_tax',forecast_tax_evidence)",
+        "billing_v2.valid_forecast_anchors(forecast_tax_evidence,stripe_scope,stripe_subscription_id,stripe_object_id,stripe_price_id,currency,quantity,recurring_interval,interval_count,tax_behavior,verified_at)"
+      ],
+      "transactional_checks": [
+        "retain all current normalization, money, discount, tax, completeness and ownership checks",
+        "all rows written by one task commit atomically with task completion/audit",
+        "IDs alone are not ownership proof; complete exact relationships required",
+        "no browser write and no access/entitlement write",
+        "revision >= 0; projection revisions begin at 1 on first materialized row",
+        "retained_base_table_contract is normative except invoice tax_minor nullability and additive tax evidence changes in the pinned tax migration; naming adapters may not weaken it"
+      ],
+      "security": {
+        "rls_enabled": true,
+        "rls_forced": true,
+        "policies": [
+          {
+            "role": "billing_v2_owner",
+            "command": "ALL",
+            "using": "true",
+            "with_check": "true"
+          }
+        ],
+        "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+        "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+        "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+        "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+        "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+        "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+      },
+      "indexes": [
+        {
+          "name": "v2_finance_subscription_items_i1",
+          "columns": [
+            "stripe_scope",
+            "stripe_subscription_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_finance_subscription_items_i2",
+          "columns": [
+            "stripe_scope",
+            "period_end"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        }
+      ],
+      "retention_and_storage": {
+        "phase2": "no deletion; candidate data disposable only after archived comparison/export and explicit review",
+        "large_documents": "bounded schema-validated JSONB; no GIN index on evidence or secrets; no unbounded payload snapshots",
+        "audit": "insert-only audit trigger; run checkpoints mutable only through RPC, one audit per checkpoint",
+        "partitioning": "none initially; retain scoped B-tree indexes; consider time partitioning only after measured volume and uniqueness/FK implications review",
+        "dedupe": "retain source identity/digest/result and canceled tombstones through rollback and reviewed retention policy"
+      },
+      "logical_end_state_writer": "projectFinanceTask -> commitFinanceTask"
+    },
+    {
+      "name": "billing_v2.invoices",
+      "columns": {
+        "stripe_scope": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_object_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "source_event_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "source_event_created_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_api_version": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "normalizer_version": {
+          "type": "integer",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "revision": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "1"
+        },
+        "verified_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "clock_timestamp()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "clock_timestamp()"
+        },
+        "stripe_customer_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_subscription_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "number": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "status": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "billing_reason": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "collection_method": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "currency": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "subtotal_minor": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "discount_minor": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "tax_minor": {
+          "type": "bigint",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "total_minor": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "amount_due_minor": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "amount_paid_minor": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "amount_remaining_minor": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "attempt_count": {
+          "type": "integer",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "due_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "next_payment_attempt_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "finalized_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "paid_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "voided_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "marked_uncollectible_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "payments_complete": {
+          "type": "boolean",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "tax_evidence": {
+          "type": "jsonb",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "ownership_state": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "proven",
+            "unresolved",
+            "conflict",
+            "foreign"
+          ],
+          "default_sql": null
+        },
+        "ownership_revision": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "0"
+        },
+        "ownership_provenance": {
+          "type": "jsonb",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        }
+      },
+      "primary_key": [
+        "stripe_scope",
+        "stripe_object_id"
+      ],
+      "business_identity": "Scoped Stripe object; deterministic derived key for attempts/activity",
+      "unique": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "stripe_scope",
+            "stripe_subscription_id"
+          ],
+          "table": "billing_v2.finance_subscriptions",
+          "references": [
+            "stripe_scope",
+            "stripe_object_id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        }
+      ],
+      "status_enums": {
+        "ownership_state": [
+          "proven",
+          "unresolved",
+          "conflict",
+          "foreign"
+        ]
+      },
+      "authoritative_writer": "restricted isolated candidate RPCs only; never current public authority",
+      "allowed_readers": "isolated comparison/backfill tools and bounded safe diagnostic RPC; no UI/Billing/activation",
+      "browser_access": false,
+      "retention": "Retain until audited retention approval; no automatic deletion in this contract.",
+      "immutable_fields": [
+        "stripe_scope",
+        "stripe_object_id",
+        "created_at"
+      ],
+      "mutable_fields": [
+        "stripe_created_at",
+        "source_event_id",
+        "source_event_created_at",
+        "stripe_api_version",
+        "normalizer_version",
+        "revision",
+        "verified_at",
+        "updated_at",
+        "stripe_customer_id",
+        "stripe_subscription_id",
+        "number",
+        "status",
+        "billing_reason",
+        "collection_method",
+        "currency",
+        "subtotal_minor",
+        "discount_minor",
+        "tax_minor",
+        "total_minor",
+        "amount_due_minor",
+        "amount_paid_minor",
+        "amount_remaining_minor",
+        "attempt_count",
+        "due_at",
+        "next_payment_attempt_at",
+        "finalized_at",
+        "paid_at",
+        "voided_at",
+        "marked_uncollectible_at",
+        "payments_complete",
+        "tax_evidence",
+        "ownership_state",
+        "ownership_revision",
+        "ownership_provenance"
+      ],
+      "logical_name": "billing_invoices",
+      "sql_checks": [
+        "stripe_scope ~ '^acct_[A-Za-z0-9]+:(test|live)$'",
+        "revision > 0",
+        "ownership_state IN ('proven','unresolved','conflict','foreign')",
+        "ownership_revision >= 0",
+        "source_event_id IS NULL OR source_event_id ~ '^evt_[A-Za-z0-9]+$'",
+        "length(stripe_api_version)>0",
+        "normalizer_version>0",
+        "revision>0",
+        "stripe_customer_id ~ '^cus_[A-Za-z0-9]+$'",
+        "length(status)>0",
+        "currency ~ '^[a-z]{3}$'",
+        "discount_minor>=0",
+        "amount_due_minor>=0",
+        "amount_paid_minor>=0",
+        "amount_remaining_minor>=0",
+        "attempt_count>=0",
+        "stripe_object_id ~ '^in_[A-Za-z0-9]+$'",
+        "billing_v2.valid_document('invoice_tax',tax_evidence)",
+        "billing_v2.valid_document('invoice_provenance',ownership_provenance)",
+        "tax_evidence->>'status'<>'verified' OR ((tax_evidence->>'grossMinor')::bigint=total_minor AND (tax_evidence->>'taxMinor')::bigint IS NOT DISTINCT FROM tax_minor AND finalized_at IS NOT NULL AND status IN ('open','paid','uncollectible','void'))"
+      ],
+      "transactional_checks": [
+        "retain all current normalization, money, discount, tax, completeness and ownership checks",
+        "all rows written by one task commit atomically with task completion/audit",
+        "IDs alone are not ownership proof; complete exact relationships required",
+        "no browser write and no access/entitlement write",
+        "revision >= 0; projection revisions begin at 1 on first materialized row",
+        "ownership_revision >= 0; projection revisions begin at 1 on first materialized row",
+        "retained_base_table_contract is normative except invoice tax_minor nullability and additive tax evidence changes in the pinned tax migration; naming adapters may not weaken it"
+      ],
+      "security": {
+        "rls_enabled": true,
+        "rls_forced": true,
+        "policies": [
+          {
+            "role": "billing_v2_owner",
+            "command": "ALL",
+            "using": "true",
+            "with_check": "true"
+          }
+        ],
+        "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+        "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+        "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+        "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+        "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+        "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+      },
+      "indexes": [
+        {
+          "name": "v2_invoices_i1",
+          "columns": [
+            "stripe_scope",
+            "stripe_customer_id",
+            "stripe_created_at DESC"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_invoices_i2",
+          "columns": [
+            "stripe_scope",
+            "stripe_subscription_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_invoices_i3",
+          "columns": [
+            "stripe_scope",
+            "status",
+            "due_at"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        }
+      ],
+      "retention_and_storage": {
+        "phase2": "no deletion; candidate data disposable only after archived comparison/export and explicit review",
+        "large_documents": "bounded schema-validated JSONB; no GIN index on evidence or secrets; no unbounded payload snapshots",
+        "audit": "insert-only audit trigger; run checkpoints mutable only through RPC, one audit per checkpoint",
+        "partitioning": "none initially; retain scoped B-tree indexes; consider time partitioning only after measured volume and uniqueness/FK implications review",
+        "dedupe": "retain source identity/digest/result and canceled tombstones through rollback and reviewed retention policy"
+      },
+      "logical_end_state_writer": "projectFinanceTask -> commitFinanceTask"
+    },
+    {
+      "name": "billing_v2.payments",
+      "columns": {
+        "stripe_scope": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_object_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "source_event_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "source_event_created_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_api_version": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "normalizer_version": {
+          "type": "integer",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "revision": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "1"
+        },
+        "verified_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "clock_timestamp()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "clock_timestamp()"
+        },
+        "stripe_customer_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_payment_intent_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "currency": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "status": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "amount_minor": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "amount_captured_minor": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "amount_refunded_minor": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "paid": {
+          "type": "boolean",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "captured": {
+          "type": "boolean",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "collected_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "collection_time_basis": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "verified_event",
+            "invoice_payment",
+            "automatic_capture_created",
+            "unknown"
+          ],
+          "default_sql": null
+        },
+        "attribution_status": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "verified",
+            "unresolved",
+            "mixed"
+          ],
+          "default_sql": null
+        }
+      },
+      "primary_key": [
+        "stripe_scope",
+        "stripe_object_id"
+      ],
+      "business_identity": "Scoped Stripe object; deterministic derived key for attempts/activity",
+      "unique": [],
+      "foreign_keys": [],
+      "status_enums": {
+        "collection_time_basis": [
+          "verified_event",
+          "invoice_payment",
+          "automatic_capture_created",
+          "unknown"
+        ],
+        "attribution_status": [
+          "verified",
+          "unresolved",
+          "mixed"
+        ]
+      },
+      "authoritative_writer": "restricted isolated candidate RPCs only; never current public authority",
+      "allowed_readers": "isolated comparison/backfill tools and bounded safe diagnostic RPC; no UI/Billing/activation",
+      "browser_access": false,
+      "retention": "Retain until audited retention approval; no automatic deletion in this contract.",
+      "immutable_fields": [
+        "stripe_scope",
+        "stripe_object_id",
+        "created_at"
+      ],
+      "mutable_fields": [
+        "stripe_created_at",
+        "source_event_id",
+        "source_event_created_at",
+        "stripe_api_version",
+        "normalizer_version",
+        "revision",
+        "verified_at",
+        "updated_at",
+        "stripe_customer_id",
+        "stripe_payment_intent_id",
+        "currency",
+        "status",
+        "amount_minor",
+        "amount_captured_minor",
+        "amount_refunded_minor",
+        "paid",
+        "captured",
+        "collected_at",
+        "collection_time_basis",
+        "attribution_status"
+      ],
+      "logical_name": "billing_payments",
+      "sql_checks": [
+        "stripe_scope ~ '^acct_[A-Za-z0-9]+:(test|live)$'",
+        "revision > 0",
+        "collection_time_basis IN ('verified_event','invoice_payment','automatic_capture_created','unknown')",
+        "attribution_status IN ('verified','unresolved','mixed')",
+        "source_event_id IS NULL OR source_event_id ~ '^evt_[A-Za-z0-9]+$'",
+        "length(stripe_api_version)>0",
+        "normalizer_version>0",
+        "revision>0",
+        "stripe_customer_id ~ '^cus_[A-Za-z0-9]+$'",
+        "stripe_payment_intent_id IS NULL OR stripe_payment_intent_id ~ '^pi_[A-Za-z0-9]+$'",
+        "currency ~ '^[a-z]{3}$'",
+        "length(status)>0",
+        "amount_minor>=0",
+        "amount_captured_minor>=0",
+        "amount_refunded_minor>=0",
+        "amount_captured_minor<=amount_minor",
+        "amount_refunded_minor<=amount_captured_minor",
+        "(collected_at IS NULL) = (collection_time_basis='unknown')",
+        "stripe_object_id ~ '^ch_[A-Za-z0-9]+$'"
+      ],
+      "transactional_checks": [
+        "retain all current normalization, money, discount, tax, completeness and ownership checks",
+        "all rows written by one task commit atomically with task completion/audit",
+        "IDs alone are not ownership proof; complete exact relationships required",
+        "no browser write and no access/entitlement write",
+        "revision >= 0; projection revisions begin at 1 on first materialized row",
+        "retained_base_table_contract is normative except invoice tax_minor nullability and additive tax evidence changes in the pinned tax migration; naming adapters may not weaken it"
+      ],
+      "security": {
+        "rls_enabled": true,
+        "rls_forced": true,
+        "policies": [
+          {
+            "role": "billing_v2_owner",
+            "command": "ALL",
+            "using": "true",
+            "with_check": "true"
+          }
+        ],
+        "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+        "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+        "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+        "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+        "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+        "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+      },
+      "indexes": [
+        {
+          "name": "v2_payments_i1",
+          "columns": [
+            "stripe_scope",
+            "stripe_customer_id",
+            "collected_at"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_payments_i2",
+          "columns": [
+            "stripe_scope",
+            "stripe_payment_intent_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        }
+      ],
+      "retention_and_storage": {
+        "phase2": "no deletion; candidate data disposable only after archived comparison/export and explicit review",
+        "large_documents": "bounded schema-validated JSONB; no GIN index on evidence or secrets; no unbounded payload snapshots",
+        "audit": "insert-only audit trigger; run checkpoints mutable only through RPC, one audit per checkpoint",
+        "partitioning": "none initially; retain scoped B-tree indexes; consider time partitioning only after measured volume and uniqueness/FK implications review",
+        "dedupe": "retain source identity/digest/result and canceled tombstones through rollback and reviewed retention policy"
+      },
+      "logical_end_state_writer": "projectFinanceTask -> commitFinanceTask"
+    },
+    {
+      "name": "billing_v2.invoice_payments",
+      "columns": {
+        "stripe_scope": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_object_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "source_event_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "source_event_created_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_api_version": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "normalizer_version": {
+          "type": "integer",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "revision": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "1"
+        },
+        "verified_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "clock_timestamp()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "clock_timestamp()"
+        },
+        "stripe_invoice_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_payment_intent_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_charge_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "payment_type": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "currency": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "status": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "amount_requested_minor": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "amount_paid_minor": {
+          "type": "bigint",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "paid_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "canceled_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        }
+      },
+      "primary_key": [
+        "stripe_scope",
+        "stripe_object_id"
+      ],
+      "business_identity": "Scoped Stripe object; deterministic derived key for attempts/activity",
+      "unique": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "stripe_scope",
+            "stripe_invoice_id"
+          ],
+          "table": "billing_v2.invoices",
+          "references": [
+            "stripe_scope",
+            "stripe_object_id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        },
+        {
+          "columns": [
+            "stripe_scope",
+            "stripe_charge_id"
+          ],
+          "table": "billing_v2.payments",
+          "references": [
+            "stripe_scope",
+            "stripe_object_id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        }
+      ],
+      "status_enums": {},
+      "authoritative_writer": "restricted isolated candidate RPCs only; never current public authority",
+      "allowed_readers": "isolated comparison/backfill tools and bounded safe diagnostic RPC; no UI/Billing/activation",
+      "browser_access": false,
+      "retention": "Retain until audited retention approval; no automatic deletion in this contract.",
+      "immutable_fields": [
+        "stripe_scope",
+        "stripe_object_id",
+        "created_at"
+      ],
+      "mutable_fields": [
+        "stripe_created_at",
+        "source_event_id",
+        "source_event_created_at",
+        "stripe_api_version",
+        "normalizer_version",
+        "revision",
+        "verified_at",
+        "updated_at",
+        "stripe_invoice_id",
+        "stripe_payment_intent_id",
+        "stripe_charge_id",
+        "payment_type",
+        "currency",
+        "status",
+        "amount_requested_minor",
+        "amount_paid_minor",
+        "paid_at",
+        "canceled_at"
+      ],
+      "logical_name": "billing_invoice_payments",
+      "sql_checks": [
+        "stripe_scope ~ '^acct_[A-Za-z0-9]+:(test|live)$'",
+        "revision > 0",
+        "source_event_id IS NULL OR source_event_id ~ '^evt_[A-Za-z0-9]+$'",
+        "length(stripe_api_version)>0",
+        "normalizer_version>0",
+        "revision>0",
+        "currency ~ '^[a-z]{3}$'",
+        "length(status)>0",
+        "amount_requested_minor>=0",
+        "amount_paid_minor>=0",
+        "stripe_object_id ~ '^inpay_[A-Za-z0-9]+$'"
+      ],
+      "transactional_checks": [
+        "retain all current normalization, money, discount, tax, completeness and ownership checks",
+        "all rows written by one task commit atomically with task completion/audit",
+        "IDs alone are not ownership proof; complete exact relationships required",
+        "no browser write and no access/entitlement write",
+        "revision >= 0; projection revisions begin at 1 on first materialized row",
+        "retained_base_table_contract is normative except invoice tax_minor nullability and additive tax evidence changes in the pinned tax migration; naming adapters may not weaken it"
+      ],
+      "security": {
+        "rls_enabled": true,
+        "rls_forced": true,
+        "policies": [
+          {
+            "role": "billing_v2_owner",
+            "command": "ALL",
+            "using": "true",
+            "with_check": "true"
+          }
+        ],
+        "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+        "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+        "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+        "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+        "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+        "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+      },
+      "indexes": [
+        {
+          "name": "v2_invoice_payments_i1",
+          "columns": [
+            "stripe_scope",
+            "stripe_invoice_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_invoice_payments_i2",
+          "columns": [
+            "stripe_scope",
+            "stripe_charge_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_invoice_payments_i3",
+          "columns": [
+            "stripe_scope",
+            "stripe_payment_intent_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        }
+      ],
+      "retention_and_storage": {
+        "phase2": "no deletion; candidate data disposable only after archived comparison/export and explicit review",
+        "large_documents": "bounded schema-validated JSONB; no GIN index on evidence or secrets; no unbounded payload snapshots",
+        "audit": "insert-only audit trigger; run checkpoints mutable only through RPC, one audit per checkpoint",
+        "partitioning": "none initially; retain scoped B-tree indexes; consider time partitioning only after measured volume and uniqueness/FK implications review",
+        "dedupe": "retain source identity/digest/result and canceled tombstones through rollback and reviewed retention policy"
+      },
+      "logical_end_state_writer": "projectFinanceTask -> commitFinanceTask"
+    },
+    {
+      "name": "billing_v2.refunds",
+      "columns": {
+        "stripe_scope": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_object_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "source_event_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "source_event_created_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_api_version": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "normalizer_version": {
+          "type": "integer",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "revision": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "1"
+        },
+        "verified_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "clock_timestamp()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "clock_timestamp()"
+        },
+        "stripe_charge_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_payment_intent_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "currency": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "amount_minor": {
+          "type": "bigint",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "status": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "reason": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "failure_reason": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "succeeded_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "success_time_basis": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "verified_event",
+            "unknown"
+          ],
+          "default_sql": null
+        }
+      },
+      "primary_key": [
+        "stripe_scope",
+        "stripe_object_id"
+      ],
+      "business_identity": "Scoped Stripe object; deterministic derived key for attempts/activity",
+      "unique": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "stripe_scope",
+            "stripe_charge_id"
+          ],
+          "table": "billing_v2.payments",
+          "references": [
+            "stripe_scope",
+            "stripe_object_id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        }
+      ],
+      "status_enums": {
+        "success_time_basis": [
+          "verified_event",
+          "unknown"
+        ]
+      },
+      "authoritative_writer": "restricted isolated candidate RPCs only; never current public authority",
+      "allowed_readers": "isolated comparison/backfill tools and bounded safe diagnostic RPC; no UI/Billing/activation",
+      "browser_access": false,
+      "retention": "Retain until audited retention approval; no automatic deletion in this contract.",
+      "immutable_fields": [
+        "stripe_scope",
+        "stripe_object_id",
+        "created_at"
+      ],
+      "mutable_fields": [
+        "stripe_created_at",
+        "source_event_id",
+        "source_event_created_at",
+        "stripe_api_version",
+        "normalizer_version",
+        "revision",
+        "verified_at",
+        "updated_at",
+        "stripe_charge_id",
+        "stripe_payment_intent_id",
+        "currency",
+        "amount_minor",
+        "status",
+        "reason",
+        "failure_reason",
+        "succeeded_at",
+        "success_time_basis"
+      ],
+      "logical_name": "billing_refunds",
+      "sql_checks": [
+        "stripe_scope ~ '^acct_[A-Za-z0-9]+:(test|live)$'",
+        "revision > 0",
+        "success_time_basis IN ('verified_event','unknown')",
+        "source_event_id IS NULL OR source_event_id ~ '^evt_[A-Za-z0-9]+$'",
+        "length(stripe_api_version)>0",
+        "normalizer_version>0",
+        "revision>0",
+        "currency ~ '^[a-z]{3}$'",
+        "amount_minor>=0",
+        "length(status)>0",
+        "(succeeded_at IS NULL) = (success_time_basis='unknown')",
+        "stripe_object_id ~ '^re_[A-Za-z0-9]+$'"
+      ],
+      "transactional_checks": [
+        "retain all current normalization, money, discount, tax, completeness and ownership checks",
+        "all rows written by one task commit atomically with task completion/audit",
+        "IDs alone are not ownership proof; complete exact relationships required",
+        "no browser write and no access/entitlement write",
+        "revision >= 0; projection revisions begin at 1 on first materialized row",
+        "retained_base_table_contract is normative except invoice tax_minor nullability and additive tax evidence changes in the pinned tax migration; naming adapters may not weaken it"
+      ],
+      "security": {
+        "rls_enabled": true,
+        "rls_forced": true,
+        "policies": [
+          {
+            "role": "billing_v2_owner",
+            "command": "ALL",
+            "using": "true",
+            "with_check": "true"
+          }
+        ],
+        "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+        "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+        "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+        "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+        "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+        "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+      },
+      "indexes": [
+        {
+          "name": "v2_refunds_i1",
+          "columns": [
+            "stripe_scope",
+            "stripe_charge_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_refunds_i2",
+          "columns": [
+            "stripe_scope",
+            "status",
+            "stripe_created_at"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        }
+      ],
+      "retention_and_storage": {
+        "phase2": "no deletion; candidate data disposable only after archived comparison/export and explicit review",
+        "large_documents": "bounded schema-validated JSONB; no GIN index on evidence or secrets; no unbounded payload snapshots",
+        "audit": "insert-only audit trigger; run checkpoints mutable only through RPC, one audit per checkpoint",
+        "partitioning": "none initially; retain scoped B-tree indexes; consider time partitioning only after measured volume and uniqueness/FK implications review",
+        "dedupe": "retain source identity/digest/result and canceled tombstones through rollback and reviewed retention policy"
+      },
+      "logical_end_state_writer": "projectFinanceTask -> commitFinanceTask"
+    },
+    {
+      "name": "billing_v2.payment_attempts",
+      "columns": {
+        "stripe_scope": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "attempt_key": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "stripe_customer_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_invoice_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_payment_intent_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_charge_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "currency": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "amount_minor": {
+          "type": "bigint",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "occurred_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "failure_code": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "evidence_type": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "source_event_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_api_version": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "normalizer_version": {
+          "type": "integer",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "verified_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "clock_timestamp()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "clock_timestamp()"
+        }
+      },
+      "primary_key": [
+        "stripe_scope",
+        "attempt_key"
+      ],
+      "business_identity": "Scoped Stripe object; deterministic derived key for attempts/activity",
+      "unique": [
+        {
+          "columns": [
+            "stripe_scope",
+            "stripe_charge_id"
+          ],
+          "where": "stripe_charge_id IS NOT NULL"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "stripe_scope",
+            "stripe_invoice_id"
+          ],
+          "table": "billing_v2.invoices",
+          "references": [
+            "stripe_scope",
+            "stripe_object_id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        },
+        {
+          "columns": [
+            "stripe_scope",
+            "stripe_charge_id"
+          ],
+          "table": "billing_v2.payments",
+          "references": [
+            "stripe_scope",
+            "stripe_object_id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        }
+      ],
+      "status_enums": {},
+      "authoritative_writer": "restricted isolated candidate RPCs only; never current public authority",
+      "allowed_readers": "isolated comparison/backfill tools and bounded safe diagnostic RPC; no UI/Billing/activation",
+      "browser_access": false,
+      "retention": "Retain until audited retention approval; no automatic deletion in this contract.",
+      "immutable_fields": [
+        "stripe_scope",
+        "attempt_key",
+        "created_at"
+      ],
+      "mutable_fields": [
+        "stripe_customer_id",
+        "stripe_invoice_id",
+        "stripe_payment_intent_id",
+        "stripe_charge_id",
+        "currency",
+        "amount_minor",
+        "occurred_at",
+        "failure_code",
+        "evidence_type",
+        "source_event_id",
+        "stripe_api_version",
+        "normalizer_version",
+        "verified_at",
+        "updated_at"
+      ],
+      "logical_name": "billing_payment_attempts",
+      "sql_checks": [
+        "stripe_scope ~ '^acct_[A-Za-z0-9]+:(test|live)$'",
+        "stripe_customer_id ~ '^cus_[A-Za-z0-9]+$'",
+        "currency ~ '^[a-z]{3}$'",
+        "amount_minor>=0",
+        "evidence_type='failed_charge'",
+        "normalizer_version>0",
+        "attempt_key='charge:'||stripe_charge_id AND stripe_charge_id IS NOT NULL"
+      ],
+      "transactional_checks": [
+        "retain all current normalization, money, discount, tax, completeness and ownership checks",
+        "all rows written by one task commit atomically with task completion/audit",
+        "IDs alone are not ownership proof; complete exact relationships required",
+        "no browser write and no access/entitlement write",
+        "retained_base_table_contract is normative except invoice tax_minor nullability and additive tax evidence changes in the pinned tax migration; naming adapters may not weaken it"
+      ],
+      "security": {
+        "rls_enabled": true,
+        "rls_forced": true,
+        "policies": [
+          {
+            "role": "billing_v2_owner",
+            "command": "ALL",
+            "using": "true",
+            "with_check": "true"
+          }
+        ],
+        "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+        "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+        "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+        "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+        "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+        "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+      },
+      "indexes": [
+        {
+          "name": "v2_payment_attempts_i1",
+          "columns": [
+            "stripe_scope",
+            "stripe_charge_id"
+          ],
+          "where": "stripe_charge_id IS NOT NULL",
+          "method": "btree",
+          "unique": true
+        },
+        {
+          "name": "v2_payment_attempts_i2",
+          "columns": [
+            "stripe_scope",
+            "stripe_invoice_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_payment_attempts_i3",
+          "columns": [
+            "stripe_scope",
+            "stripe_charge_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_payment_attempts_i4",
+          "columns": [
+            "stripe_scope",
+            "occurred_at"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        }
+      ],
+      "retention_and_storage": {
+        "phase2": "no deletion; candidate data disposable only after archived comparison/export and explicit review",
+        "large_documents": "bounded schema-validated JSONB; no GIN index on evidence or secrets; no unbounded payload snapshots",
+        "audit": "insert-only audit trigger; run checkpoints mutable only through RPC, one audit per checkpoint",
+        "partitioning": "none initially; retain scoped B-tree indexes; consider time partitioning only after measured volume and uniqueness/FK implications review",
+        "dedupe": "retain source identity/digest/result and canceled tombstones through rollback and reviewed retention policy"
+      },
+      "logical_end_state_writer": "projectFinanceTask -> commitFinanceTask"
+    },
+    {
+      "name": "billing_v2.finance_activity",
+      "columns": {
+        "stripe_scope": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "activity_key": {
+          "type": "text",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": null
+        },
+        "kind": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "subscription_created",
+            "cancellation_scheduled",
+            "cancellation_reversed",
+            "subscription_ended",
+            "invoice_paid",
+            "payment_failed",
+            "refund_issued"
+          ],
+          "default_sql": null
+        },
+        "stripe_customer_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "stripe_subscription_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "object_type": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "object_id": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "occurred_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": null
+        },
+        "amount_minor": {
+          "type": "bigint",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "currency": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "effective_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "source_event_id": {
+          "type": "text",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "origin": {
+          "type": "text",
+          "nullable": false,
+          "immutable": false,
+          "enum": [
+            "webhook",
+            "backfill",
+            "reconciliation"
+          ],
+          "default_sql": null
+        },
+        "source_revision": {
+          "type": "bigint",
+          "nullable": true,
+          "immutable": false,
+          "default_sql": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": true,
+          "default_sql": "clock_timestamp()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "immutable": false,
+          "default_sql": "clock_timestamp()"
+        }
+      },
+      "primary_key": [
+        "stripe_scope",
+        "activity_key"
+      ],
+      "business_identity": "Scoped Stripe object; deterministic derived key for attempts/activity",
+      "unique": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "stripe_scope",
+            "stripe_subscription_id"
+          ],
+          "table": "billing_v2.finance_subscriptions",
+          "references": [
+            "stripe_scope",
+            "stripe_object_id"
+          ],
+          "on_delete": "RESTRICT",
+          "deferrable": true,
+          "initially_deferred": true
+        }
+      ],
+      "status_enums": {
+        "kind": [
+          "subscription_created",
+          "cancellation_scheduled",
+          "cancellation_reversed",
+          "subscription_ended",
+          "invoice_paid",
+          "payment_failed",
+          "refund_issued"
+        ],
+        "origin": [
+          "webhook",
+          "backfill",
+          "reconciliation"
+        ]
+      },
+      "authoritative_writer": "restricted isolated candidate RPCs only; never current public authority",
+      "allowed_readers": "isolated comparison/backfill tools and bounded safe diagnostic RPC; no UI/Billing/activation",
+      "browser_access": false,
+      "retention": "Retain until audited retention approval; no automatic deletion in this contract.",
+      "immutable_fields": [
+        "stripe_scope",
+        "activity_key",
+        "created_at"
+      ],
+      "mutable_fields": [
+        "kind",
+        "stripe_customer_id",
+        "stripe_subscription_id",
+        "object_type",
+        "object_id",
+        "occurred_at",
+        "amount_minor",
+        "currency",
+        "effective_at",
+        "source_event_id",
+        "origin",
+        "source_revision",
+        "updated_at"
+      ],
+      "logical_name": "billing_finance_activity",
+      "sql_checks": [
+        "stripe_scope ~ '^acct_[A-Za-z0-9]+:(test|live)$'",
+        "kind IN ('subscription_created','cancellation_scheduled','cancellation_reversed','subscription_ended','invoice_paid','payment_failed','refund_issued')",
+        "origin IN ('webhook','backfill','reconciliation')",
+        "amount_minor>=0",
+        "currency ~ '^[a-z]{3}$'",
+        "source_revision>=0",
+        "(amount_minor IS NULL)=(currency IS NULL)"
+      ],
+      "transactional_checks": [
+        "retain all current normalization, money, discount, tax, completeness and ownership checks",
+        "all rows written by one task commit atomically with task completion/audit",
+        "IDs alone are not ownership proof; complete exact relationships required",
+        "no browser write and no access/entitlement write",
+        "retained_base_table_contract is normative except invoice tax_minor nullability and additive tax evidence changes in the pinned tax migration; naming adapters may not weaken it"
+      ],
+      "security": {
+        "rls_enabled": true,
+        "rls_forced": true,
+        "policies": [
+          {
+            "role": "billing_v2_owner",
+            "command": "ALL",
+            "using": "true",
+            "with_check": "true"
+          }
+        ],
+        "public_anon_authenticated": "no schema USAGE, no table grants, no function EXECUTE",
+        "service_role": "schema USAGE and diagnostic function EXECUTE only; no direct table DML/SELECT, no mutation RPC",
+        "executor": "billing_v2_executor NOLOGIN NOBYPASSRLS; schema USAGE and explicit mutation RPC grants only, no direct table privileges",
+        "owner": "billing_v2_owner NOLOGIN NOBYPASSRLS; owns only billing_v2 objects, no current public billing writes; definer RPCs use pg_catalog-only search_path and schema-qualified object names",
+        "connection": "future isolated tooling uses restricted login membership SET ROLE billing_v2_executor; no broad Supabase service-role client in V2 shadow process",
+        "default_privileges": "REVOKE default function EXECUTE and table/sequence privileges from PUBLIC/anon/authenticated/service_role before object creation; explicit grants after function signatures exist"
+      },
+      "indexes": [
+        {
+          "name": "v2_finance_activity_i1",
+          "columns": [
+            "stripe_scope",
+            "stripe_customer_id",
+            "occurred_at DESC"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        },
+        {
+          "name": "v2_finance_activity_i2",
+          "columns": [
+            "stripe_scope",
+            "stripe_subscription_id"
+          ],
+          "where": null,
+          "method": "btree",
+          "unique": false
+        }
+      ],
+      "retention_and_storage": {
+        "phase2": "no deletion; candidate data disposable only after archived comparison/export and explicit review",
+        "large_documents": "bounded schema-validated JSONB; no GIN index on evidence or secrets; no unbounded payload snapshots",
+        "audit": "insert-only audit trigger; run checkpoints mutable only through RPC, one audit per checkpoint",
+        "partitioning": "none initially; retain scoped B-tree indexes; consider time partitioning only after measured volume and uniqueness/FK implications review",
+        "dedupe": "retain source identity/digest/result and canceled tombstones through rollback and reviewed retention policy"
+      },
+      "logical_end_state_writer": "projectFinanceTask -> commitFinanceTask"
+    }
+  ],
+  "cross_table_checks": [
+    "Verified principal identity references current profile/workspace through a read-only resolver, no polymorphic FK fiction",
+    "Subscription commit rechecks account customer, approved price revision/entitlement_enabled, application active and authority fence in one transaction",
+    "Complete task has exactly one immutable completion audit and projection result; deferrable constraint trigger verifies at transaction end",
+    "Immutable evidence/key/identity fields and all audit rows reject UPDATE/DELETE; table owner is not used by application sessions",
+    "Task operation reference and authority account/domain match at claim/commit/renew/release",
+    "At most one in-flight/ambiguous operation for account/kind; provider intent replay deadline never refreshed by retry",
+    "Finance revisions, stale source dates, exact allocation/invoice/current registry anchors and ownership are checked within commit, not merely by caller",
+    "Operations unique success audit includes task kind/identity; no second receipt or hidden routing lifecycle",
+    "Every audit source_id is deterministic stage + operation/task + claim_generation where appropriate; completion uses task:completed exactly once. Claims/defer/wake audits never share completion outcome identity.",
+    "Claim requires completed current seed manifest at authority key (scope,migration,shadow_dataset); source snapshot generation and code/catalog checkpoint match comparison. No runner consumes partially backfilled data."
+  ],
+  "logical_refinements": [
+    "Physical Phase 2 authority modes/engine are constrained to shadow_only/shadow. Live legacy/simplified transition requires separately reviewed later barrier migration; handover entry point is blocked in Phase 2.",
+    "operations.operation_kind adds backfill/shadow_comparison; both are isolated audit/run types, not user business commands.",
+    "All retained current Finance FKs are explicit, even where the logical schema summary omitted them.",
+    "event_inbox.run_id has scoped operations FK."
+  ],
+  "json_contracts": {
+    "evidence": "Versioned bounded discriminated record for source/task kind. Required correlation/scope/event time, verified subject references and approved fixed fields copied from current minimal-evidence contract. No nested lifecycle, retry, routing, authority or completion fields; preserve current prepareBillingWorkEvidence validation until reviewed replacement.",
+    "parameters": "Exact frozen current checkout/customer/update request parameter contract, including presentation and approved price; digest covers canonical full parameters. Provider results, secret keys and client secrets prohibited.",
+    "ownership_provenance": {
+      "version": 1,
+      "required": [
+        "application_key",
+        "state",
+        "invoice_revision",
+        "customer_ref",
+        "subscription_ref",
+        "complete",
+        "price_proofs",
+        "source_event_id",
+        "certificate_revision"
+      ],
+      "price_proof_fields": [
+        "price_id",
+        "ownership_revision"
+      ],
+      "application_key": "dmi_cards for usable proof",
+      "rules": "same scoped invoice/customer/subscription anchors; complete invoice lines; exact payment/allocation checks at charge commit; all price registry revisions active/current; zero guessed shared-customer authorization"
+    },
+    "operations.facts": "Closed discriminated summary by operation_kind: subscription (task, before/after digest/revision, order decision); Finance (scoped affected row keys/revisions and proof anchors); checkout (attempt key/digest/result identity, never client secret); ownership (old/new revision/state); handover (old/new engine/generation/checkpoint); recovery (parent task/fixed reason); reconciliation (window/resource/page/count/coverage). Private RLS evidence, never log output.",
+    "operations.cursor": "Run-only closed resource/endpoint/after/window cursor; NULL for immutable audit.",
+    "operations.coverage": "Run-only discovered/admitted/resolved/attention counts plus resource/window/start/end, quality partial|complete. Complete only after all included tasks resolved or explicit attention."
+  },
+  "operation_outcomes": [
+    "admitted",
+    "ambiguous_provider_result",
+    "attention",
+    "blocked_phase2",
+    "bound",
+    "checkpointed",
+    "claimed",
+    "conflict",
+    "deferred",
+    "dependency_unresolved",
+    "equivalent",
+    "expected_representation_difference",
+    "handover_blocked",
+    "ignored",
+    "imported",
+    "invalid_evidence",
+    "missing_projection",
+    "ownership_conflict",
+    "ownership_mismatch",
+    "ownership_unresolved",
+    "partial",
+    "policy_mismatch",
+    "processed",
+    "provider_rate_limited",
+    "provider_transport",
+    "provider_unavailable",
+    "released",
+    "retry_exhausted",
+    "stale_ignored",
+    "store_unavailable",
+    "terminal_ignored",
+    "unchanged",
+    "unexpected_business_effect",
+    "unknown_price",
+    "woken"
+  ]
+}
