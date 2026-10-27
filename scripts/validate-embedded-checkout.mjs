@@ -161,11 +161,12 @@ const jsx={jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props}),Fr
 const flush=async()=>{for(let i=0;i<12;i++)await new Promise(setImmediate);};
 function hooks(){let index=0;const slots=[],effects=[];const react={useState(initial){const i=index++;slots[i]??={value:typeof initial==='function'?initial():initial};return [slots[i].value,v=>{slots[i].value=typeof v==='function'?v(slots[i].value):v;}];},useRef(initial){const i=index++;slots[i]??={current:initial};return slots[i];},useEffect(fn){effects.push(fn);},useMemo:fn=>fn(),useId:()=>String(index++)};return {react,slots,effects,reset(){index=0;effects.length=0;}};}
 function nodes(tree){if(!tree||typeof tree!=='object')return [];return [tree,...[tree.props?.children].flat(Infinity).flatMap(nodes)];}
-function pageFixture({available=true,query='?interval=annual',authenticated=true,result=dto.embeddedCheckoutResponse(session,'pk_test_fixture')}={}){
+function pageFixture({available=true,query='?interval=annual',authenticated=true,result=dto.embeddedCheckoutResponse(session,'pk_test_fixture'),earlyPublishableKey='pk_test_fixture',postGate=Promise.resolve(),stripeGate=Promise.resolve(),rejectLoad=false,timing=startup}={}){
  const h=hooks(),requests=[],navigation=[],history=[];let authCallback;const identity=authenticated?{user:{id:user},access_token:'offline-token'}:null;
- const page=load('src/app/client/billing/pay/page.tsx',{'react':h.react,'react/jsx-runtime':jsx,'next/image':{default:'img'},'next/link':{default:'a'},'lucide-react':{Check:'check',LockKeyhole:'lock'},'@/components/EmbeddedPayment':{default:'embedded'},'@/lib/checkout-startup-timing':startup,'@/lib/embedded-checkout-client':client,'@/lib/supabase':{supabase:{auth:{async getSession(){return {data:{session:identity}};},onAuthStateChange(fn){authCallback=fn;return {data:{subscription:{unsubscribe(){}}}};}}}}},
- {window:{location:{search:query,assign:url=>navigation.push(url)},history:{replaceState:(_a,_b,url)=>history.push(url)}},fetch:async(url,init)=>{requests.push([url,init]);return {ok:available,json:async()=>({data:result})};}}).default;
- const render=()=>{h.reset();return page();};render();const effect=h.effects[0];return {...h,requests,navigation,history,render,effect,changeIdentity(){authCallback('SIGNED_OUT',null);}};
+ const loaderCalls=[];const stripeLoaderModule=load('src/lib/embedded-stripe-loader.ts',{'@/lib/checkout-startup-timing':timing,'@stripe/stripe-js/pure':{async loadStripe(key){loaderCalls.push(key);await stripeGate;if(rejectLoad)throw Error('private');return {fixtureStripe:true};}}});
+ const page=load('src/app/client/billing/pay/PaymentClient.tsx',{'react':h.react,'react/jsx-runtime':jsx,'next/image':{default:'img'},'next/link':{default:'a'},'lucide-react':{Check:'check',LockKeyhole:'lock'},'@/components/EmbeddedPayment':{default:'embedded'},'@/lib/embedded-stripe-loader':stripeLoaderModule,'@/lib/checkout-startup-timing':timing,'@/lib/embedded-checkout-client':client,'@/lib/supabase':{supabase:{auth:{async getSession(){return {data:{session:identity}};},onAuthStateChange(fn){authCallback=fn;return {data:{subscription:{unsubscribe(){}}}};}}}}},
+ {window:{location:{search:query,assign:url=>navigation.push(url)},history:{replaceState:(_a,_b,url)=>history.push(url)}},fetch:async(url,init)=>{requests.push([url,init]);await postGate;return {ok:available,json:async()=>({data:result})};}}).default;
+ const render=()=>{h.reset();return page({earlyPublishableKey});};render();const effect=h.effects[0];return {...h,requests,navigation,history,loaderCalls,render,effect,changeIdentity(){authCallback('SIGNED_OUT',null);}};
 }
 await test('payment page rejected POST and unauthenticated paths never mount a Session',async()=>{
  for(const opts of [{available:false},{authenticated:false}]){const f=pageFixture(opts);f.effect();await flush();assert.equal(f.requests.length,opts.authenticated===false?0:1);assert.equal(f.navigation.length,0);assert.ok(!nodes(f.render()).some(n=>n.type==='embedded'));}
@@ -183,11 +184,13 @@ await test('refresh resumes with GET; paid completion redirects to activation, n
 await test('unmounted page ignores late results and does not navigate',async()=>{
  const f=pageFixture({result:{kind:'complete',sessionId:session.id,interval:'monthly'}});f.effect()();await flush();assert.equal(f.navigation.length,0);assert.equal(f.history.length,0);
 });
-function paymentFixture({reject=false,delayed=false,startupDiagnostics=false,timing=startup}={}){
+function paymentFixture({reject=false,delayed=false,startupDiagnostics=false,timing=startup,stripeLoader}={}){
  const h=hooks(),navigation=[],calls=[];let complete,release,analytics;
  const gate=delayed?new Promise(resolve=>release=resolve):Promise.resolve();
- const payment=load('src/components/EmbeddedPayment.tsx',{'react':h.react,'react/jsx-runtime':jsx,'@/lib/checkout-startup-timing':timing,'@/lib/embedded-checkout-client':client,'@stripe/stripe-js/pure':{async loadStripe(){calls.push('load');return {async createEmbeddedCheckoutPage(options){calls.push('create');complete=options.onComplete;analytics=options.onAnalyticsEvent;await gate;if(reject)throw new Error('private provider exception');return {mount:()=>calls.push('mount'),destroy:()=>calls.push('destroy')};}};}}},{window:{location:{assign:url=>navigation.push(url)}}}).default;
- payment({sessionId:session.id,clientSecret:session.client_secret,publishableKey:'pk_test_fixture',startupDiagnostics});h.slots[0].current={};
+ const stripeLoaderModule=load('src/lib/embedded-stripe-loader.ts',{'@/lib/checkout-startup-timing':timing,'@stripe/stripe-js/pure':{loadStripe(){calls.push('load');return Promise.resolve(sdk);}}});
+ const sdk={async createEmbeddedCheckoutPage(options){calls.push('create');complete=options.onComplete;analytics=options.onAnalyticsEvent;await gate;if(reject)throw new Error('private provider exception');return {mount:()=>calls.push('mount'),destroy:()=>calls.push('destroy')};}};
+ const payment=load('src/components/EmbeddedPayment.tsx',{'react':h.react,'react/jsx-runtime':jsx,'@/lib/checkout-startup-timing':timing,'@/lib/embedded-checkout-client':client,'@/lib/embedded-stripe-loader':stripeLoaderModule},{window:{location:{assign:url=>navigation.push(url)}}}).default;
+ payment({sessionId:session.id,clientSecret:session.client_secret,publishableKey:'pk_test_fixture',startupDiagnostics,stripeLoader});h.slots[0].current={};
  return {...h,calls,navigation,effect:h.effects[0],complete:()=>complete(),analytics:()=>analytics,release:()=>release?.()};
 }
 await test('Stripe iframe mount/completion has no authority or recovery side effect',async()=>{
@@ -197,7 +200,7 @@ await test('unmount during SDK initialization destroys late instance and suppres
  const f=paymentFixture({delayed:true});const cleanup=f.effect();await flush();cleanup();f.release();await flush();f.complete();assert.ok(!f.calls.includes('mount'));assert.equal(f.calls.at(-1),'destroy');assert.equal(f.navigation.length,0);
 });
 await test('SDK exception is caught into fixed safe UI state without logging provider data',async()=>{
- const f=paymentFixture({reject:true});f.effect();await flush();assert.equal(f.slots[2].value,'error');assert.equal(f.navigation.length,0);
+ const f=paymentFixture({reject:true});f.effect();await flush();assert.equal(f.slots[3].value,'error');assert.equal(f.navigation.length,0);
 });
 await test('upgrade entry OFF preserves hosted POST and ON navigates without creating a Session',async()=>{
  for(const available of [false,true]){

@@ -91,12 +91,106 @@ await test('rendered callback emits one duration without forwarding SDK data',as
 await test('default browser SDK path registers no diagnostics callback',async()=>{
  const f=paymentFixture();f.effect();await flush();assert.equal(f.analytics(),undefined);
 });
-await test('Stripe loader only receives publishable key after guarded Session response',()=>{
- const page=fs.readFileSync('src/app/client/billing/pay/page.tsx','utf8'),payment=fs.readFileSync('src/components/EmbeddedPayment.tsx','utf8'),modal=fs.readFileSync('src/components/UpgradeToProModal.tsx','utf8');
- assert.match(payment,/loadStripe\(publishableKey\)/);assert.doesNotMatch(payment,/localStorage|sessionStorage|fetch\(/);
- assert.doesNotMatch(page,/localStorage|sessionStorage|loadStripe/);assert.match(page,/history.replaceState/);
- assert.match(modal,/window.location.assign\(`\/client\/billing\/pay\?interval=/);
- assert.doesNotMatch(page+payment,/billing-work|reconcile/);
+await test('early loader is public-only, page-owned and has no Session or storage API',()=>{
+ const page=fs.readFileSync('src/app/client/billing/pay/PaymentClient.tsx','utf8'),payment=fs.readFileSync('src/components/EmbeddedPayment.tsx','utf8'),loader=fs.readFileSync('src/lib/embedded-stripe-loader.ts','utf8');
+ assert.doesNotMatch(loader,/fetch\(|clientSecret|localStorage|sessionStorage/);
+ assert.doesNotMatch(page+payment,/localStorage|sessionStorage|billing-work|reconcile/);
+ assert.match(page,/history.replaceState/);
+ assert.match(loader,/loadStripe\(publishableKey\)/);
+});
+const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
+function readGates({individualError=false,priceError=false}={}){
+ const f=fixture(),individual=deferred(),price=deferred(),started=[],released=[],rpc=f.r.db.rpc,from=f.r.db.from;
+ f.r.db.rpc=(name,args)=>{if(args.p_action==='release')released.push('release');return rpc(name,args);};
+ f.r.db.from=name=>{
+  const q=from(name);if(!['clients','client_users','billing_approved_prices'].includes(name))return q;
+  const then=q.then;q.then=async resolve=>{
+   assert.ok(f.accounts.get(embedded.userId)?.lease_token,'lease precedes reads');started.push(name);
+   await (name==='billing_approved_prices'?price:individual).promise;
+   if(name==='billing_approved_prices'&&priceError)return resolve({error:{},data:null});
+   if(name!=='billing_approved_prices'&&individualError)return resolve({error:{},data:null});
+   return then(resolve);
+  };return q;
+ };
+ return {f,individual,price,started,released};
+}
+await test('embedded independent reads overlap inside lease and both precede customer/provider work',async()=>{
+ const g=readGates(),run=checkout.createStripeCheckoutSession(embedded,g.f.r);await flush();
+ assert.equal(g.started.length,3);assert.equal(g.f.createdCustomers,0);
+ g.price.resolve();await flush();assert.equal(g.f.createdCustomers,0);assert.equal(g.released.length,0);
+ g.individual.resolve();await run;assert.equal(g.f.createdSessions,1);assert.equal(g.released.length,1);
+});
+await test('either read failure blocks provider work and waits for other read before releasing lease',async()=>{
+ for(const options of [{individualError:true},{priceError:true},{individualError:true,priceError:true}]){
+  const g=readGates(options),run=checkout.createStripeCheckoutSession(embedded,g.f.r);
+  const result=run.then(()=>assert.fail('must fail'),e=>e);await flush();
+  g.individual.resolve();await flush();assert.equal(g.released.length,0);assert.equal(g.f.createdCustomers,0);
+  g.price.resolve();const error=await result;
+  assert.match(error.message,options.individualError?/IDENTITY_UNAVAILABLE/:/PRICE_REGISTRY_UNAVAILABLE/);
+  assert.equal(g.f.createdSessions,0);assert.equal(g.f.createdCustomers,0);assert.equal(g.released.length,1);
+ }
+});
+await test('unapproved price still blocks customer creation',async()=>{
+ const f=fixture();f.prices[0].checkout_enabled=false;
+ await assert.rejects(checkout.createStripeCheckoutSession(embedded,f.r),/UNKNOWN_CHECKOUT_PRICE/);
+ assert.equal(f.createdCustomers,0);assert.equal(f.createdSessions,0);
+});
+await test('hosted reads retain original sequential order',async()=>{
+ const g=readGates(),hosted={...embedded};delete hosted.presentation;delete hosted.returnUrl;
+ const run=checkout.createStripeCheckoutSession({...hosted,successUrl:'https://staging.dmicards.com',cancelUrl:'https://staging.dmicards.com'},g.f.r);await flush();
+ assert.equal(g.started.includes('billing_approved_prices'),false);
+ g.individual.resolve();await flush();assert.equal(g.started.includes('billing_approved_prices'),true);
+ g.price.resolve();await run;assert.equal(g.f.createdSessions,1);
+});
+await test('server wrapper exposes early key only through existing exact Staging enablement guard',()=>{
+ const Page=load('src/app/client/billing/pay/page.tsx',{'react/jsx-runtime':{jsx:(type,props)=>({type,props})},'./PaymentClient':{default:'client'},'@/lib/stripe/embedded-checkout-config':{embeddedCheckoutEnabled:()=>false,embeddedCheckoutEnvironment:()=>assert.fail('OFF must not issue capability')}}).default;
+ assert.equal(Page().props.earlyPublishableKey,null);
+ const Enabled=load('src/app/client/billing/pay/page.tsx',{'react/jsx-runtime':{jsx:(type,props)=>({type,props})},'./PaymentClient':{default:'client'},'@/lib/stripe/embedded-checkout-config':{embeddedCheckoutEnabled:()=>true,embeddedCheckoutEnvironment:()=>({publishableKey:'pk_test_fixture'})}}).default;
+ assert.equal(Enabled().props.earlyPublishableKey,'pk_test_fixture');
+});
+await test('authenticated load overlaps pending POST and Strict Mode reuses one page operation',async()=>{
+ const gate=deferred(),f=pageFixture({postGate:gate.promise});const cleanup=f.effect();cleanup();f.effect();await flush();
+ assert.equal(f.requests.length,1);assert.equal(f.loaderCalls.length,1);assert.ok(!nodes(f.render()).some(n=>n.type==='embedded'));
+ gate.resolve();await flush();const node=nodes(f.render()).find(n=>n.type==='embedded');
+ assert.ok(node.props.stripeLoader);assert.equal(node.props.stripeLoader.publishableKey,'pk_test_fixture');
+ f.render();assert.equal(f.loaderCalls.length,1);
+});
+await test('disabled capability, unauthenticated page and Session resumption do not load early',async()=>{
+ for(const options of [{earlyPublishableKey:null},{authenticated:false},{query:'?session_id=cs_test_owned'}]){
+  const f=pageFixture(options);f.effect();await flush();assert.equal(f.loaderCalls.length,0);
+ }
+});
+await test('unmount before authentication completes does not load or POST',async()=>{
+ const f=pageFixture();f.effect()();await flush();assert.equal(f.loaderCalls.length,0);assert.equal(f.requests.length,0);
+});
+await test('account change during pending POST never mounts returned owner secret',async()=>{
+ const gate=deferred(),f=pageFixture({postGate:gate.promise});f.effect();await flush();f.changeIdentity();gate.resolve();await flush();
+ assert.ok(!nodes(f.render()).some(n=>n.type==='embedded'));assert.equal(f.history.length,0);
+});
+await test('failed POST is safe even after Stripe.js completed',async()=>{
+ const f=pageFixture({available:false});f.effect();await flush();assert.equal(f.loaderCalls.length,1);
+ assert.ok(nodes(f.render()).some(n=>n.props?.role==='alert'));assert.equal(f.history.length,0);
+});
+await test('failed early loader is safely reused without unhandled rejection or second load',async()=>{
+ const f=pageFixture({rejectLoad:true});f.effect();await flush();const node=nodes(f.render()).find(n=>n.type==='embedded');
+ assert.equal(await node.props.stripeLoader.promise,null);assert.equal(f.loaderCalls.length,1);
+ const payment=paymentFixture({stripeLoader:node.props.stripeLoader});payment.effect();await flush();assert.equal(payment.calls.length,0);assert.equal(payment.slots[3].value,'error');
+});
+await test('payment consumes supplied promise without invoking loader again',async()=>{
+ let initialized=0,mounted=0;const stripeLoader={publishableKey:'pk_test_fixture',promise:Promise.resolve({async createEmbeddedCheckoutPage(){initialized++;return {mount(){mounted++;},destroy(){}};}})};
+ const f=paymentFixture({stripeLoader});f.effect();await flush();assert.equal(initialized,1);assert.equal(mounted,1);assert.equal(f.calls.length,0);
+});
+await test('mismatched loader key fails closed before SDK initialization',async()=>{
+ const f=paymentFixture({stripeLoader:{publishableKey:'pk_test_other',promise:Promise.resolve({})}});f.effect();await flush();assert.equal(f.calls.length,0);assert.equal(f.slots[3].value,'error');
+});
+await test('overlap timing distinguishes completion before and after Session response without identifiers',async()=>{
+ for(const early of [true,false]){
+  const gate=deferred(),rows=[],custom={...timing,checkoutStartupObserver:enabled=>timing.checkoutStartupObserver(enabled,x=>rows.push(JSON.parse(x)))};
+  const post=deferred(),f=pageFixture({postGate:post.promise,stripeGate:gate.promise,timing:custom});f.effect();await flush();
+  if(early){gate.resolve();await flush();post.resolve();}else{post.resolve();await flush();gate.resolve();}
+  await flush();const remaining=rows.find(r=>r.stage==='stripe_js_remaining_after_session');assert.ok(remaining);if(early)assert.equal(remaining.duration_ms,0);
+  assert.equal(rows.filter(r=>r.stage==='stripe_js_load').length,1);assert.ok(!JSON.stringify(rows).includes('pk_test'));
+ }
 });
 await test('billing authority, workers, SQL, webhook and activation files remain untouched',async()=>{
  // Exact hash-pinned observability additions only; authority still frozen.

@@ -79,8 +79,21 @@ export async function createStripeCheckoutSession(input: CheckoutSessionInput, r
   const time: CheckoutTiming = timing || ((_stage, run) => run());
   const r = runtime || await billingRuntime();
   return time("account_operation", () => withAccount(r, input.userId, async initial => {
-    await time("individual_check", () => assertIndividual(r, input.userId));
-    const prices = await time("approved_price", () => approvedPrices(r));
+    let prices: Awaited<ReturnType<typeof approvedPrices>>;
+    if (input.presentation === "embedded") {
+      // Independent reads, inside the same lease. Settle both before failure or
+      // customer/provider work; Individual errors retain their original priority.
+      const checks = await time("account_checks", () => Promise.allSettled([
+        time("individual_check", () => assertIndividual(r, input.userId)),
+        time("approved_price", () => approvedPrices(r)),
+      ]));
+      if (checks[0].status === "rejected") throw checks[0].reason;
+      if (checks[1].status === "rejected") throw checks[1].reason;
+      prices = checks[1].value;
+    } else {
+      await time("individual_check", () => assertIndividual(r, input.userId));
+      prices = await time("approved_price", () => approvedPrices(r));
+    }
     if (!prices.some(price => price.stripe_price_id === input.priceId && price.entitlement_enabled && price.checkout_enabled)) throw new BillingFailure("UNKNOWN_CHECKOUT_PRICE", 409);
     let account = await customerForCheckout(r, initial, input, time);
     const customer = account.stripe_customer_id!;

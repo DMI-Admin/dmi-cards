@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {execFileSync} from 'node:child_process';
+import {assertClaimDiagnosticFiles,claimDiagnosticMigration} from './billing-claim-diagnostic-contract.mjs';
 const migration='supabase/migrations/20261013000000_billing_dmi_completion_wake_provenance.sql';
 const sql=fs.readFileSync(migration,'utf8');
 let offline=0;function test(name,fn){fn();offline++;console.log('PASS DMI completion '+name);}
@@ -12,7 +13,30 @@ test('invoice identity and customer remain mandatory',()=>{assert.match(sql,/id 
 test('wake requires exact current provenance and authoritative proof read',()=>{assert.match(sql,/proof:=public.billing_finance_invoice_proof_read\(p_scope,id\)/);assert.match(sql,/proof->>'source_event_id'=p_event/);assert.match(sql,/stripe_customer_id=w.partition_key AND source_event_id=p_event/);assert.match(sql,/proof->>'state'='proven'/);});
 test('bounded wake order and skip locked unchanged',()=>{assert.match(sql,/ORDER BY arrival_sequence LIMIT 10 FOR UPDATE SKIP LOCKED/);assert.match(sql,/jsonb_array_length\(p_invoices\)>200/);});
 test('no error swallowing, correct owner grants and fixed search path',()=>{assert.doesNotMatch(sql,/EXCEPTION WHEN|WHEN OTHERS/);assert.match(sql,/SET search_path=pg_catalog,public/);assert.match(sql,/BILLING_WORK_OWNER/);assert.match(sql,/FROM PUBLIC,anon,authenticated,service_role/);assert.match(sql,/TO service_role/);});
-test('all previous migrations remain byte-identical to approved baseline',()=>{assert.equal(execFileSync('git',['diff','275994d0d1977952d50c9a7677cfb165a9e0c305','--','supabase/migrations',':(exclude)'+migration],{encoding:'utf8'}),'');});
+// Reuse the reviewed claim-diagnostics hash pin; never exempt arbitrary SQL.
+function assertMigrationSet(read=fs.readFileSync,git=args=>execFileSync('git',args,{encoding:'utf8'})){
+ assertClaimDiagnosticFiles(read);
+ assert.equal(git(['diff','275994d0d1977952d50c9a7677cfb165a9e0c305','--','supabase/migrations',':(exclude)'+migration,':(exclude)'+claimDiagnosticMigration]),'','Unexpected migration drift');
+ // git diff does not see untracked additions. They must fail closed too.
+ assert.equal(git(['ls-files','--others','--exclude-standard','--','supabase/migrations']),'','Unexpected untracked migration');
+}
+test('all previous migrations remain byte-identical to approved baseline',()=>{assertMigrationSet();});
+test('claim-diagnostics exemption rejects altered and missing approved contents',()=>{
+ assert.throws(()=>assertMigrationSet(file=>fs.readFileSync(file)+(file===claimDiagnosticMigration?'\n-- unreviewed change\n':'')),/Unexpected claim diagnostic drift/);
+ assert.throws(()=>assertMigrationSet(file=>{if(file===claimDiagnosticMigration)throw Object.assign(Error('missing approved migration'),{code:'ENOENT'});return fs.readFileSync(file);}),{code:'ENOENT'});
+});
+test('unknown tracked migrations and edits to older migrations remain rejected',()=>{
+ for(const changed of ['supabase/migrations/20990101000000_unreviewed.sql','supabase/migrations/20260927010000_stripe_reliability_foundation.sql']){
+  assert.throws(()=>assertMigrationSet(fs.readFileSync,args=>{
+   assert.equal(args[0],'diff');
+   assert.deepEqual(args.slice(3),['supabase/migrations',':(exclude)'+migration,':(exclude)'+claimDiagnosticMigration]);
+   return 'diff --git a/'+changed+' b/'+changed+'\n';
+  }),/Unexpected migration drift/);
+ }
+});
+test('unknown untracked migration additions remain rejected',()=>{
+ assert.throws(()=>assertMigrationSet(fs.readFileSync,args=>args[0]==='diff'?'':'supabase/migrations/20990101000000_unreviewed.sql\n'),/Unexpected untracked migration/);
+});
 console.log(`PASS DMI completion offline: ${offline}/${offline}`);
 export async function validateDmiCompletionDatabase(db,c){
  const {s,cus,admit,claim,fence,settle,financial,authority,producer,graph,auth,eventCreated}=c;

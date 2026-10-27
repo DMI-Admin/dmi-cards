@@ -3,11 +3,11 @@
 // this boundary; records contain fixed labels and elapsed milliseconds only.
 const stages = [
   "page_initialization", "session_request", "client_auth", "auth", "runtime",
-  "account_operation", "individual_check", "approved_price", "customer_lookup",
+  "account_operation", "account_checks", "individual_check", "approved_price", "customer_lookup",
   "customer_prepare", "customer_create", "customer_verify", "customer_bind",
   "subscription_inventory", "session_lookup", "session_retrieve", "checkout_prepare",
   "checkout_touch", "session_create", "attempt_record", "api_response_prepare",
-  "stripe_js_load", "embedded_initialize", "embedded_mount", "form_ready",
+  "stripe_js_load", "stripe_js_overlap", "stripe_js_remaining_after_session", "embedded_initialize", "embedded_mount", "form_ready",
 ] as const;
 export type CheckoutStartupStage = typeof stages[number];
 export type CheckoutTiming = <T>(stage: CheckoutStartupStage, run: () => Promise<T>) => Promise<T>;
