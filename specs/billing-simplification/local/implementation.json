@@ -9,12 +9,14 @@
     "src/lib/billing-v2/domain/subscription-policy.ts",
     "src/lib/billing-v2/domain/types.ts",
     "src/lib/billing-v2/shadow/comparison.ts",
-    "src/lib/billing-v2/tooling/backfill.ts"
+    "src/lib/billing-v2/tooling/backfill.ts",
+    "src/lib/billing-v2/tooling/staging-seed.ts"
   ],
   "migrations": [
     "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
     "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
-    "supabase/migrations/20261027000300_billing_v2_shadow_operations.sql"
+    "supabase/migrations/20261027000300_billing_v2_shadow_operations.sql",
+    "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql"
   ],
   "sha256": {
     "src/lib/billing-v2/adapters/postgres.ts": "8d0a2c2cd852e05305cbb41ae04fb88d4f53082e21eb79b3097f368bc6681f8f",
@@ -31,18 +33,29 @@
     "supabase/migrations/20261027000300_billing_v2_shadow_operations.sql": "cfe2f314004996bda68988d528b088e9dc6af1f6696303e2bdea381139679970",
     "specs/billing-simplification/phase1/validate.mjs": "a5a4f7774726ab5962862f4e9433243b288dae2d1a1857554749e81ea2e74c2b",
     "specs/billing-simplification/phase2/validate.mjs": "f1fdbd59a12e99a9da5cdfb065deb2ee23b328f76cbb5e50c1f17838daa20146",
-    "scripts/billing-claim-diagnostic-contract.mjs": "aa67473589800f299eac9f827c64f308b3f0b0acdad87fdb699176f2afe88b75",
-    "scripts/validate-billing-dmi-completion.mjs": "f55b87bdb9aa5eecc14c65bcd4b3a4ad6acad73c700dfee3ab5cf36b7b2a6ecb"
+    "scripts/billing-claim-diagnostic-contract.mjs": "5f8e3ca0302e9cb00545d67c96c7ab97616b7a68d41d3602b0e8b1d07a12afb0",
+    "scripts/validate-billing-dmi-completion.mjs": "f55b87bdb9aa5eecc14c65bcd4b3a4ad6acad73c700dfee3ab5cf36b7b2a6ecb",
+    "src/lib/billing-v2/tooling/staging-seed.ts": "9e87588bc848fcc8653e8284920f7ab499da49ab0065991c255b28b4b434f96b",
+    "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql": "3e0b21bb45740ab168c7dc4223767bf6a086ecdca9ec4578d1e33972a00ee92d",
+    "specs/billing-simplification/local/boundary.mjs": "1fdc2948747b2143ebe734c3b81fd3bd46e683e81e6dc173f733efe24bf39812",
+    "specs/billing-simplification/local/validate.mjs": "edb12dfd1942a98b83eb290afff638f5c9e7d42bdd2cd83e5d509d0e804740eb",
+    "scripts/validate-finance-invoice-application-proofs.mjs": "dca9f2879b36f38553c07dfb6d18766771584744484e2f285385528b180b76f8"
   },
   "specification_edits": [
     "specs/billing-simplification/phase1/validate.mjs",
     "specs/billing-simplification/phase2/validate.mjs",
     "scripts/billing-claim-diagnostic-contract.mjs",
-    "scripts/validate-billing-dmi-completion.mjs"
+    "scripts/validate-billing-dmi-completion.mjs",
+    "specs/billing-simplification/local/boundary.mjs",
+    "specs/billing-simplification/local/validate.mjs",
+    "specs/billing-simplification/local/implementation.json",
+    "scripts/validate-finance-invoice-application-proofs.mjs"
   ],
   "specification_guard_hashes": {
     "specs/billing-simplification/phase1/validate.mjs": "a5a4f7774726ab5962862f4e9433243b288dae2d1a1857554749e81ea2e74c2b",
-    "specs/billing-simplification/phase2/validate.mjs": "f1fdbd59a12e99a9da5cdfb065deb2ee23b328f76cbb5e50c1f17838daa20146"
+    "specs/billing-simplification/phase2/validate.mjs": "f1fdbd59a12e99a9da5cdfb065deb2ee23b328f76cbb5e50c1f17838daa20146",
+    "specs/billing-simplification/local/boundary.mjs": "1fdc2948747b2143ebe734c3b81fd3bd46e683e81e6dc173f733efe24bf39812",
+    "specs/billing-simplification/local/validate.mjs": "edb12dfd1942a98b83eb290afff638f5c9e7d42bdd2cd83e5d509d0e804740eb"
   },
   "local_files": [
     "specs/billing-simplification/local/README.md",
@@ -51,11 +64,15 @@
     "specs/billing-simplification/local/equivalence.mjs",
     "specs/billing-simplification/local/postgres.mjs",
     "specs/billing-simplification/local/validate.mjs",
-    "specs/billing-simplification/local/implementation.json"
+    "specs/billing-simplification/local/implementation.json",
+    "specs/billing-simplification/shadow/contract.json",
+    "specs/billing-simplification/shadow/README.md",
+    "specs/billing-simplification/shadow/validate.mjs",
+    "specs/billing-simplification/shadow/postgres.mjs"
   ],
   "authority": "local_shadow_candidates_only",
   "schema_tables": 15,
-  "functions": 32,
+  "functions": 41,
   "future_cases": [
     "crash_after",
     "handover",
