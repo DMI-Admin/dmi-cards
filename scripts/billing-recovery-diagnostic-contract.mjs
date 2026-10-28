@@ -1,4 +1,4 @@
-import {assertClaimDiagnosticFiles,claimDiagnosticReviewedPaths} from './billing-claim-diagnostic-contract.mjs';
+import {assertClaimDiagnosticFiles,claimDiagnosticReviewedPaths,assertIsolatedV2Migrations,isolatedV2MigrationPins} from './billing-claim-diagnostic-contract.mjs';
 import {assertAutomaticWorkerFiles,automaticWorkerReviewedPaths} from './billing-work-auto-contract.mjs';
 import {assertEmbeddedCheckoutFiles,embeddedCheckoutReviewedPaths} from './billing-embedded-checkout-contract.mjs';
 import {assertBillingLatencyFiles,billingLatencyReviewedPaths} from './billing-latency-contract.mjs';
@@ -23,11 +23,12 @@ export function recoveryDiagnosticGitDiff(args,options){
  assertRecoveryDiagnosticFiles();
  assertAutomaticWorkerFiles();
  assertClaimDiagnosticFiles();
+ assertIsolatedV2Migrations();
  // Narrow hash-pinned checkout presentation changes, not a general exemption.
  assertEmbeddedCheckoutFiles(fs.readFileSync);
  assertBillingLatencyFiles(fs.readFileSync);
  const command=args.includes('--')?args:[...args,'--'];
- return execFileSync('git',[...command,...[...Object.keys(reviewed),...claimDiagnosticReviewedPaths,...automaticWorkerReviewedPaths,...embeddedCheckoutReviewedPaths,...billingLatencyReviewedPaths].map(file=>':(exclude)'+file)],options);
+ return execFileSync('git',[...command,...[...Object.keys(reviewed),...claimDiagnosticReviewedPaths,...Object.keys(isolatedV2MigrationPins),...automaticWorkerReviewedPaths,...embeddedCheckoutReviewedPaths,...billingLatencyReviewedPaths].map(file=>':(exclude)'+file)],options);
 }
 export function assertUnchangedExceptRecoveryDiagnostics(file){
  if(automaticWorkerReviewedPaths.includes(file)){assertAutomaticWorkerFiles();return;}

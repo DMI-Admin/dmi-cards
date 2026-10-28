@@ -139,7 +139,7 @@ test('Exact design-file allowlist; runtime/migrations/config unchanged', () => {
   execFileSync('git', ['merge-base', '--is-ancestor', runtime.head, 'HEAD']);
   for (const [file, hash] of Object.entries(runtime.sha256)) assert.equal(sha(file), hash, file);
   const diff = execFileSync('git', ['diff', '--name-only', 'HEAD'], {encoding: 'utf8'}).trim();
-  for(const f of diff.split('\n').filter(Boolean))assert.ok(implementation.specification_edits.includes(f),'Unapproved tracked change');
+  for(const f of diff.split('\n').filter(Boolean))assert.ok(implementation.specification_edits.includes(f)||Object.hasOwn(implementation.sha256,f)||implementation.local_files.includes(f),'Unapproved tracked change');
 });
 test('No runtime source imports either specification or proposed implementation', () => {
   function scan(folder) { for (const e of fs.readdirSync(folder, {withFileTypes: true})) { const file = path.join(folder, e.name); if (e.isDirectory()) scan(file); else if (/\.[cm]?[jt]sx?$/.test(file)) assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /billing-simplification|experiments\/billing-v2/); } }

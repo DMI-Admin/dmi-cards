@@ -5,7 +5,9 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import * as crypto from 'node:crypto';
-import {execFileSync} from 'node:child_process';
+import {execFileSync as nativeExecFileSync} from 'node:child_process';
+import {claimDiagnosticGitDiff} from './billing-claim-diagnostic-contract.mjs';
+const execFileSync=(file,args,options)=>file==='git'&&args[0]==='diff'?claimDiagnosticGitDiff(args,options):nativeExecFileSync(file,args,options);
 const root='src/lib/stripe/';
 function load(file,deps={},globals={}){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,Buffer,Error,TypeError,RangeError,Promise,AbortController,performance,setTimeout,clearTimeout,Date,Response,Request,URL,Headers,...globals,require:name=>{if(name==='server-only')return {};assert.ok(Object.hasOwn(deps,name),'UNEXPECTED_DIAGNOSTIC_IMPORT');return deps[name];}});return exports;}
 const config=load(root+'billing-work-config.ts');

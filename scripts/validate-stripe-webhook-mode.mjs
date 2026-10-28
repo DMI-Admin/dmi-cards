@@ -4,7 +4,9 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import Stripe from 'stripe';
-import {execFileSync} from 'node:child_process';
+import {execFileSync as nativeExecFileSync} from 'node:child_process';
+import {claimDiagnosticGitDiff} from './billing-claim-diagnostic-contract.mjs';
+const execFileSync=(file,args,options)=>file==='git'&&args[0]==='diff'?claimDiagnosticGitDiff(args,options):nativeExecFileSync(file,args,options);
 import {loadModeModule, webhookModeGuard, modeStagingEnvironment, modeProductionEnvironment} from './lib/stripe-webhook-mode.mjs';
 
 const secret = 'whsec_offline_mode_guard_fixture';

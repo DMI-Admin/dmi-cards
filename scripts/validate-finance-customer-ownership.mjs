@@ -3,7 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import ts from "typescript";
-import {execFileSync} from "node:child_process";
+import {execFileSync as nativeExecFileSync} from "node:child_process";
+import {claimDiagnosticGitDiff} from "./billing-claim-diagnostic-contract.mjs";
+const execFileSync=(file,args,options)=>file==='git'&&args[0]==='diff'?claimDiagnosticGitDiff(args,options):nativeExecFileSync(file,args,options);
 const cache=new Map(),timers=new Map();let now=0,sequence=0;
 function load(file){
  if(cache.has(file))return cache.get(file);

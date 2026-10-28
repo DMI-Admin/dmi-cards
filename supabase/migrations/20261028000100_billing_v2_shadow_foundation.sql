@@ -26,12 +26,28 @@ DECLARE bad integer; role_oid oid;
 BEGIN
  SELECT oid INTO role_oid FROM pg_roles WHERE rolname='billing_v2_seed' AND NOT rolcanlogin AND NOT rolsuper AND NOT rolcreaterole AND NOT rolcreatedb AND NOT rolreplication AND NOT rolbypassrls AND NOT rolinherit;
  IF role_oid IS NULL OR EXISTS(SELECT 1 FROM pg_auth_members WHERE member=role_oid) THEN RAISE EXCEPTION 'V2_SEED_ROLE_UNSAFE';END IF;
- SELECT count(*) INTO bad FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%' AND c.relkind IN ('r','p','v','m','f') AND (has_table_privilege(role_oid,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,REFERENCES') OR (n.nspname<>'billing_v2' AND has_table_privilege(role_oid,c.oid,'SELECT')));
+ SELECT count(*) INTO bad FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%' AND c.relkind IN ('r','p','v','m','f') AND (has_table_privilege(role_oid,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,REFERENCES') OR has_any_column_privilege(role_oid,c.oid,'INSERT,UPDATE,REFERENCES') OR (n.nspname<>'billing_v2' AND has_table_privilege(role_oid,c.oid,'SELECT')));
  IF bad<>0 THEN RAISE EXCEPTION 'V2_SEED_TABLE_PRIVILEGE';END IF;
  IF EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE CASE WHEN c.relkind='S' AND n.nspname !~ '^pg_' THEN has_sequence_privilege(role_oid,c.oid,'USAGE,UPDATE,SELECT') ELSE false END) THEN RAISE EXCEPTION 'V2_SEED_SEQUENCE_PRIVILEGE';END IF;
  IF EXISTS(SELECT 1 FROM pg_namespace n WHERE n.nspname !~ '^pg_' AND n.nspname<>'information_schema' AND has_schema_privilege(role_oid,n.oid,'CREATE')) THEN RAISE EXCEPTION 'V2_SEED_SCHEMA_PRIVILEGE';END IF;
- -- Deny all non-system function execution, including extension/network helpers. No blanket extension exemption.
- IF EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname !~ '^pg_' AND n.nspname<>'information_schema' AND p.prokind IN ('f','p') AND has_function_privilege(role_oid,p.oid,'EXECUTE') AND NOT (n.nspname='billing_v2' AND p.proname IN ('seed_begin','seed_page','seed_finalize','seed_verify','seed_privileges'))) THEN RAISE EXCEPTION 'V2_SEED_FUNCTION_PRIVILEGE';END IF;
+ IF has_database_privilege(role_oid,current_database(),'CREATE') THEN RAISE EXCEPTION 'V2_SEED_DATABASE_PRIVILEGE';END IF;
+ IF EXISTS(SELECT 1 FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND refobjid=role_oid AND deptype='o') THEN RAISE EXCEPTION 'V2_SEED_OWNERSHIP_PRIVILEGE';END IF;
+ -- Invoker SQL/PLpgSQL utilities gain no caller authority. Protect billing entry points
+ -- regardless of invoker/definer mode; never exempt extension or native capabilities.
+ IF EXISTS(
+  SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang
+  WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND p.prokind IN ('f','p')
+   AND has_function_privilege(role_oid,p.oid,'EXECUTE')
+   AND NOT (n.nspname='billing_v2' AND p.proowner='billing_v2_owner'::regrole AND p.proname IN ('seed_begin','seed_page','seed_finalize','seed_verify','seed_privileges'))
+   AND (
+    (p.prosecdef AND has_schema_privilege(role_oid,n.oid,'USAGE')) OR n.nspname='billing_v2' OR p.proowner='billing_v2_owner'::regrole
+    OR (n.nspname='public' AND p.proname ~ '^(billing_|stripe_)')
+    OR (has_schema_privilege(role_oid,n.oid,'USAGE') AND (
+     l.lanname NOT IN ('sql','plpgsql') OR NOT l.lanpltrusted
+     OR EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e')
+    ))
+   )
+ ) THEN RAISE EXCEPTION 'V2_SEED_FUNCTION_PRIVILEGE';END IF;
  RETURN '{"safe":true,"execution_enabled":false}'::jsonb;
 END;
 $seed$;

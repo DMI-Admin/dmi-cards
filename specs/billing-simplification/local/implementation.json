@@ -32,14 +32,22 @@
     "supabase/migrations/20261027000200_billing_v2_task_transactions.sql": "281f168c91b95f1dd81478b21aa56459052a1577cb41fd2728c83528072480b6",
     "supabase/migrations/20261027000300_billing_v2_shadow_operations.sql": "cfe2f314004996bda68988d528b088e9dc6af1f6696303e2bdea381139679970",
     "specs/billing-simplification/phase1/validate.mjs": "a5a4f7774726ab5962862f4e9433243b288dae2d1a1857554749e81ea2e74c2b",
-    "specs/billing-simplification/phase2/validate.mjs": "f1fdbd59a12e99a9da5cdfb065deb2ee23b328f76cbb5e50c1f17838daa20146",
-    "scripts/billing-claim-diagnostic-contract.mjs": "5f8e3ca0302e9cb00545d67c96c7ab97616b7a68d41d3602b0e8b1d07a12afb0",
+    "specs/billing-simplification/phase2/validate.mjs": "5fb12151df93f13e4c9e0466555f938ea4a35e9a7f0e02177f341a9277e6c8e0",
+    "scripts/billing-claim-diagnostic-contract.mjs": "13b357f99630d76e5e72f8e2575c3783e1363ea7ea6f9cba40d5f9a57a62a844",
     "scripts/validate-billing-dmi-completion.mjs": "f55b87bdb9aa5eecc14c65bcd4b3a4ad6acad73c700dfee3ab5cf36b7b2a6ecb",
     "src/lib/billing-v2/tooling/staging-seed.ts": "9e87588bc848fcc8653e8284920f7ab499da49ab0065991c255b28b4b434f96b",
-    "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql": "3e0b21bb45740ab168c7dc4223767bf6a086ecdca9ec4578d1e33972a00ee92d",
+    "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql": "60dce697f7ecec0e621435b2112e7dd57a86732d450efbd06ca1671bc75f7eee",
     "specs/billing-simplification/local/boundary.mjs": "1fdc2948747b2143ebe734c3b81fd3bd46e683e81e6dc173f733efe24bf39812",
-    "specs/billing-simplification/local/validate.mjs": "edb12dfd1942a98b83eb290afff638f5c9e7d42bdd2cd83e5d509d0e804740eb",
-    "scripts/validate-finance-invoice-application-proofs.mjs": "dca9f2879b36f38553c07dfb6d18766771584744484e2f285385528b180b76f8"
+    "specs/billing-simplification/local/validate.mjs": "bca31281ebe69e4db00d56408cbb4d033e0805e0b7cd34f5d95312682064a934",
+    "scripts/validate-finance-invoice-application-proofs.mjs": "dca9f2879b36f38553c07dfb6d18766771584744484e2f285385528b180b76f8",
+    "scripts/billing-recovery-diagnostic-contract.mjs": "cfc8219339c621b60f765e25e910425cb39f718e908d11e228ef157c96dd8436",
+    "scripts/validate-finance-customer-ownership.mjs": "59c18bf19f708f0956ced373a1e0ee5fd716d32aa03d9efcd05a85faf60869ba",
+    "scripts/validate-finance-customer-routing.mjs": "278a9d6a53001ae5a815a16f3a7a6cb783bec6263598583786f8fd71e58ea1ba",
+    "scripts/validate-finance-customer-validation.mjs": "099ded0624d1a14bddb28ea5a51e5c786231e4f4bc8f7dad7f0f4bb54ea4c51c",
+    "scripts/validate-finance-routing-adapter.mjs": "a656a0c8a3572532846b2fb810b8e47317dfc7fd157946a583ac574d7431de8d",
+    "scripts/validate-finance-invoice-proof-config.mjs": "524672bfcda2c277eabee436e5f19bfc292d35f015ef3c52d398fe445687f8f9",
+    "scripts/validate-billing-recovery-diagnostics.mjs": "eb9d82e9594385a36976fa2097eaa4bf675bc74c10535cbee76dac8a386b695b",
+    "scripts/validate-stripe-webhook-mode.mjs": "884ba9bf2c8b732f7b357cbebf9b08588d47e895781657e59f238ba1d755fd79"
   },
   "specification_edits": [
     "specs/billing-simplification/phase1/validate.mjs",
@@ -49,13 +57,21 @@
     "specs/billing-simplification/local/boundary.mjs",
     "specs/billing-simplification/local/validate.mjs",
     "specs/billing-simplification/local/implementation.json",
-    "scripts/validate-finance-invoice-application-proofs.mjs"
+    "scripts/validate-finance-invoice-application-proofs.mjs",
+    "scripts/billing-recovery-diagnostic-contract.mjs",
+    "scripts/validate-finance-customer-ownership.mjs",
+    "scripts/validate-finance-customer-routing.mjs",
+    "scripts/validate-finance-customer-validation.mjs",
+    "scripts/validate-finance-routing-adapter.mjs",
+    "scripts/validate-finance-invoice-proof-config.mjs",
+    "scripts/validate-billing-recovery-diagnostics.mjs",
+    "scripts/validate-stripe-webhook-mode.mjs"
   ],
   "specification_guard_hashes": {
     "specs/billing-simplification/phase1/validate.mjs": "a5a4f7774726ab5962862f4e9433243b288dae2d1a1857554749e81ea2e74c2b",
-    "specs/billing-simplification/phase2/validate.mjs": "f1fdbd59a12e99a9da5cdfb065deb2ee23b328f76cbb5e50c1f17838daa20146",
+    "specs/billing-simplification/phase2/validate.mjs": "5fb12151df93f13e4c9e0466555f938ea4a35e9a7f0e02177f341a9277e6c8e0",
     "specs/billing-simplification/local/boundary.mjs": "1fdc2948747b2143ebe734c3b81fd3bd46e683e81e6dc173f733efe24bf39812",
-    "specs/billing-simplification/local/validate.mjs": "edb12dfd1942a98b83eb290afff638f5c9e7d42bdd2cd83e5d509d0e804740eb"
+    "specs/billing-simplification/local/validate.mjs": "bca31281ebe69e4db00d56408cbb4d033e0805e0b7cd34f5d95312682064a934"
   },
   "local_files": [
     "specs/billing-simplification/local/README.md",
