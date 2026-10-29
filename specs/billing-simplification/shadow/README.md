@@ -252,9 +252,22 @@ SET permits schema authorization and explicit ownership transfer. It transfers a
 identity sequence with the tables. It then revokes the temporary self-grant and
 requires exact equality with the captured administrative memberships before COMMIT.
 Superuser-only disposable fixtures create no automatic membership, so their final
-set must instead remain empty. No runtime/application membership, including an
-indirect path through the installer, is permitted. Ownership, role attributes,
-forced RLS, and owner-only ACLs are asserted before COMMIT. Failure rolls back.
+set must instead remain empty. The installer membership check permits only the
+operator-verified administrative edge: current_user=postgres, member=cli_login_postgres,
+grantor=supabase_admin (superuser), ADMIN=false, INHERIT=false, SET=true. The member
+must be LOGIN, non-superuser, non-CREATEROLE and non-BYPASSRLS, matching the captured
+hosted evidence. This is an exact reviewed administrative exception, not trust
+in a name prefix or in LOGIN/SET attributes alone. It does not grant or modify that
+existing relationship. CLI credentials remain administrative credentials: SET ROLE
+postgres exposes the installer's administrative power, including deliberate regrant.
+
+No other member of the installer is accepted, and the permitted CLI principal must
+have no members itself. Therefore any indirect application path must cross a denied
+edge; no recursive membership scan is needed. The preceding exact V2 creator check
+continues to deny every direct V2 member other than the administrative installer,
+including the CLI principal itself. Ownership, role attributes, forced RLS, and
+owner-only ACLs remain asserted before COMMIT. Failure rolls back. Any change to
+this closed administrative topology requires review rather than an automatic exemption.
 
 Permanent restricted-operator regression (PostgreSQL 17; TCP disabled):
 
@@ -263,7 +276,8 @@ node specs/billing-simplification/local/hosted-ownership.mjs /absolute/postgres1
 ```
 
 This proves the old exact hash fails with 42501 and the corrected exact file
-succeeds without SUPERUSER/BYPASSRLS, removes SET/INHERIT, and denies runtime access.
+succeeds without SUPERUSER/BYPASSRLS, removes SET/INHERIT, and denies runtime access. It reproduces the exact hosted postgres/CLI relationship,
+proves the prior guard rejects it, and verifies the corrected guard leaves it unchanged.
 It also proves retaining ADMIN is not protection against deliberate admin regrant.
 Migrations 2–4, including the future seed-role installer path, require separate
 hosted-permission review before authorization; this correction does not certify

@@ -845,11 +845,17 @@ BEGIN
  IF memberships IS DISTINCT FROM current_setting('billing_v2.install_creator_memberships')::jsonb THEN
   RAISE EXCEPTION 'V2_INSTALLER_MEMBERSHIP' USING ERRCODE='42501';
  END IF;
- -- No indirect runtime path through the trusted installer is permitted either.
- IF EXISTS(WITH RECURSIVE members(member) AS (
-  SELECT member FROM pg_auth_members WHERE roleid IN ('billing_v2_owner'::regrole,'billing_v2_executor'::regrole)
-  UNION SELECT m.member FROM pg_auth_members m JOIN members p ON p.member=m.roleid
- ) SELECT 1 FROM members WHERE member<>installer) THEN
+ -- Only the operator-verified Supabase administrative edge may enter the installer.
+ -- Requiring that CLI principal to have no members also excludes indirect runtime paths.
+ IF EXISTS(SELECT 1 FROM pg_auth_members m
+  JOIN pg_roles r ON r.oid=m.member JOIN pg_roles g ON g.oid=m.grantor
+  WHERE m.roleid=installer AND NOT (
+   current_user='postgres' AND r.rolname='cli_login_postgres'
+   AND g.rolname='supabase_admin' AND g.rolsuper
+   AND NOT m.admin_option AND NOT m.inherit_option AND m.set_option
+   AND r.rolcanlogin AND NOT (r.rolsuper OR r.rolcreaterole OR r.rolbypassrls)
+   AND NOT EXISTS(SELECT 1 FROM pg_auth_members child WHERE child.roleid=r.oid)
+  )) THEN
   RAISE EXCEPTION 'V2_RUNTIME_MEMBERSHIP' USING ERRCODE='42501';
  END IF;
  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname IN ('billing_v2_owner','billing_v2_executor')
