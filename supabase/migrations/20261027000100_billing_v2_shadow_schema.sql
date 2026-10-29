@@ -1,13 +1,33 @@
 -- Local/disposable V2 only. No legacy object changes, seeds or runtime hooks.
 BEGIN;
-CREATE ROLE billing_v2_owner NOLOGIN NOBYPASSRLS;
-CREATE ROLE billing_v2_executor NOLOGIN NOBYPASSRLS;
+CREATE ROLE billing_v2_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+CREATE ROLE billing_v2_executor NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+-- PostgreSQL 17 grants a non-superuser creator bootstrap ADMIN-only membership.
+-- Preserve that exact administrative relationship; never authorize runtime through it.
+DO $installer$
+DECLARE installer oid; memberships jsonb;
+BEGIN
+ SELECT oid INTO installer FROM pg_roles WHERE rolname=current_user AND (rolsuper OR rolcreaterole);
+ IF installer IS NULL OR current_user IN ('anon','authenticated','service_role','authenticator') THEN
+  RAISE EXCEPTION 'V2_INSTALLER_REQUIRED' USING ERRCODE='42501';
+ END IF;
+ SELECT coalesce(jsonb_agg(to_jsonb(m) ORDER BY m.roleid,m.member,m.grantor),'[]'::jsonb)
+ INTO memberships FROM pg_auth_members m
+ WHERE m.roleid IN ('billing_v2_owner'::regrole,'billing_v2_executor'::regrole);
+ IF EXISTS(SELECT 1 FROM pg_auth_members m JOIN pg_roles g ON g.oid=m.grantor
+  WHERE m.roleid IN ('billing_v2_owner'::regrole,'billing_v2_executor'::regrole)
+  AND (m.member<>installer OR NOT m.admin_option OR m.inherit_option OR m.set_option OR NOT g.rolsuper)) THEN
+  RAISE EXCEPTION 'V2_INSTALLER_MEMBERSHIP' USING ERRCODE='42501';
+ END IF;
+ PERFORM set_config('billing_v2.install_creator_memberships',memberships::text,true);
+END $installer$;
+-- Transaction-local installation capability, removed and checked before COMMIT.
+GRANT billing_v2_owner TO CURRENT_USER WITH INHERIT TRUE, SET TRUE;
 CREATE SCHEMA billing_v2 AUTHORIZATION billing_v2_owner;
 REVOKE ALL ON SCHEMA billing_v2 FROM PUBLIC,anon,authenticated,service_role;
-SET LOCAL ROLE billing_v2_owner;
-ALTER DEFAULT PRIVILEGES IN SCHEMA billing_v2 REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
-ALTER DEFAULT PRIVILEGES IN SCHEMA billing_v2 REVOKE ALL ON TABLES FROM PUBLIC;
-ALTER DEFAULT PRIVILEGES IN SCHEMA billing_v2 REVOKE ALL ON SEQUENCES FROM PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR ROLE billing_v2_owner IN SCHEMA billing_v2 REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR ROLE billing_v2_owner IN SCHEMA billing_v2 REVOKE ALL ON TABLES FROM PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR ROLE billing_v2_owner IN SCHEMA billing_v2 REVOKE ALL ON SEQUENCES FROM PUBLIC;
 CREATE FUNCTION billing_v2.valid_tax_evidence(e jsonb,forecast boolean)
 RETURNS boolean LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog AS $tax$
 DECLARE t jsonb; sum_tax numeric:=0; sum_vat numeric:=0; classified boolean:=true; k text;
@@ -795,4 +815,73 @@ ALTER TABLE billing_v2.finance_activity FORCE ROW LEVEL SECURITY;
 CREATE POLICY owner_only ON billing_v2.finance_activity TO billing_v2_owner USING (true) WITH CHECK (true);
 REVOKE ALL ON billing_v2.finance_activity FROM PUBLIC,anon,authenticated,service_role,billing_v2_executor;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA billing_v2 FROM PUBLIC,anon,authenticated,service_role,billing_v2_executor;
+-- Transfer every foundation object; table transfer also transfers identity sequence/index ownership.
+ALTER TABLE billing_v2.accounts OWNER TO billing_v2_owner;
+ALTER TABLE billing_v2.checkout_attempts OWNER TO billing_v2_owner;
+ALTER TABLE billing_v2.price_catalog OWNER TO billing_v2_owner;
+ALTER TABLE billing_v2.subscriptions OWNER TO billing_v2_owner;
+ALTER TABLE billing_v2.event_inbox OWNER TO billing_v2_owner;
+ALTER TABLE billing_v2.authority OWNER TO billing_v2_owner;
+ALTER TABLE billing_v2.operations OWNER TO billing_v2_owner;
+ALTER TABLE billing_v2.finance_subscriptions OWNER TO billing_v2_owner;
+ALTER TABLE billing_v2.finance_subscription_items OWNER TO billing_v2_owner;
+ALTER TABLE billing_v2.invoices OWNER TO billing_v2_owner;
+ALTER TABLE billing_v2.payments OWNER TO billing_v2_owner;
+ALTER TABLE billing_v2.invoice_payments OWNER TO billing_v2_owner;
+ALTER TABLE billing_v2.refunds OWNER TO billing_v2_owner;
+ALTER TABLE billing_v2.payment_attempts OWNER TO billing_v2_owner;
+ALTER TABLE billing_v2.finance_activity OWNER TO billing_v2_owner;
+ALTER FUNCTION billing_v2.valid_tax_evidence(jsonb,boolean) OWNER TO billing_v2_owner;
+ALTER FUNCTION billing_v2.valid_document(text,jsonb) OWNER TO billing_v2_owner;
+ALTER FUNCTION billing_v2.valid_forecast_anchors(jsonb,text,text,text,text,text,bigint,text,integer,text,timestamptz) OWNER TO billing_v2_owner;
+REVOKE billing_v2_owner FROM CURRENT_USER;
+DO $installed$
+DECLARE memberships jsonb; installer oid; role_oid oid;
+BEGIN
+ SELECT oid INTO installer FROM pg_roles WHERE rolname=current_user;
+ SELECT coalesce(jsonb_agg(to_jsonb(m) ORDER BY m.roleid,m.member,m.grantor),'[]'::jsonb)
+ INTO memberships FROM pg_auth_members m
+ WHERE m.roleid IN ('billing_v2_owner'::regrole,'billing_v2_executor'::regrole);
+ IF memberships IS DISTINCT FROM current_setting('billing_v2.install_creator_memberships')::jsonb THEN
+  RAISE EXCEPTION 'V2_INSTALLER_MEMBERSHIP' USING ERRCODE='42501';
+ END IF;
+ -- No indirect runtime path through the trusted installer is permitted either.
+ IF EXISTS(WITH RECURSIVE members(member) AS (
+  SELECT member FROM pg_auth_members WHERE roleid IN ('billing_v2_owner'::regrole,'billing_v2_executor'::regrole)
+  UNION SELECT m.member FROM pg_auth_members m JOIN members p ON p.member=m.roleid
+ ) SELECT 1 FROM members WHERE member<>installer) THEN
+  RAISE EXCEPTION 'V2_RUNTIME_MEMBERSHIP' USING ERRCODE='42501';
+ END IF;
+ IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname IN ('billing_v2_owner','billing_v2_executor')
+  AND (rolcanlogin OR rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls)) THEN
+  RAISE EXCEPTION 'V2_ROLE_ATTRIBUTES' USING ERRCODE='42501';
+ END IF;
+ IF EXISTS(SELECT 1 FROM pg_namespace WHERE nspname='billing_v2' AND nspowner<>'billing_v2_owner'::regrole)
+ OR EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='billing_v2' AND c.relowner<>'billing_v2_owner'::regrole)
+ OR EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='billing_v2' AND p.proowner<>'billing_v2_owner'::regrole) THEN
+  RAISE EXCEPTION 'V2_OBJECT_OWNER' USING ERRCODE='42501';
+ END IF;
+ IF (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='billing_v2' AND c.relkind='r' AND c.relrowsecurity AND c.relforcerowsecurity)<>15 THEN
+  RAISE EXCEPTION 'V2_RLS_REQUIRED' USING ERRCODE='42501';
+ END IF;
+ -- Reject direct ACLs, including inherited installer default privileges and PUBLIC.
+ IF EXISTS(SELECT 1 FROM pg_namespace n CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a
+  WHERE n.nspname='billing_v2' AND a.grantee<>n.nspowner)
+ OR EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  CROSS JOIN LATERAL aclexplode(coalesce(c.relacl,acldefault(CASE WHEN c.relkind='S' THEN 's'::"char" ELSE 'r'::"char" END,c.relowner))) a
+  WHERE n.nspname='billing_v2' AND c.relkind IN ('r','S') AND a.grantee<>c.relowner)
+ OR EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+  WHERE n.nspname='billing_v2' AND a.grantee<>p.proowner) THEN
+  RAISE EXCEPTION 'V2_UNEXPECTED_ACL' USING ERRCODE='42501';
+ END IF;
+ FOREACH role_oid IN ARRAY ARRAY['anon'::regrole::oid,'authenticated'::regrole::oid,'service_role'::regrole::oid,'billing_v2_executor'::regrole::oid] LOOP
+  IF has_schema_privilege(role_oid,'billing_v2','USAGE') OR has_schema_privilege(role_oid,'billing_v2','CREATE') THEN
+   RAISE EXCEPTION 'V2_RUNTIME_ACCESS' USING ERRCODE='42501';
+  END IF;
+ END LOOP;
+END $installed$;
 COMMIT;

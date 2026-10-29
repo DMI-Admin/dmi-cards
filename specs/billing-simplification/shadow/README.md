@@ -2,7 +2,7 @@
 
 No hosted execution, credential provisioning, commit, push or deployment is authorized in this phase. Existing V1 remains authoritative. No flags, routes, provider clients, capture or runner are introduced.
 
-`contract.json` defines the seed-only boundary. The additive fourth migration creates one NOLOGIN seed capability and nine functions in `billing_v2`; it adds no table and never alters the prior three migrations or V1 objects/grants. The five callable seed functions repeat the effective privilege audit, including PUBLIC execution and inherited membership. Any unexpected capability fails closed. The audit permits ordinary SECURITY INVOKER SQL/PLpgSQL helpers without a name allowlist: they retain the caller’s denied write privileges. It rejects effective execution of public billing_/stripe_ entry points, V2 namespace/runtime-owner functions, reachable non-system SECURITY DEFINER functions, and reachable extension/native functions. It also rejects database/schema CREATE and persistent object ownership. Database TEMPORARY is not a persistent-object privilege and is not a seed audit gate; the capability stays NOLOGIN and is used only through reviewed seed RPCs. Existing grants must not be changed automatically.
+`contract.json` defines the seed-only boundary. The additive fourth migration creates one NOLOGIN seed capability and nine functions in `billing_v2`; it adds no table and never alters V1 objects/grants. Migration 1 has a separately reviewed hosted-installer correction; migrations 2/3 remain byte-identical. The five callable seed functions repeat the effective privilege audit, including PUBLIC execution and inherited membership. Any unexpected capability fails closed. The audit permits ordinary SECURITY INVOKER SQL/PLpgSQL helpers without a name allowlist: they retain the caller’s denied write privileges. It rejects effective execution of public billing_/stripe_ entry points, V2 namespace/runtime-owner functions, reachable non-system SECURITY DEFINER functions, and reachable extension/native functions. It also rejects database/schema CREATE and persistent object ownership. Database TEMPORARY is not a persistent-object privilege and is not a seed audit gate; the capability stays NOLOGIN and is used only through reviewed seed RPCs. Existing grants must not be changed automatically.
 
 The existing operations table holds one mutable preparing manifest and immutable page audit records. Each page contains at most 100 frozen access rows. Source checkpoint, counts, row keys, page hashes and manifest digest are verified by PostgreSQL. Final publication re-reads actual typed rows and relationships. Completion is immutable. No `authority.shadow_dataset` gate is published, so even a complete import leaves existing claim blocked. The seed role has no task execution grant.
 
@@ -233,3 +233,40 @@ JS
 Record that checksum independently, then use `validate-export.mjs` above. Sealing
 alone is not validation or provider authentication. No installation/seed decision
 can be made until the real export and real companion pass together.
+
+## Migration 1 trusted installer membership contract (PostgreSQL 17)
+
+The installation operator must be an independently verified administrative role,
+never an application runtime identity. Non-superuser role creation creates a
+bootstrap-granted ADMIN membership with SET=false and INHERIT=false. ADMIN can
+deliberately regrant SET/INHERIT or grant other members: this is trusted control-plane
+authority, not a boundary against a compromised administrator. Application access
+must never depend on that relationship.
+
+Migration 1 captures the automatic memberships immediately after role creation,
+rejects non-administrative or usable memberships, and temporarily grants the
+installer SET/INHERIT on the owner role only. The installer stays current_user
+throughout: INHERIT is necessary to create objects inside the owner's schema, and
+SET permits schema authorization and explicit ownership transfer. It transfers all
+15 tables and three validation functions; PostgreSQL transfers their indexes and
+identity sequence with the tables. It then revokes the temporary self-grant and
+requires exact equality with the captured administrative memberships before COMMIT.
+Superuser-only disposable fixtures create no automatic membership, so their final
+set must instead remain empty. No runtime/application membership, including an
+indirect path through the installer, is permitted. Ownership, role attributes,
+forced RLS, and owner-only ACLs are asserted before COMMIT. Failure rolls back.
+
+Permanent restricted-operator regression (PostgreSQL 17; TCP disabled):
+
+```sh
+node specs/billing-simplification/local/hosted-ownership.mjs /absolute/postgres17/bin /absolute/pg/module
+```
+
+This proves the old exact hash fails with 42501 and the corrected exact file
+succeeds without SUPERUSER/BYPASSRLS, removes SET/INHERIT, and denies runtime access.
+It also proves retaining ADMIN is not protection against deliberate admin regrant.
+Migrations 2–4, including the future seed-role installer path, require separate
+hosted-permission review before authorization; this correction does not certify
+their existing SET ROLE installation paths. No hosted installation or exposure
+change is performed by this local test. The schema must remain outside Data API
+exposed schemas, verified independently by the operator at installation.
