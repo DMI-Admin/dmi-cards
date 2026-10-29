@@ -1,7 +1,22 @@
 import {tableContracts} from "../domain/finance-contract";
 import {digest,canonicalDigest} from "../domain/subscription-policy";
 import type {RecordValue} from "../domain/types";
-export interface Snapshot {archiveDigest?:string;priceEvidence?:Record<string,{interval:"monthly"|"annual";product:string;verifiedAt:string}>;scope:string;checkpoint:string;complete:boolean;rows:Record<string,RecordValue[]>;digests:Record<string,string>}
+export interface Snapshot {catalogEvidenceDigest?:string;archiveDigest?:string;priceEvidence?:Record<string,{interval:"monthly"|"annual";product:string;verifiedAt:string}>;scope:string;checkpoint:string;complete:boolean;rows:Record<string,RecordValue[]>;digests:Record<string,string>}
+/** Actual V1 fenced-commit evidence; never a synthetic `verified` column. */
+export function assertLegacySubscription(source:Record<string,unknown>){
+ const fail=()=>{throw Error("V2_BACKFILL_SUBSCRIPTION_EVIDENCE");};
+ const time=(v:unknown):number=>{if(v instanceof Date)return v.getTime();if(typeof v!=="string")return NaN;const match=/^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d{1,6})?(?:Z|[+-]\d\d:\d\d)$/.exec(v);if(!match)return NaN;const [,y,m,d,h,n,sec]=match;if(+m<1||+m>12||+d<1||+d>new Date(Date.UTC(+y,+m,0)).getUTCDate()||+h>23||+n>59||+sec>59)return NaN;return Date.parse(v);};
+ if(Object.hasOwn(source,"verified")||!Number.isFinite(time(source.verified_at))||typeof source.revision!=="string"||!/^[1-9][0-9]*$/.test(source.revision)||BigInt(source.revision)>BigInt("9223372036854775807")||typeof source.stripe_scope!=="string"||!/^acct_[A-Za-z0-9]+:(test|live)$/.test(source.stripe_scope))fail();
+ const snap=source.sync_snapshot;if(snap===null||typeof snap!=="object"||Array.isArray(snap))fail();const snapshot=snap as RecordValue;
+ const mapping={subscription_id:"stripe_subscription_id",customer_id:"stripe_customer_id",status:"stripe_subscription_status",price_id:"stripe_price_id",plan:"dmi_plan",period_start:"current_period_start",period_end:"current_period_end",trial_end:"trial_end",ended_at:"ended_at",cancel_at_period_end:"cancel_at_period_end",invoice_id:"latest_invoice_id",terminal:"terminal"};
+ if(Object.keys(snapshot).length!==Object.keys(mapping).length||!Object.keys(mapping).every(k=>Object.hasOwn(snapshot,k)))fail();
+ for(const [key,column]of Object.entries(mapping)){
+  const a=snapshot[key],b=source[column];if(["period_start","period_end","trial_end","ended_at"].includes(key)){if(a===null&&b===null)continue;if(!Number.isFinite(time(a))||!Number.isFinite(time(b))||time(a)!==time(b))fail();}else if(a!==b)fail();
+ }
+ if(typeof snapshot.subscription_id!=="string"||!/^sub_[A-Za-z0-9]+$/.test(snapshot.subscription_id)||typeof snapshot.customer_id!=="string"||!/^cus_[A-Za-z0-9]+$/.test(snapshot.customer_id)||!["active","trialing","past_due","unpaid","canceled","incomplete","incomplete_expired","paused"].includes(String(snapshot.status))||typeof snapshot.cancel_at_period_end!=="boolean"||typeof snapshot.terminal!=="boolean"||snapshot.terminal!==(snapshot.status==="canceled")||snapshot.plan!==(["active","trialing"].includes(String(snapshot.status))?"pro":"free"))fail();
+ return snapshot;
+}
+
 /** Dry-run only: no connection, no SQL, no network, no filesystem writes. */
 export function planBackfill(snapshot:Snapshot,after:string|null=null,pageSize=100){
  if(!snapshot.complete||!snapshot.checkpoint||!/^acct_[A-Za-z0-9]+:test$/.test(snapshot.scope)||pageSize<1||pageSize>100)throw Error("V2_BACKFILL_INCOMPLETE");
@@ -37,8 +52,8 @@ export function normalizeSnapshot(snapshot:Snapshot):Snapshot {
    const price=snapshot.priceEvidence?.[String(source.stripe_price_id)];if(!owner||!app||!price)throw Error("V2_BACKFILL_PRICE_PROOF");
    push("price_catalog",{...blank("price_catalog"),stripe_scope:snapshot.scope,stripe_price_id:source.stripe_price_id,stripe_product_id:price.product,application_key:owner.application_key,plan:"pro",billing_interval:price.interval,entitlement_enabled:source.entitlement_enabled,checkout_enabled:source.checkout_enabled,ownership_state:owner.state,ownership_basis:owner.ownership_basis,revision:String(owner.revision),verified_at:price.verifiedAt,created_at:source.approved_at,updated_at:owner.updated_at??source.approved_at,application_active:app.state==="active"});
   }else if(name==="billing_subscriptions"){
-   const s=source.sync_snapshot as RecordValue|null;if(!s||!source.verified)throw Error("V2_BACKFILL_SUBSCRIPTION_EVIDENCE");
-   push("subscriptions",{...blank("subscriptions"),stripe_scope:snapshot.scope,stripe_subscription_id:source.stripe_subscription_id,billing_account_id:source.user_id,stripe_customer_id:source.stripe_customer_id,stripe_price_id:s.price_id,status:s.status,plan:s.plan,cancel_at_period_end:s.cancel_at_period_end,period_start:s.period_start,period_end:s.period_end,trial_end:s.trial_end,ended_at:s.ended_at,latest_invoice_id:s.invoice_id,terminal:source.terminal,revision:String(source.revision),verified_at:source.updated_at,last_event_created:source.last_event_created==null?null:String(source.last_event_created),last_event_id:null,snapshot_digest:digest(s),created_at:source.created_at,updated_at:source.updated_at});
+   const s=assertLegacySubscription(source);
+   push("subscriptions",{...blank("subscriptions"),stripe_scope:snapshot.scope,stripe_subscription_id:source.stripe_subscription_id,billing_account_id:source.user_id,stripe_customer_id:source.stripe_customer_id,stripe_price_id:s.price_id,status:s.status,plan:s.plan,cancel_at_period_end:s.cancel_at_period_end,period_start:s.period_start,period_end:s.period_end,trial_end:s.trial_end,ended_at:s.ended_at,latest_invoice_id:s.invoice_id,terminal:source.terminal,revision:String(source.revision),verified_at:source.verified_at,last_event_created:source.last_event_created==null?null:String(source.last_event_created),last_event_id:null,snapshot_digest:digest(s),created_at:source.created_at,updated_at:source.updated_at});
   }else if(Object.hasOwn(tableContracts,name.replace(/^billing_/,""))){
    const target=name.replace(/^billing_/,"") as keyof typeof tableContracts;const projected={...blank(target),...source};if(target==="invoices"){
     const proofs=(snapshot.rows.billing_finance_application_proofs||[]).filter(p=>p.stripe_invoice_id===source.stripe_object_id).sort((a,b)=>BigInt(a.certificate_revision as string)>BigInt(b.certificate_revision as string)?-1:1);const proof=proofs[0];

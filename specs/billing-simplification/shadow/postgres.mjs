@@ -7,7 +7,7 @@ import {spawn} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {load} from '../local/load.mjs';
-const [bin,driver]=process.argv.slice(2);if(!bin||!driver||!path.isAbsolute(bin)||!path.isAbsolute(driver))throw Error('Explicit local binary/driver paths required');
+const [bin,driver,exportPath,exportSha,companionPath,companionSha]=process.argv.slice(2);if(!bin||!driver||!path.isAbsolute(bin)||!path.isAbsolute(driver))throw Error('Explicit local binary/driver paths required');
 const {Client}=createRequire(import.meta.url)(driver);
 const temp=await fs.mkdtemp(path.join(os.tmpdir(),'dmi-v2-local-')),data=path.join(temp,'data'),socket=path.join(temp,'socket');await fs.mkdir(socket);
 const run=(file,args)=>new Promise((resolve,reject)=>{const p=spawn(file,args,{stdio:['ignore','pipe','pipe']});let text='';p.stdout.on('data',b=>text+=b);p.stderr.on('data',b=>text+=b);p.on('error',reject);p.on('exit',n=>n?reject(Error(text)):resolve());});
@@ -93,20 +93,22 @@ try{
  await test('whole operator import uses seed-only RPCs and can resume frozen manifest',async()=>scenario(async()=>{const calls=[];const c={project:target.databaseProject,capability:'seed_only',query:async(sql,args)=>{calls.push(sql);return db.query(sql,args);}};const result=await tooling.importAccessSeed(target,c,p,false);assert.equal(result.complete,true);assert.equal((await tooling.importAccessSeed(target,c,p,false)).complete,true);assert.ok(calls.every(sql=>sql==='SELECT current_user AS actor'||/^SELECT billing_v2.seed_(privileges|begin|page|finalize)\(/.test(sql)));}));
 
  await test('real SELECT-only source capture produces a complete importable access snapshot',async()=>{
-  await q(`CREATE ROLE v2_source_reader NOLOGIN;
-   CREATE TABLE public.billing_accounts(stripe_scope text,user_id uuid,stripe_customer_id text,verified_at timestamptz,generation bigint,updated_at timestamptz);
-   CREATE TABLE public.billing_approved_prices(stripe_scope text,stripe_price_id text,entitlement_enabled boolean,checkout_enabled boolean,approved_at timestamptz);
-   CREATE TABLE public.billing_subscriptions(stripe_scope text,user_id uuid,stripe_customer_id text,stripe_subscription_id text,verified boolean,terminal boolean,revision bigint,last_event_created bigint,last_event_id text,verified_at timestamptz,created_at timestamptz,updated_at timestamptz,sync_snapshot jsonb);
-   CREATE TABLE public.billing_stripe_resource_ownership(stripe_scope text,resource_type text,stripe_resource_id text,application_key text,ownership_basis text,revision bigint,state text,updated_at timestamptz);
+  await q(`CREATE ROLE v2_source_reader NOLOGIN;CREATE SCHEMA auth;CREATE TABLE auth.users(id uuid PRIMARY KEY);CREATE TABLE public.profiles(id uuid PRIMARY KEY REFERENCES auth.users(id));CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$SELECT NULL::uuid$$;GRANT USAGE ON SCHEMA auth TO authenticated`);
+  for(const migration of ['20260807143000_create_stripe_billing_state.sql','20260810100000_update_billing_plan_constraint.sql','20260927010000_stripe_reliability_foundation.sql'])await db.query(await fs.readFile('supabase/migrations/'+migration,'utf8'));
+  await q(`CREATE TABLE public.billing_stripe_resource_ownership(stripe_scope text,resource_type text,stripe_resource_id text,application_key text,ownership_basis text,revision bigint,state text,updated_at timestamptz);
    CREATE TABLE public.billing_stripe_applications(application_key text,state text);
    CREATE TABLE public.billing_finance_subscription_items(stripe_scope text,stripe_price_id text,stripe_product_id text,recurring_interval text,interval_count integer,verified_at timestamptz,removed_at timestamptz);
    REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;
    GRANT USAGE ON SCHEMA public TO v2_source_reader;
-   GRANT SELECT ON public.billing_accounts,public.billing_approved_prices,public.billing_subscriptions,public.billing_stripe_resource_ownership,public.billing_stripe_applications,public.billing_finance_subscription_items TO v2_source_reader`);
-  await q('INSERT INTO public.billing_accounts VALUES($1,$2,$3,$4,9,$4)',[scope,principal,'cus_owned',stamp]);
-  await q('INSERT INTO public.billing_approved_prices VALUES($1,$2,true,true,$3)',[scope,'price_pro',stamp]);
+   GRANT SELECT ON public.billing_accounts,public.billing_approved_prices,public.billing_subscriptions,public.billing_stripe_resource_ownership,public.billing_stripe_applications,public.billing_finance_subscription_items TO v2_source_reader;
+   CREATE POLICY fixture_reader ON public.billing_accounts FOR SELECT TO v2_source_reader USING(true);
+   CREATE POLICY fixture_reader ON public.billing_approved_prices FOR SELECT TO v2_source_reader USING(true);
+   CREATE POLICY fixture_reader ON public.billing_subscriptions FOR SELECT TO v2_source_reader USING(true)`);
+  await q('INSERT INTO auth.users VALUES($1);',[principal]);await q('INSERT INTO public.profiles VALUES($1)',[principal]);
+  await q('INSERT INTO public.billing_accounts(stripe_scope,user_id,stripe_customer_id,verified_at,generation,updated_at) VALUES($1,$2,$3,$4,9,$4)',[scope,principal,'cus_owned',stamp]);
+  await q("INSERT INTO public.billing_approved_prices(stripe_scope,stripe_price_id,entitlement_enabled,checkout_enabled,approved_at,approved_by,approval_reason) VALUES($1,$2,true,true,$3,'fixture','fixture')",[scope,'price_pro',stamp]);
   const syncSnapshot={subscription_id:'sub_seed',customer_id:'cus_owned',status:'active',price_id:'price_pro',plan:'pro',period_start:null,period_end:null,trial_end:null,ended_at:null,cancel_at_period_end:false,invoice_id:null,terminal:false};
-  await q('INSERT INTO public.billing_subscriptions VALUES($1,$2,$3,$4,true,false,7,100,$5,$6,$6,$6,$7)',[scope,principal,'cus_owned','sub_seed','evt_seed',stamp,syncSnapshot]);
+  await q("INSERT INTO public.billing_subscriptions(stripe_scope,user_id,stripe_customer_id,stripe_subscription_id,stripe_subscription_status,stripe_price_id,dmi_plan,cancel_at_period_end,terminal,revision,last_event_created,last_event_id,verified_at,created_at,updated_at,sync_snapshot) VALUES($1,$2,$3,$4,'active','price_pro','pro',false,false,7,100,$5,$6,$6,$6,$7)",[scope,principal,'cus_owned','sub_seed','evt_seed',stamp,syncSnapshot]);
   await q("INSERT INTO public.billing_stripe_resource_ownership VALUES($1,'price','price_pro','dmi_cards','price_owner',3,'active',$2)",[scope,stamp]);
   await q("INSERT INTO public.billing_stripe_applications VALUES('dmi_cards','active')");
   await q("INSERT INTO public.billing_finance_subscription_items VALUES($1,'price_pro','prod_pro','month',1,$2,NULL)",[scope,stamp]);
@@ -121,6 +123,36 @@ try{
  await test('documented frozen SELECT export matches the disposable source schema',async()=>{
   const doc=await fs.readFile('specs/billing-simplification/shadow/README.md','utf8');const sql=doc.split('```sql\n')[1].split('```')[0];const result=(await q(sql))[0].frozen_access_source;
   assert.equal(result.scope,scope);assert.equal(result.billing_accounts.length,1);assert.equal(result.billing_subscriptions.length,1);assert.equal(result.price_items.length,1);assert.ok(Object.values(result.checks).every(n=>n===0));
+ });
+ await test('committed export runs on actual V1 migrations, with no synthetic verified column',async()=>{
+  const columns=await q("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='billing_subscriptions' ORDER BY ordinal_position");assert.equal(columns.length,24);assert.ok(!columns.some(c=>c.column_name==='verified'));assert.ok(columns.some(c=>c.column_name==='verified_at'));assert.ok(columns.some(c=>c.column_name==='terminal'));
+  const doc=await fs.readFile('specs/billing-simplification/shadow/README.md','utf8');const sql=doc.split('```sql\n')[1].split('```')[0];assert.equal((await q(sql))[0].frozen_access_source.checks.unverified_or_missing_snapshot,0);
+  await assert.rejects(q(sql.replace('stripe_subscription_id,','stripe_subscription_id,verified,')),e=>e.code==='42703');
+ });
+ await test('timestamp presence cannot hide uninitialized or inconsistent actual V1 rows',async()=>{
+  const doc=await fs.readFile('specs/billing-simplification/shadow/README.md','utf8');const sql=doc.split('```sql\n')[1].split('```')[0];
+  for(const mutation of ["UPDATE public.billing_subscriptions SET verified_at=NULL", "UPDATE public.billing_subscriptions SET revision=0", "UPDATE public.billing_subscriptions SET stripe_subscription_status='past_due'"]){await q('BEGIN');try{await q(mutation);assert.equal((await q(sql))[0].frozen_access_source.checks.unverified_or_missing_snapshot,1);const bad=(await q('SELECT * FROM public.billing_subscriptions'))[0];assert.throws(()=>load('src/lib/billing-v2/tooling/backfill.ts').assertLegacySubscription(bad),/SUBSCRIPTION_EVIDENCE/);}finally{await q('ROLLBACK');}}
+ });
+ await test('actual fenced V1 unchanged and cancellation commits establish verification semantics',async()=>{
+  await q('BEGIN');try{
+   const rpc=async(action,token,input={})=>(await q('SELECT public.billing_foundation_command($1,$2,$3,$4,$5) AS r',[action,scope,principal,token,input]))[0].r;
+   const claimed=await rpc('claim',null);const before=(await q('SELECT * FROM public.billing_subscriptions'))[0];
+   await rpc('commit',claimed.lease_token,{snapshot:before.sync_snapshot,expected_revision:7,event_created:101});const unchanged=(await q('SELECT * FROM public.billing_subscriptions'))[0];assert.equal(unchanged.revision,'7');assert.equal(unchanged.updated_at.getTime(),before.updated_at.getTime());assert.ok(unchanged.verified_at.getTime()>unchanged.updated_at.getTime());
+   const evidence=load('src/lib/billing-v2/tooling/backfill.ts');evidence.assertLegacySubscription(unchanged);
+   await rpc('commit',claimed.lease_token,{snapshot:{...before.sync_snapshot,status:'canceled',plan:'free',terminal:true},expected_revision:7,event_created:102});const canceled=(await q('SELECT * FROM public.billing_subscriptions'))[0];assert.equal(canceled.terminal,true);assert.equal(canceled.stripe_subscription_status,'canceled');evidence.assertLegacySubscription(canceled);
+   await rpc('commit',claimed.lease_token,{snapshot:before.sync_snapshot,expected_revision:8,event_created:103});assert.equal((await q('SELECT terminal FROM public.billing_subscriptions'))[0].terminal,true);
+  }finally{await q('ROLLBACK');}
+ });
+ await test('SQL Editor export adapter dry-run and typed import are valid only in disposable PostgreSQL',async()=>{
+  const adapter=load('src/lib/billing-v2/tooling/frozen-export.ts');const doc=await fs.readFile('specs/billing-simplification/shadow/README.md','utf8');const sql=doc.split('```sql\n')[1].split('```')[0];const value=(await q(sql))[0].frozen_access_source;
+  const text=JSON.stringify([{frozen_access_source:value}]);
+  const {createHash}=await import('node:crypto');const result=await adapter.prepareFrozenExport(text,createHash('sha256').update(text).digest('hex'));
+  await scenario(async()=>{let queries=0;const connection={project:target.databaseProject,capability:'seed_only',query:(sql,args)=>{queries++;return db.query(sql,args);}};const dry=await tooling.importAccessSeed(target,connection,result.prepared,true);assert.equal(dry.dryRun,true);assert.equal(queries,0);assert.equal((await tooling.importAccessSeed(target,connection,result.prepared,false)).verified,true);});
+ });
+ await test('annual companion resolves catalog completeness without Finance rows or runtime tasks',async()=>{
+  const {companionFixture}=await import('./catalog-companion-fixtures.mjs');const adapter=load('src/lib/billing-v2/tooling/frozen-export.ts');const fixture=companionFixture();const result=await adapter.prepareFrozenExport(fixture.exportText,fixture.exportSha,[fixture.file],fixture.validationTime);
+  assert.equal(result.catalogResolution.originalScreening.missing_or_ambiguous_product_interval,1);assert.equal(result.catalogResolution.companionResolved,1);assert.equal(result.catalogResolution.unresolved,0);assert.equal(result.snapshot.rows.billing_subscriptions.length,1);
+  await scenario(async()=>{let queries=0;const connection={project:target.databaseProject,capability:'seed_only',query:(sql,args)=>{queries++;return db.query(sql,args);}};const dry=await tooling.importAccessSeed(target,connection,result.prepared,true);assert.equal(queries,0);assert.equal(dry.counts.price_catalog,2);assert.equal((await tooling.importAccessSeed(target,connection,result.prepared,false)).verified,true);await q('SET LOCAL ROLE fixture');assert.equal((await q('SELECT count(*)::int n FROM billing_v2.price_catalog'))[0].n,2);for(const table of ['event_inbox','authority','finance_subscription_items'])assert.equal((await q('SELECT count(*)::int n FROM billing_v2.'+table))[0].n,0);});
  });
  await test('actual V1 billing and Finance tables and writer RPCs reject seed mutation',async()=>{
   await q("CREATE FUNCTION public.billing_foundation_command(text) RETURNS void LANGUAGE sql SECURITY DEFINER AS $$UPDATE public.billing_subscriptions SET revision=0$$;REVOKE ALL ON FUNCTION public.billing_foundation_command(text) FROM PUBLIC");
@@ -141,5 +173,15 @@ try{
   await assert.rejects(tooling.importAccessSeed(target,c,p,false),e=>e.message==='V2_SEED_STORE_UNCONFIRMED');assert.equal((await tooling.importAccessSeed(target,c,p,false)).complete,true);
  }));
  await test('V1 data and writer definition remain unchanged',async()=>{assert.equal((await q('SELECT value FROM public.v2_legacy_sentinel'))[0].value,'unchanged');assert.deepEqual((await q("SELECT oid,pg_get_functiondef(oid) def FROM pg_proc WHERE oid='public.billing_legacy_sentinel_writer()'::regprocedure"))[0],before);});
+ if(exportPath||exportSha){
+  if(!exportPath||!path.isAbsolute(exportPath)||!exportSha)throw Error('V2_EXPORT_ARGUMENTS');
+  const text=await fs.readFile(exportPath,'utf8'),adapter=load('src/lib/billing-v2/tooling/frozen-export.ts');const companions=companionPath?[{text:await fs.readFile(companionPath,'utf8'),sha256:companionSha}]:[];const result=await adapter.prepareFrozenExport(text,exportSha,companions);
+  await scenario(async()=>{let queries=0;const connection={project:target.databaseProject,capability:'seed_only',query:(sql,args)=>{queries++;return db.query(sql,args);}};
+   const dry=await tooling.importAccessSeed(target,connection,result.prepared,true);assert.equal(queries,0);const verified=await tooling.importAccessSeed(target,connection,result.prepared,false);assert.equal(verified.verified,true);
+   const repeat=await adapter.prepareFrozenExport(text,exportSha,companions);assert.equal(repeat.prepared.manifest.digest,result.prepared.manifest.digest);
+   await q('SET LOCAL ROLE fixture');for(const table of ['event_inbox','authority','checkout_attempts','invoices','payments'])assert.equal((await q('SELECT count(*)::int n FROM billing_v2.'+table))[0].n,0);
+   console.log('FROZEN_EXPORT_RESULT '+JSON.stringify({ok:true,rawSha256:result.rawSha256,manifestDigest:dry.manifestDigest,counts:dry.counts,pages:dry.pages,typedRowsVerified:true,executionEnabled:false,catalogResolution:result.catalogResolution}));
+  });
+ }
  console.log('Shadow foundation PostgreSQL '+passed+'/'+passed);
 }finally{for(const c of connections)await c.end().catch(()=>{});if(server&&server.exitCode===null)await new Promise(resolve=>{server.once('exit',resolve);server.kill('SIGTERM');});await fs.rm(temp,{recursive:true,force:true});}

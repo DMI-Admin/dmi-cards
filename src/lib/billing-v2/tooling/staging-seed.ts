@@ -1,6 +1,6 @@
 /** Operator-only, injected connections; never imported by application runtime. */
 import {createHash} from "node:crypto";
-import {planBackfill} from "./backfill";
+import {planBackfill,assertLegacySubscription} from "./backfill";
 import type {Snapshot} from "./backfill";
 import type {RecordValue} from "../domain/types";
 export const SEED_PROJECT="uohdkewufeivdpaljnng";
@@ -21,10 +21,10 @@ export function prepareAccessSeed(target:SeedTarget,snapshot:Snapshot){
  const plan=planBackfill(source,null,100),all=[...plan.rows];let cursor=plan.next;
  while(cursor){const page=planBackfill(source,cursor,100);all.push(...page.rows);cursor=page.next;}
  if(all.some(r=>!["accounts","price_catalog","subscriptions"].includes(r.table)||r.table==="accounts"&&(r.row.binding_state!=="verified"||r.row.principal_kind!=="individual")))throw Error("V2_SEED_OWNERSHIP");
- for(const entry of all){if(entry.table==="accounts"&&source.rows.billing_accounts){const a=source.rows.billing_accounts.find(a=>a.user_id===entry.row.id)!;entry.row.verified_at=a.verified_at;entry.row.binding_revision="0";}if(entry.table==="subscriptions"&&source.rows.billing_subscriptions){const sub=source.rows.billing_subscriptions.find(s=>s.stripe_subscription_id===entry.row.stripe_subscription_id)!;entry.row.last_event_id=sub.last_event_id??null;entry.row.verified_at=sub.verified_at??sub.updated_at;}}
+ for(const entry of all){if(entry.table==="accounts"&&source.rows.billing_accounts){const a=source.rows.billing_accounts.find(a=>a.user_id===entry.row.id)!;entry.row.verified_at=a.verified_at;entry.row.binding_revision="0";}if(entry.table==="subscriptions"&&source.rows.billing_subscriptions){const sub=source.rows.billing_subscriptions.find(s=>s.stripe_subscription_id===entry.row.stripe_subscription_id)!;entry.row.last_event_id=sub.last_event_id??null;entry.row.verified_at=sub.verified_at;}}
  const counts={accounts:0,price_catalog:0,subscriptions:0};for(const r of all)counts[r.table as keyof typeof counts]++;
  if(!counts.price_catalog)throw Error("V2_SEED_CATALOG");
- const checkpoint={snapshot:(snapshot as Snapshot & {sourceSnapshot?:string}).sourceSnapshot||plan.generation,captured_at:snapshot.checkpoint,source_digest:seedDigest({digests:snapshot.digests,priceEvidence:snapshot.priceEvidence??null})};
+ const checkpoint={snapshot:(snapshot as Snapshot & {sourceSnapshot?:string}).sourceSnapshot||plan.generation,captured_at:snapshot.checkpoint,source_digest:seedDigest({digests:snapshot.digests,priceEvidence:snapshot.priceEvidence??null,...(snapshot.catalogEvidenceDigest?{catalogEvidenceDigest:snapshot.catalogEvidenceDigest}:{})})};
  const hash=seedDigest({scope:SEED_SCOPE,checkpoint,rows:all});const generation=hash.slice(0,8)+"-"+hash.slice(8,12)+"-5"+hash.slice(13,16)+"-a"+hash.slice(17,20)+"-"+hash.slice(20,32);
  const pages:SeedPage[]=[];for(let n=0;n<all.length;n+=100)pages.push({index:pages.length,rows:all.slice(n,n+100)});
  const base={version:1,generation,scope:SEED_SCOPE,checkpoint,counts,pages:pages.map(p=>({index:p.index,first:p.rows[0].key,last:p.rows.at(-1)!.key,count:p.rows.length,digest:seedDigest(p.rows)}))};
@@ -43,7 +43,7 @@ export async function importAccessSeed(target:SeedTarget,db:SeedConnection,prepa
 
 export interface ReadOnlySource {project:string;query(sql:string,values?:unknown[]):Promise<{rows:Record<string,unknown>[]}>}
 /** Caller supplies a separate SELECT-only source connection, never a service role. */
-export async function captureAccessSnapshot(target:SeedTarget,source:ReadOnlySource):Promise<Snapshot>{
+export async function captureAccessSnapshot(target:SeedTarget,source:ReadOnlySource,supplemental:Readonly<NonNullable<Snapshot["priceEvidence"]>>={}):Promise<Snapshot>{
  assertSeedTarget(target);if(source.project!==SEED_PROJECT)throw Error("V2_SEED_SOURCE_TARGET");
  await source.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
  try{
@@ -51,13 +51,14 @@ export async function captureAccessSnapshot(target:SeedTarget,source:ReadOnlySou
   if(checked.read_only!=="on")throw Error("V2_SEED_SOURCE_NOT_READ_ONLY");
   const accounts=(await source.query("SELECT stripe_scope,user_id,stripe_customer_id,verified_at,generation::text,updated_at FROM public.billing_accounts WHERE stripe_scope=$1 AND stripe_customer_id IS NOT NULL ORDER BY user_id",[SEED_SCOPE])).rows;
   const prices=(await source.query("SELECT stripe_scope,stripe_price_id,entitlement_enabled,checkout_enabled,approved_at FROM public.billing_approved_prices WHERE stripe_scope=$1 ORDER BY stripe_price_id COLLATE \"C\"",[SEED_SCOPE])).rows;
-  const subscriptions=(await source.query("SELECT stripe_scope,user_id,stripe_customer_id,stripe_subscription_id,verified,terminal,revision::text,last_event_created::text,last_event_id,verified_at,created_at,updated_at,sync_snapshot FROM public.billing_subscriptions WHERE stripe_scope=$1 ORDER BY stripe_subscription_id COLLATE \"C\"",[SEED_SCOPE])).rows;
+  const subscriptions=(await source.query("SELECT stripe_scope,user_id,stripe_customer_id,stripe_subscription_id,stripe_subscription_status,stripe_price_id,dmi_plan,current_period_start,current_period_end,trial_end,ended_at,cancel_at_period_end,latest_invoice_id,terminal,revision::text,last_event_created::text,last_event_id,verified_at,created_at,updated_at,sync_snapshot FROM public.billing_subscriptions WHERE stripe_scope=$1 ORDER BY stripe_subscription_id COLLATE \"C\"",[SEED_SCOPE])).rows;
   const ownership=(await source.query("SELECT stripe_scope,resource_type,stripe_resource_id,application_key,ownership_basis,revision::text,state,updated_at FROM public.billing_stripe_resource_ownership WHERE stripe_scope=$1 AND resource_type='price' ORDER BY stripe_resource_id COLLATE \"C\"",[SEED_SCOPE])).rows;
   const applications=(await source.query("SELECT application_key,state FROM public.billing_stripe_applications WHERE application_key='dmi_cards'")).rows;
   const items=(await source.query("SELECT stripe_price_id,stripe_product_id,recurring_interval,interval_count,verified_at FROM public.billing_finance_subscription_items WHERE stripe_scope=$1 AND removed_at IS NULL ORDER BY stripe_price_id COLLATE \"C\"",[SEED_SCOPE])).rows;
   const priceEvidence:NonNullable<Snapshot["priceEvidence"]>={};
-  for(const price of prices){const matching=items.filter(i=>i.stripe_price_id===price.stripe_price_id);const keys=new Set(matching.map(i=>JSON.stringify([i.stripe_product_id,i.recurring_interval,i.interval_count])));if(keys.size!==1||!matching.length||matching[0].interval_count!==1||!["month","year"].includes(String(matching[0].recurring_interval)))throw Error("V2_SEED_PRICE_EVIDENCE");const i=matching[0];priceEvidence[String(price.stripe_price_id)]={interval:i.recurring_interval==="month"?"monthly":"annual",product:String(i.stripe_product_id),verifiedAt:new Date(i.verified_at as string).toISOString()};}
+  for(const price of prices){const matching=items.filter(i=>i.stripe_price_id===price.stripe_price_id);if(!matching.length&&supplemental[String(price.stripe_price_id)]){const fact=supplemental[String(price.stripe_price_id)];if(!["monthly","annual"].includes(fact.interval)||!/^prod_[A-Za-z0-9]+$/.test(fact.product)||!Number.isFinite(Date.parse(fact.verifiedAt)))throw Error("V2_SEED_PRICE_EVIDENCE");priceEvidence[String(price.stripe_price_id)]={...fact};continue;}const keys=new Set(matching.map(i=>JSON.stringify([i.stripe_product_id,i.recurring_interval,i.interval_count])));if(keys.size!==1||!matching.length||matching[0].interval_count!==1||!["month","year"].includes(String(matching[0].recurring_interval)))throw Error("V2_SEED_PRICE_EVIDENCE");const i=matching[0];priceEvidence[String(price.stripe_price_id)]={interval:i.recurring_interval==="month"?"monthly":"annual",product:String(i.stripe_product_id),verifiedAt:new Date(i.verified_at as string).toISOString()};}
   if(accounts.some(a=>!a.verified_at))throw Error("V2_SEED_UNVERIFIED_BINDING");
+  for(const subscription of subscriptions)assertLegacySubscription(subscription);
   const capturedAt=new Date(checked.captured_at as string).toISOString();
   // Read-only normalization has no provider fallback and refuses absent historical facts.
   const toJson=(v:unknown):RecordValue=>JSON.parse(JSON.stringify(v)) as RecordValue;
