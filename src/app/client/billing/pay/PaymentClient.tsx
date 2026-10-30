@@ -1,129 +1,39 @@
-"use client";
-
-import Image from "next/image";
-import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { Check, LockKeyhole } from "lucide-react";
-import EmbeddedPayment from "@/components/EmbeddedPayment";
-import { supabase } from "@/lib/supabase";
-import { activationReturnUrl, paymentCheckout, paymentPageInput, type PaymentCheckout, type CheckoutInterval } from "@/lib/embedded-checkout-client";
-import { createEmbeddedStripeLoader, type EmbeddedStripeLoader } from "@/lib/embedded-stripe-loader";
-import { checkoutStartupObserver } from "@/lib/checkout-startup-timing";
-
-const endpoint = "/api/v1/billing/checkout/embedded";
-
-export default function BillingPaymentClient({ earlyPublishableKey = null }: { earlyPublishableKey?: string | null }) {
-  const [renderStarted] = useState(() => performance.now());
-  const [checkout, setCheckout] = useState<PaymentCheckout | null>(null);
-  const [paymentLoader, setPaymentLoader] = useState<EmbeddedStripeLoader | undefined>(undefined);
-  const [error, setError] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  const [interval, setInterval] = useState<CheckoutInterval | null>(null);
-  // Share initialization across React's effect probe. Never blindly retry a
-  // Session-creating POST. Explicit retry re-enters the same server fences.
-  const initialization = useRef<Promise<PaymentCheckout> | null>(null);
-  const owner = useRef<string | null>(null);
-  const stripeLoader = useRef<EmbeddedStripeLoader | null>(null);
-  const mounted = useRef(false);
-  const invalidated = useRef(false);
-  useEffect(() => {
-    let disposed = false;
-    mounted.current = true;
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!disposed && owner.current && session?.user.id !== owner.current) {
-        disposed = true;
-        invalidated.current = true;
-        setCheckout(null);
-        setError(true);
-      }
-    });
-    async function initialize() {
-      const input = paymentPageInput(window.location.search);
-      const authStarted = performance.now();
-      const { data: { session } } = await supabase.auth.getSession();
-      let authDuration = performance.now() - authStarted;
-      if (!session || !mounted.current || invalidated.current) throw new Error("Unavailable");
-      owner.current = session.user.id;
-      let requestDuration = 0;
-      const read = async (path: string, options: RequestInit = {}) => {
-        const beforeStarted = performance.now();
-        const { data: { session: before } } = await supabase.auth.getSession();
-        authDuration += performance.now() - beforeStarted;
-        if (!mounted.current || invalidated.current || before?.user.id !== session!.user.id) throw new Error("Unavailable");
-        // Server-only deployment guards supply this public capability. Start
-        // only after auth, beside the existing POST; loading creates no Session.
-        if (options.method === "POST" && earlyPublishableKey && !stripeLoader.current) {
-          stripeLoader.current = createEmbeddedStripeLoader(earlyPublishableKey, checkoutStartupObserver(true));
-        }
-        const requestStarted = performance.now();
-        const response = await fetch(path, {
-          ...options, cache: "no-store", referrerPolicy: "no-referrer",
-          headers: { Authorization: `Bearer ${before.access_token}`, ...(options.body ? { "Content-Type": "application/json" } : {}) },
-        });
-        const body = await response.json();
-        stripeLoader.current?.sessionResponded();
-        requestDuration = performance.now() - requestStarted;
-        const afterStarted = performance.now();
-        const { data: { session: after } } = await supabase.auth.getSession();
-        authDuration += performance.now() - afterStarted;
-        if (!mounted.current || invalidated.current || !response.ok || after?.user.id !== session!.user.id) throw new Error("Unavailable");
-        return body.data;
-      };
-      // The authenticated POST already enforces enablement and every runtime
-      // guard. No duplicate availability round trip, no blind creation retry.
-      const result = paymentCheckout(await ("sessionId" in input
-        ? read(`${endpoint}?session_id=${encodeURIComponent(input.sessionId)}`)
-        : read(endpoint, { method: "POST", body: JSON.stringify({ interval: input.interval }) })));
-      if (result.kind === "embedded") {
-        // Capability comes only from this owner's guarded Staging API response.
-        const observe = checkoutStartupObserver(result.startupDiagnostics === true);
-        observe?.("client_auth", authDuration);
-        observe?.("session_request", requestDuration);
-        observe?.("page_initialization", performance.now() - renderStarted);
-      }
-      return result;
-    }
-    initialization.current ||= initialize();
-    void initialization.current.then(result => {
-      if (disposed) return;
-      if (result.kind === "complete") { window.location.assign(activationReturnUrl(result.sessionId)); return; }
-      if (result.kind === "hosted") { window.location.assign(result.url); return; }
-      if (result.kind !== "disabled") {
-        setInterval(result.interval);
-        // Persist only the opaque Session reference in the URL, never its
-        // client secret. Refresh/back now resume, including after flag rollback.
-        window.history.replaceState(null, "", `/client/billing/pay?session_id=${encodeURIComponent(result.sessionId)}`);
-      }
-      setPaymentLoader(stripeLoader.current ?? undefined);
-      setCheckout(result);
-    }).catch(() => { if (!disposed) setError(true); });
-    return () => { disposed = true; mounted.current = false; subscription.unsubscribe(); };
-  }, [attempt, renderStarted, earlyPublishableKey]);
-
-  return <main className="mx-auto grid min-h-[85vh] max-w-6xl items-start gap-7 px-5 py-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:py-16">
-    <section aria-labelledby="payment-heading" className="rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-7 sm:p-9">
-      <div className="mb-10 flex items-center gap-3">
-        <div className="rounded-xl bg-white p-2"><Image src="/dmi-cards-logo.svg" alt="" width={36} height={36} priority /></div>
-        <span className="text-lg font-bold text-[var(--text-primary)]">DMI Cards</span>
-      </div>
-      <p className="mb-3 text-sm font-semibold text-purple-500">Your next chapter</p>
-      <h1 id="payment-heading" className="text-3xl font-bold text-[var(--text-primary)]">Individual Pro</h1>
-      <p className="mt-5 text-4xl font-bold text-[var(--text-primary)]">{interval ? <>{interval === "annual" ? "£59.99" : "£5.99"}<span className="text-base font-normal text-[var(--dmi-muted)]"> / {interval === "annual" ? "year" : "month"}</span></> : <span className="text-base text-[var(--dmi-muted)]">Confirming your plan…</span>}</p>
-      <p className="mt-3 text-sm leading-6 text-[var(--dmi-muted)]">Your final total, including any promotion, appears in secure checkout.</p>
-      <ul className="my-9 space-y-4 text-sm text-[var(--text-primary)]">
-        {["Contacts and lead capture", "Tap to Share", "Advanced analytics", "Premium templates and custom branding"].map(label => <li key={label} className="flex items-center gap-3"><Check size={17} className="shrink-0 text-purple-500" aria-hidden="true" />{label}</li>)}
-      </ul>
-      <Link href="/client/billing" className="text-sm text-[var(--dmi-muted)] underline underline-offset-4">Return to Billing</Link>
-    </section>
-    <section aria-label="Secure payment" className="rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-5 sm:p-7">
-      <div className="mb-6 flex items-center gap-2 text-sm text-[var(--dmi-muted)]"><LockKeyhole size={17} aria-hidden="true" />Secure payment powered by Stripe</div>
-      {error ? <div role="alert"><p className="text-[var(--text-primary)]">We couldn&apos;t open your checkout. Your payment details are safe.</p>
-        <button type="button" className="mt-5 rounded-xl bg-[#8C16EB] px-5 py-3 font-semibold text-white" onClick={() => { initialization.current = null; setError(false); setAttempt(value => value + 1); }}>Try again</button></div>
-        : checkout?.kind === "embedded" ? <EmbeddedPayment {...checkout} stripeLoader={paymentLoader} />
-        : checkout?.kind === "disabled" ? <p role="status" className="leading-7 text-[var(--dmi-muted)]">Please return to Billing and choose Pro to continue with our secure hosted checkout.</p>
-        : checkout?.kind === "processing" ? <div role="status" className="leading-7 text-[var(--dmi-muted)]">Your payment is still being confirmed. You don&apos;t need to pay again.<button type="button" className="mt-5 block rounded-xl border border-[var(--dmi-border)] px-5 py-3" onClick={() => { initialization.current = null; setAttempt(value => value + 1); }}>Check again</button></div>
-        : checkout?.kind === "expired" ? <p role="status" className="leading-7 text-[var(--dmi-muted)]">This checkout has expired. Return to Billing to start again.</p>
-        : <p role="status" className="text-[var(--dmi-muted)]">Preparing your secure checkout…</p>}
-    </section>
-  </main>;
+'use client';
+import Image from 'next/image';
+import Link from 'next/link';
+import {useEffect,useRef,useState} from 'react';
+import {supabase} from '@/lib/supabase';
+import EmbeddedPayment from '@/components/EmbeddedPayment';
+type Checkout={sessionId:string;clientSecret:string;publishableKey:string};
+export default function PaymentClient(){
+ const [checkout,setCheckout]=useState<Checkout|null>(null),[error,setError]=useState(false);
+ const operation=useRef<Promise<Checkout>|null>(null),owner=useRef<string|null>(null);
+ useEffect(()=>{
+  let disposed=false;
+  const {data:{subscription}}=supabase.auth.onAuthStateChange((_e,s)=>{if(owner.current && s?.user.id!==owner.current){setCheckout(null);setError(true);disposed=true;}});
+  operation.current ||= (async()=>{
+   const interval=new URLSearchParams(window.location.search).get('interval');
+   if(!['monthly','annual'].includes(interval || ''))throw Error('Choose an interval');
+   const {data:{session}}=await supabase.auth.getSession();
+   if(!session)throw Error('Sign in required');owner.current=session.user.id;
+   const response=await fetch('/api/v1/billing/checkout/embedded',{method:'POST',cache:'no-store',headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'},body:JSON.stringify({interval,requestId:crypto.randomUUID()})});
+   const result=await response.json();
+   const {data:{session:after}}=await supabase.auth.getSession();
+   if(!response.ok || after?.user.id!==owner.current)throw Error('Checkout unavailable');
+   return result.data;
+  })();
+  void operation.current.then(result=>{if(!disposed)setCheckout(result);}).catch(()=>{if(!disposed)setError(true);});
+  return()=>{disposed=true;subscription.unsubscribe();};
+ },[]);
+ return <main className="mx-auto grid max-w-5xl gap-8 px-6 py-12 lg:grid-cols-2">
+  <section className="rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-8">
+   <Image src="/dmi-cards-logo.svg" width={48} height={48} alt="DMI Cards" />
+   <h1 className="mt-6 text-3xl font-bold">Individual Pro</h1>
+   <p className="my-6">Contacts, analytics, premium templates and advanced sharing. Confirm your price in secure checkout.</p>
+   <Link href="/client/billing" className="underline">Return to Billing</Link>
+  </section>
+  <section className="rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-6" aria-label="Secure payment">
+   {error?<p role="alert">Checkout could not open. Return to Billing to continue. You have not been asked to pay again.</p>:checkout?<EmbeddedPayment {...checkout}/>:<p role="status">Preparing your secure checkout…</p>}
+  </section>
+ </main>;
 }

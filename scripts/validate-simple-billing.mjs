@@ -1,0 +1,92 @@
+// Offline only: no credentials, provider client or network requests.
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+const source=fs.readFileSync('src/lib/stripe/simple-billing.ts','utf8');
+const loaded={exports:{}};
+const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+vm.runInNewContext(js,{module:loaded,exports:loaded.exports,require:()=>({}),console,Date,Set,Error,process:{env:{}}});
+const {billingService}=loaded.exports;
+const user='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222';
+const metadata={dmi_app:'dmi_cards',dmi_user_id:user};
+let rows=new Map(),calls=[],sub,session,open=[],inventory=[],configs,invoice;
+function reset(price='price_month',status='active'){
+ rows=new Map();calls=[];open=[];inventory=[];
+ sub={id:'sub_fixture',customer:'cus_fixture',livemode:false,metadata:{...metadata},status,cancel_at_period_end:false,items:{has_more:false,data:[{price:{id:price},quantity:1,current_period_end:1800000000}]}};
+ session={id:'cs_fixture',customer:'cus_fixture',subscription:sub.id,livemode:false,mode:'subscription',ui_mode:'embedded_page',metadata:{...metadata,billing_interval:price==='price_year'?'annual':'monthly'},client_reference_id:user,status:'complete',payment_status:'paid',client_secret:'synthetic-secret'};
+ configs=[{id:'bpc_fixture',features:{subscription_update:{enabled:true,default_allowed_updates:['price'],products:[{prices:['price_month','price_year']}]},payment_method_update:{enabled:true},subscription_cancel:{enabled:true,mode:'at_period_end'}}}];
+ invoice={id:'in_fixture',parent:{subscription_details:{subscription:sub.id}}};
+}
+const stripe={
+ customers:{retrieve:async()=>({id:'cus_fixture',livemode:false,metadata}),create:async(p,o)=>{calls.push(['customer',p,o]);return{id:'cus_fixture'};}},
+ subscriptions:{retrieve:async id=>{calls.push(['retrieve',id]);return structuredClone(sub);},list:async()=>({data:inventory,has_more:false})},
+ checkout:{sessions:{expire:async id=>{calls.push(['expire',id]);return{...session,status:'expired'};},list:async()=>({data:open,has_more:false}),create:async(p,o)=>{calls.push(['checkout',p,o]);return{...session,status:'open'};},retrieve:async()=>structuredClone(session)}},
+ billingPortal:{configurations:{list:async()=>({data:configs})},sessions:{create:async p=>{calls.push(['portal',p]);return{url:'https://billing.stripe.com/synthetic'};}}},
+ invoices:{retrieve:async()=>invoice},
+};
+const store={read:async id=>rows.get(id)||null,save:async row=>{calls.push(['save']);rows.set(row.account_id,structuredClone(row));},bind:async(id,customer)=>{rows.set(id,{...(rows.get(id)||{account_id:id,plan:'free'}),stripe_customer_id:customer});}};
+const service=()=>billingService(stripe,store,{monthly:'price_month',annual:'price_year',enterprise:'price_enterprise'},'https://staging.example.invalid',false);
+let passed=0;
+async function test(name,fn){reset();await fn();console.log('PASS '+name);passed++;}
+await test('new Free account has no paid billing row',async()=>assert.equal(await store.read(user),null));
+for(const [interval,price]of [['monthly','price_month'],['annual','price_year']]){
+ await test('Pro '+interval+' checkout accepts only the configured price',async()=>{const result=await service().checkout(user,interval,other);assert.equal(result.clientSecret,'synthetic-secret');const [,p,o]=calls.find(c=>c[0]==='checkout');assert.equal(p.line_items[0].price,price);assert.equal(p.subscription_data.metadata.dmi_user_id,user);assert.equal(p.ui_mode,'embedded_page');assert.ok(o.idempotencyKey.includes(other));});
+ await test('Pro '+interval+' shared sync',async()=>{sub.items.data[0].price.id=price;assert.equal((await service().syncSubscriptionFromStripe(sub.id)).plan,'pro');});
+}
+await test('deleted Customer does not prevent canceling access',async()=>{await service().syncSubscriptionFromStripe(sub.id);sub.status='canceled';const original=stripe.customers.retrieve;stripe.customers.retrieve=async()=>({id:'cus_fixture',deleted:true});try{assert.equal((await service().syncSubscriptionFromStripe(sub.id)).plan,'free');}finally{stripe.customers.retrieve=original;}});
+await test('deleted Customer cannot receive a paid grant',async()=>{const original=stripe.customers.retrieve;stripe.customers.retrieve=async()=>({id:'cus_fixture',deleted:true});try{await assert.rejects(service().syncSubscriptionFromStripe(sub.id));assert.equal(rows.size,0);}finally{stripe.customers.retrieve=original;}});
+await test('lost return response can be repeated without duplicate rows or Sessions',async()=>{await service().complete(user,session.id);await service().complete(user,session.id);assert.equal(rows.size,1);assert.ok(!calls.some(c=>c[0]==='checkout'));});
+await test('database failure never reports activation success',async()=>{const original=store.save;store.save=async()=>{throw Error('fixture database failure');};try{await assert.rejects(service().complete(user,session.id));assert.equal(rows.size,0);}finally{store.save=original;}});
+await test('checkout return commits Pro before reporting success',async()=>{assert.equal((await service().complete(user,session.id)).plan,'pro');assert.equal(rows.get(user).plan,'pro');});
+await test('return cannot sync another authenticated account',async()=>{await assert.rejects(service().complete(other,session.id));assert.equal(rows.size,0);});
+await test('incomplete or unpaid checkout never grants Pro',async()=>{session.payment_status='unpaid';await assert.rejects(service().complete(user,session.id));assert.equal(rows.size,0);});
+await test('duplicate webhook has one business row',async()=>{const e={type:'customer.subscription.created',livemode:false,data:{object:{id:sub.id}}};await service().webhook(e);await service().webhook(e);assert.equal(rows.size,1);});
+await test('out-of-order payload loses to current fetched Stripe truth',async()=>{sub.status='canceled';await service().webhook({type:'customer.subscription.updated',livemode:false,data:{object:{id:sub.id,status:'active'}}});assert.equal(rows.get(user).plan,'free');});
+await test('delayed canceled old Subscription cannot overwrite current Pro',async()=>{await service().syncSubscriptionFromStripe(sub.id);sub.status='canceled';const original=stripe.subscriptions.retrieve;const current={...sub,id:'sub_current',status:'active'};rows.get(user).stripe_subscription_id=current.id;stripe.subscriptions.retrieve=async id=>structuredClone(id===current.id?current:sub);try{const r=await service().syncSubscriptionFromStripe(sub.id);assert.equal(r.plan,'pro');assert.equal(r.stripe_subscription_id,current.id);}finally{stripe.subscriptions.retrieve=original;}});
+await test('monthly to annual and annual to monthly use same sync',async()=>{await service().syncSubscriptionFromStripe(sub.id);sub.items.data[0].price.id='price_year';await service().syncSubscriptionFromStripe(sub.id);sub.items.data[0].price.id='price_month';assert.equal((await service().syncSubscriptionFromStripe(sub.id)).plan,'pro');assert.equal(rows.size,1);});
+await test('cancel at period end retains Pro and its date',async()=>{sub.cancel_at_period_end=true;const r=await service().syncSubscriptionFromStripe(sub.id);assert.equal(r.plan,'pro');assert.equal(r.cancel_at_period_end,true);assert.ok(r.current_period_end);});
+for(const [status,plan]of [['canceled','free'],['unpaid','free'],['past_due','pro'],['trialing','pro'],['incomplete','free'],['incomplete_expired','free'],['paused','free'],['future_status','free']])await test(status+' policy',async()=>{sub.status=status;assert.equal((await service().syncSubscriptionFromStripe(sub.id)).plan,plan);});
+await test('Enterprise manual fixture uses existing entitlement plan and quantity',async()=>{sub.items.data[0].price.id='price_enterprise';sub.items.data[0].quantity=25;const row=await service().syncSubscriptionFromStripe(sub.id);assert.equal(row.plan,'enterprise');assert.equal(row.seat_quantity,25);});
+await test('Enterprise has no self-service checkout input',async()=>await assert.rejects(service().checkout(user,'enterprise',other)));
+await test('portal rejects another or unknown account',async()=>{await assert.rejects(service().portal(other));assert.ok(!calls.some(c=>c[0]==='portal'));});
+await test('Enterprise cannot enter self-service portal',async()=>{sub.items.data[0].price.id='price_enterprise';await service().syncSubscriptionFromStripe(sub.id);await assert.rejects(service().portal(user));});
+await test('Pro-only Portal configuration required',async()=>{await service().syncSubscriptionFromStripe(sub.id);await service().portal(user);configs[0].features.subscription_update.products[0].prices.push('price_enterprise');await assert.rejects(service().portal(user));});
+await test('wrong mode, irrelevant events perform zero writes',async()=>{await service().webhook({type:'customer.subscription.updated',livemode:true,data:{object:{id:sub.id}}});await service().webhook({type:'charge.succeeded',livemode:false,data:{object:{id:'ch_fixture'}}});assert.equal(calls.length,0);});
+await test('invoice.payment_failed directly resolves or retrieves its Subscription',async()=>{sub.status='past_due';await service().webhook({type:'invoice.payment_failed',livemode:false,data:{object:{id:invoice.id}}});assert.equal(rows.get(user).plan,'pro');});
+await test('changing an unpaid checkout interval expires the old Session first',async()=>{open=[{...session,status:'open'}];await service().checkout(user,'annual',other);assert.ok(calls.findIndex(c=>c[0]==='expire')<calls.findIndex(c=>c[0]==='checkout'));assert.equal(calls.find(c=>c[0]==='checkout')[1].line_items[0].price,'price_year');});
+await test('unmapped subscriptions cannot enter the self-service Portal',async()=>{sub.items.data[0].price.id='price_unknown';await service().syncSubscriptionFromStripe(sub.id);await assert.rejects(service().portal(user));});
+await test('open embedded session resumes without creation',async()=>{open=[{...session,status:'open'}];await service().checkout(user,'monthly',other);assert.ok(!calls.some(c=>c[0]==='checkout'));});
+await test('existing subscription blocks duplicate purchase',async()=>{inventory=[sub];await assert.rejects(service().checkout(user,'monthly',other));assert.ok(!calls.some(c=>c[0]==='checkout'));});
+await test('unknown prices fail closed',async()=>{sub.items.data[0].price.id='price_unknown';assert.equal((await service().syncSubscriptionFromStripe(sub.id)).plan,'free');});
+await test('provider failure never reports success or saves invented state',async()=>{const original=stripe.subscriptions.retrieve;stripe.subscriptions.retrieve=async()=>{throw Error('fixture');};await assert.rejects(service().syncSubscriptionFromStripe(sub.id));assert.equal(rows.size,0);stripe.subscriptions.retrieve=original;});
+console.log(`Simple billing ${passed}/${passed}`);
+// Real installed SDK cryptography, no provider requests.
+const {default:Stripe}=await import('stripe');
+const sdk=new Stripe('sk_test_offline_fixture'),secret='whsec_offline_fixture';
+const modeModule={exports:{}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/lib/stripe/webhook-mode-guard.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{module:modeModule,exports:modeModule.exports,require:()=>({}),process:{env:{VERCEL_PROJECT_ID:'prj_FPTsXDokhm5uSDMaxieuo5Cmp0Rn',VERCEL_ENV:'preview',VERCEL_TARGET_ENV:'staging'}}});
+const json=(data,init={})=>Response.json(data,init);
+let serviceAccess=0;
+const responseHelpers={apiSuccess:data=>json({data}),apiError:(status,code,message)=>json({error:{code,message}},{status}),apiErrorFromUnknown:error=>json({error:{code:'UNAVAILABLE'}},{status:error.message==='Unauthorized'?401:503})};
+function route(file){
+ const loaded={exports:{}};
+ vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module:loaded,exports:loaded.exports,Request,Response,URL,console,process:{env:{NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:'pk_test_offline'}},require:name=>{
+  if(name==='next/server')return {NextResponse:{json}};
+  if(name.endsWith('/config'))return{constructStripeWebhookEvent:({payload,signature})=>sdk.webhooks.constructEvent(payload,signature,secret)};
+  if(name.endsWith('/webhook-mode-guard'))return modeModule.exports;
+  if(name.endsWith('/simple-billing'))return{...moduleService,simpleBilling:()=>{serviceAccess++;return service();}};
+  if(name.endsWith('/client-identity'))return{requireBillingIdentity:async r=>{if(r.headers.get('Authorization')!=='Bearer offline')throw Error('Unauthorized');return{userId:user};}};
+  return responseHelpers;
+ }});return loaded.exports;
+}
+const moduleService=loaded.exports;
+const webhookRoute=route('src/app/api/stripe/webhook/route.ts');
+await test('invalid webhook signature is rejected before service/database creation',async()=>{serviceAccess=0;const r=await webhookRoute.POST(new Request('https://fixture.invalid/api/stripe/webhook',{method:'POST',body:'{}',headers:{'stripe-signature':'invalid'}}));assert.equal(r.status,400);assert.equal(serviceAccess,0);});
+await test('validly signed wrong-mode event is acknowledged before DB/service access',async()=>{serviceAccess=0;const body=JSON.stringify({id:'evt_fixture',type:'customer.subscription.updated',livemode:true,data:{object:{id:sub.id}}});const signature=sdk.webhooks.generateTestHeaderString({payload:body,secret});const r=await webhookRoute.POST(new Request('https://fixture.invalid/api/stripe/webhook',{method:'POST',body,headers:{'stripe-signature':signature}}));assert.equal(r.status,200);assert.equal((await r.json()).reason,'stripe_livemode_mismatch');assert.equal(serviceAccess,0);});
+await test('valid signed webhook reaches shared sync',async()=>{const body=JSON.stringify({id:'evt_fixture',type:'customer.subscription.updated',livemode:false,data:{object:{id:sub.id}}});const signature=sdk.webhooks.generateTestHeaderString({payload:body,secret});assert.equal((await webhookRoute.POST(new Request('https://fixture.invalid',{method:'POST',body,headers:{'stripe-signature':signature}}))).status,200);assert.equal(rows.get(user).plan,'pro');});
+for(const path of ['src/app/api/stripe/portal/route.ts','src/app/api/v1/billing/checkout/embedded/route.ts','src/app/api/v1/billing/complete/route.ts'])await test('authentication precedes provider work: '+path,async()=>{serviceAccess=0;assert.equal((await route(path).POST(new Request('https://fixture.invalid',{method:'POST',body:'{}'}))).status,401);assert.equal(serviceAccess,0);});
+await test('checkout API rejects arbitrary price/customer fields before Stripe',async()=>{serviceAccess=0;const r=await route('src/app/api/v1/billing/checkout/embedded/route.ts').POST(new Request('https://fixture.invalid',{method:'POST',headers:{Authorization:'Bearer offline','Content-Type':'application/json'},body:JSON.stringify({interval:'monthly',requestId:other,price:'price_enterprise',customer:'cus_other'})}));assert.equal(r.status,400);assert.equal(serviceAccess,0);});
+await test('central client read uses only account_billing for access',async()=>{const s=fs.readFileSync('src/lib/api/client-context.ts','utf8');assert.ok(s.includes('.from("account_billing")'));assert.doesNotMatch(s,/billing_subscriptions|entitlementsForTrustedBillingState/);assert.ok(s.includes('getEntitlementsForPlan(plan)'));});
+await test('return is one authenticated sync, never polling or worker calls',async()=>{const s=fs.readFileSync('src/app/client/billing/complete/page.tsx','utf8');assert.doesNotMatch(s,/setTimeout|setInterval|billing-work|localStorage|sessionStorage/);assert.ok(s.includes('/api/v1/billing/complete'));});
+console.log(`Simple billing full ${passed}/${passed}`);

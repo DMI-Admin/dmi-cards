@@ -1,0 +1,4490 @@
+{
+  "source_branch": "release/admin-ui-foundation",
+  "source_sha": "e71c5ce94cdcd76cd268ad97c5a4660943369a4e",
+  "rewrite_branch": "rewrite/simple-stripe-billing",
+  "measurement_method": "Tracked files at source SHA; physical splitlines including blanks/comments. Dedicated runtime excludes shared entitlement/auth/health modules; shared dependencies separately listed. DDL table counts deduplicate CREATE TABLE names in billing-named historical migrations; not hosted catalog counts. No environment files or credentials read. Dedicated script set uses filename classification plus forward imported fixture/helper dependencies; mixed generic validators are recorded separately and retained.",
+  "runtime_files": [
+    "src/app/api/admin/billing/reconcile/route.ts",
+    "src/app/api/admin/finance/route.ts",
+    "src/app/api/admin/subscriptions/route.ts",
+    "src/app/api/internal/billing-work-auto/route.ts",
+    "src/app/api/internal/billing-work/route.ts",
+    "src/app/api/stripe/checkout/route.ts",
+    "src/app/api/stripe/portal/route.ts",
+    "src/app/api/stripe/webhook/route.ts",
+    "src/app/api/v1/billing/activation/route.ts",
+    "src/app/api/v1/billing/checkout/embedded/route.ts",
+    "src/app/api/v1/billing/checkout/route.ts",
+    "src/app/api/v1/billing/subscription/cancel/route.ts",
+    "src/app/api/v1/billing/subscription/resume/route.ts",
+    "src/app/api/v1/billing/subscription/route.ts",
+    "src/app/client/billing/activating/page.tsx",
+    "src/app/client/billing/page.tsx",
+    "src/app/client/billing/pay/PaymentClient.tsx",
+    "src/app/client/billing/pay/page.tsx",
+    "src/app/finance/finance.module.css",
+    "src/app/finance/page.tsx",
+    "src/app/subscriptions/page.tsx",
+    "src/app/subscriptions/subscriptions.module.css",
+    "src/components/EmbeddedPayment.tsx",
+    "src/lib/admin-finance-server.ts",
+    "src/lib/admin-finance-v1-server.ts",
+    "src/lib/admin-finance-v1.ts",
+    "src/lib/admin-finance.ts",
+    "src/lib/admin-subscriptions-server.ts",
+    "src/lib/admin-subscriptions.ts",
+    "src/lib/billing-activation-poller.ts",
+    "src/lib/billing-v2/adapters/postgres.ts",
+    "src/lib/billing-v2/application/synchronizer.ts",
+    "src/lib/billing-v2/domain/checkout-observation.ts",
+    "src/lib/billing-v2/domain/finance-contract.ts",
+    "src/lib/billing-v2/domain/finance-policy.ts",
+    "src/lib/billing-v2/domain/subscription-policy.ts",
+    "src/lib/billing-v2/domain/types.ts",
+    "src/lib/billing-v2/shadow/comparison.ts",
+    "src/lib/billing-v2/tooling/backfill.ts",
+    "src/lib/billing-v2/tooling/frozen-export.ts",
+    "src/lib/billing-v2/tooling/staging-seed.ts",
+    "src/lib/checkout-startup-timing.ts",
+    "src/lib/embedded-checkout-client.ts",
+    "src/lib/embedded-stripe-loader.ts",
+    "src/lib/stripe/app-namespace.ts",
+    "src/lib/stripe/billing-latency-diagnostics.ts",
+    "src/lib/stripe/billing-recovery-entitlement-diagnostics.ts",
+    "src/lib/stripe/billing-state.ts",
+    "src/lib/stripe/billing-summary.ts",
+    "src/lib/stripe/billing-work-admission.ts",
+    "src/lib/stripe/billing-work-auto-config.ts",
+    "src/lib/stripe/billing-work-auto-execution.ts",
+    "src/lib/stripe/billing-work-auto-kick.ts",
+    "src/lib/stripe/billing-work-auto-request.ts",
+    "src/lib/stripe/billing-work-auto-runner.ts",
+    "src/lib/stripe/billing-work-claim-diagnostics.ts",
+    "src/lib/stripe/billing-work-config.ts",
+    "src/lib/stripe/billing-work-evidence.ts",
+    "src/lib/stripe/billing-work-handoff.ts",
+    "src/lib/stripe/billing-work-recovery.ts",
+    "src/lib/stripe/billing-work-routing.ts",
+    "src/lib/stripe/billing-work-runtime.ts",
+    "src/lib/stripe/billing-work-store.ts",
+    "src/lib/stripe/billing-work-worker.ts",
+    "src/lib/stripe/checkout-activation.ts",
+    "src/lib/stripe/checkout.ts",
+    "src/lib/stripe/client-identity.ts",
+    "src/lib/stripe/config.ts",
+    "src/lib/stripe/embedded-checkout-config.ts",
+    "src/lib/stripe/embedded-checkout-response.ts",
+    "src/lib/stripe/finance-activity.ts",
+    "src/lib/stripe/finance-application-ownership-adapter.ts",
+    "src/lib/stripe/finance-application-ownership.ts",
+    "src/lib/stripe/finance-charge-ownership-proof.ts",
+    "src/lib/stripe/finance-contract.ts",
+    "src/lib/stripe/finance-contractual.ts",
+    "src/lib/stripe/finance-customer-ownership.ts",
+    "src/lib/stripe/finance-customer-relationship-adapter.ts",
+    "src/lib/stripe/finance-customer-relationships.ts",
+    "src/lib/stripe/finance-customer-routing.ts",
+    "src/lib/stripe/finance-customer-validation.ts",
+    "src/lib/stripe/finance-customer-webhook.ts",
+    "src/lib/stripe/finance-dmi-charge-integration.ts",
+    "src/lib/stripe/finance-event-evidence.ts",
+    "src/lib/stripe/finance-foreign-event.ts",
+    "src/lib/stripe/finance-invoice-proof-config.ts",
+    "src/lib/stripe/finance-invoice-proof-producer.ts",
+    "src/lib/stripe/finance-metrics.ts",
+    "src/lib/stripe/finance-normalize.ts",
+    "src/lib/stripe/finance-partition-protocol.ts",
+    "src/lib/stripe/finance-reconciliation-guard.ts",
+    "src/lib/stripe/finance-reconciliation.ts",
+    "src/lib/stripe/finance-routing-evidence.ts",
+    "src/lib/stripe/finance-runtime-guard.ts",
+    "src/lib/stripe/finance-store.ts",
+    "src/lib/stripe/finance-stripe-adapter.ts",
+    "src/lib/stripe/finance-sync.ts",
+    "src/lib/stripe/finance-tax.ts",
+    "src/lib/stripe/finance-types.ts",
+    "src/lib/stripe/finance-webhook.ts",
+    "src/lib/stripe/lease-acquisition-timing.ts",
+    "src/lib/stripe/reconciliation.ts",
+    "src/lib/stripe/reliability.ts",
+    "src/lib/stripe/webhook-consumers.ts",
+    "src/lib/stripe/webhook-mode-guard.ts",
+    "src/lib/stripe/webhook-observer.ts",
+    "src/lib/stripe/webhook.ts"
+  ],
+  "api_routes": [
+    "src/app/api/admin/billing/reconcile/route.ts",
+    "src/app/api/admin/finance/route.ts",
+    "src/app/api/admin/subscriptions/route.ts",
+    "src/app/api/internal/billing-work-auto/route.ts",
+    "src/app/api/internal/billing-work/route.ts",
+    "src/app/api/stripe/checkout/route.ts",
+    "src/app/api/stripe/portal/route.ts",
+    "src/app/api/stripe/webhook/route.ts",
+    "src/app/api/v1/billing/activation/route.ts",
+    "src/app/api/v1/billing/checkout/embedded/route.ts",
+    "src/app/api/v1/billing/checkout/route.ts",
+    "src/app/api/v1/billing/subscription/cancel/route.ts",
+    "src/app/api/v1/billing/subscription/resume/route.ts",
+    "src/app/api/v1/billing/subscription/route.ts"
+  ],
+  "ui_components": [
+    "src/app/client/billing/activating/page.tsx",
+    "src/app/client/billing/page.tsx",
+    "src/app/client/billing/pay/PaymentClient.tsx",
+    "src/app/client/billing/pay/page.tsx",
+    "src/app/finance/finance.module.css",
+    "src/app/finance/page.tsx",
+    "src/app/subscriptions/page.tsx",
+    "src/app/subscriptions/subscriptions.module.css",
+    "src/components/EmbeddedPayment.tsx"
+  ],
+  "migrations_retained_unchanged": [
+    "supabase/migrations/20260807143000_create_stripe_billing_state.sql",
+    "supabase/migrations/20260810100000_update_billing_plan_constraint.sql",
+    "supabase/migrations/20260927010000_stripe_reliability_foundation.sql",
+    "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+    "supabase/migrations/20260930130000_finance_v1_writer.sql",
+    "supabase/migrations/20261002120000_admin_finance_reporting.sql",
+    "supabase/migrations/20261003120000_finance_tax_evidence.sql",
+    "supabase/migrations/20261004120000_admin_finance_v1_reporting.sql",
+    "supabase/migrations/20261008120000_stripe_webhook_monitoring_indexes.sql",
+    "supabase/migrations/20261009180000_finance_partition_foundation.sql",
+    "supabase/migrations/20261009200000_finance_legacy_protocol_gate.sql",
+    "supabase/migrations/20261009210000_finance_customer_commit_foundation.sql",
+    "supabase/migrations/20261009220000_finance_reconciliation_protocol_guard.sql",
+    "supabase/migrations/20261009230000_finance_protocol_transitions.sql",
+    "supabase/migrations/20261010000000_stripe_application_ownership_registry.sql",
+    "supabase/migrations/20261010010000_finance_foreign_receipt_completion.sql",
+    "supabase/migrations/20261010020000_finance_invoice_application_proofs.sql",
+    "supabase/migrations/20261010030000_finance_invoice_proof_commit.sql",
+    "supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql",
+    "supabase/migrations/20261010050000_billing_consumer_worker_fencing.sql",
+    "supabase/migrations/20261011000000_finance_dmi_charge_integration.sql",
+    "supabase/migrations/20261012000000_billing_entitlement_dependency_recovery.sql",
+    "supabase/migrations/20261013000000_billing_dmi_completion_wake_provenance.sql",
+    "supabase/migrations/20261019000000_billing_entitlement_claim_diagnostics.sql",
+    "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+    "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+    "supabase/migrations/20261027000300_billing_v2_shadow_operations.sql",
+    "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql"
+  ],
+  "database_create_statements": [
+    {
+      "kind": "TABLE",
+      "name": "public.billing_subscriptions",
+      "file": "supabase/migrations/20260807143000_create_stripe_billing_state.sql",
+      "line": 1
+    },
+    {
+      "kind": "UNIQUE INDEX",
+      "name": "billing_subscriptions_subscription_id_unique_idx",
+      "file": "supabase/migrations/20260807143000_create_stripe_billing_state.sql",
+      "line": 34
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_subscriptions_user_id_idx",
+      "file": "supabase/migrations/20260807143000_create_stripe_billing_state.sql",
+      "line": 37
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_subscriptions_profile_id_idx",
+      "file": "supabase/migrations/20260807143000_create_stripe_billing_state.sql",
+      "line": 40
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_subscriptions_customer_id_idx",
+      "file": "supabase/migrations/20260807143000_create_stripe_billing_state.sql",
+      "line": 43
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.stripe_webhook_events",
+      "file": "supabase/migrations/20260807143000_create_stripe_billing_state.sql",
+      "line": 46
+    },
+    {
+      "kind": "POLICY",
+      "name": "\"Users",
+      "file": "supabase/migrations/20260807143000_create_stripe_billing_state.sql",
+      "line": 57
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.stripe_webhook_events",
+      "file": "supabase/migrations/20260927010000_stripe_reliability_foundation.sql",
+      "line": 102
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_accounts",
+      "file": "supabase/migrations/20260927010000_stripe_reliability_foundation.sql",
+      "line": 108
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_approved_prices",
+      "file": "supabase/migrations/20260927010000_stripe_reliability_foundation.sql",
+      "line": 127
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_sync_runs",
+      "file": "supabase/migrations/20260927010000_stripe_reliability_foundation.sql",
+      "line": 138
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "pg_temp.billing_foundation_command",
+      "file": "supabase/migrations/20260927010000_stripe_reliability_foundation.sql",
+      "line": 271
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_foundation_command",
+      "file": "supabase/migrations/20260927010000_stripe_reliability_foundation.sql",
+      "line": 381
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_finance_subscriptions",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 4
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_finance_subscription_items",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 30
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_invoices",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 60
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_payments",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 84
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_invoice_payments",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 108
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_refunds",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 127
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_payment_attempts",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 147
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_finance_event_deliveries",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 156
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_finance_sync_state",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 163
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_finance_sync_runs",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 168
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_finance_activity",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 178
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_finance_subscriptions_lookup_0",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 187
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_finance_subscriptions_lookup_1",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 188
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_finance_subscriptions_lookup_2",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 189
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_finance_subscriptions_lookup_3",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 190
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_finance_subscription_items_lookup_0",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 191
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_finance_subscription_items_lookup_1",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 192
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_invoices_lookup_0",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 193
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_invoices_lookup_1",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 194
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_invoices_lookup_2",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 195
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_invoices_lookup_3",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 196
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_payments_lookup_0",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 197
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_payments_lookup_1",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 198
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_payments_lookup_2",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 199
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_invoice_payments_lookup_0",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 200
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_invoice_payments_lookup_1",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 201
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_invoice_payments_lookup_2",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 202
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_refunds_lookup_0",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 203
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_refunds_lookup_1",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 204
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_refunds_lookup_2",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 205
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_payment_attempts_lookup_0",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 206
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_payment_attempts_lookup_1",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 207
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_payment_attempts_lookup_2",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 208
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_finance_event_deliveries_lookup_0",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 209
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_finance_sync_state_lookup_0",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 210
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_finance_sync_runs_lookup_0",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 211
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_finance_activity_lookup_0",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 212
+    },
+    {
+      "kind": "UNIQUE INDEX",
+      "name": "billing_payment_attempts_charge_unique",
+      "file": "supabase/migrations/20260930120000_finance_v1_foundation.sql",
+      "line": 213
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_command",
+      "file": "supabase/migrations/20260930130000_finance_v1_writer.sql",
+      "line": 4
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.admin_finance_report",
+      "file": "supabase/migrations/20261002120000_admin_finance_reporting.sql",
+      "line": 3
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_tax_evidence_valid",
+      "file": "supabase/migrations/20261003120000_finance_tax_evidence.sql",
+      "line": 4
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_command",
+      "file": "supabase/migrations/20261003120000_finance_tax_evidence.sql",
+      "line": 85
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.admin_finance_v1_report",
+      "file": "supabase/migrations/20261004120000_admin_finance_v1_reporting.sql",
+      "line": 3
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_invoices_scope_finalized_v1",
+      "file": "supabase/migrations/20261004120000_admin_finance_v1_reporting.sql",
+      "line": 97
+    },
+    {
+      "kind": "INDEX",
+      "name": "stripe_webhook_events_scope_created_idx",
+      "file": "supabase/migrations/20261008120000_stripe_webhook_monitoring_indexes.sql",
+      "line": 6
+    },
+    {
+      "kind": "INDEX",
+      "name": "stripe_webhook_events_unresolved_scope_created_idx",
+      "file": "supabase/migrations/20261008120000_stripe_webhook_monitoring_indexes.sql",
+      "line": 10
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_finance_protocol_control",
+      "file": "supabase/migrations/20261009180000_finance_partition_foundation.sql",
+      "line": 22
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_receipt_partition_guard",
+      "file": "supabase/migrations/20261009180000_finance_partition_foundation.sql",
+      "line": 39
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "billing_finance_receipt_partition_guard",
+      "file": "supabase/migrations/20261009180000_finance_partition_foundation.sql",
+      "line": 54
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_partition_command",
+      "file": "supabase/migrations/20261009180000_finance_partition_foundation.sql",
+      "line": 58
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_command",
+      "file": "supabase/migrations/20261009200000_finance_legacy_protocol_gate.sql",
+      "line": 24
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_customer_apply_bundle",
+      "file": "supabase/migrations/20261009210000_finance_customer_commit_foundation.sql",
+      "line": 21
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_customer_resource_owner",
+      "file": "supabase/migrations/20261009210000_finance_customer_commit_foundation.sql",
+      "line": 245
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_customer_bundle_owner",
+      "file": "supabase/migrations/20261009210000_finance_customer_commit_foundation.sql",
+      "line": 324
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_receipt_partition_guard",
+      "file": "supabase/migrations/20261009210000_finance_customer_commit_foundation.sql",
+      "line": 353
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "billing_finance_receipt_partition_guard",
+      "file": "supabase/migrations/20261009210000_finance_customer_commit_foundation.sql",
+      "line": 375
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_partition_command",
+      "file": "supabase/migrations/20261009210000_finance_customer_commit_foundation.sql",
+      "line": 379
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_command",
+      "file": "supabase/migrations/20261009220000_finance_reconciliation_protocol_guard.sql",
+      "line": 18
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_suspend_run",
+      "file": "supabase/migrations/20261009220000_finance_reconciliation_protocol_guard.sql",
+      "line": 357
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_command",
+      "file": "supabase/migrations/20261009230000_finance_protocol_transitions.sql",
+      "line": 20
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_protocol_transition_guard",
+      "file": "supabase/migrations/20261009230000_finance_protocol_transitions.sql",
+      "line": 368
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "billing_finance_protocol_transition_guard",
+      "file": "supabase/migrations/20261009230000_finance_protocol_transitions.sql",
+      "line": 384
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_transition",
+      "file": "supabase/migrations/20261009230000_finance_protocol_transitions.sql",
+      "line": 386
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_stripe_applications",
+      "file": "supabase/migrations/20261010000000_stripe_application_ownership_registry.sql",
+      "line": 9
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_stripe_resource_ownership",
+      "file": "supabase/migrations/20261010000000_stripe_application_ownership_registry.sql",
+      "line": 16
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_stripe_ownership_audit",
+      "file": "supabase/migrations/20261010000000_stripe_application_ownership_registry.sql",
+      "line": 32
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_stripe_ownership_guard",
+      "file": "supabase/migrations/20261010000000_stripe_application_ownership_registry.sql",
+      "line": 40
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "billing_stripe_ownership_guard",
+      "file": "supabase/migrations/20261010000000_stripe_application_ownership_registry.sql",
+      "line": 50
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_stripe_ownership_audit_guard",
+      "file": "supabase/migrations/20261010000000_stripe_application_ownership_registry.sql",
+      "line": 52
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "billing_stripe_ownership_audit_guard",
+      "file": "supabase/migrations/20261010000000_stripe_application_ownership_registry.sql",
+      "line": 55
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_stripe_register_ownership",
+      "file": "supabase/migrations/20261010000000_stripe_application_ownership_registry.sql",
+      "line": 59
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_stripe_revoke_ownership",
+      "file": "supabase/migrations/20261010000000_stripe_application_ownership_registry.sql",
+      "line": 79
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_foreign_evidence",
+      "file": "supabase/migrations/20261010010000_finance_foreign_receipt_completion.sql",
+      "line": 7
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_complete_foreign",
+      "file": "supabase/migrations/20261010010000_finance_foreign_receipt_completion.sql",
+      "line": 47
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_invoice_proof_shape",
+      "file": "supabase/migrations/20261010020000_finance_invoice_application_proofs.sql",
+      "line": 14
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_finance_application_proofs",
+      "file": "supabase/migrations/20261010020000_finance_invoice_application_proofs.sql",
+      "line": 50
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_invoice_proof_guard",
+      "file": "supabase/migrations/20261010020000_finance_invoice_application_proofs.sql",
+      "line": 73
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "billing_finance_invoice_proof_guard",
+      "file": "supabase/migrations/20261010020000_finance_invoice_application_proofs.sql",
+      "line": 76
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_invoice_proof_append",
+      "file": "supabase/migrations/20261010020000_finance_invoice_application_proofs.sql",
+      "line": 83
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_invoice_proof_read",
+      "file": "supabase/migrations/20261010020000_finance_invoice_application_proofs.sql",
+      "line": 140
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_customer_commit_with_proofs",
+      "file": "supabase/migrations/20261010030000_finance_invoice_proof_commit.sql",
+      "line": 12
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_work_shape",
+      "file": "supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql",
+      "line": 10
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_work_evidence_v2",
+      "file": "supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql",
+      "line": 33
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_work_evidence",
+      "file": "supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql",
+      "line": 48
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_consumer_work_partitions",
+      "file": "supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql",
+      "line": 52
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_consumer_work",
+      "file": "supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql",
+      "line": 63
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_consumer_work_ready",
+      "file": "supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql",
+      "line": 92
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_consumer_work_expired",
+      "file": "supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql",
+      "line": 93
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_consumer_work_partition_active",
+      "file": "supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql",
+      "line": 94
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_work_immutable",
+      "file": "supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql",
+      "line": 95
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "billing_consumer_work_immutable",
+      "file": "supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql",
+      "line": 104
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_work_admit",
+      "file": "supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql",
+      "line": 105
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_work_bind",
+      "file": "supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql",
+      "line": 120
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_work_claim",
+      "file": "supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql",
+      "line": 139
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_work_update",
+      "file": "supabase/migrations/20261010040000_billing_consumer_work_scheduler.sql",
+      "line": 164
+    },
+    {
+      "kind": "TABLE",
+      "name": "public.billing_consumer_work_routing",
+      "file": "supabase/migrations/20261010050000_billing_consumer_worker_fencing.sql",
+      "line": 10
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_consumer_work_routing_active",
+      "file": "supabase/migrations/20261010050000_billing_consumer_worker_fencing.sql",
+      "line": 17
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_ignored",
+      "file": "supabase/migrations/20261010050000_billing_consumer_worker_fencing.sql",
+      "line": 18
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_guard",
+      "file": "supabase/migrations/20261010050000_billing_consumer_worker_fencing.sql",
+      "line": 23
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_receipt",
+      "file": "supabase/migrations/20261010050000_billing_consumer_worker_fencing.sql",
+      "line": 53
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_claim",
+      "file": "supabase/migrations/20261010050000_billing_consumer_worker_fencing.sql",
+      "line": 66
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_bind",
+      "file": "supabase/migrations/20261010050000_billing_consumer_worker_fencing.sql",
+      "line": 111
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_authority",
+      "file": "supabase/migrations/20261010050000_billing_consumer_worker_fencing.sql",
+      "line": 168
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_settle",
+      "file": "supabase/migrations/20261010050000_billing_consumer_worker_fencing.sql",
+      "line": 218
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_dmi_invoice_context",
+      "file": "supabase/migrations/20261011000000_finance_dmi_charge_integration.sql",
+      "line": 10
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_finance_dmi_charge_commit",
+      "file": "supabase/migrations/20261011000000_finance_dmi_charge_integration.sql",
+      "line": 20
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_dmi_authority",
+      "file": "supabase/migrations/20261011000000_finance_dmi_charge_integration.sql",
+      "line": 73
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_complete_dmi",
+      "file": "supabase/migrations/20261011000000_finance_dmi_charge_integration.sql",
+      "line": 88
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_claim_dmi",
+      "file": "supabase/migrations/20261011000000_finance_dmi_charge_integration.sql",
+      "line": 112
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_work_subscription",
+      "file": "supabase/migrations/20261012000000_billing_entitlement_dependency_recovery.sql",
+      "line": 12
+    },
+    {
+      "kind": "INDEX",
+      "name": "billing_consumer_work_entitlement_dependency",
+      "file": "supabase/migrations/20261012000000_billing_entitlement_dependency_recovery.sql",
+      "line": 17
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_settle_entitlement",
+      "file": "supabase/migrations/20261012000000_billing_entitlement_dependency_recovery.sql",
+      "line": 21
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_claim_entitlement",
+      "file": "supabase/migrations/20261012000000_billing_entitlement_dependency_recovery.sql",
+      "line": 62
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_complete_dmi",
+      "file": "supabase/migrations/20261013000000_billing_dmi_completion_wake_provenance.sql",
+      "line": 11
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_claim_core",
+      "file": "supabase/migrations/20261019000000_billing_entitlement_claim_diagnostics.sql",
+      "line": 16
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_claim_entitlement_core",
+      "file": "supabase/migrations/20261019000000_billing_entitlement_claim_diagnostics.sql",
+      "line": 60
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_claim",
+      "file": "supabase/migrations/20261019000000_billing_entitlement_claim_diagnostics.sql",
+      "line": 88
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_claim_entitlement",
+      "file": "supabase/migrations/20261019000000_billing_entitlement_claim_diagnostics.sql",
+      "line": 92
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_claim_entitlement_diagnostic",
+      "file": "supabase/migrations/20261019000000_billing_entitlement_claim_diagnostics.sql",
+      "line": 96
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_entitlement_due_bound",
+      "file": "supabase/migrations/20261019000000_billing_entitlement_claim_diagnostics.sql",
+      "line": 103
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "public.billing_consumer_worker_settle_entitlement_diagnostic",
+      "file": "supabase/migrations/20261019000000_billing_entitlement_claim_diagnostics.sql",
+      "line": 121
+    },
+    {
+      "kind": "ROLE",
+      "name": "billing_v2_owner",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 3
+    },
+    {
+      "kind": "ROLE",
+      "name": "billing_v2_executor",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 4
+    },
+    {
+      "kind": "SCHEMA",
+      "name": "billing_v2",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 26
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.valid_tax_evidence",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 31
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.valid_document",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 103
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.valid_forecast_anchors",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 130
+    },
+    {
+      "kind": "TABLE",
+      "name": "billing_v2.accounts",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 135
+    },
+    {
+      "kind": "TABLE",
+      "name": "billing_v2.checkout_attempts",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 155
+    },
+    {
+      "kind": "TABLE",
+      "name": "billing_v2.price_catalog",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 187
+    },
+    {
+      "kind": "TABLE",
+      "name": "billing_v2.subscriptions",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 213
+    },
+    {
+      "kind": "TABLE",
+      "name": "billing_v2.event_inbox",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 245
+    },
+    {
+      "kind": "TABLE",
+      "name": "billing_v2.authority",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 305
+    },
+    {
+      "kind": "TABLE",
+      "name": "billing_v2.operations",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 330
+    },
+    {
+      "kind": "TABLE",
+      "name": "billing_v2.finance_subscriptions",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 363
+    },
+    {
+      "kind": "TABLE",
+      "name": "billing_v2.finance_subscription_items",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 405
+    },
+    {
+      "kind": "TABLE",
+      "name": "billing_v2.invoices",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 462
+    },
+    {
+      "kind": "TABLE",
+      "name": "billing_v2.payments",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 522
+    },
+    {
+      "kind": "TABLE",
+      "name": "billing_v2.invoice_payments",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 567
+    },
+    {
+      "kind": "TABLE",
+      "name": "billing_v2.refunds",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 602
+    },
+    {
+      "kind": "TABLE",
+      "name": "billing_v2.payment_attempts",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 637
+    },
+    {
+      "kind": "TABLE",
+      "name": "billing_v2.finance_activity",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 664
+    },
+    {
+      "kind": "UNIQUE INDEX",
+      "name": "v2_accounts_i1",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 690
+    },
+    {
+      "kind": "UNIQUE INDEX",
+      "name": "v2_accounts_i2",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 691
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_accounts_i3",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 692
+    },
+    {
+      "kind": "POLICY",
+      "name": "owner_only",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 695
+    },
+    {
+      "kind": "UNIQUE INDEX",
+      "name": "v2_checkout_attempts_i1",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 698
+    },
+    {
+      "kind": "UNIQUE INDEX",
+      "name": "v2_checkout_attempts_i2",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 699
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_checkout_attempts_i3",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 700
+    },
+    {
+      "kind": "POLICY",
+      "name": "owner_only",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 703
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_price_catalog_i1",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 705
+    },
+    {
+      "kind": "POLICY",
+      "name": "owner_only",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 708
+    },
+    {
+      "kind": "UNIQUE INDEX",
+      "name": "v2_subscriptions_i1",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 711
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_subscriptions_i2",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 712
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_subscriptions_i3",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 713
+    },
+    {
+      "kind": "POLICY",
+      "name": "owner_only",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 716
+    },
+    {
+      "kind": "UNIQUE INDEX",
+      "name": "v2_event_inbox_i1",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 720
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_event_inbox_i2",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 721
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_event_inbox_i3",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 722
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_event_inbox_i4",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 723
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_event_inbox_i5",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 724
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_event_inbox_i6",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 725
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_event_inbox_i7",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 726
+    },
+    {
+      "kind": "POLICY",
+      "name": "owner_only",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 729
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_authority_i1",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 735
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_authority_i2",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 736
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_authority_i3",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 737
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_authority_i4",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 738
+    },
+    {
+      "kind": "POLICY",
+      "name": "owner_only",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 741
+    },
+    {
+      "kind": "UNIQUE INDEX",
+      "name": "v2_operations_i1",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 746
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_operations_i2",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 747
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_operations_i3",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 748
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_operations_i4",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 749
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_operations_i5",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 750
+    },
+    {
+      "kind": "UNIQUE INDEX",
+      "name": "v2_operations_one_completion",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 751
+    },
+    {
+      "kind": "POLICY",
+      "name": "owner_only",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 754
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_finance_subscriptions_i1",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 756
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_finance_subscriptions_i2",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 757
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_finance_subscriptions_i3",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 758
+    },
+    {
+      "kind": "POLICY",
+      "name": "owner_only",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 761
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_finance_subscription_items_i1",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 764
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_finance_subscription_items_i2",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 765
+    },
+    {
+      "kind": "POLICY",
+      "name": "owner_only",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 768
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_invoices_i1",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 771
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_invoices_i2",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 772
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_invoices_i3",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 773
+    },
+    {
+      "kind": "POLICY",
+      "name": "owner_only",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 776
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_payments_i1",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 778
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_payments_i2",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 779
+    },
+    {
+      "kind": "POLICY",
+      "name": "owner_only",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 782
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_invoice_payments_i1",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 786
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_invoice_payments_i2",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 787
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_invoice_payments_i3",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 788
+    },
+    {
+      "kind": "POLICY",
+      "name": "owner_only",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 791
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_refunds_i1",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 794
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_refunds_i2",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 795
+    },
+    {
+      "kind": "POLICY",
+      "name": "owner_only",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 798
+    },
+    {
+      "kind": "UNIQUE INDEX",
+      "name": "v2_payment_attempts_i1",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 802
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_payment_attempts_i2",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 803
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_payment_attempts_i3",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 804
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_payment_attempts_i4",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 805
+    },
+    {
+      "kind": "POLICY",
+      "name": "owner_only",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 808
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_finance_activity_i1",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 811
+    },
+    {
+      "kind": "INDEX",
+      "name": "v2_finance_activity_i2",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 812
+    },
+    {
+      "kind": "POLICY",
+      "name": "owner_only",
+      "file": "supabase/migrations/20261027000100_billing_v2_shadow_schema.sql",
+      "line": 815
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.append_audit",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 4
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.guard_immutable",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 17
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.guard_completion",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 29
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "immutable_fields",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 39
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "immutable_fields",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 40
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "immutable_fields",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 41
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "immutable_fields",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 42
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "immutable_fields",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 43
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "immutable_fields",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 44
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "immutable_fields",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 45
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "immutable_fields",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 46
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "immutable_fields",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 47
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "immutable_fields",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 48
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "immutable_fields",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 49
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "immutable_fields",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 50
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "immutable_fields",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 51
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "immutable_fields",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 52
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "immutable_fields",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 53
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.assert_fence",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 55
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.acquire_authority",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 67
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.admit",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 85
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.claim",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 109
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.reclaim_expired",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 132
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.touch",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 136
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.read_result",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 143
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.defer_task",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 151
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.wait_retry",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 170
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.wait_dependency",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 174
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.mark_attention",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 178
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.release",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 182
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.finish_task",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 186
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.complete_subscription",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 198
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.apply_rows",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 232
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.complete_finance",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 263
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.bind_customer",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 318
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.handover",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 334
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.prepare_checkout",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 338
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.record_checkout",
+      "file": "supabase/migrations/20261027000200_billing_v2_task_transactions.sql",
+      "line": 342
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.diagnose",
+      "file": "supabase/migrations/20261027000300_billing_v2_shadow_operations.sql",
+      "line": 4
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.wake_dependencies",
+      "file": "supabase/migrations/20261027000300_billing_v2_shadow_operations.sql",
+      "line": 8
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.record_comparison",
+      "file": "supabase/migrations/20261027000300_billing_v2_shadow_operations.sql",
+      "line": 22
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.backfill_page",
+      "file": "supabase/migrations/20261027000300_billing_v2_shadow_operations.sql",
+      "line": 30
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.checkpoint_run",
+      "file": "supabase/migrations/20261027000300_billing_v2_shadow_operations.sql",
+      "line": 54
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.enqueue_reconciliation",
+      "file": "supabase/migrations/20261027000300_billing_v2_shadow_operations.sql",
+      "line": 68
+    },
+    {
+      "kind": "ROLE",
+      "name": "billing_v2_seed",
+      "file": "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql",
+      "line": 5
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.seed_canonical",
+      "file": "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql",
+      "line": 7
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.seed_digest",
+      "file": "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql",
+      "line": 19
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.seed_privileges",
+      "file": "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql",
+      "line": 23
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.seed_inert",
+      "file": "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql",
+      "line": 54
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.seed_begin",
+      "file": "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql",
+      "line": 60
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.seed_page",
+      "file": "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql",
+      "line": 81
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.seed_verify",
+      "file": "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql",
+      "line": 111
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.seed_finalize",
+      "file": "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql",
+      "line": 135
+    },
+    {
+      "kind": "FUNCTION",
+      "name": "billing_v2.seed_guard",
+      "file": "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql",
+      "line": 146
+    },
+    {
+      "kind": "TRIGGER",
+      "name": "seed_manifest_immutable",
+      "file": "supabase/migrations/20261028000100_billing_v2_shadow_foundation.sql",
+      "line": 152
+    }
+  ],
+  "database_tables": [
+    "billing_v2.accounts",
+    "billing_v2.authority",
+    "billing_v2.checkout_attempts",
+    "billing_v2.event_inbox",
+    "billing_v2.finance_activity",
+    "billing_v2.finance_subscription_items",
+    "billing_v2.finance_subscriptions",
+    "billing_v2.invoice_payments",
+    "billing_v2.invoices",
+    "billing_v2.operations",
+    "billing_v2.payment_attempts",
+    "billing_v2.payments",
+    "billing_v2.price_catalog",
+    "billing_v2.refunds",
+    "billing_v2.subscriptions",
+    "public.billing_accounts",
+    "public.billing_approved_prices",
+    "public.billing_consumer_work",
+    "public.billing_consumer_work_partitions",
+    "public.billing_consumer_work_routing",
+    "public.billing_finance_activity",
+    "public.billing_finance_application_proofs",
+    "public.billing_finance_event_deliveries",
+    "public.billing_finance_protocol_control",
+    "public.billing_finance_subscription_items",
+    "public.billing_finance_subscriptions",
+    "public.billing_finance_sync_runs",
+    "public.billing_finance_sync_state",
+    "public.billing_invoice_payments",
+    "public.billing_invoices",
+    "public.billing_payment_attempts",
+    "public.billing_payments",
+    "public.billing_refunds",
+    "public.billing_stripe_applications",
+    "public.billing_stripe_ownership_audit",
+    "public.billing_stripe_resource_ownership",
+    "public.billing_subscriptions",
+    "public.billing_sync_runs",
+    "public.stripe_webhook_events"
+  ],
+  "v1_tables": [
+    "public.billing_accounts",
+    "public.billing_approved_prices",
+    "public.billing_consumer_work",
+    "public.billing_consumer_work_partitions",
+    "public.billing_consumer_work_routing",
+    "public.billing_finance_activity",
+    "public.billing_finance_application_proofs",
+    "public.billing_finance_event_deliveries",
+    "public.billing_finance_protocol_control",
+    "public.billing_finance_subscription_items",
+    "public.billing_finance_subscriptions",
+    "public.billing_finance_sync_runs",
+    "public.billing_finance_sync_state",
+    "public.billing_invoice_payments",
+    "public.billing_invoices",
+    "public.billing_payment_attempts",
+    "public.billing_payments",
+    "public.billing_refunds",
+    "public.billing_stripe_applications",
+    "public.billing_stripe_ownership_audit",
+    "public.billing_stripe_resource_ownership",
+    "public.billing_subscriptions",
+    "public.billing_sync_runs",
+    "public.stripe_webhook_events"
+  ],
+  "v2_tables": [
+    "billing_v2.accounts",
+    "billing_v2.authority",
+    "billing_v2.checkout_attempts",
+    "billing_v2.event_inbox",
+    "billing_v2.finance_activity",
+    "billing_v2.finance_subscription_items",
+    "billing_v2.finance_subscriptions",
+    "billing_v2.invoice_payments",
+    "billing_v2.invoices",
+    "billing_v2.operations",
+    "billing_v2.payment_attempts",
+    "billing_v2.payments",
+    "billing_v2.price_catalog",
+    "billing_v2.refunds",
+    "billing_v2.subscriptions"
+  ],
+  "scripts": [
+    "scripts/billing-claim-diagnostic-contract.mjs",
+    "scripts/billing-embedded-checkout-contract.mjs",
+    "scripts/billing-latency-contract.mjs",
+    "scripts/billing-recovery-diagnostic-contract.mjs",
+    "scripts/billing-work-auto-contract.mjs",
+    "scripts/fixtures/finance-v1.mjs",
+    "scripts/fixtures/finance-webhook-2023.mjs",
+    "scripts/lib/finance-normalization-diagnostic.mjs",
+    "scripts/lib/stripe-webhook-mode.mjs",
+    "scripts/validate-admin-finance-v1.mjs",
+    "scripts/validate-admin-finance.mjs",
+    "scripts/validate-admin-subscriptions.mjs",
+    "scripts/validate-billing-activation.mjs",
+    "scripts/validate-billing-claim-diagnostics.mjs",
+    "scripts/validate-billing-consumer-work.mjs",
+    "scripts/validate-billing-dmi-completion.mjs",
+    "scripts/validate-billing-entitlement-dependency.mjs",
+    "scripts/validate-billing-latency.mjs",
+    "scripts/validate-billing-lease-retry.mjs",
+    "scripts/validate-billing-lease-timing.mjs",
+    "scripts/validate-billing-recovery-diagnostics.mjs",
+    "scripts/validate-billing-recovery-selector.mjs",
+    "scripts/validate-billing-stripe-wrapper.mjs",
+    "scripts/validate-billing-work-auto.mjs",
+    "scripts/validate-billing-work-evidence.mjs",
+    "scripts/validate-billing-work-handoff.mjs",
+    "scripts/validate-billing-work-worker.mjs",
+    "scripts/validate-checkout-startup.mjs",
+    "scripts/validate-embedded-checkout.mjs",
+    "scripts/validate-finance-adapter.mjs",
+    "scripts/validate-finance-application-ownership.mjs",
+    "scripts/validate-finance-charge-ownership-proof.mjs",
+    "scripts/validate-finance-compatibility.mjs",
+    "scripts/validate-finance-consumer.mjs",
+    "scripts/validate-finance-customer-commit.mjs",
+    "scripts/validate-finance-customer-ownership.mjs",
+    "scripts/validate-finance-customer-routing.mjs",
+    "scripts/validate-finance-customer-validation.mjs",
+    "scripts/validate-finance-dmi-charge-integration.mjs",
+    "scripts/validate-finance-foreign-events.mjs",
+    "scripts/validate-finance-foundation.mjs",
+    "scripts/validate-finance-invoice-application-proofs.mjs",
+    "scripts/validate-finance-invoice-proof-commit.mjs",
+    "scripts/validate-finance-invoice-proof-config.mjs",
+    "scripts/validate-finance-legacy-protocol.mjs",
+    "scripts/validate-finance-mode-runtime.mjs",
+    "scripts/validate-finance-normalization-diagnostic.mjs",
+    "scripts/validate-finance-partition-foundation.mjs",
+    "scripts/validate-finance-partition-protocol.mjs",
+    "scripts/validate-finance-postgres.mjs",
+    "scripts/validate-finance-reconciliation-protocol.mjs",
+    "scripts/validate-finance-routing-adapter.mjs",
+    "scripts/validate-finance-tax.mjs",
+    "scripts/validate-finance-transitions.mjs",
+    "scripts/validate-finance-v1-reporting-postgres.mjs",
+    "scripts/validate-finance-writer.mjs",
+    "scripts/validate-stripe-billing-foundation.mjs",
+    "scripts/validate-stripe-reliability-postgres.mjs",
+    "scripts/validate-stripe-reliability.mjs",
+    "scripts/validate-stripe-webhook-mode.mjs",
+    "scripts/validate-stripe-webhook-orchestration.mjs",
+    "scripts/validate-webhook-observer.mjs"
+  ],
+  "spec_files": [
+    "specs/billing-simplification/local/README.md",
+    "specs/billing-simplification/local/boundary.mjs",
+    "specs/billing-simplification/local/equivalence.mjs",
+    "specs/billing-simplification/local/hosted-ownership.mjs",
+    "specs/billing-simplification/local/implementation.json",
+    "specs/billing-simplification/local/load.mjs",
+    "specs/billing-simplification/local/postgres.mjs",
+    "specs/billing-simplification/local/validate.mjs",
+    "specs/billing-simplification/phase1/README.md",
+    "specs/billing-simplification/phase1/baseline.json",
+    "specs/billing-simplification/phase1/behavior.json",
+    "specs/billing-simplification/phase1/comparison.mjs",
+    "specs/billing-simplification/phase1/current-system.mjs",
+    "specs/billing-simplification/phase1/fixtures.json",
+    "specs/billing-simplification/phase1/schema.json",
+    "specs/billing-simplification/phase1/validate.mjs",
+    "specs/billing-simplification/phase2/README.md",
+    "specs/billing-simplification/phase2/baseline.json",
+    "specs/billing-simplification/phase2/interfaces.d.ts",
+    "specs/billing-simplification/phase2/plan.json",
+    "specs/billing-simplification/phase2/rpc.json",
+    "specs/billing-simplification/phase2/schema.json",
+    "specs/billing-simplification/phase2/validate.mjs",
+    "specs/billing-simplification/shadow/README.md",
+    "specs/billing-simplification/shadow/catalog-companion-fixtures.mjs",
+    "specs/billing-simplification/shadow/catalog-companion.mjs",
+    "specs/billing-simplification/shadow/catalog-companion.schema.json",
+    "specs/billing-simplification/shadow/contract.json",
+    "specs/billing-simplification/shadow/export-fixtures.mjs",
+    "specs/billing-simplification/shadow/frozen-export.mjs",
+    "specs/billing-simplification/shadow/postgres.mjs",
+    "specs/billing-simplification/shadow/validate-export.mjs",
+    "specs/billing-simplification/shadow/validate.mjs"
+  ],
+  "env_names_and_references": {
+    "BILLING_WORK_RECOVERY_SECRET": [
+      "src/app/api/internal/billing-work-auto/route.ts",
+      "src/app/api/internal/billing-work/route.ts"
+    ],
+    "VERCEL_TARGET_ENV": [
+      "src/lib/admin-finance-server.ts",
+      "src/lib/stripe/billing-latency-diagnostics.ts",
+      "src/lib/stripe/billing-work-config.ts",
+      "src/lib/stripe/embedded-checkout-config.ts",
+      "src/lib/stripe/finance-invoice-proof-config.ts",
+      "src/lib/stripe/finance-runtime-guard.ts",
+      "src/lib/stripe/webhook-mode-guard.ts"
+    ],
+    "VERCEL_ENV": [
+      "src/lib/admin-finance-server.ts",
+      "src/lib/stripe/billing-latency-diagnostics.ts",
+      "src/lib/stripe/billing-work-config.ts",
+      "src/lib/stripe/embedded-checkout-config.ts",
+      "src/lib/stripe/finance-invoice-proof-config.ts",
+      "src/lib/stripe/finance-runtime-guard.ts",
+      "src/lib/stripe/webhook-mode-guard.ts"
+    ],
+    "STRIPE_ACCOUNT_SCOPE": [
+      "src/lib/admin-finance-server.ts",
+      "src/lib/stripe/billing-recovery-entitlement-diagnostics.ts",
+      "src/lib/stripe/billing-work-auto-config.ts",
+      "src/lib/stripe/embedded-checkout-config.ts",
+      "src/lib/stripe/finance-invoice-proof-config.ts",
+      "src/lib/system-health/monitoring.ts"
+    ],
+    "VERCEL_PROJECT_ID": [
+      "src/lib/stripe/billing-latency-diagnostics.ts",
+      "src/lib/stripe/billing-work-config.ts",
+      "src/lib/stripe/embedded-checkout-config.ts",
+      "src/lib/stripe/finance-invoice-proof-config.ts",
+      "src/lib/stripe/webhook-mode-guard.ts"
+    ],
+    "NEXT_PUBLIC_SUPABASE_URL": [
+      "src/lib/stripe/billing-latency-diagnostics.ts",
+      "src/lib/stripe/billing-work-config.ts",
+      "src/lib/stripe/embedded-checkout-config.ts",
+      "src/lib/stripe/finance-invoice-proof-config.ts",
+      "src/lib/stripe/webhook-consumers.ts",
+      "src/lib/api/client-context.ts",
+      "src/lib/supabase-admin.ts",
+      "src/lib/system-health/monitoring.ts"
+    ],
+    "BILLING_WORK_ENTITLEMENT_DIAGNOSTICS_ENABLED": [
+      "src/lib/stripe/billing-recovery-entitlement-diagnostics.ts"
+    ],
+    "BILLING_WORK_ENTITLEMENT_ONLY_DIAGNOSTIC_ENABLED": [
+      "src/lib/stripe/billing-recovery-entitlement-diagnostics.ts"
+    ],
+    "STRIPE_SECRET_KEY": [
+      "src/lib/stripe/billing-recovery-entitlement-diagnostics.ts",
+      "src/lib/stripe/billing-work-auto-config.ts",
+      "src/lib/stripe/billing-work-config.ts",
+      "src/lib/stripe/config.ts",
+      "src/lib/stripe/embedded-checkout-config.ts",
+      "src/lib/stripe/finance-invoice-proof-config.ts",
+      "src/lib/stripe/webhook-consumers.ts"
+    ],
+    "STRIPE_PRICE_PRO_ANNUAL": [
+      "src/lib/stripe/billing-state.ts"
+    ],
+    "STRIPE_PRICE_PRO_MONTHLY": [
+      "src/lib/stripe/billing-state.ts"
+    ],
+    "BILLING_WORK_POST_ADMISSION_KICK_ENABLED": [
+      "src/lib/stripe/billing-work-auto-config.ts"
+    ],
+    "BILLING_WORK_AUTOMATIC_RUN_ENABLED": [
+      "src/lib/stripe/billing-work-auto-config.ts"
+    ],
+    "BILLING_WORK_CLAIM_DIAGNOSTICS_ENABLED": [
+      "src/lib/stripe/billing-work-claim-diagnostics.ts"
+    ],
+    "BILLING_WORK_STRIPE_SCOPE": [
+      "src/lib/stripe/billing-work-config.ts"
+    ],
+    "BILLING_WORK_HANDOFF_ENABLED": [
+      "src/lib/stripe/billing-work-config.ts"
+    ],
+    "BILLING_WORK_RECOVERY_ENABLED": [
+      "src/lib/stripe/billing-work-config.ts"
+    ],
+    "STRIPE_WEBHOOK_SECRET": [
+      "src/lib/stripe/config.ts"
+    ],
+    "BILLING_EMBEDDED_CHECKOUT_ENABLED": [
+      "src/lib/stripe/embedded-checkout-config.ts"
+    ],
+    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY": [
+      "src/lib/stripe/embedded-checkout-config.ts"
+    ],
+    "DMI_FINANCE_CHARGE_PROOF_CONSUMPTION_ENABLED": [
+      "src/lib/stripe/finance-invoice-proof-config.ts"
+    ],
+    "DMI_FINANCE_INVOICE_PROOF_PRODUCTION_ENABLED": [
+      "src/lib/stripe/finance-invoice-proof-config.ts"
+    ],
+    "DMI_FINANCE_CHARGE_DEPENDENCY_WAKE_ENABLED": [
+      "src/lib/stripe/finance-invoice-proof-config.ts"
+    ],
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": [
+      "src/lib/api/client-context.ts"
+    ],
+    "SUPABASE_SERVICE_ROLE_KEY": [
+      "src/lib/supabase-admin.ts",
+      "src/lib/system-health/monitoring.ts"
+    ],
+    "PUBLIC_LEAD_RATE_LIMIT_SECRET": [
+      "src/lib/system-health/monitoring.ts"
+    ],
+    "UPSTASH_REDIS_REST_URL": [
+      "src/lib/system-health/monitoring.ts"
+    ],
+    "VERCEL_GIT_COMMIT_SHA": [
+      "src/lib/system-health/monitoring.ts"
+    ],
+    "NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA": [
+      "src/lib/system-health/monitoring.ts"
+    ],
+    "UPSTASH_REDIS_REST_TOKEN": [
+      "src/lib/system-health/monitoring.ts"
+    ]
+  },
+  "imports": [
+    {
+      "file": "src/app/api/admin/billing/reconcile/route.ts",
+      "target": "src/lib/admin-auth.ts"
+    },
+    {
+      "file": "src/app/api/admin/billing/reconcile/route.ts",
+      "target": "src/lib/stripe/reconciliation.ts"
+    },
+    {
+      "file": "src/app/api/admin/finance/route.ts",
+      "target": "src/lib/admin-finance-server.ts"
+    },
+    {
+      "file": "src/app/api/admin/subscriptions/route.ts",
+      "target": "src/lib/admin-subscriptions-server.ts"
+    },
+    {
+      "file": "src/app/api/internal/billing-work-auto/route.ts",
+      "target": "src/lib/stripe/billing-work-auto-config.ts"
+    },
+    {
+      "file": "src/app/api/internal/billing-work-auto/route.ts",
+      "target": "src/lib/stripe/billing-work-auto-execution.ts"
+    },
+    {
+      "file": "src/app/api/internal/billing-work-auto/route.ts",
+      "target": "src/lib/stripe/billing-work-auto-request.ts"
+    },
+    {
+      "file": "src/app/api/internal/billing-work/route.ts",
+      "target": "src/lib/stripe/billing-recovery-entitlement-diagnostics.ts"
+    },
+    {
+      "file": "src/app/api/internal/billing-work/route.ts",
+      "target": "src/lib/stripe/finance-invoice-proof-config.ts"
+    },
+    {
+      "file": "src/app/api/internal/billing-work/route.ts",
+      "target": "src/lib/stripe/billing-work-config.ts"
+    },
+    {
+      "file": "src/app/api/internal/billing-work/route.ts",
+      "target": "src/lib/stripe/billing-work-recovery.ts"
+    },
+    {
+      "file": "src/app/api/internal/billing-work/route.ts",
+      "target": "src/lib/stripe/billing-work-runtime.ts"
+    },
+    {
+      "file": "src/app/api/internal/billing-work/route.ts",
+      "target": "src/lib/stripe/billing-work-worker.ts"
+    },
+    {
+      "file": "src/app/api/internal/billing-work/route.ts",
+      "target": "src/lib/supabase-admin.ts"
+    },
+    {
+      "file": "src/app/api/internal/billing-work/route.ts",
+      "target": "src/lib/stripe/config.ts"
+    },
+    {
+      "file": "src/app/api/stripe/checkout/route.ts",
+      "target": "src/lib/client-auth.ts"
+    },
+    {
+      "file": "src/app/api/stripe/checkout/route.ts",
+      "target": "src/lib/stripe/client-identity.ts"
+    },
+    {
+      "file": "src/app/api/stripe/checkout/route.ts",
+      "target": "src/lib/api/responses.ts"
+    },
+    {
+      "file": "src/app/api/stripe/checkout/route.ts",
+      "target": "src/lib/stripe/billing-state.ts"
+    },
+    {
+      "file": "src/app/api/stripe/checkout/route.ts",
+      "target": "src/lib/stripe/checkout.ts"
+    },
+    {
+      "file": "src/app/api/stripe/portal/route.ts",
+      "target": "src/lib/stripe/client-identity.ts"
+    },
+    {
+      "file": "src/app/api/stripe/portal/route.ts",
+      "target": "src/lib/api/responses.ts"
+    },
+    {
+      "file": "src/app/api/stripe/portal/route.ts",
+      "target": "src/lib/stripe/checkout.ts"
+    },
+    {
+      "file": "src/app/api/stripe/webhook/route.ts",
+      "target": "src/lib/stripe/billing-work-auto-kick.ts"
+    },
+    {
+      "file": "src/app/api/stripe/webhook/route.ts",
+      "target": "src/lib/stripe/finance-invoice-proof-config.ts"
+    },
+    {
+      "file": "src/app/api/stripe/webhook/route.ts",
+      "target": "src/lib/stripe/billing-work-config.ts"
+    },
+    {
+      "file": "src/app/api/stripe/webhook/route.ts",
+      "target": "src/lib/stripe/billing-work-evidence.ts"
+    },
+    {
+      "file": "src/app/api/stripe/webhook/route.ts",
+      "target": "src/lib/stripe/billing-work-handoff.ts"
+    },
+    {
+      "file": "src/app/api/stripe/webhook/route.ts",
+      "target": "src/lib/supabase-admin.ts"
+    },
+    {
+      "file": "src/app/api/stripe/webhook/route.ts",
+      "target": "src/lib/stripe/config.ts"
+    },
+    {
+      "file": "src/app/api/stripe/webhook/route.ts",
+      "target": "src/lib/stripe/webhook-mode-guard.ts"
+    },
+    {
+      "file": "src/app/api/stripe/webhook/route.ts",
+      "target": "src/lib/stripe/webhook-consumers.ts"
+    },
+    {
+      "file": "src/app/api/stripe/webhook/route.ts",
+      "target": "src/lib/observability/logger.ts"
+    },
+    {
+      "file": "src/app/api/stripe/webhook/route.ts",
+      "target": "src/lib/observability/request.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/activation/route.ts",
+      "target": "src/lib/api/client-context.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/activation/route.ts",
+      "target": "src/lib/stripe/client-identity.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/activation/route.ts",
+      "target": "src/lib/api/responses.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/activation/route.ts",
+      "target": "src/lib/stripe/checkout-activation.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/activation/route.ts",
+      "target": "src/lib/stripe/billing-latency-diagnostics.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/checkout/embedded/route.ts",
+      "target": "src/lib/stripe/client-identity.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/checkout/embedded/route.ts",
+      "target": "src/lib/api/responses.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/checkout/embedded/route.ts",
+      "target": "src/lib/stripe/embedded-checkout-config.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/checkout/embedded/route.ts",
+      "target": "src/lib/stripe/checkout.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/checkout/embedded/route.ts",
+      "target": "src/lib/stripe/embedded-checkout-response.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/checkout/embedded/route.ts",
+      "target": "src/lib/stripe/billing-state.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/checkout/embedded/route.ts",
+      "target": "src/lib/stripe/reliability.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/checkout/embedded/route.ts",
+      "target": "src/lib/checkout-startup-timing.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/checkout/route.ts",
+      "target": "src/lib/stripe/client-identity.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/checkout/route.ts",
+      "target": "src/lib/api/responses.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/checkout/route.ts",
+      "target": "src/lib/stripe/billing-state.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/checkout/route.ts",
+      "target": "src/lib/stripe/checkout.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/subscription/cancel/route.ts",
+      "target": "src/lib/api/client-context.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/subscription/cancel/route.ts",
+      "target": "src/lib/api/responses.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/subscription/cancel/route.ts",
+      "target": "src/lib/stripe/billing-summary.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/subscription/resume/route.ts",
+      "target": "src/lib/api/client-context.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/subscription/resume/route.ts",
+      "target": "src/lib/api/responses.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/subscription/resume/route.ts",
+      "target": "src/lib/stripe/billing-summary.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/subscription/route.ts",
+      "target": "src/lib/api/client-context.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/subscription/route.ts",
+      "target": "src/lib/api/responses.ts"
+    },
+    {
+      "file": "src/app/api/v1/billing/subscription/route.ts",
+      "target": "src/lib/stripe/billing-summary.ts"
+    },
+    {
+      "file": "src/app/client/billing/activating/page.tsx",
+      "target": "src/lib/supabase.ts"
+    },
+    {
+      "file": "src/app/client/billing/activating/page.tsx",
+      "target": "src/lib/billing-activation-poller.ts"
+    },
+    {
+      "file": "src/app/client/billing/page.tsx",
+      "target": "src/components/ClientSidebar.tsx"
+    },
+    {
+      "file": "src/app/client/billing/page.tsx",
+      "target": "src/components/UpgradeToProButton.tsx"
+    },
+    {
+      "file": "src/app/client/billing/page.tsx",
+      "target": "src/lib/entitlements/index.ts"
+    },
+    {
+      "file": "src/app/client/billing/page.tsx",
+      "target": "src/lib/supabase.ts"
+    },
+    {
+      "file": "src/app/client/billing/page.tsx",
+      "target": "src/lib/use-client-plan.ts"
+    },
+    {
+      "file": "src/app/client/billing/pay/PaymentClient.tsx",
+      "target": "src/components/EmbeddedPayment.tsx"
+    },
+    {
+      "file": "src/app/client/billing/pay/PaymentClient.tsx",
+      "target": "src/lib/supabase.ts"
+    },
+    {
+      "file": "src/app/client/billing/pay/PaymentClient.tsx",
+      "target": "src/lib/embedded-checkout-client.ts"
+    },
+    {
+      "file": "src/app/client/billing/pay/PaymentClient.tsx",
+      "target": "src/lib/embedded-stripe-loader.ts"
+    },
+    {
+      "file": "src/app/client/billing/pay/PaymentClient.tsx",
+      "target": "src/lib/checkout-startup-timing.ts"
+    },
+    {
+      "file": "src/app/client/billing/pay/page.tsx",
+      "target": "src/app/client/billing/pay/PaymentClient.tsx"
+    },
+    {
+      "file": "src/app/client/billing/pay/page.tsx",
+      "target": "src/lib/stripe/embedded-checkout-config.ts"
+    },
+    {
+      "file": "src/app/finance/page.tsx",
+      "target": "src/components/admin/AdminShell.tsx"
+    },
+    {
+      "file": "src/app/finance/page.tsx",
+      "target": "src/components/admin/AdminUI.tsx"
+    },
+    {
+      "file": "src/app/finance/page.tsx",
+      "target": "src/lib/admin-finance-v1.ts"
+    },
+    {
+      "file": "src/app/finance/page.tsx",
+      "target": "src/lib/admin-finance.ts"
+    },
+    {
+      "file": "src/app/finance/page.tsx",
+      "target": "src/app/finance/finance.module.css"
+    },
+    {
+      "file": "src/app/subscriptions/page.tsx",
+      "target": "src/components/admin/AdminShell.tsx"
+    },
+    {
+      "file": "src/app/subscriptions/page.tsx",
+      "target": "src/components/admin/AdminUI.tsx"
+    },
+    {
+      "file": "src/app/subscriptions/page.tsx",
+      "target": "src/lib/admin-subscriptions.ts"
+    },
+    {
+      "file": "src/app/subscriptions/page.tsx",
+      "target": "src/app/subscriptions/subscriptions.module.css"
+    },
+    {
+      "file": "src/components/EmbeddedPayment.tsx",
+      "target": "src/lib/embedded-stripe-loader.ts"
+    },
+    {
+      "file": "src/components/EmbeddedPayment.tsx",
+      "target": "src/lib/embedded-checkout-client.ts"
+    },
+    {
+      "file": "src/components/EmbeddedPayment.tsx",
+      "target": "src/lib/checkout-startup-timing.ts"
+    },
+    {
+      "file": "src/lib/admin-finance-server.ts",
+      "target": "src/lib/admin-auth.ts"
+    },
+    {
+      "file": "src/lib/admin-finance-server.ts",
+      "target": "src/lib/supabase-admin.ts"
+    },
+    {
+      "file": "src/lib/admin-finance-server.ts",
+      "target": "src/lib/stripe/finance-metrics.ts"
+    },
+    {
+      "file": "src/lib/admin-finance-server.ts",
+      "target": "src/lib/stripe/finance-contractual.ts"
+    },
+    {
+      "file": "src/lib/admin-finance-server.ts",
+      "target": "src/lib/stripe/finance-types.ts"
+    },
+    {
+      "file": "src/lib/admin-finance-server.ts",
+      "target": "src/lib/admin-finance.ts"
+    },
+    {
+      "file": "src/lib/admin-finance-server.ts",
+      "target": "src/lib/admin-finance-v1-server.ts"
+    },
+    {
+      "file": "src/lib/admin-finance-v1-server.ts",
+      "target": "src/lib/supabase-admin.ts"
+    },
+    {
+      "file": "src/lib/admin-finance-v1-server.ts",
+      "target": "src/lib/stripe/finance-metrics.ts"
+    },
+    {
+      "file": "src/lib/admin-finance-v1-server.ts",
+      "target": "src/lib/stripe/finance-contractual.ts"
+    },
+    {
+      "file": "src/lib/admin-finance-v1-server.ts",
+      "target": "src/lib/stripe/finance-types.ts"
+    },
+    {
+      "file": "src/lib/admin-finance-v1-server.ts",
+      "target": "src/lib/admin-finance-v1.ts"
+    },
+    {
+      "file": "src/lib/admin-finance.ts",
+      "target": "src/lib/stripe/finance-types.ts"
+    },
+    {
+      "file": "src/lib/admin-finance.ts",
+      "target": "src/lib/stripe/finance-metrics.ts"
+    },
+    {
+      "file": "src/lib/admin-subscriptions-server.ts",
+      "target": "src/lib/admin-auth.ts"
+    },
+    {
+      "file": "src/lib/admin-subscriptions-server.ts",
+      "target": "src/lib/supabase-admin.ts"
+    },
+    {
+      "file": "src/lib/admin-subscriptions-server.ts",
+      "target": "src/lib/stripe/config.ts"
+    },
+    {
+      "file": "src/lib/admin-subscriptions-server.ts",
+      "target": "src/lib/admin-subscriptions.ts"
+    },
+    {
+      "file": "src/lib/api/client-context.ts",
+      "target": "src/lib/stripe/billing-state.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/adapters/postgres.ts",
+      "target": "src/lib/billing-v2/adapters/../domain/types.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/adapters/postgres.ts",
+      "target": "src/lib/billing-v2/adapters/../domain/types.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/application/synchronizer.ts",
+      "target": "src/lib/billing-v2/application/../domain/types.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/application/synchronizer.ts",
+      "target": "src/lib/billing-v2/application/../domain/types.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/application/synchronizer.ts",
+      "target": "src/lib/billing-v2/application/../domain/subscription-policy.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/application/synchronizer.ts",
+      "target": "src/lib/billing-v2/application/../domain/finance-policy.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/domain/checkout-observation.ts",
+      "target": "src/lib/billing-v2/domain/subscription-policy.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/domain/finance-policy.ts",
+      "target": "src/lib/billing-v2/domain/types.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/domain/finance-policy.ts",
+      "target": "src/lib/billing-v2/domain/subscription-policy.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/domain/finance-policy.ts",
+      "target": "src/lib/billing-v2/domain/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/domain/subscription-policy.ts",
+      "target": "src/lib/billing-v2/domain/types.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/shadow/comparison.ts",
+      "target": "src/lib/billing-v2/shadow/../domain/subscription-policy.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/tooling/backfill.ts",
+      "target": "src/lib/billing-v2/tooling/../domain/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/tooling/backfill.ts",
+      "target": "src/lib/billing-v2/tooling/../domain/subscription-policy.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/tooling/backfill.ts",
+      "target": "src/lib/billing-v2/tooling/../domain/types.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/tooling/frozen-export.ts",
+      "target": "src/lib/billing-v2/tooling/backfill.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/tooling/frozen-export.ts",
+      "target": "src/lib/billing-v2/tooling/staging-seed.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/tooling/frozen-export.ts",
+      "target": "src/lib/billing-v2/tooling/../domain/types.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/tooling/staging-seed.ts",
+      "target": "src/lib/billing-v2/tooling/backfill.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/tooling/staging-seed.ts",
+      "target": "src/lib/billing-v2/tooling/backfill.ts"
+    },
+    {
+      "file": "src/lib/billing-v2/tooling/staging-seed.ts",
+      "target": "src/lib/billing-v2/tooling/../domain/types.ts"
+    },
+    {
+      "file": "src/lib/embedded-stripe-loader.ts",
+      "target": "src/lib/checkout-startup-timing.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-latency-diagnostics.ts",
+      "target": "src/lib/stripe/billing-work-config.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-recovery-entitlement-diagnostics.ts",
+      "target": "src/lib/stripe/billing-work-config.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-state.ts",
+      "target": "src/lib/entitlements/index.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-summary.ts",
+      "target": "src/lib/api/responses.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-summary.ts",
+      "target": "src/lib/entitlements/index.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-summary.ts",
+      "target": "src/lib/supabase-admin.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-summary.ts",
+      "target": "src/lib/stripe/billing-state.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-summary.ts",
+      "target": "src/lib/stripe/reliability.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-summary.ts",
+      "target": "src/lib/stripe/config.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-admission.ts",
+      "target": "src/lib/stripe/billing-work-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-config.ts",
+      "target": "src/lib/stripe/billing-work-config.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-execution.ts",
+      "target": "src/lib/stripe/billing-recovery-entitlement-diagnostics.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-execution.ts",
+      "target": "src/lib/stripe/finance-invoice-proof-config.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-execution.ts",
+      "target": "src/lib/stripe/billing-work-runtime.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-execution.ts",
+      "target": "src/lib/supabase-admin.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-execution.ts",
+      "target": "src/lib/stripe/config.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-execution.ts",
+      "target": "src/lib/stripe/billing-work-config.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-execution.ts",
+      "target": "src/lib/stripe/billing-work-auto-runner.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-execution.ts",
+      "target": "src/lib/stripe/billing-work-claim-diagnostics.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-kick.ts",
+      "target": "src/lib/stripe/billing-work-auto-config.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-kick.ts",
+      "target": "src/lib/stripe/billing-work-auto-execution.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-kick.ts",
+      "target": "src/lib/stripe/billing-work-auto-runner.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-kick.ts",
+      "target": "src/lib/stripe/billing-latency-diagnostics.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-request.ts",
+      "target": "src/lib/stripe/billing-work-config.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-request.ts",
+      "target": "src/lib/stripe/billing-work-auto-runner.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-request.ts",
+      "target": "src/lib/stripe/billing-latency-diagnostics.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-runner.ts",
+      "target": "src/lib/stripe/billing-work-worker.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-runner.ts",
+      "target": "src/lib/stripe/billing-work-config.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-runner.ts",
+      "target": "src/lib/stripe/billing-work-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-runner.ts",
+      "target": "src/lib/stripe/billing-work-auto-config.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-runner.ts",
+      "target": "src/lib/stripe/billing-latency-diagnostics.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-claim-diagnostics.ts",
+      "target": "src/lib/stripe/billing-work-auto-config.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-claim-diagnostics.ts",
+      "target": "src/lib/stripe/billing-latency-diagnostics.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-claim-diagnostics.ts",
+      "target": "src/lib/stripe/billing-work-store.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-config.ts",
+      "target": "src/lib/stripe/billing-work-worker.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-handoff.ts",
+      "target": "src/lib/stripe/billing-work-admission.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-handoff.ts",
+      "target": "src/lib/stripe/billing-work-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-handoff.ts",
+      "target": "src/lib/stripe/billing-work-config.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-recovery.ts",
+      "target": "src/lib/stripe/billing-work-config.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-recovery.ts",
+      "target": "src/lib/stripe/billing-work-worker.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-recovery.ts",
+      "target": "src/lib/stripe/billing-work-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-routing.ts",
+      "target": "src/lib/stripe/finance-routing-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-routing.ts",
+      "target": "src/lib/stripe/finance-customer-relationship-adapter.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-routing.ts",
+      "target": "src/lib/stripe/billing-work-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-routing.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-routing.ts",
+      "target": "src/lib/stripe/billing-work-store.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-routing.ts",
+      "target": "src/lib/stripe/billing-work-worker.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-runtime.ts",
+      "target": "src/lib/stripe/finance-dmi-charge-integration.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-runtime.ts",
+      "target": "src/lib/stripe/webhook.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-runtime.ts",
+      "target": "src/lib/stripe/finance-webhook.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-runtime.ts",
+      "target": "src/lib/stripe/finance-store.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-runtime.ts",
+      "target": "src/lib/stripe/finance-stripe-adapter.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-runtime.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-runtime.ts",
+      "target": "src/lib/stripe/billing-work-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-runtime.ts",
+      "target": "src/lib/stripe/billing-work-store.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-runtime.ts",
+      "target": "src/lib/stripe/billing-work-routing.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-runtime.ts",
+      "target": "src/lib/stripe/billing-work-worker.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-store.ts",
+      "target": "src/lib/stripe/billing-work-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-worker.ts",
+      "target": "src/lib/stripe/billing-work-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-worker.ts",
+      "target": "src/lib/stripe/billing-work-store.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-worker.ts",
+      "target": "src/lib/stripe/finance-dmi-charge-integration.ts"
+    },
+    {
+      "file": "src/lib/stripe/billing-work-worker.ts",
+      "target": "src/lib/stripe/billing-recovery-entitlement-diagnostics.ts"
+    },
+    {
+      "file": "src/lib/stripe/checkout-activation.ts",
+      "target": "src/lib/api/responses.ts"
+    },
+    {
+      "file": "src/lib/stripe/checkout-activation.ts",
+      "target": "src/lib/stripe/app-namespace.ts"
+    },
+    {
+      "file": "src/lib/stripe/checkout-activation.ts",
+      "target": "src/lib/stripe/reliability.ts"
+    },
+    {
+      "file": "src/lib/stripe/checkout-activation.ts",
+      "target": "src/lib/stripe/billing-state.ts"
+    },
+    {
+      "file": "src/lib/stripe/checkout.ts",
+      "target": "src/lib/checkout-startup-timing.ts"
+    },
+    {
+      "file": "src/lib/stripe/checkout.ts",
+      "target": "src/lib/stripe/app-namespace.ts"
+    },
+    {
+      "file": "src/lib/stripe/checkout.ts",
+      "target": "src/lib/stripe/config.ts"
+    },
+    {
+      "file": "src/lib/stripe/checkout.ts",
+      "target": "src/lib/stripe/billing-state.ts"
+    },
+    {
+      "file": "src/lib/stripe/checkout.ts",
+      "target": "src/lib/stripe/reliability.ts"
+    },
+    {
+      "file": "src/lib/stripe/client-identity.ts",
+      "target": "src/lib/api/client-context.ts"
+    },
+    {
+      "file": "src/lib/stripe/client-identity.ts",
+      "target": "src/lib/api/responses.ts"
+    },
+    {
+      "file": "src/lib/stripe/embedded-checkout-config.ts",
+      "target": "src/lib/stripe/billing-work-config.ts"
+    },
+    {
+      "file": "src/lib/stripe/embedded-checkout-response.ts",
+      "target": "src/lib/api/responses.ts"
+    },
+    {
+      "file": "src/lib/stripe/embedded-checkout-response.ts",
+      "target": "src/lib/stripe/billing-state.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-activity.ts",
+      "target": "src/lib/stripe/finance-types.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-activity.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-application-ownership-adapter.ts",
+      "target": "src/lib/stripe/finance-application-ownership.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-application-ownership-adapter.ts",
+      "target": "src/lib/stripe/finance-customer-relationships.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-charge-ownership-proof.ts",
+      "target": "src/lib/stripe/finance-application-ownership.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-charge-ownership-proof.ts",
+      "target": "src/lib/stripe/finance-customer-relationships.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-contract.ts",
+      "target": "src/lib/stripe/lease-acquisition-timing.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-contract.ts",
+      "target": "src/lib/stripe/webhook-observer.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-contract.ts",
+      "target": "src/lib/stripe/finance-types.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-contract.ts",
+      "target": "src/lib/stripe/finance-dmi-charge-integration.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-contractual.ts",
+      "target": "src/lib/stripe/finance-types.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-contractual.ts",
+      "target": "src/lib/stripe/finance-metrics.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-ownership.ts",
+      "target": "src/lib/stripe/finance-customer-relationships.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-ownership.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-relationship-adapter.ts",
+      "target": "src/lib/stripe/finance-customer-relationships.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-relationship-adapter.ts",
+      "target": "src/lib/stripe/finance-customer-routing.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-relationship-adapter.ts",
+      "target": "src/lib/stripe/finance-routing-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-relationships.ts",
+      "target": "src/lib/stripe/finance-customer-routing.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-relationships.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-routing.ts",
+      "target": "src/lib/stripe/finance-event-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-routing.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-validation.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-validation.ts",
+      "target": "src/lib/stripe/finance-routing-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-validation.ts",
+      "target": "src/lib/stripe/finance-customer-relationship-adapter.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-validation.ts",
+      "target": "src/lib/stripe/finance-customer-ownership.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-validation.ts",
+      "target": "src/lib/stripe/finance-partition-protocol.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-webhook.ts",
+      "target": "src/lib/stripe/finance-dmi-charge-integration.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-webhook.ts",
+      "target": "src/lib/stripe/finance-invoice-proof-producer.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-webhook.ts",
+      "target": "src/lib/stripe/finance-foreign-event.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-webhook.ts",
+      "target": "src/lib/stripe/finance-store.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-webhook.ts",
+      "target": "src/lib/stripe/lease-acquisition-timing.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-webhook.ts",
+      "target": "src/lib/stripe/finance-routing-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-webhook.ts",
+      "target": "src/lib/stripe/finance-customer-relationship-adapter.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-webhook.ts",
+      "target": "src/lib/stripe/finance-customer-ownership.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-webhook.ts",
+      "target": "src/lib/stripe/finance-sync.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-webhook.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-dmi-charge-integration.ts",
+      "target": "src/lib/stripe/finance-charge-ownership-proof.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-dmi-charge-integration.ts",
+      "target": "src/lib/stripe/finance-application-ownership-adapter.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-dmi-charge-integration.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-event-evidence.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-foreign-event.ts",
+      "target": "src/lib/stripe/finance-routing-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-foreign-event.ts",
+      "target": "src/lib/stripe/finance-customer-routing.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-foreign-event.ts",
+      "target": "src/lib/stripe/finance-customer-relationship-adapter.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-foreign-event.ts",
+      "target": "src/lib/stripe/finance-customer-relationships.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-foreign-event.ts",
+      "target": "src/lib/stripe/finance-application-ownership-adapter.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-foreign-event.ts",
+      "target": "src/lib/stripe/finance-application-ownership.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-foreign-event.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-invoice-proof-config.ts",
+      "target": "src/lib/stripe/finance-dmi-charge-integration.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-invoice-proof-producer.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-invoice-proof-producer.ts",
+      "target": "src/lib/stripe/finance-foreign-event.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-metrics.ts",
+      "target": "src/lib/stripe/finance-types.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-normalize.ts",
+      "target": "src/lib/stripe/finance-tax.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-normalize.ts",
+      "target": "src/lib/stripe/webhook-observer.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-normalize.ts",
+      "target": "src/lib/stripe/finance-types.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-normalize.ts",
+      "target": "src/lib/stripe/finance-metrics.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-reconciliation-guard.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-reconciliation.ts",
+      "target": "src/lib/stripe/finance-sync.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-reconciliation.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-reconciliation.ts",
+      "target": "src/lib/stripe/finance-reconciliation-guard.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-routing-evidence.ts",
+      "target": "src/lib/stripe/finance-event-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-routing-evidence.ts",
+      "target": "src/lib/stripe/finance-customer-routing.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-routing-evidence.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-store.ts",
+      "target": "src/lib/stripe/lease-acquisition-timing.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-store.ts",
+      "target": "src/lib/supabase-admin.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-store.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-stripe-adapter.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-sync.ts",
+      "target": "src/lib/stripe/finance-store.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-sync.ts",
+      "target": "src/lib/stripe/lease-acquisition-timing.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-sync.ts",
+      "target": "src/lib/stripe/finance-normalize.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-sync.ts",
+      "target": "src/lib/stripe/finance-types.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-sync.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-sync.ts",
+      "target": "src/lib/stripe/finance-activity.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-sync.ts",
+      "target": "src/lib/stripe/finance-reconciliation-guard.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-tax.ts",
+      "target": "src/lib/stripe/finance-types.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-webhook.ts",
+      "target": "src/lib/stripe/finance-event-evidence.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-webhook.ts",
+      "target": "src/lib/stripe/finance-sync.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-webhook.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/finance-webhook.ts",
+      "target": "src/lib/stripe/finance-customer-webhook.ts"
+    },
+    {
+      "file": "src/lib/stripe/reconciliation.ts",
+      "target": "src/lib/stripe/reliability.ts"
+    },
+    {
+      "file": "src/lib/stripe/reliability.ts",
+      "target": "src/lib/stripe/billing-recovery-entitlement-diagnostics.ts"
+    },
+    {
+      "file": "src/lib/stripe/reliability.ts",
+      "target": "src/lib/stripe/lease-acquisition-timing.ts"
+    },
+    {
+      "file": "src/lib/stripe/reliability.ts",
+      "target": "src/lib/stripe/webhook-observer.ts"
+    },
+    {
+      "file": "src/lib/stripe/reliability.ts",
+      "target": "src/lib/stripe/webhook-observer.ts"
+    },
+    {
+      "file": "src/lib/stripe/reliability.ts",
+      "target": "src/lib/supabase-admin.ts"
+    },
+    {
+      "file": "src/lib/stripe/reliability.ts",
+      "target": "src/lib/stripe/config.ts"
+    },
+    {
+      "file": "src/lib/stripe/reliability.ts",
+      "target": "src/lib/api/responses.ts"
+    },
+    {
+      "file": "src/lib/stripe/reliability.ts",
+      "target": "src/lib/stripe/app-namespace.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook-consumers.ts",
+      "target": "src/lib/stripe/finance-dmi-charge-integration.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook-consumers.ts",
+      "target": "src/lib/stripe/lease-acquisition-timing.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook-consumers.ts",
+      "target": "src/lib/observability/logger.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook-consumers.ts",
+      "target": "src/lib/stripe/webhook-observer.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook-consumers.ts",
+      "target": "src/lib/stripe/finance-runtime-guard.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook-consumers.ts",
+      "target": "src/lib/stripe/webhook.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook-consumers.ts",
+      "target": "src/lib/stripe/config.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook-consumers.ts",
+      "target": "src/lib/supabase-admin.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook-consumers.ts",
+      "target": "src/lib/stripe/finance-store.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook-consumers.ts",
+      "target": "src/lib/stripe/finance-stripe-adapter.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook-consumers.ts",
+      "target": "src/lib/stripe/finance-webhook.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook-consumers.ts",
+      "target": "src/lib/stripe/finance-contract.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook-mode-guard.ts",
+      "target": "src/lib/stripe/billing-work-config.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook.ts",
+      "target": "src/lib/stripe/lease-acquisition-timing.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook.ts",
+      "target": "src/lib/stripe/webhook-observer.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook.ts",
+      "target": "src/lib/stripe/app-namespace.ts"
+    },
+    {
+      "file": "src/lib/stripe/webhook.ts",
+      "target": "src/lib/stripe/reliability.ts"
+    },
+    {
+      "file": "src/app/subscriptions/page.tsx",
+      "target": "src/app/subscriptions/subscriptions.module.css"
+    }
+  ],
+  "application_database_dependencies": [
+    {
+      "file": "src/app/api/admin/subscriptions/route.ts",
+      "objects": [
+        "billing_v2.subscriptions"
+      ]
+    },
+    {
+      "file": "src/app/client/billing/page.tsx",
+      "objects": [
+        "billing_v2.invoices"
+      ]
+    },
+    {
+      "file": "src/app/finance/page.tsx",
+      "objects": [
+        "billing_v2.invoices",
+        "billing_v2.payments",
+        "billing_v2.refunds",
+        "billing_v2.subscriptions"
+      ]
+    },
+    {
+      "file": "src/app/signup/page.tsx",
+      "objects": [
+        "billing_v2.accounts"
+      ]
+    },
+    {
+      "file": "src/app/subscriptions/page.tsx",
+      "objects": [
+        "billing_v2.subscriptions"
+      ]
+    },
+    {
+      "file": "src/components/AdminSignIn.tsx",
+      "objects": [
+        "billing_v2.operations",
+        "billing_v2.subscriptions"
+      ]
+    },
+    {
+      "file": "src/components/ClientLogin.tsx",
+      "objects": [
+        "billing_v2.accounts"
+      ]
+    },
+    {
+      "file": "src/components/Sidebar.tsx",
+      "objects": [
+        "billing_v2.subscriptions"
+      ]
+    },
+    {
+      "file": "src/components/admin/AdminClientsPage.tsx",
+      "objects": [
+        "billing_v2.accounts",
+        "billing_v2.subscriptions"
+      ]
+    },
+    {
+      "file": "src/components/admin/AdminUI.tsx",
+      "objects": [
+        "billing_v2.authority"
+      ]
+    },
+    {
+      "file": "src/components/admin/legacy/LegacyBusinessCards.tsx",
+      "objects": [
+        "billing_v2.accounts"
+      ]
+    },
+    {
+      "file": "src/components/card-builder/ClientCardEditor.tsx",
+      "objects": [
+        "billing_v2.touch"
+      ]
+    },
+    {
+      "file": "src/lib/admin-appearance.ts",
+      "objects": [
+        "billing_v2.subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/admin-auth.ts",
+      "objects": [
+        "billing_v2.subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/admin-client-mutations-server.ts",
+      "objects": [
+        "billing_v2.accounts"
+      ]
+    },
+    {
+      "file": "src/lib/admin-finance-server.ts",
+      "objects": [
+        "billing_v2.accounts",
+        "billing_v2.invoices",
+        "billing_v2.payments",
+        "billing_v2.refunds",
+        "public.admin_finance_report",
+        "public.billing_accounts",
+        "public.billing_finance_activity",
+        "public.billing_finance_subscription_items",
+        "public.billing_finance_subscriptions",
+        "public.billing_invoice_payments",
+        "public.billing_invoices",
+        "public.billing_payments",
+        "public.billing_refunds"
+      ]
+    },
+    {
+      "file": "src/lib/admin-finance-v1-server.ts",
+      "objects": [
+        "billing_v2.refunds",
+        "public.admin_finance_v1_report"
+      ]
+    },
+    {
+      "file": "src/lib/admin-finance-v1.ts",
+      "objects": [
+        "billing_v2.invoices",
+        "billing_v2.refunds"
+      ]
+    },
+    {
+      "file": "src/lib/admin-finance.ts",
+      "objects": [
+        "billing_v2.invoices",
+        "billing_v2.payments",
+        "billing_v2.refunds",
+        "billing_v2.subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/admin-subscriptions-server.ts",
+      "objects": [
+        "billing_v2.subscriptions",
+        "public.billing_finance_subscription_items",
+        "public.billing_finance_subscriptions",
+        "public.billing_subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/api/client-context.ts",
+      "objects": [
+        "public.billing_subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/billing-v2/adapters/postgres.ts",
+      "objects": [
+        "billing_v2.acquire_authority",
+        "billing_v2.admit",
+        "billing_v2.bind_customer",
+        "billing_v2.claim",
+        "billing_v2.complete_finance",
+        "billing_v2.complete_subscription",
+        "billing_v2.diagnose",
+        "billing_v2.mark_attention",
+        "billing_v2.read_result",
+        "billing_v2.release",
+        "billing_v2.touch",
+        "billing_v2.wait_dependency",
+        "billing_v2.wait_retry"
+      ]
+    },
+    {
+      "file": "src/lib/billing-v2/application/synchronizer.ts",
+      "objects": [
+        "billing_v2.invoices",
+        "billing_v2.payment_attempts",
+        "billing_v2.payments",
+        "billing_v2.refunds"
+      ]
+    },
+    {
+      "file": "src/lib/billing-v2/domain/finance-contract.ts",
+      "objects": [
+        "billing_v2.accounts",
+        "billing_v2.authority",
+        "billing_v2.checkout_attempts",
+        "billing_v2.event_inbox",
+        "billing_v2.finance_activity",
+        "billing_v2.finance_subscription_items",
+        "billing_v2.finance_subscriptions",
+        "billing_v2.handover",
+        "billing_v2.invoice_payments",
+        "billing_v2.invoices",
+        "billing_v2.operations",
+        "billing_v2.payment_attempts",
+        "billing_v2.payments",
+        "billing_v2.price_catalog",
+        "billing_v2.refunds",
+        "billing_v2.subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/billing-v2/domain/finance-policy.ts",
+      "objects": [
+        "billing_v2.finance_subscription_items",
+        "billing_v2.finance_subscriptions",
+        "billing_v2.invoice_payments",
+        "billing_v2.invoices",
+        "billing_v2.payment_attempts",
+        "billing_v2.payments",
+        "billing_v2.refunds"
+      ]
+    },
+    {
+      "file": "src/lib/billing-v2/domain/types.ts",
+      "objects": [
+        "billing_v2.finance_activity",
+        "billing_v2.finance_subscription_items",
+        "billing_v2.finance_subscriptions",
+        "billing_v2.invoice_payments",
+        "billing_v2.invoices",
+        "billing_v2.payment_attempts",
+        "billing_v2.payments",
+        "billing_v2.refunds"
+      ]
+    },
+    {
+      "file": "src/lib/billing-v2/tooling/backfill.ts",
+      "objects": [
+        "billing_v2.accounts",
+        "billing_v2.authority",
+        "billing_v2.checkout_attempts",
+        "billing_v2.finance_activity",
+        "billing_v2.invoice_payments",
+        "billing_v2.invoices",
+        "billing_v2.operations",
+        "billing_v2.payments",
+        "billing_v2.price_catalog",
+        "billing_v2.subscriptions",
+        "public.billing_accounts",
+        "public.billing_approved_prices",
+        "public.billing_finance_application_proofs",
+        "public.billing_stripe_applications",
+        "public.billing_stripe_resource_ownership",
+        "public.billing_subscriptions",
+        "public.stripe_webhook_events"
+      ]
+    },
+    {
+      "file": "src/lib/billing-v2/tooling/frozen-export.ts",
+      "objects": [
+        "public.billing_accounts",
+        "public.billing_approved_prices",
+        "public.billing_finance_subscription_items",
+        "public.billing_stripe_applications",
+        "public.billing_stripe_resource_ownership",
+        "public.billing_subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/billing-v2/tooling/staging-seed.ts",
+      "objects": [
+        "billing_v2.accounts",
+        "billing_v2.price_catalog",
+        "billing_v2.seed_begin",
+        "billing_v2.seed_finalize",
+        "billing_v2.seed_page",
+        "billing_v2.seed_privileges",
+        "billing_v2.subscriptions",
+        "public.billing_accounts",
+        "public.billing_approved_prices",
+        "public.billing_finance_subscription_items",
+        "public.billing_stripe_applications",
+        "public.billing_stripe_resource_ownership",
+        "public.billing_subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/card-media-cleanup-server.ts",
+      "objects": [
+        "billing_v2.claim"
+      ]
+    },
+    {
+      "file": "src/lib/email/providers/google.ts",
+      "objects": [
+        "billing_v2.accounts"
+      ]
+    },
+    {
+      "file": "src/lib/email/providers/microsoft.ts",
+      "objects": [
+        "billing_v2.accounts"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/billing-summary.ts",
+      "objects": [
+        "billing_v2.invoices",
+        "billing_v2.subscriptions",
+        "billing_v2.touch",
+        "public.billing_subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/billing-work-admission.ts",
+      "objects": [
+        "public.billing_consumer_work_admit"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-execution.ts",
+      "objects": [
+        "billing_v2.authority",
+        "billing_v2.claim"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/billing-work-auto-runner.ts",
+      "objects": [
+        "billing_v2.authority",
+        "billing_v2.claim",
+        "billing_v2.release"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/billing-work-claim-diagnostics.ts",
+      "objects": [
+        "billing_v2.claim",
+        "public.billing_consumer_worker_claim_entitlement",
+        "public.billing_consumer_worker_claim_entitlement_diagnostic",
+        "public.billing_consumer_worker_settle_entitlement",
+        "public.billing_consumer_worker_settle_entitlement_diagnostic"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/billing-work-handoff.ts",
+      "objects": [
+        "public.billing_consumer_worker_receipt"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/billing-work-recovery.ts",
+      "objects": [
+        "billing_v2.claim"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/billing-work-routing.ts",
+      "objects": [
+        "billing_v2.authority",
+        "public.billing_subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/billing-work-runtime.ts",
+      "objects": [
+        "billing_v2.accounts",
+        "billing_v2.authority",
+        "billing_v2.invoices",
+        "billing_v2.refunds",
+        "billing_v2.subscriptions",
+        "pg_temp.billing_foundation_command",
+        "public.billing_consumer_worker_authority",
+        "public.billing_consumer_worker_dmi_authority",
+        "public.billing_finance_command",
+        "public.billing_finance_complete_foreign",
+        "public.billing_finance_customer_commit_with_proofs",
+        "public.billing_finance_dmi_charge_commit",
+        "public.billing_finance_dmi_invoice_context",
+        "public.billing_finance_partition_command",
+        "public.billing_foundation_command"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/billing-work-store.ts",
+      "objects": [
+        "billing_v2.authority",
+        "billing_v2.claim",
+        "billing_v2.invoices",
+        "public.billing_consumer_worker_authority",
+        "public.billing_consumer_worker_bind",
+        "public.billing_consumer_worker_claim",
+        "public.billing_consumer_worker_claim_dmi",
+        "public.billing_consumer_worker_claim_entitlement",
+        "public.billing_consumer_worker_complete_dmi",
+        "public.billing_consumer_worker_receipt",
+        "public.billing_consumer_worker_settle",
+        "public.billing_consumer_worker_settle_entitlement"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/billing-work-worker.ts",
+      "objects": [
+        "billing_v2.authority",
+        "billing_v2.claim",
+        "billing_v2.invoices"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/checkout-activation.ts",
+      "objects": [
+        "billing_v2.claim",
+        "public.billing_accounts",
+        "public.billing_approved_prices",
+        "public.billing_subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/checkout.ts",
+      "objects": [
+        "billing_v2.authority",
+        "billing_v2.subscriptions",
+        "billing_v2.touch",
+        "public.billing_accounts"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/config.ts",
+      "objects": [
+        "billing_v2.accounts"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-activity.ts",
+      "objects": [
+        "billing_v2.invoices",
+        "billing_v2.refunds",
+        "billing_v2.subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-application-ownership-adapter.ts",
+      "objects": [
+        "public.billing_stripe_applications",
+        "public.billing_stripe_resource_ownership"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-application-ownership.ts",
+      "objects": [
+        "billing_v2.authority"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-charge-ownership-proof.ts",
+      "objects": [
+        "billing_v2.authority",
+        "billing_v2.invoices",
+        "public.billing_invoices"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-contract.ts",
+      "objects": [
+        "billing_v2.accounts",
+        "billing_v2.invoices",
+        "billing_v2.payments",
+        "billing_v2.refunds",
+        "billing_v2.subscriptions",
+        "public.billing_finance_activity",
+        "public.billing_finance_subscription_items",
+        "public.billing_finance_subscriptions",
+        "public.billing_invoice_payments",
+        "public.billing_invoices",
+        "public.billing_payment_attempts",
+        "public.billing_payments",
+        "public.billing_refunds"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-ownership.ts",
+      "objects": [
+        "billing_v2.invoices",
+        "billing_v2.payments",
+        "billing_v2.refunds",
+        "billing_v2.subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-relationship-adapter.ts",
+      "objects": [
+        "billing_v2.authority",
+        "billing_v2.invoices",
+        "billing_v2.payments",
+        "billing_v2.refunds",
+        "billing_v2.subscriptions",
+        "public.billing_finance_subscriptions",
+        "public.billing_invoices",
+        "public.billing_payments",
+        "public.billing_refunds"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-relationships.ts",
+      "objects": [
+        "billing_v2.invoices",
+        "billing_v2.payments",
+        "billing_v2.refunds",
+        "billing_v2.subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-validation.ts",
+      "objects": [
+        "billing_v2.claim"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-customer-webhook.ts",
+      "objects": [
+        "billing_v2.authority",
+        "billing_v2.release"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-dmi-charge-integration.ts",
+      "objects": [
+        "billing_v2.authority",
+        "public.billing_finance_dmi_invoice_context",
+        "public.billing_invoice_payments",
+        "public.billing_payments"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-invoice-proof-producer.ts",
+      "objects": [
+        "billing_v2.authority",
+        "billing_v2.invoices"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-partition-protocol.ts",
+      "objects": [
+        "billing_v2.claim"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-reconciliation-guard.ts",
+      "objects": [
+        "billing_v2.authority"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-store.ts",
+      "objects": [
+        "billing_v2.authority",
+        "billing_v2.claim",
+        "billing_v2.invoices",
+        "billing_v2.payments",
+        "billing_v2.refunds",
+        "billing_v2.subscriptions",
+        "public.billing_accounts",
+        "public.billing_finance_command",
+        "public.billing_finance_complete_foreign",
+        "public.billing_finance_customer_commit_with_proofs",
+        "public.billing_finance_dmi_charge_commit",
+        "public.billing_finance_partition_command",
+        "public.billing_finance_sync_runs"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-stripe-adapter.ts",
+      "objects": [
+        "billing_v2.accounts",
+        "billing_v2.invoices",
+        "billing_v2.refunds",
+        "billing_v2.subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-sync.ts",
+      "objects": [
+        "billing_v2.claim",
+        "billing_v2.invoices",
+        "billing_v2.payments",
+        "billing_v2.refunds",
+        "billing_v2.release",
+        "billing_v2.subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-tax.ts",
+      "objects": [
+        "billing_v2.invoices"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/finance-webhook.ts",
+      "objects": [
+        "billing_v2.claim"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/lease-acquisition-timing.ts",
+      "objects": [
+        "billing_v2.release"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/reconciliation.ts",
+      "objects": [
+        "billing_v2.subscriptions",
+        "public.billing_subscriptions",
+        "public.billing_sync_runs"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/reliability.ts",
+      "objects": [
+        "billing_v2.claim",
+        "billing_v2.release",
+        "billing_v2.subscriptions",
+        "pg_temp.billing_foundation_command",
+        "public.billing_approved_prices",
+        "public.billing_foundation_command",
+        "public.billing_subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/webhook-consumers.ts",
+      "objects": [
+        "billing_v2.claim",
+        "billing_v2.release"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/webhook-observer.ts",
+      "objects": [
+        "billing_v2.claim",
+        "billing_v2.release"
+      ]
+    },
+    {
+      "file": "src/lib/stripe/webhook.ts",
+      "objects": [
+        "billing_v2.claim",
+        "billing_v2.subscriptions",
+        "public.billing_subscriptions"
+      ]
+    },
+    {
+      "file": "src/lib/system-health/investigation-prompt.ts",
+      "objects": [
+        "billing_v2.release",
+        "billing_v2.touch"
+      ]
+    },
+    {
+      "file": "src/lib/system-health/payment-notification-probe.ts",
+      "objects": [
+        "public.stripe_webhook_events"
+      ]
+    },
+    {
+      "file": "src/lib/template-layouts.ts",
+      "objects": [
+        "billing_v2.release"
+      ]
+    }
+  ],
+  "scheduling_config": [
+    ".github/workflows/staging-system-health-monitor.yml",
+    "vercel.json"
+  ],
+  "before": {
+    "billing_runtime_files": 107,
+    "billing_runtime_physical_loc": 12525,
+    "billing_scripts_tests_specs_files": 95,
+    "billing_scripts_tests_specs_physical_loc": 20471,
+    "billing_migrations": 28,
+    "billing_migration_physical_loc": 6277,
+    "billing_api_routes": 14,
+    "billing_db_tables_represented": 39,
+    "v1_billing_tables": 24,
+    "v2_tables": 15,
+    "total_dedicated_billing_physical_loc": 39273
+  },
+  "deletion_manifest": {
+    "whole_folders": [
+      "src/lib/billing-v2/",
+      "specs/billing-simplification/"
+    ],
+    "individual_runtime_files": [
+      "src/app/api/admin/billing/reconcile/route.ts",
+      "src/app/api/admin/finance/route.ts",
+      "src/app/api/internal/billing-work-auto/route.ts",
+      "src/app/api/internal/billing-work/route.ts",
+      "src/app/api/stripe/checkout/route.ts",
+      "src/app/api/v1/billing/activation/route.ts",
+      "src/app/api/v1/billing/checkout/route.ts",
+      "src/app/api/v1/billing/subscription/cancel/route.ts",
+      "src/app/api/v1/billing/subscription/resume/route.ts",
+      "src/app/client/billing/activating/page.tsx",
+      "src/app/finance/finance.module.css",
+      "src/lib/admin-finance-server.ts",
+      "src/lib/admin-finance-v1-server.ts",
+      "src/lib/admin-finance-v1.ts",
+      "src/lib/admin-finance.ts",
+      "src/lib/admin-subscriptions.ts",
+      "src/lib/billing-activation-poller.ts",
+      "src/lib/checkout-startup-timing.ts",
+      "src/lib/embedded-checkout-client.ts",
+      "src/lib/embedded-stripe-loader.ts",
+      "src/lib/stripe/app-namespace.ts",
+      "src/lib/stripe/billing-latency-diagnostics.ts",
+      "src/lib/stripe/billing-recovery-entitlement-diagnostics.ts",
+      "src/lib/stripe/billing-state.ts",
+      "src/lib/stripe/billing-summary.ts",
+      "src/lib/stripe/billing-work-admission.ts",
+      "src/lib/stripe/billing-work-auto-config.ts",
+      "src/lib/stripe/billing-work-auto-execution.ts",
+      "src/lib/stripe/billing-work-auto-kick.ts",
+      "src/lib/stripe/billing-work-auto-request.ts",
+      "src/lib/stripe/billing-work-auto-runner.ts",
+      "src/lib/stripe/billing-work-claim-diagnostics.ts",
+      "src/lib/stripe/billing-work-config.ts",
+      "src/lib/stripe/billing-work-evidence.ts",
+      "src/lib/stripe/billing-work-handoff.ts",
+      "src/lib/stripe/billing-work-recovery.ts",
+      "src/lib/stripe/billing-work-routing.ts",
+      "src/lib/stripe/billing-work-runtime.ts",
+      "src/lib/stripe/billing-work-store.ts",
+      "src/lib/stripe/billing-work-worker.ts",
+      "src/lib/stripe/checkout-activation.ts",
+      "src/lib/stripe/checkout.ts",
+      "src/lib/stripe/embedded-checkout-config.ts",
+      "src/lib/stripe/embedded-checkout-response.ts",
+      "src/lib/stripe/finance-activity.ts",
+      "src/lib/stripe/finance-application-ownership-adapter.ts",
+      "src/lib/stripe/finance-application-ownership.ts",
+      "src/lib/stripe/finance-charge-ownership-proof.ts",
+      "src/lib/stripe/finance-contract.ts",
+      "src/lib/stripe/finance-contractual.ts",
+      "src/lib/stripe/finance-customer-ownership.ts",
+      "src/lib/stripe/finance-customer-relationship-adapter.ts",
+      "src/lib/stripe/finance-customer-relationships.ts",
+      "src/lib/stripe/finance-customer-routing.ts",
+      "src/lib/stripe/finance-customer-validation.ts",
+      "src/lib/stripe/finance-customer-webhook.ts",
+      "src/lib/stripe/finance-dmi-charge-integration.ts",
+      "src/lib/stripe/finance-event-evidence.ts",
+      "src/lib/stripe/finance-foreign-event.ts",
+      "src/lib/stripe/finance-invoice-proof-config.ts",
+      "src/lib/stripe/finance-invoice-proof-producer.ts",
+      "src/lib/stripe/finance-metrics.ts",
+      "src/lib/stripe/finance-normalize.ts",
+      "src/lib/stripe/finance-partition-protocol.ts",
+      "src/lib/stripe/finance-reconciliation-guard.ts",
+      "src/lib/stripe/finance-reconciliation.ts",
+      "src/lib/stripe/finance-routing-evidence.ts",
+      "src/lib/stripe/finance-runtime-guard.ts",
+      "src/lib/stripe/finance-store.ts",
+      "src/lib/stripe/finance-stripe-adapter.ts",
+      "src/lib/stripe/finance-sync.ts",
+      "src/lib/stripe/finance-tax.ts",
+      "src/lib/stripe/finance-types.ts",
+      "src/lib/stripe/finance-webhook.ts",
+      "src/lib/stripe/lease-acquisition-timing.ts",
+      "src/lib/stripe/reconciliation.ts",
+      "src/lib/stripe/reliability.ts",
+      "src/lib/stripe/webhook-consumers.ts",
+      "src/lib/stripe/webhook-observer.ts",
+      "src/lib/stripe/webhook.ts",
+      "src/app/subscriptions/subscriptions.module.css"
+    ],
+    "individual_scripts": [
+      "scripts/billing-claim-diagnostic-contract.mjs",
+      "scripts/billing-embedded-checkout-contract.mjs",
+      "scripts/billing-latency-contract.mjs",
+      "scripts/billing-recovery-diagnostic-contract.mjs",
+      "scripts/billing-work-auto-contract.mjs",
+      "scripts/fixtures/finance-v1.mjs",
+      "scripts/fixtures/finance-webhook-2023.mjs",
+      "scripts/lib/finance-normalization-diagnostic.mjs",
+      "scripts/lib/stripe-webhook-mode.mjs",
+      "scripts/validate-admin-finance-v1.mjs",
+      "scripts/validate-admin-finance.mjs",
+      "scripts/validate-admin-subscriptions.mjs",
+      "scripts/validate-billing-activation.mjs",
+      "scripts/validate-billing-claim-diagnostics.mjs",
+      "scripts/validate-billing-consumer-work.mjs",
+      "scripts/validate-billing-dmi-completion.mjs",
+      "scripts/validate-billing-entitlement-dependency.mjs",
+      "scripts/validate-billing-latency.mjs",
+      "scripts/validate-billing-lease-retry.mjs",
+      "scripts/validate-billing-lease-timing.mjs",
+      "scripts/validate-billing-recovery-diagnostics.mjs",
+      "scripts/validate-billing-recovery-selector.mjs",
+      "scripts/validate-billing-stripe-wrapper.mjs",
+      "scripts/validate-billing-work-auto.mjs",
+      "scripts/validate-billing-work-evidence.mjs",
+      "scripts/validate-billing-work-handoff.mjs",
+      "scripts/validate-billing-work-worker.mjs",
+      "scripts/validate-checkout-startup.mjs",
+      "scripts/validate-embedded-checkout.mjs",
+      "scripts/validate-finance-adapter.mjs",
+      "scripts/validate-finance-application-ownership.mjs",
+      "scripts/validate-finance-charge-ownership-proof.mjs",
+      "scripts/validate-finance-compatibility.mjs",
+      "scripts/validate-finance-consumer.mjs",
+      "scripts/validate-finance-customer-commit.mjs",
+      "scripts/validate-finance-customer-ownership.mjs",
+      "scripts/validate-finance-customer-routing.mjs",
+      "scripts/validate-finance-customer-validation.mjs",
+      "scripts/validate-finance-dmi-charge-integration.mjs",
+      "scripts/validate-finance-foreign-events.mjs",
+      "scripts/validate-finance-foundation.mjs",
+      "scripts/validate-finance-invoice-application-proofs.mjs",
+      "scripts/validate-finance-invoice-proof-commit.mjs",
+      "scripts/validate-finance-invoice-proof-config.mjs",
+      "scripts/validate-finance-legacy-protocol.mjs",
+      "scripts/validate-finance-mode-runtime.mjs",
+      "scripts/validate-finance-normalization-diagnostic.mjs",
+      "scripts/validate-finance-partition-foundation.mjs",
+      "scripts/validate-finance-partition-protocol.mjs",
+      "scripts/validate-finance-postgres.mjs",
+      "scripts/validate-finance-reconciliation-protocol.mjs",
+      "scripts/validate-finance-routing-adapter.mjs",
+      "scripts/validate-finance-tax.mjs",
+      "scripts/validate-finance-transitions.mjs",
+      "scripts/validate-finance-v1-reporting-postgres.mjs",
+      "scripts/validate-finance-writer.mjs",
+      "scripts/validate-stripe-billing-foundation.mjs",
+      "scripts/validate-stripe-reliability-postgres.mjs",
+      "scripts/validate-stripe-reliability.mjs",
+      "scripts/validate-stripe-webhook-mode.mjs",
+      "scripts/validate-stripe-webhook-orchestration.mjs",
+      "scripts/validate-webhook-observer.mjs",
+      "scripts/validate-system-health-payment-notifications.mjs"
+    ],
+    "replace_in_place": [
+      "src/app/api/admin/subscriptions/route.ts",
+      "src/app/api/stripe/portal/route.ts",
+      "src/app/api/stripe/webhook/route.ts",
+      "src/app/api/v1/billing/checkout/embedded/route.ts",
+      "src/app/api/v1/billing/subscription/route.ts",
+      "src/app/client/billing/page.tsx",
+      "src/app/client/billing/pay/PaymentClient.tsx",
+      "src/app/client/billing/pay/page.tsx",
+      "src/app/finance/page.tsx",
+      "src/app/subscriptions/page.tsx",
+      "src/components/EmbeddedPayment.tsx",
+      "src/lib/admin-subscriptions-server.ts",
+      "src/lib/stripe/client-identity.ts",
+      "src/lib/stripe/config.ts",
+      "src/lib/stripe/webhook-mode-guard.ts"
+    ],
+    "preserve_and_adapt_shared": [
+      "src/lib/api/client-context.ts",
+      "src/lib/system-health/monitoring.ts",
+      "src/lib/system-health/payment-notification-probe.ts",
+      "src/middleware.ts",
+      "package.json",
+      "scripts/validate-canonical-portal-entitlement.mjs",
+      "scripts/validate-admin-cards-templates-shared-ui.mjs",
+      "scripts/validate-admin-clients-shared-ui.mjs",
+      "scripts/validate-admin-ui.mjs",
+      "scripts/validate-admin-simple-pages.mjs",
+      "scripts/validate-system-health-monitoring.mjs"
+    ],
+    "preserve_unchanged": [
+      "src/lib/entitlements/",
+      "src/lib/entitlements/plan-resolver.ts",
+      "vercel.json",
+      ".github/workflows/staging-system-health-monitor.yml",
+      "public/dmi-cards-logo.svg",
+      "supabase/migrations/ (all historical migrations retained)",
+      "All non-billing scripts; shared health/admin/business validators require scoped edits, never wholesale deletion."
+    ],
+    "protected_non_billing_objects": [
+      "public.profiles",
+      "public.clients",
+      "public.client_users",
+      "public.cards",
+      "public.business_onboardings",
+      "public.business_workspaces",
+      "public.business_entitlements",
+      "public.business_entitlement_events",
+      "public.set_updated_at",
+      "public.assign_card_slot"
+    ]
+  },
+  "shared_validation_dependencies": [
+    "scripts/fixtures/admin-clients-staging-schema.json",
+    "scripts/validate-admin-cards-templates-shared-ui.mjs",
+    "scripts/validate-admin-clients-shared-ui.mjs",
+    "scripts/validate-admin-shell.mjs",
+    "scripts/validate-admin-simple-pages.mjs",
+    "scripts/validate-admin-ui.mjs",
+    "scripts/validate-canonical-portal-entitlement.mjs"
+  ],
+  "approved_rewrite_files": [
+    "docs/simple-billing/CLEANUP-OBJECTS.json",
+    "docs/simple-billing/INVENTORY.json",
+    "docs/simple-billing/MEASUREMENTS.json",
+    "docs/simple-billing/PLAN.md",
+    "docs/simple-billing/PR-DESCRIPTION.md",
+    "docs/simple-billing/README.md",
+    "package.json",
+    "scripts/billing-claim-diagnostic-contract.mjs",
+    "scripts/billing-embedded-checkout-contract.mjs",
+    "scripts/billing-latency-contract.mjs",
+    "scripts/billing-recovery-diagnostic-contract.mjs",
+    "scripts/billing-work-auto-contract.mjs",
+    "scripts/fixtures/finance-v1.mjs",
+    "scripts/fixtures/finance-webhook-2023.mjs",
+    "scripts/lib/finance-normalization-diagnostic.mjs",
+    "scripts/lib/stripe-webhook-mode.mjs",
+    "scripts/validate-admin-cards-templates-shared-ui.mjs",
+    "scripts/validate-admin-clients-shared-ui.mjs",
+    "scripts/validate-admin-finance-v1.mjs",
+    "scripts/validate-admin-finance.mjs",
+    "scripts/validate-admin-simple-pages.mjs",
+    "scripts/validate-admin-subscriptions.mjs",
+    "scripts/validate-admin-ui.mjs",
+    "scripts/validate-billing-activation.mjs",
+    "scripts/validate-billing-claim-diagnostics.mjs",
+    "scripts/validate-billing-consumer-work.mjs",
+    "scripts/validate-billing-dmi-completion.mjs",
+    "scripts/validate-billing-entitlement-dependency.mjs",
+    "scripts/validate-billing-latency.mjs",
+    "scripts/validate-billing-lease-retry.mjs",
+    "scripts/validate-billing-lease-timing.mjs",
+    "scripts/validate-billing-recovery-diagnostics.mjs",
+    "scripts/validate-billing-recovery-selector.mjs",
+    "scripts/validate-billing-stripe-wrapper.mjs",
+    "scripts/validate-billing-work-auto.mjs",
+    "scripts/validate-billing-work-evidence.mjs",
+    "scripts/validate-billing-work-handoff.mjs",
+    "scripts/validate-billing-work-worker.mjs",
+    "scripts/validate-canonical-portal-entitlement.mjs",
+    "scripts/validate-checkout-startup.mjs",
+    "scripts/validate-embedded-checkout.mjs",
+    "scripts/validate-finance-adapter.mjs",
+    "scripts/validate-finance-application-ownership.mjs",
+    "scripts/validate-finance-charge-ownership-proof.mjs",
+    "scripts/validate-finance-compatibility.mjs",
+    "scripts/validate-finance-consumer.mjs",
+    "scripts/validate-finance-customer-commit.mjs",
+    "scripts/validate-finance-customer-ownership.mjs",
+    "scripts/validate-finance-customer-routing.mjs",
+    "scripts/validate-finance-customer-validation.mjs",
+    "scripts/validate-finance-dmi-charge-integration.mjs",
+    "scripts/validate-finance-foreign-events.mjs",
+    "scripts/validate-finance-foundation.mjs",
+    "scripts/validate-finance-invoice-application-proofs.mjs",
+    "scripts/validate-finance-invoice-proof-commit.mjs",
+    "scripts/validate-finance-invoice-proof-config.mjs",
+    "scripts/validate-finance-legacy-protocol.mjs",
+    "scripts/validate-finance-mode-runtime.mjs",
+    "scripts/validate-finance-normalization-diagnostic.mjs",
+    "scripts/validate-finance-partition-foundation.mjs",
+    "scripts/validate-finance-partition-protocol.mjs",
+    "scripts/validate-finance-postgres.mjs",
+    "scripts/validate-finance-reconciliation-protocol.mjs",
+    "scripts/validate-finance-routing-adapter.mjs",
+    "scripts/validate-finance-tax.mjs",
+    "scripts/validate-finance-transitions.mjs",
+    "scripts/validate-finance-v1-reporting-postgres.mjs",
+    "scripts/validate-finance-writer.mjs",
+    "scripts/validate-simple-billing-cleanup.mjs",
+    "scripts/validate-simple-billing-postgres.mjs",
+    "scripts/validate-simple-billing.mjs",
+    "scripts/validate-stripe-billing-foundation.mjs",
+    "scripts/validate-stripe-reliability-postgres.mjs",
+    "scripts/validate-stripe-reliability.mjs",
+    "scripts/validate-stripe-webhook-mode.mjs",
+    "scripts/validate-stripe-webhook-orchestration.mjs",
+    "scripts/validate-system-health-monitoring.mjs",
+    "scripts/validate-system-health-payment-notifications.mjs",
+    "scripts/validate-webhook-observer.mjs",
+    "specs/billing-simplification/local/README.md",
+    "specs/billing-simplification/local/boundary.mjs",
+    "specs/billing-simplification/local/equivalence.mjs",
+    "specs/billing-simplification/local/hosted-ownership.mjs",
+    "specs/billing-simplification/local/implementation.json",
+    "specs/billing-simplification/local/load.mjs",
+    "specs/billing-simplification/local/postgres.mjs",
+    "specs/billing-simplification/local/validate.mjs",
+    "specs/billing-simplification/phase1/README.md",
+    "specs/billing-simplification/phase1/baseline.json",
+    "specs/billing-simplification/phase1/behavior.json",
+    "specs/billing-simplification/phase1/comparison.mjs",
+    "specs/billing-simplification/phase1/current-system.mjs",
+    "specs/billing-simplification/phase1/fixtures.json",
+    "specs/billing-simplification/phase1/schema.json",
+    "specs/billing-simplification/phase1/validate.mjs",
+    "specs/billing-simplification/phase2/README.md",
+    "specs/billing-simplification/phase2/baseline.json",
+    "specs/billing-simplification/phase2/interfaces.d.ts",
+    "specs/billing-simplification/phase2/plan.json",
+    "specs/billing-simplification/phase2/rpc.json",
+    "specs/billing-simplification/phase2/schema.json",
+    "specs/billing-simplification/phase2/validate.mjs",
+    "specs/billing-simplification/shadow/README.md",
+    "specs/billing-simplification/shadow/catalog-companion-fixtures.mjs",
+    "specs/billing-simplification/shadow/catalog-companion.mjs",
+    "specs/billing-simplification/shadow/catalog-companion.schema.json",
+    "specs/billing-simplification/shadow/contract.json",
+    "specs/billing-simplification/shadow/export-fixtures.mjs",
+    "specs/billing-simplification/shadow/frozen-export.mjs",
+    "specs/billing-simplification/shadow/postgres.mjs",
+    "specs/billing-simplification/shadow/validate-export.mjs",
+    "specs/billing-simplification/shadow/validate.mjs",
+    "src/app/api/admin/billing/reconcile/route.ts",
+    "src/app/api/admin/finance/route.ts",
+    "src/app/api/admin/subscriptions/route.ts",
+    "src/app/api/internal/billing-work-auto/route.ts",
+    "src/app/api/internal/billing-work/route.ts",
+    "src/app/api/stripe/checkout/route.ts",
+    "src/app/api/stripe/portal/route.ts",
+    "src/app/api/stripe/webhook/route.ts",
+    "src/app/api/v1/billing/activation/route.ts",
+    "src/app/api/v1/billing/checkout/embedded/route.ts",
+    "src/app/api/v1/billing/checkout/route.ts",
+    "src/app/api/v1/billing/complete/route.ts",
+    "src/app/api/v1/billing/subscription/cancel/route.ts",
+    "src/app/api/v1/billing/subscription/resume/route.ts",
+    "src/app/api/v1/billing/subscription/route.ts",
+    "src/app/client/billing/activating/page.tsx",
+    "src/app/client/billing/complete/page.tsx",
+    "src/app/client/billing/page.tsx",
+    "src/app/client/billing/pay/PaymentClient.tsx",
+    "src/app/client/billing/pay/page.tsx",
+    "src/app/finance/finance.module.css",
+    "src/app/finance/page.tsx",
+    "src/app/subscriptions/page.tsx",
+    "src/app/subscriptions/subscriptions.module.css",
+    "src/components/EmbeddedPayment.tsx",
+    "src/lib/admin-finance-server.ts",
+    "src/lib/admin-finance-v1-server.ts",
+    "src/lib/admin-finance-v1.ts",
+    "src/lib/admin-finance.ts",
+    "src/lib/admin-subscriptions-server.ts",
+    "src/lib/admin-subscriptions.ts",
+    "src/lib/api/client-context.ts",
+    "src/lib/billing-activation-poller.ts",
+    "src/lib/billing-v2/adapters/postgres.ts",
+    "src/lib/billing-v2/application/synchronizer.ts",
+    "src/lib/billing-v2/domain/checkout-observation.ts",
+    "src/lib/billing-v2/domain/finance-contract.ts",
+    "src/lib/billing-v2/domain/finance-policy.ts",
+    "src/lib/billing-v2/domain/subscription-policy.ts",
+    "src/lib/billing-v2/domain/types.ts",
+    "src/lib/billing-v2/shadow/comparison.ts",
+    "src/lib/billing-v2/tooling/backfill.ts",
+    "src/lib/billing-v2/tooling/frozen-export.ts",
+    "src/lib/billing-v2/tooling/staging-seed.ts",
+    "src/lib/checkout-startup-timing.ts",
+    "src/lib/embedded-checkout-client.ts",
+    "src/lib/embedded-stripe-loader.ts",
+    "src/lib/stripe/app-namespace.ts",
+    "src/lib/stripe/billing-latency-diagnostics.ts",
+    "src/lib/stripe/billing-recovery-entitlement-diagnostics.ts",
+    "src/lib/stripe/billing-state.ts",
+    "src/lib/stripe/billing-summary.ts",
+    "src/lib/stripe/billing-work-admission.ts",
+    "src/lib/stripe/billing-work-auto-config.ts",
+    "src/lib/stripe/billing-work-auto-execution.ts",
+    "src/lib/stripe/billing-work-auto-kick.ts",
+    "src/lib/stripe/billing-work-auto-request.ts",
+    "src/lib/stripe/billing-work-auto-runner.ts",
+    "src/lib/stripe/billing-work-claim-diagnostics.ts",
+    "src/lib/stripe/billing-work-config.ts",
+    "src/lib/stripe/billing-work-evidence.ts",
+    "src/lib/stripe/billing-work-handoff.ts",
+    "src/lib/stripe/billing-work-recovery.ts",
+    "src/lib/stripe/billing-work-routing.ts",
+    "src/lib/stripe/billing-work-runtime.ts",
+    "src/lib/stripe/billing-work-store.ts",
+    "src/lib/stripe/billing-work-worker.ts",
+    "src/lib/stripe/checkout-activation.ts",
+    "src/lib/stripe/checkout.ts",
+    "src/lib/stripe/client-identity.ts",
+    "src/lib/stripe/config.ts",
+    "src/lib/stripe/embedded-checkout-config.ts",
+    "src/lib/stripe/embedded-checkout-response.ts",
+    "src/lib/stripe/finance-activity.ts",
+    "src/lib/stripe/finance-application-ownership-adapter.ts",
+    "src/lib/stripe/finance-application-ownership.ts",
+    "src/lib/stripe/finance-charge-ownership-proof.ts",
+    "src/lib/stripe/finance-contract.ts",
+    "src/lib/stripe/finance-contractual.ts",
+    "src/lib/stripe/finance-customer-ownership.ts",
+    "src/lib/stripe/finance-customer-relationship-adapter.ts",
+    "src/lib/stripe/finance-customer-relationships.ts",
+    "src/lib/stripe/finance-customer-routing.ts",
+    "src/lib/stripe/finance-customer-validation.ts",
+    "src/lib/stripe/finance-customer-webhook.ts",
+    "src/lib/stripe/finance-dmi-charge-integration.ts",
+    "src/lib/stripe/finance-event-evidence.ts",
+    "src/lib/stripe/finance-foreign-event.ts",
+    "src/lib/stripe/finance-invoice-proof-config.ts",
+    "src/lib/stripe/finance-invoice-proof-producer.ts",
+    "src/lib/stripe/finance-metrics.ts",
+    "src/lib/stripe/finance-normalize.ts",
+    "src/lib/stripe/finance-partition-protocol.ts",
+    "src/lib/stripe/finance-reconciliation-guard.ts",
+    "src/lib/stripe/finance-reconciliation.ts",
+    "src/lib/stripe/finance-routing-evidence.ts",
+    "src/lib/stripe/finance-runtime-guard.ts",
+    "src/lib/stripe/finance-store.ts",
+    "src/lib/stripe/finance-stripe-adapter.ts",
+    "src/lib/stripe/finance-sync.ts",
+    "src/lib/stripe/finance-tax.ts",
+    "src/lib/stripe/finance-types.ts",
+    "src/lib/stripe/finance-webhook.ts",
+    "src/lib/stripe/lease-acquisition-timing.ts",
+    "src/lib/stripe/reconciliation.ts",
+    "src/lib/stripe/reliability.ts",
+    "src/lib/stripe/simple-billing.ts",
+    "src/lib/stripe/webhook-consumers.ts",
+    "src/lib/stripe/webhook-mode-guard.ts",
+    "src/lib/stripe/webhook-observer.ts",
+    "src/lib/stripe/webhook.ts",
+    "src/lib/system-health/monitoring.ts",
+    "src/lib/system-health/payment-notification-probe.ts",
+    "src/middleware.ts",
+    "supabase/cleanup/retire_legacy_billing.review.sql",
+    "supabase/migrations/20261030000100_account_billing.sql"
+  ],
+  "scheduling_details": {
+    "vercel": {
+      "crons": [
+        {
+          "path": "/api/internal/card-media-cleanup",
+          "schedule": "*/15 * * * *"
+        }
+      ]
+    },
+    "github_staging_monitor": "*/5 * * * * \u2192 /api/internal/system-health-monitor (generic, retained)",
+    "qstash": "No repository schedule definition. External billing schedule unchanged; its old destination routes are removed locally. Future hosted retirement requires separate operator action."
+  }
+}

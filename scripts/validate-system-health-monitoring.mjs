@@ -105,7 +105,8 @@ for (const service of [
   assert.match(runner, new RegExp(`serviceKey: "${service}"[\\s\\S]*?run: async \\(\\) => unknown\\(`));
 }
 assert.match(runner, /serviceKey: "stripe_webhook_processing"[\s\S]*?checkPaymentNotifications\(/);
-assert.match(runner, /createMonitoringDatabaseClient\(signal\), process\.env\.STRIPE_ACCOUNT_SCOPE, signal/);
+assert.match(runner, /run: \(\) => checkPaymentNotifications\(\)/);
+assert.doesNotMatch(await read('src/lib/system-health/payment-notification-probe.ts'), /stripe_webhook_events|\.from\(|STRIPE_ACCOUNT_SCOPE/);
 assert.match(runner, /status: "unknown"/);
 assert.doesNotMatch(runner, /status:\s*"incident"/);
 assert.match(coreSource, /case "unknown":[\s\S]*?counts\.unknown\+\+/);

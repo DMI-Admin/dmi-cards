@@ -1,66 +1,21 @@
-"use client";
-
-import { useEffect, useRef, useState } from "react";
-import { createEmbeddedStripeLoader, type EmbeddedStripeLoader } from "@/lib/embedded-stripe-loader";
-import type { StripeEmbeddedCheckout } from "@stripe/stripe-js";
-import { activationReturnUrl } from "@/lib/embedded-checkout-client";
-import { checkoutStartupObserver, checkoutStartupTiming } from "@/lib/checkout-startup-timing";
-
-export default function EmbeddedPayment({ sessionId, clientSecret, publishableKey, startupDiagnostics = false, stripeLoader }: {
-  sessionId: string; clientSecret: string; publishableKey: string; startupDiagnostics?: boolean; stripeLoader?: EmbeddedStripeLoader;
-}) {
-  const container = useRef<HTMLDivElement>(null);
-  const loader = useRef<EmbeddedStripeLoader | null>(stripeLoader ?? null);
-  const lifecycle = useRef<Promise<void>>(Promise.resolve());
-  const [status, setStatus] = useState<"loading" | "mounted" | "error">("loading");
-  useEffect(() => {
-    let disposed = false;
-    const observe = checkoutStartupObserver(startupDiagnostics);
-    const time = checkoutStartupTiming(observe);
-    let checkout: StripeEmbeddedCheckout | undefined;
-    const destroy = () => { try { checkout?.destroy(); } catch { /* Teardown is best-effort; never log SDK data. */ } checkout = undefined; };
-    // Reuse the page's in-flight load. Resumed Sessions without early capability
-    // retain loading after their guarded response. Serialize SDK teardown/init.
-    lifecycle.current = lifecycle.current.then(async () => {
-      try {
-        if (disposed) return;
-        const started = performance.now();
-        loader.current ??= createEmbeddedStripeLoader(publishableKey, observe);
-        if (loader.current.publishableKey !== publishableKey) throw new Error("Unavailable");
-        const stripe = await loader.current.promise;
-        if (disposed) return;
-        if (!stripe) throw new Error("Unavailable");
-        let rendered = false;
-        checkout = await time("embedded_initialize", () => stripe.createEmbeddedCheckoutPage({
-          clientSecret,
-          ...(observe ? { onAnalyticsEvent: (event: { eventType: string }) => {
-            try {
-            if (!disposed && !rendered && event.eventType === "checkoutRendered") {
-              rendered = true;
-              observe("form_ready", performance.now() - started);
-            }
-            } catch { /* A diagnostic signal cannot affect checkout. */ }
-          } } : {}),
-          onComplete: () => {
-            if (!disposed) window.location.assign(activationReturnUrl(sessionId));
-          },
-        }));
-        if (disposed) { destroy(); return; }
-        if (!container.current) throw new Error("Unavailable");
-        const mountStarted = performance.now();
-        checkout.mount(container.current);
-        observe?.("embedded_mount", performance.now() - mountStarted);
-        setStatus("mounted");
-      } catch {
-        destroy();
-        if (!disposed) setStatus("error");
-      }
-    });
-    return () => { disposed = true; destroy(); };
-  }, [sessionId, clientSecret, publishableKey, startupDiagnostics, stripeLoader]);
-  return <div>
-    {status === "loading" && <p role="status" className="mb-5 text-sm text-[var(--dmi-muted)]">Loading secure payment…</p>}
-    {status === "error" && <p role="alert" className="mb-5 text-sm text-[var(--dmi-muted)]">Secure payment could not load. Return to Billing, then reopen your checkout to try again.</p>}
-    <div ref={container} className={status === "error" ? "hidden" : "min-h-96"} />
-  </div>;
+'use client';
+import {useEffect,useRef,useState} from 'react';
+import {loadStripe} from '@stripe/stripe-js/pure';
+import type {StripeEmbeddedCheckout} from '@stripe/stripe-js';
+export default function EmbeddedPayment({sessionId,clientSecret,publishableKey}:{sessionId:string;clientSecret:string;publishableKey:string}){
+ const container=useRef<HTMLDivElement>(null),[error,setError]=useState(false);
+ useEffect(()=>{
+  let disposed=false,checkout:StripeEmbeddedCheckout|undefined;
+  void (async()=>{
+   try{
+    const stripe=await loadStripe(publishableKey);if(disposed)return;
+    if(!stripe)throw Error('Payment unavailable');
+    checkout=await stripe.createEmbeddedCheckoutPage({clientSecret,onComplete:()=>{if(!disposed)window.location.assign(`/client/billing/complete?session_id=${encodeURIComponent(sessionId)}`);}});
+    if(disposed){checkout.destroy();return;}
+    if(container.current)checkout.mount(container.current);
+   }catch{if(!disposed)setError(true);}
+  })();
+  return()=>{disposed=true;checkout?.destroy();};
+ },[sessionId,clientSecret,publishableKey]);
+ return <>{error&&<p role="alert">Secure payment could not load. Return to Billing to continue.</p>}<div ref={container} className="min-h-96"/></>;
 }

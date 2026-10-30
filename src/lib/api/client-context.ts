@@ -3,13 +3,13 @@ import "server-only";
 import { createClient, type User } from "@supabase/supabase-js";
 import {
   defaultClientPlan,
+  getEntitlementsForPlan,
   normalizeDmiPlan,
   type DmiEntitlementSet,
   type DmiFeature,
   type DmiPlan,
 } from "@/lib/entitlements";
 import { ApiRouteError } from "@/lib/api/responses";
-import { entitlementsForTrustedBillingState } from "@/lib/stripe/billing-state";
 
 export type ApiClientProfile = {
   id: string;
@@ -27,7 +27,7 @@ export type ApiClientContext = {
   plan: DmiPlan;
   planSource: "stripe_billing" | "temporary_free_cap";
   entitlements: DmiEntitlementSet;
-  billing: { status: string | null; cancelAtPeriodEnd: boolean; currentPeriodEnd: string | null };
+  billing: { status: string | null; cancelAtPeriodEnd: boolean; currentPeriodEnd: string | null; seatQuantity: number; hasCustomer: boolean };
 };
 
 type ApiProfileRow = {
@@ -41,13 +41,6 @@ type ApiProfileRow = {
   plan?: string | null;
 };
 
-type ApiBillingSubscriptionRow = {
-  stripe_subscription_status?: string | null;
-  stripe_price_id?: string | null;
-  updated_at?: string | null;
-  cancel_at_period_end?: boolean | null;
-  current_period_end?: string | null;
-};
 
 export async function requireApiClient(request: Request): Promise<ApiClientContext> {
   const accessToken = bearerTokenFromRequest(request);
@@ -110,7 +103,7 @@ export async function requireApiClient(request: Request): Promise<ApiClientConte
     plan: billingState.plan,
     planSource: billingState.source,
     entitlements: billingState.entitlements,
-    billing: { status: billingState.subscriptionStatus, cancelAtPeriodEnd: billingState.cancelAtPeriodEnd, currentPeriodEnd: billingState.currentPeriodEnd },
+    billing: { status: billingState.subscriptionStatus, cancelAtPeriodEnd: billingState.cancelAtPeriodEnd, currentPeriodEnd: billingState.currentPeriodEnd, seatQuantity: billingState.seatQuantity, hasCustomer: billingState.hasCustomer },
   };
 }
 
@@ -164,38 +157,18 @@ export async function resolveTrustedApiBillingState(
   supabase: ReturnType<typeof createApiSupabaseClient>,
   userId: string
 ) {
-  const { data, error } = await supabase
-    .from("billing_subscriptions")
-    .select("stripe_subscription_status, stripe_price_id, updated_at, cancel_at_period_end, current_period_end")
-    .eq("user_id", userId)
-    .order("updated_at", { ascending: false })
-    .limit(10);
-
-  if (error) {
-    console.error("[DMI api] billing subscription lookup failed", {
-      userId,
-      code: error.code,
-    });
-
-    throw new ApiRouteError(
-      500,
-      "INTERNAL_ERROR",
-      "Could not load the authenticated client billing state."
-    );
-  }
-
-  const rows = (data || []) as ApiBillingSubscriptionRow[];
-  const states = rows.map((row) => entitlementsForTrustedBillingState({
-    status: row.stripe_subscription_status,
-    priceId: row.stripe_price_id,
-  }));
-  const paidIndex = states.findIndex((state) => state.plan !== defaultClientPlan);
-  const selectedIndex = paidIndex >= 0 ? paidIndex : 0;
+  const {data,error} = await supabase.from("account_billing")
+    .select("plan,status,current_period_end,cancel_at_period_end,seat_quantity,stripe_customer_id,stripe_subscription_id")
+    .eq("account_id",userId).maybeSingle();
+  if(error)throw new ApiRouteError(503,"INTERNAL_ERROR","Could not load billing state.");
+  const plan: DmiPlan = data && data.stripe_customer_id && data.stripe_subscription_id && ["active","trialing","past_due"].includes(data.status)
+    && ["pro","enterprise"].includes(data.plan) ? data.plan : "free";
   return {
-    ...(states[selectedIndex] || entitlementsForTrustedBillingState({ status: null, priceId: null })),
-    subscriptionStatus: rows[selectedIndex]?.stripe_subscription_status || null,
-    cancelAtPeriodEnd: Boolean(rows[selectedIndex]?.cancel_at_period_end),
-    currentPeriodEnd: rows[selectedIndex]?.current_period_end || null,
+    plan, entitlements:getEntitlementsForPlan(plan),
+    source: data?.stripe_subscription_id ? "stripe_billing" as const : "temporary_free_cap" as const,
+    subscriptionStatus:data?.status ?? null, cancelAtPeriodEnd:data?.cancel_at_period_end ?? false,
+    currentPeriodEnd:data?.current_period_end ?? null, seatQuantity:data?.seat_quantity ?? 1,
+    hasCustomer:Boolean(data?.stripe_customer_id),
   };
 }
 

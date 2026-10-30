@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "validate:pkpass": "node scripts/validate-pkpass.mjs",
-    "validate:stripe-billing": "node scripts/validate-stripe-billing-foundation.mjs"
+    "validate:billing": "node scripts/validate-simple-billing.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.3.2",

@@ -67,9 +67,7 @@ const systemHealthChecks: MonitorCheckDefinition[] = [
   {
     serviceKey: "stripe_webhook_processing",
     checkKey: "operational_evidence",
-    run: (signal) => checkPaymentNotifications(
-      createMonitoringDatabaseClient(signal), process.env.STRIPE_ACCOUNT_SCOPE, signal
-    ),
+    run: () => checkPaymentNotifications(),
   },
   {
     serviceKey: "billing_reconciliation",

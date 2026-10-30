@@ -1,38 +1,12 @@
-"use client";
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import AdminShell from "@/components/admin/AdminShell";
-import { AdminPageHeader, AdminKpiCard, AdminStatusBadge } from "@/components/admin/AdminUI";
-import { subscriptionDate, subscriptionEndLabel, type SubscriptionInventory } from "@/lib/admin-subscriptions";
-import styles from "./subscriptions.module.css";
-
-export default function SubscriptionsPage() {
-  const [data,setData]=useState<SubscriptionInventory|null>(null);
-  const [filters,setFilters]=useState({search:"",plan:"",status:"",interval:"",page:1});
-  const [draft,setDraft]=useState("");
-  const [loading,setLoading]=useState(true), [error,setError]=useState(""), [retry,setRetry]=useState(0);
-  function changeFilters(update: (current: typeof filters) => typeof filters) { setLoading(true); setError(""); setFilters(update); }
-  useEffect(()=>{
-    const controller=new AbortController(); let active=true;
-    void (async()=>{try {
-      const response=await fetch(`/api/admin/subscriptions?${new URLSearchParams({...filters,page:String(filters.page)})}`,{cache:"no-store",credentials:"same-origin",signal:controller.signal});
-      if(!response.ok) throw Error("Subscriptions could not be loaded.");
-      const result=await response.json(); if(active)setData(result);
-    }catch{if(active){setError("Subscriptions could not be loaded. Please retry.");setData(null);}}finally{if(active)setLoading(false);}})();
-    return()=>{active=false;controller.abort();};
-  },[filters,retry]);
-  return <AdminShell>
-    <section className={styles.page}>
-      <AdminPageHeader title="Subscriptions" subtitle="Monitor customer subscriptions, plans and renewals." />
-      <div className={styles.kpis}>{([['Total Paying','paying'],['Active','active'],['Cancelling','cancelling'],['Past Due','pastDue'],['Monthly','monthly'],['Annual','annual']] as const).map(([label,key])=><AdminKpiCard key={key} label={label} value={loading?'…':data?.summary[key]??'—'} />)}</div>
-      <form className={styles.filters} onSubmit={e=>{e.preventDefault();changeFilters(x=>({...x,search:draft.trim(),page:1}));}}>
-        <label className={styles.search}>Client or email<input className={styles.control} value={draft} maxLength={100} onChange={e=>setDraft(e.target.value)}/></label>
-        {(['plan','status','interval'] as const).map(key=><label key={key}>{key==='interval'?'Billing':key==='plan'?'Plan':'Status'}<select className={styles.control} value={filters[key]} onChange={e=>changeFilters(x=>({...x,[key]:e.target.value,page:1}))}><option value="">All</option>{(data?.[key==='plan'?'plans':key==='status'?'statuses':'intervals']||[]).map(v=><option key={v}>{v}</option>)}</select></label>)}
-        <button className={styles.button} type="submit">Search</button>
-      </form>
-      {error&&<div role="alert" className={styles.error}>{error} <button onClick={()=>{setLoading(true);setError("");setRetry(x=>x+1);}} className={styles.action}>Retry</button></div>}
-      {loading?<p role="status" className={styles.state}>Loading subscriptions…</p>:data&&<div className={styles.surface}><div className={styles.tableViewport}><table className={styles.inventory}><caption className="sr-only">Subscriptions, newest mirrors first</caption><thead><tr>{['Client','Email','Plan','Status','Billing','Configured recurring unit price','Current period started','Next renewal / Current period end','Cards','Actions'].map(x=><th scope="col" key={x}>{x}</th>)}</tr></thead><tbody>{data.items.map(r=><tr key={r.id}><td data-label="Client" className={styles.client}>{r.name}</td><td data-label="Email" className={styles.email}>{r.email||'Not recorded'}</td><td data-label="Plan">{r.plan}</td><td data-label="Status" className={styles.status}><AdminStatusBadge label={r.status} /></td><td data-label="Billing">{r.interval}</td><td data-label="Configured recurring unit price">{r.price}{r.price!=="Unavailable"&&<small className={styles.priceContext}>{r.quantity ? `Per unit · Qty ${r.quantity}` : "Per unit"}</small>}</td><td data-label="Current period started">{subscriptionDate(r.periodStart)}</td><td data-label="Next renewal / Current period end">{subscriptionEndLabel(r)}<small className={styles.priceContext}>{r.renewal==='renewal'?'Next renewal':r.renewal==='ending'?'Scheduled end':'Current period end'}</small></td><td data-label="Cards">{r.cards}</td><td data-label="Actions">{r.clientLinked?<Link className={styles.action} href="/clients/individual">View client</Link>:<span className="text-xs text-[var(--dmi-muted)]">Client linkage unavailable</span>}</td></tr>)}</tbody></table>{!data.items.length&&<p className={styles.state}>No subscriptions found{filters.search||filters.plan||filters.status||filters.interval?' for these filters':''}.</p>}</div>
-      <nav aria-label="Subscriptions pagination" className={styles.pagination}><button disabled={data.page<=1} className={styles.button} onClick={()=>changeFilters(x=>({...x,page:data.page-1}))}>Previous</button><span>{data.total} subscriptions · Page {data.page} of {Math.max(1,Math.ceil(data.total/data.pageSize))}</span><button disabled={data.page*data.pageSize>=data.total} className={styles.button} onClick={()=>changeFilters(x=>({...x,page:data.page+1}))}>Next</button></nav></div>}
-    </section>
-  </AdminShell>;
+'use client';
+import AdminShell from '@/components/admin/AdminShell';
+import {useEffect,useState} from 'react';
+type Row={account_id:string;plan:string;status:string;seat_quantity:number;current_period_end:string|null;cancel_at_period_end:boolean};
+export default function Subscriptions(){
+ const [rows,setRows]=useState<Row[]>([]),[page,setPage]=useState(1),[error,setError]=useState(false);
+ useEffect(()=>{let active=true;void fetch(`/api/admin/subscriptions?page=${page}`,{cache:'no-store'}).then(async r=>{if(!r.ok)throw Error('Unavailable');return r.json();}).then(r=>{if(active){setRows(r.items);setError(false);}}).catch(()=>{if(active)setError(true);});return()=>{active=false;};},[page]);
+ return <AdminShell><section className="p-8"><h1 className="text-3xl font-bold">Subscriptions</h1><p className="my-4">Current DMI access. Financial history is authoritative in Stripe.</p>
+  {error?<p role="alert">Subscription inventory is unavailable.</p>:<div className="overflow-x-auto"><table className="w-full text-left"><thead><tr>{['Account','Plan','Stripe status','Seats','Period end'].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{rows.map(r=><tr key={r.account_id}><td className="p-3">{r.account_id}</td><td>{r.plan}</td><td>{r.status}{r.cancel_at_period_end?' (ending)':''}</td><td>{r.seat_quantity}</td><td>{r.current_period_end?new Date(r.current_period_end).toLocaleDateString('en-GB'):'—'}</td></tr>)}</tbody></table></div>}
+  <div className="mt-6 flex gap-6"><button disabled={page===1} onClick={()=>setPage(p=>p-1)}>Previous</button><span>Page {page}</span><button disabled={rows.length<50} onClick={()=>setPage(p=>p+1)}>Next</button></div>
+ </section></AdminShell>;
 }

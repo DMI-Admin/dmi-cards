@@ -1,0 +1,627 @@
+{
+  "functions": [
+    {
+      "schema": "billing_v2",
+      "name": "acquire_authority",
+      "args": "scope text, domain text, account_id uuid, operation_kind text, operation_id uuid, operation_token uuid, claim_generation bigint"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "admit",
+      "args": "scope text, source_kind text, source_id text, evidence jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "append_audit",
+      "args": "scope text, operation_kind text, source_id text, facts jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "apply_rows",
+      "args": "rows jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "assert_fence",
+      "args": "fence jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "backfill_page",
+      "args": "scope text, run_id uuid, source_checkpoint jsonb, page jsonb, expected_cursor_digest text"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "bind_customer",
+      "args": "fence jsonb, principal_kind text, principal_id uuid, customer_ref text, expected_binding_revision bigint, verification jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "checkpoint_run",
+      "args": "scope text, run_id uuid, expected_cursor_digest text, page_tasks jsonb, next_cursor jsonb, coverage jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "claim",
+      "args": "scope text, task_kind text"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "complete_finance",
+      "args": "fence jsonb, expected_revisions jsonb, bundle jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "complete_subscription",
+      "args": "fence jsonb, expected_revision bigint, decision jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "defer_task",
+      "args": "fence jsonb, target_state text, category text, dependency jsonb, retry_after_seconds integer"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "diagnose",
+      "args": "scope text, task_kind text"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "enqueue_reconciliation",
+      "args": "scope text, run_id uuid, resource text, observed_revision text, evidence jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "finish_task",
+      "args": "fence jsonb, result text, revision bigint, digest text"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "guard_completion",
+      "args": ""
+    },
+    {
+      "schema": "billing_v2",
+      "name": "guard_immutable",
+      "args": ""
+    },
+    {
+      "schema": "billing_v2",
+      "name": "handover",
+      "args": "scope text, domain text, account_id uuid, expected_generation bigint, from_engine text, to_engine text, checkpoint_digest text"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "mark_attention",
+      "args": "fence jsonb, category text"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "prepare_checkout",
+      "args": "scope text, account_id uuid, frozen_intent jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "read_result",
+      "args": "scope text, task_id uuid"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "reclaim_expired",
+      "args": "scope text, task_kind text"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "record_checkout",
+      "args": "scope text, attempt_id uuid, fence jsonb, result jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "record_comparison",
+      "args": "scope text, run_id uuid, source_id text, comparison jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "release",
+      "args": "fence jsonb, reason text"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "seed_begin",
+      "args": "manifest jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "seed_canonical",
+      "args": "value jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "seed_digest",
+      "args": "value jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "seed_finalize",
+      "args": "generation uuid"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "seed_guard",
+      "args": ""
+    },
+    {
+      "schema": "billing_v2",
+      "name": "seed_inert",
+      "args": ""
+    },
+    {
+      "schema": "billing_v2",
+      "name": "seed_page",
+      "args": "generation uuid, page_index integer, checkpoint jsonb, rows jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "seed_privileges",
+      "args": ""
+    },
+    {
+      "schema": "billing_v2",
+      "name": "seed_verify",
+      "args": "generation uuid"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "touch",
+      "args": "fence jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "valid_document",
+      "args": "kind text, document jsonb"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "valid_forecast_anchors",
+      "args": "e jsonb, scope text, subscription text, item text, price text, currency text, quantity bigint, interval_value text, interval_count integer, tax_behavior text, verified_at timestamp with time zone"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "valid_tax_evidence",
+      "args": "e jsonb, forecast boolean"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "wait_dependency",
+      "args": "fence jsonb, dependency jsonb, expected_revision bigint"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "wait_retry",
+      "args": "fence jsonb, category text, retry_after_seconds integer"
+    },
+    {
+      "schema": "billing_v2",
+      "name": "wake_dependencies",
+      "args": "scope text, task_kind text, dependency_kind text, reference text, limit_count integer"
+    },
+    {
+      "schema": "public",
+      "name": "admin_finance_report",
+      "args": "p_scope text, p_as_of timestamp with time zone, p_period_start timestamp with time zone, p_period_end timestamp with time zone"
+    },
+    {
+      "schema": "public",
+      "name": "admin_finance_v1_report",
+      "args": "p_scope text, p_as_of timestamp with time zone, p_periods jsonb, p_list text, p_after text, p_limit integer"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_work_admit",
+      "args": "p_scope text, p_event text, p_consumer text, p_input jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_work_bind",
+      "args": "p_scope text, p_event text, p_consumer text, p_kind text, p_key text, p_basis text"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_work_claim",
+      "args": "p_scope text, p_consumer text, p_limit integer"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_work_evidence",
+      "args": "p jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_work_evidence_v2",
+      "args": "p jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_work_immutable",
+      "args": ""
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_work_shape",
+      "args": "v jsonb, s jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_work_subscription",
+      "args": "p_evidence jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_work_update",
+      "args": "p_action text, p_scope text, p_event text, p_consumer text, p_input jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_authority",
+      "args": "p_scope text, p_event text, p_consumer text, p_context jsonb, p_action text, p_user uuid, p_token uuid, p_input jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_bind",
+      "args": "p_scope text, p_event text, p_consumer text, p_context jsonb, p_key text"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_claim",
+      "args": "p_scope text, p_consumer text, p_event text"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_claim_core",
+      "args": "p_scope text, p_consumer text, p_event text"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_claim_dmi",
+      "args": "p_scope text, p_consumer text"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_claim_entitlement",
+      "args": "p_scope text, p_consumer text"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_claim_entitlement_core",
+      "args": "p_scope text, p_consumer text"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_claim_entitlement_diagnostic",
+      "args": "p_scope text, p_consumer text"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_complete_dmi",
+      "args": "p_scope text, p_event text, p_context jsonb, p_invoices jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_dmi_authority",
+      "args": "p_scope text, p_event text, p_consumer text, p_context jsonb, p_action text, p_customer text, p_token uuid, p_input jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_entitlement_due_bound",
+      "args": "p_scope text"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_guard",
+      "args": "p_scope text, p_event text, p_consumer text, p_context jsonb, p_settlement boolean"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_ignored",
+      "args": "p_consumer text, p_type text"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_receipt",
+      "args": "p_scope text, p_event text, p_consumer text"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_settle",
+      "args": "p_scope text, p_event text, p_consumer text, p_context jsonb, p_action text, p_input jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_settle_entitlement",
+      "args": "p_scope text, p_event text, p_consumer text, p_context jsonb, p_action text, p_input jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_consumer_worker_settle_entitlement_diagnostic",
+      "args": "p_scope text, p_event text, p_consumer text, p_context jsonb, p_action text, p_input jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_command",
+      "args": "p_action text, p_scope text, p_token uuid, p_input jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_complete_foreign",
+      "args": "p_scope text, p_event text, p_token uuid, p_epoch bigint, p_evidence jsonb, p_proofs jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_customer_apply_bundle",
+      "args": "p_scope text, p_input jsonb, p_stamp timestamp with time zone"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_customer_bundle_owner",
+      "args": "p_scope text, p_customer text, p_bundle jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_customer_commit_with_proofs",
+      "args": "p_scope text, p_customer text, p_token uuid, p_input jsonb, p_candidates jsonb, p_authority jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_customer_resource_owner",
+      "args": "p_scope text, p_customer text, p_bundle jsonb, p_kind text, p_id text, p_depth integer"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_dmi_charge_commit",
+      "args": "p_scope text, p_customer text, p_token uuid, p_input jsonb, p_proof jsonb, p_candidates jsonb, p_authority jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_dmi_invoice_context",
+      "args": "p_scope text, p_invoice text"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_foreign_evidence",
+      "args": "p_scope text, p_evidence jsonb, p_proofs jsonb, p_depth integer"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_invoice_proof_append",
+      "args": "p_scope text, p_invoice text, p_input jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_invoice_proof_guard",
+      "args": ""
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_invoice_proof_read",
+      "args": "p_scope text, p_invoice text"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_invoice_proof_shape",
+      "args": "p_state text, p_reason text, p_complete boolean, p_count integer, p_lines jsonb, p_refs jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_partition_command",
+      "args": "p_action text, p_scope text, p_customer text, p_token uuid, p_input jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_protocol_transition_guard",
+      "args": ""
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_receipt_partition_guard",
+      "args": ""
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_suspend_run",
+      "args": "p_scope text, p_run uuid, p_expected_epoch bigint"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_tax_evidence_valid",
+      "args": "e jsonb, forecast boolean"
+    },
+    {
+      "schema": "public",
+      "name": "billing_finance_transition",
+      "args": "p_scope text, p_expected_mode text, p_expected_epoch bigint, p_target_mode text"
+    },
+    {
+      "schema": "public",
+      "name": "billing_foundation_command",
+      "args": "p_action text, p_scope text, p_user uuid, p_token uuid, p_input jsonb"
+    },
+    {
+      "schema": "public",
+      "name": "billing_stripe_ownership_audit_guard",
+      "args": ""
+    },
+    {
+      "schema": "public",
+      "name": "billing_stripe_ownership_guard",
+      "args": ""
+    },
+    {
+      "schema": "public",
+      "name": "billing_stripe_register_ownership",
+      "args": "p_scope text, p_type text, p_id text, p_app text, p_basis text, p_provenance text, p_review text, p_authority text"
+    },
+    {
+      "schema": "public",
+      "name": "billing_stripe_revoke_ownership",
+      "args": "p_scope text, p_type text, p_id text, p_revision bigint, p_review text, p_authority text"
+    }
+  ],
+  "tables": [
+    "billing_v2.accounts",
+    "billing_v2.authority",
+    "billing_v2.checkout_attempts",
+    "billing_v2.event_inbox",
+    "billing_v2.finance_activity",
+    "billing_v2.finance_subscription_items",
+    "billing_v2.finance_subscriptions",
+    "billing_v2.invoice_payments",
+    "billing_v2.invoices",
+    "billing_v2.operations",
+    "billing_v2.payment_attempts",
+    "billing_v2.payments",
+    "billing_v2.price_catalog",
+    "billing_v2.refunds",
+    "billing_v2.subscriptions",
+    "public.billing_accounts",
+    "public.billing_approved_prices",
+    "public.billing_consumer_work",
+    "public.billing_consumer_work_partitions",
+    "public.billing_consumer_work_routing",
+    "public.billing_finance_activity",
+    "public.billing_finance_application_proofs",
+    "public.billing_finance_event_deliveries",
+    "public.billing_finance_protocol_control",
+    "public.billing_finance_subscription_items",
+    "public.billing_finance_subscriptions",
+    "public.billing_finance_sync_runs",
+    "public.billing_finance_sync_state",
+    "public.billing_invoice_payments",
+    "public.billing_invoices",
+    "public.billing_payment_attempts",
+    "public.billing_payments",
+    "public.billing_refunds",
+    "public.billing_stripe_applications",
+    "public.billing_stripe_ownership_audit",
+    "public.billing_stripe_resource_ownership",
+    "public.billing_subscriptions",
+    "public.billing_sync_runs",
+    "public.stripe_webhook_events"
+  ],
+  "triggers": [
+    {
+      "schema": "billing_v2",
+      "table_name": "accounts",
+      "name": "immutable_fields"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "authority",
+      "name": "immutable_fields"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "checkout_attempts",
+      "name": "immutable_fields"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "event_inbox",
+      "name": "completed_task_audit"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "event_inbox",
+      "name": "immutable_fields"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "finance_activity",
+      "name": "immutable_fields"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "finance_subscription_items",
+      "name": "immutable_fields"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "finance_subscriptions",
+      "name": "immutable_fields"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "invoice_payments",
+      "name": "immutable_fields"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "invoices",
+      "name": "immutable_fields"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "operations",
+      "name": "immutable_fields"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "operations",
+      "name": "seed_manifest_immutable"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "payment_attempts",
+      "name": "immutable_fields"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "payments",
+      "name": "immutable_fields"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "price_catalog",
+      "name": "immutable_fields"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "refunds",
+      "name": "immutable_fields"
+    },
+    {
+      "schema": "billing_v2",
+      "table_name": "subscriptions",
+      "name": "immutable_fields"
+    },
+    {
+      "schema": "public",
+      "table_name": "billing_consumer_work",
+      "name": "billing_consumer_work_immutable"
+    },
+    {
+      "schema": "public",
+      "table_name": "billing_finance_application_proofs",
+      "name": "billing_finance_invoice_proof_guard"
+    },
+    {
+      "schema": "public",
+      "table_name": "billing_finance_event_deliveries",
+      "name": "billing_finance_receipt_partition_guard"
+    },
+    {
+      "schema": "public",
+      "table_name": "billing_finance_protocol_control",
+      "name": "billing_finance_protocol_transition_guard"
+    },
+    {
+      "schema": "public",
+      "table_name": "billing_stripe_ownership_audit",
+      "name": "billing_stripe_ownership_audit_guard"
+    },
+    {
+      "schema": "public",
+      "table_name": "billing_stripe_resource_ownership",
+      "name": "billing_stripe_ownership_guard"
+    }
+  ]
+}
