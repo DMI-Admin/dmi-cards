@@ -4,9 +4,10 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 const source=fs.readFileSync('src/lib/stripe/simple-billing.ts','utf8');
+class BillingConfigurationError extends Error {}
 const loaded={exports:{}};
 const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-vm.runInNewContext(js,{module:loaded,exports:loaded.exports,require:()=>({}),console,Date,Set,Error,process:{env:{}}});
+vm.runInNewContext(js,{module:loaded,exports:loaded.exports,require:()=>({BillingConfigurationError}),console,Date,Set,Error,process:{env:{}}});
 const {billingService,BillingUnavailable}=loaded.exports;
 const user='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222';
 const metadata={dmi_app:'dmi_cards',dmi_user_id:user};
@@ -73,7 +74,7 @@ function route(file){
  const loaded={exports:{}};
  vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module:loaded,exports:loaded.exports,Request,Response,URL,console:{warn:(...args)=>warnings.push(args)},process:{env:{NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:'pk_test_offline'}},require:name=>{
   if(name==='next/server')return {NextResponse:{json}};
-  if(name.endsWith('/config'))return{constructStripeWebhookEvent:({payload,signature})=>sdk.webhooks.constructEvent(payload,signature,secret)};
+  if(name.endsWith('/config'))return{BillingConfigurationError,constructStripeWebhookEvent:({payload,signature})=>sdk.webhooks.constructEvent(payload,signature,secret)};
   if(name.endsWith('/webhook-mode-guard'))return modeModule.exports;
   if(name.endsWith('/simple-billing'))return{...moduleService,isTransientBillingFailure:error=>moduleService.isTransientBillingFailure(error),simpleBilling:()=>{serviceAccess++;return makeService();}};
   if(name.endsWith('/client-identity'))return{requireBillingIdentity:async r=>{if(r.headers.get('Authorization')!=='Bearer offline')throw Error('Unauthorized');return{userId:user};}};
@@ -149,7 +150,7 @@ await test('Enterprise subscription is blocked by provider inventory before self
  await assert.rejects(service().checkout(user,'monthly',other));assert.ok(!calls.some(c=>c[0]==='checkout'));
 });
 // Exercise the real default storage/auth adapter, including SQLSTATE/HTTP error classification.
-function adapterService({authError=null,readError=null,writeError=null,status=200}={}){
+function adapterService({authError=null,readError=null,writeError=null,status=200,env={}}={}){
  const db={auth:{admin:{getUserById:async()=>({data:{user:authError?null:{id:user}},error:authError})}},from:()=>({
   select:()=>({eq:()=>({maybeSingle:async()=>({data:null,error:readError,status})})}),
   upsert:async()=>({error:writeError,status}),
@@ -157,13 +158,24 @@ function adapterService({authError=null,readError=null,writeError=null,status=20
  const adapter={exports:{}};
  vm.runInNewContext(js,{module:adapter,exports:adapter.exports,require:name=>{
   if(name.endsWith('/supabase-admin'))return{createSupabaseAdminClient:()=>db};
-  if(name==='./config')return{getStripeServerClient:()=>stripe};return{};
- },Date,Set,Error,console,process:{env:{VERCEL_ENV:'preview',VERCEL_TARGET_ENV:'staging',VERCEL_PROJECT_ID:'prj_FPTsXDokhm5uSDMaxieuo5Cmp0Rn',NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:'pk_test_fixture',STRIPE_SECRET_KEY:'sk_test_fixture',STRIPE_PRICE_PRO_MONTHLY:'price_month',STRIPE_PRICE_PRO_ANNUAL:'price_year',STRIPE_PRODUCT_ENTERPRISE:'prod_enterprise'}}});
+  if(name==='./config')return{getStripeServerClient:()=>stripe,BillingConfigurationError};return{};
+ },Date,Set,Error,console,process:{env:{VERCEL_ENV:'preview',VERCEL_TARGET_ENV:'staging',VERCEL_PROJECT_ID:'prj_FPTsXDokhm5uSDMaxieuo5Cmp0Rn',NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:'pk_test_fixture',STRIPE_SECRET_KEY:'sk_test_fixture',STRIPE_PRICE_PRO_MONTHLY:'price_month',STRIPE_PRICE_PRO_ANNUAL:'price_year',STRIPE_PRODUCT_ENTERPRISE:'prod_enterprise',...env}}});
  // Return the corresponding classifier too: error classes belong to this VM module.
  return {create:()=>adapter.exports.simpleBilling(),classify:adapter.exports.isTransientBillingFailure};
 }
 for(const [label,options,expected] of [
  ['unknown user',{authError:{status:404}},200],
+ ['missing monthly price',{env:{STRIPE_PRICE_PRO_MONTHLY:undefined}},503],
+ ['missing annual price',{env:{STRIPE_PRICE_PRO_ANNUAL:undefined}},503],
+ ['invalid price syntax',{env:{STRIPE_PRICE_PRO_MONTHLY:'not-a-price'}},503],
+ ['identical Pro prices',{env:{STRIPE_PRICE_PRO_ANNUAL:'price_month'}},503],
+ ['missing publishable key',{env:{NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:undefined}},503],
+ ['wrong publishable mode',{env:{NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:'pk_live_fixture'}},503],
+ ['invalid secret key',{env:{STRIPE_SECRET_KEY:'invalid'}},503],
+ ['missing secret key',{env:{STRIPE_SECRET_KEY:undefined}},503],
+ ['wrong secret key mode',{env:{STRIPE_SECRET_KEY:'sk_live_fixture'}},503],
+ ['wrong project',{env:{VERCEL_PROJECT_ID:'other'}},503],
+ ['wrong environment',{env:{VERCEL_TARGET_ENV:'preview'}},503],
  ['auth rate limit',{authError:{status:429}},503],
  ['auth unavailable',{authError:{status:503}},503],
  ['database connection',{readError:{code:'08006'},status:503},503],
@@ -172,12 +184,42 @@ for(const [label,options,expected] of [
  ['database write timeout',{writeError:{code:'57014'},status:500},503],
  ['database FK rejection',{writeError:{code:'23503'},status:409},200],
  ['database binding conflict',{writeError:{code:'23505'},status:409},200],
- ['database permission rejection',{readError:{code:'42501'},status:403},200],
+ ['database permission configuration',{readError:{code:'42501'},status:403},503],
+ ['missing migration configuration',{readError:{code:'42P01'},status:404},503],
 ])await test('real adapter '+label+' returns '+expected,async()=>{
  const adapter=adapterService(options),original=moduleService.isTransientBillingFailure;
  makeService=adapter.create;moduleService.isTransientBillingFailure=adapter.classify;
  try{const r=await signedWebhook();assert.equal(r.status,expected);if(expected===200)assert.equal((await r.json()).handled,false);assert.equal(rows.size,0);}
  finally{makeService=service;moduleService.isTransientBillingFailure=original;}
+});
+await test('untrusted runtime returns 503 before service/database access with sanitized warning',async()=>{
+ const original=modeModule.exports.stripeWebhookModeDecision;serviceAccess=0;warnings.length=0;
+ modeModule.exports.stripeWebhookModeDecision=mode=>original(mode,{});
+ try{assert.equal((await signedWebhook()).status,503);assert.equal(serviceAccess,0);assert.equal(rows.size,0);assert.equal(warnings[0][1].reason,'billing_configuration');}
+ finally{modeModule.exports.stripeWebhookModeDecision=original;}
+});
+for(const type of ['StripeAuthenticationError','StripePermissionError'])await test(type+' is retryable configuration, not a permanent event rejection',async()=>{
+ const original=stripe.subscriptions.retrieve;stripe.subscriptions.retrieve=async()=>{throw {type,message:'sensitive'};};warnings.length=0;
+ try{assert.equal((await signedWebhook()).status,503);assert.equal(rows.size,0);assert.equal(warnings[0][1].reason,'billing_configuration');}
+ finally{stripe.subscriptions.retrieve=original;}
+});
+await test('missing price config logs only fixed configuration warning and performs no writes',async()=>{
+ const adapter=adapterService({env:{STRIPE_PRICE_PRO_MONTHLY:undefined}});makeService=adapter.create;warnings.length=0;
+ try{assert.equal((await signedWebhook()).status,503);assert.equal(rows.size,0);assert.equal(JSON.stringify(warnings),'[["[DMI billing] webhook configuration unavailable",{"reason":"billing_configuration"}]]');}
+ finally{makeService=service;}
+});
+// Actual signature/key configuration module, offline SDK only.
+await test('missing Stripe/signing keys are configuration errors, not invalid signatures',async()=>{
+ const config={exports:{}},env={STRIPE_SECRET_KEY:'sk_test_fixture',STRIPE_WEBHOOK_SECRET:secret};
+ vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/lib/stripe/config.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module:config,exports:config.exports,require:name=>name==='stripe'?{default:Stripe}:{},process:{env}});
+ const payload=JSON.stringify({livemode:false}),signature=sdk.webhooks.generateTestHeaderString({payload,secret});
+ assert.ok(config.exports.constructStripeWebhookEvent({payload,signature}));
+ for(const key of ['STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET']){
+  const value=env[key];delete env[key];
+  try{assert.throws(()=>config.exports.constructStripeWebhookEvent({payload,signature}),e=>e instanceof config.exports.BillingConfigurationError);}
+  finally{env[key]=value;}
+ }
+ assert.throws(()=>config.exports.constructStripeWebhookEvent({payload,signature:'invalid'}),e=>!(e instanceof config.exports.BillingConfigurationError));
 });
 for(const path of ['src/app/api/stripe/portal/route.ts','src/app/api/v1/billing/checkout/embedded/route.ts','src/app/api/v1/billing/complete/route.ts'])await test('authentication precedes provider work: '+path,async()=>{serviceAccess=0;assert.equal((await route(path).POST(new Request('https://fixture.invalid',{method:'POST',body:'{}'}))).status,401);assert.equal(serviceAccess,0);});
 await test('checkout API rejects arbitrary price/customer fields before Stripe',async()=>{serviceAccess=0;const r=await route('src/app/api/v1/billing/checkout/embedded/route.ts').POST(new Request('https://fixture.invalid',{method:'POST',headers:{Authorization:'Bearer offline','Content-Type':'application/json'},body:JSON.stringify({interval:'monthly',requestId:other,price:'price_enterprise',customer:'cus_other'})}));assert.equal(r.status,400);assert.equal(serviceAccess,0);});

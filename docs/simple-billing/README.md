@@ -57,7 +57,9 @@ the DMI logo, button colour and supported font keep Embedded Checkout branded.
   validation failures return 200 with handled=false and a fixed sanitized warning;
   no exception text or identifiers are logged. The referenced DMI user must exist.
   Transient Stripe API/transport/rate-limit or database/auth-storage failures return
-  503 for Stripe retry. Inspect Stripe delivery history; no local recovery engine.
+  503 for Stripe retry. Runtime/key/Pro-price configuration failures also return
+  503 with a fixed configuration warning so delivery can succeed after repair.
+  Inspect Stripe delivery history; no local recovery engine.
 - Wrong seats: inspect Enterprise Subscription quantity and the latest webhook.
 
 ## Local checks and later rollout

@@ -1,7 +1,7 @@
 import "server-only";
 import type Stripe from "stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
-import { getStripeServerClient } from "./config";
+import { getStripeServerClient, BillingConfigurationError } from "./config";
 import type { DmiPlan } from "@/lib/entitlements";
 
 export type AccountBilling = {
@@ -31,12 +31,13 @@ export function isTransientBillingFailure(error: unknown) {
 }
 function storageFailure(error: {code?: string}, status: number) {
   if (status === 429 || status >= 500 || !error.code || /^(08|53|58|57P)/.test(error.code) || ['40001','40P01','PGRST000','PGRST001','PGRST002','PGRST003'].includes(error.code)) throw new BillingUnavailable();
-  throw new BillingRejection();
+  if (error.code.startsWith('23')) throw new BillingRejection();
+  throw new BillingConfigurationError();
 }
 
 // A small injectable boundary for offline tests, not a second sync implementation.
 export function billingService(stripe: Stripe, store: Store, prices: Prices, origin: string, live: boolean) {
-  if (!prices.monthly || !prices.annual || prices.monthly === prices.annual) throw new BillingRejection();
+  if (![prices.monthly,prices.annual].every(p=>/^price_[A-Za-z0-9]+$/.test(p)) || prices.monthly === prices.annual) throw new BillingConfigurationError();
   const owned = (metadata: Stripe.Metadata | null, account: string) => metadata?.dmi_app === 'dmi_cards' && metadata.dmi_user_id === account;
   async function customer(account: string, customerId: string, allowDeleted = false) {
     const c = await stripe.customers.retrieve(customerId);
@@ -148,8 +149,9 @@ export function simpleBilling() {
   const env = process.env;
   const live = env.VERCEL_ENV === 'production' && env.VERCEL_TARGET_ENV === 'production';
   const staging = env.VERCEL_ENV === 'preview' && env.VERCEL_TARGET_ENV === 'staging';
-  if (!(live ? /^pk_live_/ : /^pk_test_/).test(env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '') || (!live && !staging) || env.VERCEL_PROJECT_ID !== 'prj_FPTsXDokhm5uSDMaxieuo5Cmp0Rn' || !(live ? /^(sk|rk)_live_/ : /^(sk|rk)_test_/).test(env.STRIPE_SECRET_KEY || '')) throw new BillingRejection();
-  const db = createSupabaseAdminClient();
+  if (!(live ? /^pk_live_[A-Za-z0-9]+$/ : /^pk_test_[A-Za-z0-9]+$/).test(env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '') || (!live && !staging) || env.VERCEL_PROJECT_ID !== 'prj_FPTsXDokhm5uSDMaxieuo5Cmp0Rn' || !(live ? /^(sk|rk)_live_[A-Za-z0-9]+$/ : /^(sk|rk)_test_[A-Za-z0-9]+$/).test(env.STRIPE_SECRET_KEY || '')) throw new BillingConfigurationError();
+  let db;
+  try{db=createSupabaseAdminClient();}catch{throw new BillingConfigurationError();}
   const read: Store['read'] = async account => {
     const {data,error,status} = await db.from('account_billing').select('*').eq('account_id',account).maybeSingle();
     if (error) storageFailure(error,status);
