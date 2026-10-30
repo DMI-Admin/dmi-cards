@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -18,6 +19,7 @@ import {
   Sun,
   UserRound,
   Moon,
+  X,
 } from "lucide-react";
 import CardRenderer, {
   type CardRendererData,
@@ -187,6 +189,7 @@ export default function ClientDashboardPage() {
 
   return (
     <ClientPortalPage>
+      <ProUpgradeWelcome plan={plan} loading={planLoading} />
       <ClientPortalHeader
         title="Dashboard"
         description="Manage your digital card, public link, QR code, and sharing tools from one place."
@@ -272,6 +275,30 @@ export default function ClientDashboardPage() {
       </ClientPortalWorkspace>
     </ClientPortalPage>
   );
+}
+
+function ProUpgradeWelcome({plan,loading}:{plan:DmiPlan|null;loading:boolean}) {
+  const [shown,setShown]=useState(false);
+  useEffect(()=>{
+    if(loading||plan!=='pro')return;
+    const url=new URL(window.location.href);
+    if(url.searchParams.get('upgraded')!=='pro')return;
+    // URL presentation state only; the existing authoritative plan remains the gate.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setShown(true);
+    url.searchParams.delete('upgraded');
+    window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
+  },[plan,loading]);
+  if(!shown||loading||plan!=='pro')return null;
+  return <section role="status" className="relative mb-6 rounded-3xl border border-[#AC00FF]/30 bg-[var(--brand-gradient-subtle)] p-5 pr-14 shadow-[var(--shadow-sm)] sm:p-6 sm:pr-16" aria-label="Welcome to DMI Cards Pro">
+    <h2 className="text-lg font-bold tracking-normal sm:text-xl">🎉 Welcome to DMI Cards Pro — everything&apos;s unlocked</h2>
+    <p className="mt-2 text-sm text-[var(--text-secondary)]">Your next connection starts here.</p>
+    <nav aria-label="Explore Pro features" className="mt-4 flex flex-wrap gap-2">{[
+      ['Contacts','/client/contacts'],['Tap to Share','/client/tap-to-share'],
+      ['Analytics','/client/analytics'],['Integrations','/client/integrations'],
+    ].map(([label,href])=><Link key={href} href={href} prefetch={false} className={clientButtonClass.utility}>{label}</Link>)}</nav>
+    <button type="button" onClick={()=>setShown(false)} aria-label="Dismiss Pro welcome" className="absolute right-4 top-4 rounded-xl p-2 text-[var(--text-secondary)] transition hover:bg-[var(--dmi-surface-soft)] hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#AC00FF]"><X className="h-5 w-5"/></button>
+  </section>;
 }
 
 function WelcomePanel({

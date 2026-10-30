@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import os from 'node:os';
 import path from 'node:path';
+import {execFileSync} from 'node:child_process';
 import {billingRoutes,scanBillingRoutes} from './validate-billing-routes.mjs';
 const source=fs.readFileSync('src/lib/stripe/simple-billing.ts','utf8');
 class BillingConfigurationError extends Error {}
@@ -261,5 +262,59 @@ await test('route scanner rejects every legacy namespace, allows current queries
   fs.unlinkSync(path.join(src,'app/api/stripe/portal/route.ts'));
   assert.ok(scanBillingRoutes(src).failures.some(f=>f.route==='/api/stripe/portal'&&f.reason==='missing current route file'));
  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+const designBase='42ec4e0321146a1a83c60207920bebcfa378f070';
+const beforeDesign=file=>execFileSync('git',['show',`${designBase}:${file}`],{encoding:'utf8'});
+function pageFunction(text,name){
+ const ast=ts.createSourceFile('page.tsx',text,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ const fn=ast.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name);
+ assert.ok(fn,name);return{ast,fn};
+}
+await test('billing requests, authentication and return sync are unchanged by page design',async()=>{
+ for(const [file,name] of [['src/app/client/billing/page.tsx','BillingPage'],['src/app/client/billing/pay/PaymentClient.tsx','PaymentClient'],['src/app/client/billing/complete/page.tsx','CheckoutComplete']]){
+  const statements=text=>pageFunction(text,name).fn.body.statements.filter(n=>ts.isFunctionDeclaration(n)||(ts.isExpressionStatement(n)&&ts.isCallExpression(n.expression)&&n.expression.expression.getText()==='useEffect')).map(n=>n.getText());
+  const original=statements(beforeDesign(file)),current=statements(fs.readFileSync(file,'utf8'));
+  assert.deepEqual(current,original.map(s=>file.includes('/complete/')?s.replace("window.location.replace('/client/billing')","window.location.replace('/client/dashboard?upgraded=pro')"):s),file);
+ }
+ for(const file of ['src/lib/stripe/simple-billing.ts','src/lib/stripe/config.ts','src/lib/api/client-context.ts','src/app/api/v1/billing/complete/route.ts','src/app/api/v1/billing/checkout/embedded/route.ts','src/app/api/stripe/webhook/route.ts','src/app/api/stripe/portal/route.ts','src/lib/use-client-plan.ts','supabase/migrations/20261030000100_account_billing.sql'])assert.equal(fs.readFileSync(file,'utf8'),beforeDesign(file),file);
+});
+await test('Stripe rendered observer changes presentation only, never completion/SDK behavior',async()=>{
+ const file='src/components/EmbeddedPayment.tsx',text=fs.readFileSync(file,'utf8');
+ const observer="onAnalyticsEvent:event=>{if(!disposed&&event.eventType==='checkoutRendered')setRendered(true);},";
+ assert.ok(text.includes(observer));
+ const effect=s=>pageFunction(s,'EmbeddedPayment').fn.body.statements.find(n=>ts.isExpressionStatement(n)&&ts.isCallExpression(n.expression)&&n.expression.expression.getText()==='useEffect').getText();
+ assert.equal(effect(text.replace(observer,'')),effect(beforeDesign(file)));
+ assert.match(text,/Loading your secure Stripe payment form/);
+});
+await test('billing pages use the shared sidebar shell, approved display states and Portal action',async()=>{
+ for(const file of ['src/app/client/billing/page.tsx','src/app/client/billing/pay/PaymentClient.tsx','src/app/client/billing/complete/page.tsx']){
+  const text=fs.readFileSync(file,'utf8');assert.ok(text.includes('<ClientPortalPage>'));assert.ok(text.includes('<ClientPortalHeader'));
+ }
+ const billing=fs.readFileSync('src/app/client/billing/page.tsx','utf8');
+ for(const label of ['Individual Pro','Enterprise','Free','Past due','Ending on','Active','Manage subscription, payment method and invoices','Contact Sales','seatQuantity'])assert.ok(billing.includes(label),label);
+ const complete=fs.readFileSync('src/app/client/billing/complete/page.tsx','utf8');
+ assert.ok(complete.includes('href="/client/billing"'));assert.ok(complete.includes('/client/dashboard?upgraded=pro'));
+});
+await test('Pro welcome requires authoritative Pro, consumes only its query flag, dismisses and stays gone on refresh',async()=>{
+ const {fn,ast}=pageFunction(fs.readFileSync('src/app/client/dashboard/page.tsx','utf8'),'ProUpgradeWelcome');
+ const text=ts.createPrinter().printNode(ts.EmitHint.Unspecified,fn,ast);
+ assert.doesNotMatch(text,/\bfetch\s*\(|supabase|localStorage|sessionStorage|refreshPlan/);
+ function welcome(url){
+  let shown=false,effects=[],replacements=0;
+  const window={location:{href:url},history:{state:{existing:true},replaceState:(state,_title,target)=>{assert.deepEqual(state,{existing:true});window.location.href=new URL(target,window.location.href).href;replacements++;}}};
+  const loaded={exports:{}};
+  vm.runInNewContext(ts.transpileModule('export '+text,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{module:loaded,exports:loaded.exports,URL,window,Link:'a',X:'svg',clientButtonClass:{utility:'button'},useState:()=>[shown,value=>{shown=value;}],useEffect:fn=>effects.push(fn),require:()=>({jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})})});
+  return{render:props=>{effects=[];const view=loaded.exports.ProUpgradeWelcome(props);for(const fn of effects)fn();return view;},url:()=>window.location.href,replacements:()=>replacements};
+ }
+ const nodes=view=>!view?[]:Array.isArray(view)?view.flatMap(nodes):typeof view==='object'?[view,...nodes(view.props?.children)]:[];
+ for(const props of [{plan:'free',loading:false},{plan:'enterprise',loading:false},{plan:null,loading:true},{plan:'pro',loading:true}]){
+  const h=welcome('https://fixture.invalid/client/dashboard?upgraded=pro');assert.equal(h.render(props),null);assert.equal(h.render(props),null);assert.equal(h.replacements(),0);
+ }
+ const props={plan:'pro',loading:false},h=welcome('https://fixture.invalid/client/dashboard?keep=1&upgraded=pro#cards');
+ h.render(props);const view=h.render(props);assert.ok(view);assert.equal(h.url(),'https://fixture.invalid/client/dashboard?keep=1#cards');assert.equal(h.replacements(),1);
+ assert.ok(nodes(view).filter(n=>n.type==='a').every(n=>n.props.prefetch===false));
+ assert.deepEqual(nodes(view).filter(n=>n.type==='a').map(n=>n.props.href),['/client/contacts','/client/tap-to-share','/client/analytics','/client/integrations']);
+ nodes(view).find(n=>n.props?.['aria-label']==='Dismiss Pro welcome').props.onClick();assert.equal(h.render(props),null);
+ const refreshed=welcome(h.url());assert.equal(refreshed.render(props),null);assert.equal(refreshed.render(props),null);
 });
 console.log(`Simple billing full ${passed}/${passed}`);

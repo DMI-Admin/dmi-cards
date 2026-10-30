@@ -1,5 +1,9 @@
 'use client';
 import Link from 'next/link';
+import {CreditCard,ShieldCheck,Sparkles,ArrowUpRight} from 'lucide-react';
+import UpgradeToProButton from '@/components/UpgradeToProButton';
+import {ClientPortalPage,ClientPortalHeader,clientButtonClass} from '@/components/ClientPortalShell';
+
 import {useEffect,useState} from 'react';
 import {supabase} from '@/lib/supabase';
 import {resolveEffectiveClientPlan,type EffectiveClientPlanResult} from '@/lib/entitlements/plan-resolver';
@@ -16,18 +20,33 @@ export default function BillingPage(){
    window.location.assign(result.data.url);
   }catch{setError('Stripe billing management is unavailable. Please contact support.');setOpening(false);}
  }
- return <main className="mx-auto max-w-4xl px-6 py-10"><h1 className="text-3xl font-bold">Billing</h1>
-  {error&&<p role="alert" className="my-6">{error}</p>}
-  {!state?<p role="status" className="my-6">Loading your subscription…</p>:<>
-   <section className="my-8 rounded-3xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-8">
-    <h2 className="text-2xl font-bold">{state.plan==='pro'?'Individual Pro':state.plan==='enterprise'?'Enterprise':'Free'}</h2>
-    <p className="my-4">{state.billing.status==='free'||!state.billing.status?'No subscription':state.billing.status.replaceAll('_',' ')}</p>
-    <p>Effective feature access: {state.plan==='free'?'Free':'Pro'}</p>
-    {state.billing.currentPeriodEnd&&<p className="mt-4">{state.billing.cancelAtPeriodEnd?'Ends':'Current period ends'} {new Date(state.billing.currentPeriodEnd).toLocaleDateString('en-GB')}</p>}
-    {state.plan==='enterprise'&&<p className="mt-4">Seats: {state.billing.seatQuantity}</p>}
-    {state.plan==='enterprise'?<Link href="mailto:sales@dmicards.com" className="mt-6 block underline">Contact Sales</Link>:state.billing.hasCustomer&&<button onClick={portal} disabled={opening} className="mt-6 rounded-xl bg-[#8C16EB] px-5 py-3 text-white">{opening?'Opening Stripe…':'Manage subscription and payment method'}</button>}
+ const planName=state?.plan==='pro'?'Individual Pro':state?.plan==='enterprise'?'Enterprise':'Free';
+ const periodEnd=state?.billing.currentPeriodEnd?new Date(state.billing.currentPeriodEnd).toLocaleDateString('en-GB'):null;
+ const statusLabel=!state||state.plan==='free'?'Free':state.billing.cancelAtPeriodEnd&&periodEnd?`Ending on ${periodEnd}`:state.billing.status==='past_due'?'Past due':'Active';
+ return <ClientPortalPage>
+  <ClientPortalHeader title="Billing" description="Your plan, subscription and billing preferences — all in one place." />
+  {error&&<p role="alert" className="mb-6 rounded-2xl border border-red-400/25 bg-red-400/10 p-4 text-sm text-red-500 dark:text-red-200">{error}</p>}
+  {!state?<div role="status" className="client-portal-panel flex items-center gap-3 p-8 text-[var(--text-secondary)]"><span className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--dmi-border)] border-t-[#AC00FF] motion-reduce:animate-none"/>Loading your subscription…</div>:<div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+   <section className="client-portal-panel p-6 sm:p-8" aria-label="Current plan">
+    <div className="flex flex-wrap items-start justify-between gap-5">
+     <div><span className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--brand-gradient-subtle)] text-[#AC00FF]"><CreditCard className="h-6 w-6"/></span><p className="text-sm font-medium text-[var(--text-secondary)]">Current plan</p><h2 className="mt-2 text-3xl font-bold tracking-normal">{planName}</h2></div>
+     <span className="inline-flex min-h-8 items-center gap-2 rounded-full border border-[#AC00FF]/30 bg-[var(--brand-gradient-subtle)] px-3 py-1 text-xs font-semibold"><Sparkles className="h-3.5 w-3.5 text-[#AC00FF]"/>{statusLabel}</span>
+    </div>
+    <p className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">{state.plan==='free'?'Your digital card essentials, ready to share.':state.plan==='enterprise'?'Your sales-managed subscription and agreed team seats.':'Your Pro tools are unlocked. Make every connection count.'}</p>
+    <dl className="client-portal-panel-muted mt-6 grid gap-5 p-5 sm:grid-cols-2">
+     <div><dt className="text-xs font-semibold uppercase tracking-wider text-[var(--dmi-muted)]">Feature access</dt><dd className="mt-2 font-semibold">{state.plan==='free'?'Free':'Pro'}</dd></div>
+     <div><dt className="text-xs font-semibold uppercase tracking-wider text-[var(--dmi-muted)]">{state.billing.cancelAtPeriodEnd?'Subscription ends':'Current period end'}</dt><dd className="mt-2 font-semibold">{periodEnd||'No active billing period'}</dd></div>
+     {state.plan==='enterprise'&&<div><dt className="text-xs font-semibold uppercase tracking-wider text-[var(--dmi-muted)]">Agreed seats</dt><dd className="mt-2 font-semibold">{state.billing.seatQuantity}</dd></div>}
+    </dl>
+    <div className="mt-6 flex flex-wrap gap-3">
+     {state.plan==='enterprise'?<Link href="mailto:sales@dmicards.com" className={clientButtonClass.primary}>Contact Sales<ArrowUpRight className="h-4 w-4"/></Link>:state.billing.hasCustomer&&<button onClick={portal} disabled={opening} className={clientButtonClass.primary}>{opening?'Opening Stripe…':'Manage subscription, payment method and invoices'}<ArrowUpRight className="h-4 w-4"/></button>}
+     {state.plan==='free'&&<UpgradeToProButton className={clientButtonClass.primary}><Sparkles className="h-4 w-4"/>Upgrade to Pro</UpgradeToProButton>}
+    </div>
    </section>
-   {state.plan==='free'&&<section className="flex flex-wrap gap-4" aria-label="Upgrade to Pro"><Link className="rounded-xl bg-[#8C16EB] px-5 py-3 text-white" href="/client/billing/pay?interval=monthly">Pro monthly</Link><Link className="rounded-xl border border-[var(--dmi-border)] px-5 py-3" href="/client/billing/pay?interval=annual">Pro annual</Link><Link className="px-5 py-3 underline" href="mailto:sales@dmicards.com">Enterprise — Contact Sales</Link></section>}
-  </>}
- </main>;
+   <aside className="space-y-6">
+    {state.plan==='free'&&<section className="client-portal-panel border-[#AC00FF]/25 p-6"><Sparkles className="mb-4 h-6 w-6 text-[#AC00FF]"/><h2 className="text-xl font-semibold">More possibilities with Pro</h2><p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">Unlock Contacts, Tap to Share, Analytics and Integrations with monthly or annual billing.</p><UpgradeToProButton className={`mt-5 w-full ${clientButtonClass.secondary}`}>Explore Individual Pro</UpgradeToProButton></section>}
+    <section className="client-portal-panel p-6"><ShieldCheck className="mb-4 h-6 w-6 text-[#AC00FF]"/><h2 className="text-lg font-semibold">Secure billing with Stripe</h2><p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">Manage your invoices and card details securely in Stripe’s Customer Portal.</p>{state.plan==='enterprise'&&<p className="mt-3 text-sm text-[var(--text-secondary)]">Contact Sales for changes to your Enterprise plan.</p>}</section>
+   </aside>
+  </div>}
+ </ClientPortalPage>;
 }
