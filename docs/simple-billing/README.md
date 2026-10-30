@@ -12,8 +12,15 @@ webhook payload status is never the authoritative status.
 
 `account_id` is the existing Supabase authenticated user UUID. Stripe Customer and
 Subscription metadata must both contain `dmi_app=dmi_cards` and `dmi_user_id`.
-This applies to manually created Enterprise subscriptions too. Enterprise uses
-Stripe quantity and the existing Enterprise → Pro-feature map; this does not
+For manual Enterprise subscriptions in Stripe:
+
+- Use the DMI Cards Enterprise Product (`STRIPE_PRODUCT_ENTERPRISE`).
+- Any appropriate Price under that Product may be used; no fixed Enterprise Price ID is required.
+- Set subscription quantity to the agreed seat count.
+- Add metadata to BOTH Customer and Subscription: `dmi_app=dmi_cards` and
+  `dmi_user_id=<DMI user id>`.
+
+Enterprise uses Stripe quantity and the existing Enterprise → Pro-feature map; this does not
 invent organisation membership or a seat-allocation engine. Existing business
 onboarding/commercial-approval records remain independent of application access.
 
@@ -24,7 +31,7 @@ changes the status. Customer/subscription IDs are unique and browser writes deni
 
 Environment: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
 `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_PRICE_PRO_MONTHLY`,
-`STRIPE_PRICE_PRO_ANNUAL`, optional `STRIPE_PRICE_ENTERPRISE`, plus existing
+`STRIPE_PRICE_PRO_ANNUAL`, optional `STRIPE_PRODUCT_ENTERPRISE`, plus existing
 Supabase credentials and trusted Vercel deployment metadata. Staging accepts only
 TEST and Production only LIVE; signature verification precedes the mode guard
 and every database operation. Unknown deployments fail closed. Local tests mock
@@ -45,8 +52,12 @@ the DMI logo, button colour and supported font keep Embedded Checkout branded.
   webhook deliveries; the return is an independent immediate sync path.
 - past_due: access intentionally remains paid; use Portal to update the card.
 - canceled/unpaid: access is Free. Scheduled cancellation alone retains access.
-- Webhook failure: signature/mode/configuration/metadata/database failures must
-  be resolved; inspect Stripe delivery history. There is no local recovery engine.
+- Webhook failure: signature verification is unchanged (invalid signatures return
+  400). Validly signed foreign/unknown ownership, mode, metadata or permanent
+  validation failures return 200 with handled=false and a fixed sanitized warning;
+  no exception text or identifiers are logged. The referenced DMI user must exist.
+  Transient Stripe API/transport/rate-limit or database/auth-storage failures return
+  503 for Stripe retry. Inspect Stripe delivery history; no local recovery engine.
 - Wrong seats: inspect Enterprise Subscription quantity and the latest webhook.
 
 ## Local checks and later rollout
