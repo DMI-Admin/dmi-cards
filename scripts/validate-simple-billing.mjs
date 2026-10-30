@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import os from 'node:os';
+import path from 'node:path';
+import {billingRoutes,scanBillingRoutes} from './validate-billing-routes.mjs';
 const source=fs.readFileSync('src/lib/stripe/simple-billing.ts','utf8');
 class BillingConfigurationError extends Error {}
 const loaded={exports:{}};
@@ -225,4 +228,38 @@ for(const path of ['src/app/api/stripe/portal/route.ts','src/app/api/v1/billing/
 await test('checkout API rejects arbitrary price/customer fields before Stripe',async()=>{serviceAccess=0;const r=await route('src/app/api/v1/billing/checkout/embedded/route.ts').POST(new Request('https://fixture.invalid',{method:'POST',headers:{Authorization:'Bearer offline','Content-Type':'application/json'},body:JSON.stringify({interval:'monthly',requestId:other,price:'price_enterprise',customer:'cus_other'})}));assert.equal(r.status,400);assert.equal(serviceAccess,0);});
 await test('central client read uses only account_billing for access',async()=>{const s=fs.readFileSync('src/lib/api/client-context.ts','utf8');assert.ok(s.includes('.from("account_billing")'));assert.doesNotMatch(s,/billing_subscriptions|entitlementsForTrustedBillingState/);assert.ok(s.includes('getEntitlementsForPlan(plan)'));});
 await test('return is one authenticated sync, never polling or worker calls',async()=>{const s=fs.readFileSync('src/app/client/billing/complete/page.tsx','utf8');assert.doesNotMatch(s,/setTimeout|setInterval|billing-work|localStorage|sessionStorage/);assert.ok(s.includes('/api/v1/billing/complete'));});
+await test('upgrade modal only navigates to the payment page for either interval',async()=>{
+ const text=fs.readFileSync('src/components/UpgradeToProModal.tsx','utf8');
+ assert.doesNotMatch(text,/\bfetch\s*\(|supabase|\/api\//);
+ const ast=ts.createSourceFile('modal.tsx',text,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ let action;
+ function visit(node){if(ts.isFunctionDeclaration(node)&&node.name?.text==='startCheckout')action=node;ts.forEachChild(node,visit);}
+ visit(ast);assert.ok(action);assert.equal(action.body.statements.length,1);
+ const code=ts.createPrinter().printNode(ts.EmitHint.Unspecified,action,ast);
+ for(const interval of ['monthly','annual']){
+  const destinations=[];
+  vm.runInNewContext('('+code+')()',{interval,window:{location:{assign:url=>destinations.push(url)}},fetch:()=>{throw Error('Modal must not call any API');}});
+  assert.deepEqual(destinations,[`/client/billing/pay?interval=${interval}`]);
+ }
+});
+await test('all runtime billing references use the six existing current routes',async()=>{
+ const result=scanBillingRoutes();assert.deepEqual(result.failures,[]);assert.equal(billingRoutes.length,6);
+});
+await test('route scanner rejects every legacy namespace, allows current queries and ignores outside-src fixtures',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'dmi-billing-route-fixtures-')),src=path.join(root,'src');
+ try{
+  for(const route of billingRoutes){const file=path.join(src,'app',route.slice(1),'route.ts');fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'// fixture route\n');}
+  fs.mkdirSync(path.join(root,'docs'));fs.mkdirSync(path.join(root,'tests'));
+  for(const directory of ['docs','tests'])fs.writeFileSync(path.join(root,directory,'fixture.txt'),'/api/stripe/checkout');
+  const file=path.join(src,'consumer.ts');
+  fs.writeFileSync(file,billingRoutes.map(route=>`fetch("${route}?view=fixture");`).join('\n'));
+  assert.deepEqual(scanBillingRoutes(src).failures,[]);
+  const stale=['/api/stripe/checkout','/api/v1/billing/checkout','/api/v1/billing/activation','/api/v1/billing/subscription/cancel','/api/v1/billing/subscription/resume','/api/internal/billing-work','/api/internal/billing-work-auto','/api/internal/billing-work-future','/api/admin/billing/reconcile','/api/admin/finance','/api/v1/billing/unknown'];
+  fs.writeFileSync(file,stale.map(route=>`fetch("${route}");`).join('\n'));
+  assert.deepEqual(scanBillingRoutes(src).failures.map(f=>f.route),stale);
+  fs.writeFileSync(file,'// no references\n');
+  fs.unlinkSync(path.join(src,'app/api/stripe/portal/route.ts'));
+  assert.ok(scanBillingRoutes(src).failures.some(f=>f.route==='/api/stripe/portal'&&f.reason==='missing current route file'));
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
 console.log(`Simple billing full ${passed}/${passed}`);

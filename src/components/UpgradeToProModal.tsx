@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import styles from "@/components/UpgradeToProModal.module.css";
-import { supabase } from "@/lib/supabase";
 
 type BillingInterval = "monthly" | "annual";
 
@@ -58,8 +57,6 @@ export default function UpgradeToProModal({
   onClose,
 }: UpgradeToProModalProps) {
   const [interval, setInterval] = useState<BillingInterval>("monthly");
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -104,7 +101,6 @@ export default function UpgradeToProModal({
     document.body.style.overflow = "hidden";
 
     window.setTimeout(() => {
-      setErrorMessage("");
       closeButtonRef.current?.focus();
     }, 0);
 
@@ -127,64 +123,8 @@ export default function UpgradeToProModal({
     };
   }, [open, onClose]);
 
-  async function startCheckout() {
-    if (submitting) return;
-
-    setSubmitting(true);
-    setErrorMessage("");
-
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session?.access_token) {
-        throw new Error("Please sign in again before upgrading to Pro.");
-      }
-
-      // This authenticated read makes no Stripe Session and exposes no key or
-      // client secret. A failed availability check retains the hosted fallback.
-      const availability = await fetch("/api/v1/billing/checkout/embedded", {
-        cache: "no-store", headers: { Authorization: `Bearer ${session.access_token}` },
-      }).then(async response => response.ok ? response.json() : null).catch(() => null);
-      if (availability?.data?.available === true) {
-        window.location.assign(`/client/billing/pay?interval=${interval}`);
-        return;
-      }
-
-      const response = await fetch("/api/stripe/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ interval }),
-      });
-      const payload = await response.json().catch(() => null);
-      const checkoutUrl =
-        typeof payload?.url === "string"
-          ? payload.url
-          : typeof payload?.data?.url === "string"
-            ? payload.data.url
-            : "";
-
-      if (!response.ok || !checkoutUrl) {
-        const message =
-          typeof payload?.error?.message === "string"
-            ? payload.error.message
-            : "Checkout could not be started. Please try again.";
-        throw new Error(message);
-      }
-
-      window.location.assign(checkoutUrl);
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Checkout could not be started. Please try again."
-      );
-      setSubmitting(false);
-    }
+  function startCheckout() {
+    window.location.assign(`/client/billing/pay?interval=${interval}`);
   }
 
   if (!open) return null;
@@ -193,7 +133,7 @@ export default function UpgradeToProModal({
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-[#02040D]/75 px-4 py-6 text-white backdrop-blur-md sm:px-6"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !submitting) {
+        if (event.target === event.currentTarget) {
           onClose();
         }
       }}
@@ -226,7 +166,6 @@ export default function UpgradeToProModal({
               ref={closeButtonRef}
               type="button"
               onClick={onClose}
-              disabled={submitting}
               className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/70 transition hover:border-[#AC00FF]/50 hover:bg-[#AC00FF]/15 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#AC00FF] disabled:cursor-not-allowed disabled:opacity-50"
               aria-label="Close upgrade modal"
             >
@@ -260,7 +199,6 @@ export default function UpgradeToProModal({
                       key={option}
                       type="button"
                       onClick={() => setInterval(option)}
-                      disabled={submitting}
                       aria-pressed={active}
                       className={`rounded-xl px-3 py-2.5 text-sm font-bold capitalize transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#AC00FF] disabled:cursor-not-allowed ${
                         active
@@ -296,22 +234,15 @@ export default function UpgradeToProModal({
               <button
                 type="button"
                 onClick={startCheckout}
-                disabled={submitting}
                 className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#AC00FF] to-[#6C2CFF] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-purple-500/25 transition hover:-translate-y-0.5 hover:shadow-purple-400/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#AC00FF] disabled:cursor-wait disabled:opacity-75 motion-reduce:transition-none"
               >
-                {submitting ? "Preparing secure checkout..." : activePrice.cta}
+                {activePrice.cta}
               </button>
 
               <p className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-white/45">
                 <ShieldCheck className="h-4 w-4 text-purple-200" />
                 Secure checkout powered by Stripe
               </p>
-
-              {errorMessage && (
-                <p className="mt-3 rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm leading-6 text-red-100">
-                  {errorMessage}
-                </p>
-              )}
             </div>
           </div>
 
