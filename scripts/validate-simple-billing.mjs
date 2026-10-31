@@ -278,23 +278,24 @@ await test('billing requests, authentication and return sync are unchanged by pa
  }
  for(const file of ['src/lib/stripe/config.ts','src/lib/api/client-context.ts','src/app/api/v1/billing/complete/route.ts','src/app/api/stripe/webhook/route.ts','src/app/api/stripe/portal/route.ts','src/lib/use-client-plan.ts','supabase/migrations/20261030000100_account_billing.sql'])assert.equal(fs.readFileSync(file,'utf8'),beforeDesign(file),file);
 });
-await test('Stripe loader uses iframe load, atomically reveals the form and cleans up without polling',async()=>{
+await test('Stripe loader reveals on iframe load or six-second fallback, preserves errors and cancels on unmount',async()=>{
  const source=fs.readFileSync('src/components/EmbeddedPayment.tsx','utf8');
- assert.doesNotMatch(source,/onAnalyticsEvent|setInterval|setTimeout/);
+ assert.doesNotMatch(source,/onAnalyticsEvent|setInterval/);
  const original=beforeDesign('src/components/EmbeddedPayment.tsx');
  const options=text=>{let value;function visit(n){if(ts.isCallExpression(n)&&n.expression.getText().endsWith('.createEmbeddedCheckoutPage'))value=n.arguments[0];ts.forEachChild(n,visit);}visit(ts.createSourceFile('embedded.tsx',text,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX));return value.properties.filter(p=>p.name?.getText()==='onComplete'||p.name?.getText()==='clientSecret').map(p=>p.getText());};
  assert.deepEqual(options(source),options(original));
- for(const fail of [false,true,'frame']){
-  const state=[],listeners=new Map();let cursor=0,setup,cleanup,observed=false,disconnected=false;
+ for(const fail of [false,true,'frame','timeout','unmount']){
+  const state=[],listeners=new Map();let cursor=0,setup,cleanup,observed=false,disconnected=false,mounted=false,timer,cleared=false;
   const frame={addEventListener:(event,fn)=>listeners.set(event,fn),removeEventListener:event=>listeners.delete(event)};
   const host={querySelectorAll:()=>[frame]},loaded={exports:{}};
   const react={useRef:()=>({current:host}),useState:initial=>{const index=cursor++;if(!(index in state))state[index]=initial;return[state[index],value=>{state[index]=value;}];},useEffect:fn=>{setup||=fn;}};
-  vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{module:loaded,exports:loaded.exports,Set,Error,MutationObserver:class{observe(){observed=true;}disconnect(){disconnected=true;}},require:name=>name==='react'?react:name.endsWith('/pure')?{loadStripe:async()=>({createEmbeddedCheckoutPage:async()=>{if(fail===true)throw Error('fixture');return{mount:()=>{},destroy:()=>{}};}})}:{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})}});
+  vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{module:loaded,exports:loaded.exports,Set,Error,setTimeout:(callback,delay)=>{assert.ok(mounted);assert.equal(delay,6000);timer=callback;return 1;},clearTimeout:id=>{if(id===1)cleared=true;},MutationObserver:class{observe(){observed=true;}disconnect(){disconnected=true;}},require:name=>name==='react'?react:name.endsWith('/pure')?{loadStripe:async()=>({createEmbeddedCheckoutPage:async()=>{if(fail===true)throw Error('fixture');return{mount:()=>{mounted=true;},destroy:()=>{}};}})}:{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})}});
   const render=()=>{cursor=0;return loaded.exports.default({sessionId:'cs_fixture',clientSecret:'fixture',publishableKey:'pk_test_fixture'});};
   let view=render();assert.equal(view.props['aria-busy'],true);cleanup=setup();await new Promise(resolve=>setImmediate(resolve));
-  if(fail){if(fail==='frame')listeners.get('error')();view=render();assert.equal(view.props['aria-busy'],false);assert.equal(view.props.children[0],false);assert.equal(view.props.children[1].props.role,'alert');assert.ok(view.props.children[2].props.className.includes('opacity-0'));}
-  else{assert.ok(observed);listeners.get('load')();view=render();assert.equal(view.props['aria-busy'],false);assert.equal(view.props.children[0],false);assert.ok(!view.props.children[2].props.className.includes('opacity-0'));}
-  cleanup();assert.ok(disconnected);assert.equal(listeners.size,0);
+  if(fail==='unmount'){const before=[...state];cleanup();assert.ok(cleared);timer();assert.deepEqual(state,before);assert.ok(disconnected);assert.equal(listeners.size,0);continue;}
+  if(fail===true||fail==='frame'){if(fail==='frame'){listeners.get('error')();timer();}view=render();assert.equal(view.props['aria-busy'],false);assert.equal(view.props.children[0],false);assert.equal(view.props.children[1].props.role,'alert');assert.ok(view.props.children[2].props.className.includes('opacity-0'));}
+  else{assert.ok(observed);assert.ok(view.props.children[2].props.className.includes('opacity-0'));assert.equal(view.props.children[0].props.role,'status');if(fail==='timeout')timer();else listeners.get('load')();view=render();assert.equal(view.props['aria-busy'],false);assert.equal(view.props.children[0],false);assert.ok(!view.props.children[2].props.className.includes('opacity-0'));}
+  cleanup();assert.ok(disconnected);assert.equal(listeners.size,0);if(mounted)assert.ok(cleared);
  }
 });
 await test('billing pages use the shared sidebar shell, approved display states and Portal action',async()=>{
