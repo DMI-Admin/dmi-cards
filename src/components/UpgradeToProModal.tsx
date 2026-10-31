@@ -15,32 +15,13 @@ import {
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import styles from "@/components/UpgradeToProModal.module.css";
 
-type BillingInterval = "monthly" | "annual";
+import {proPricing as pricing,type BillingInterval} from "@/lib/pro-pricing";
 
 type UpgradeToProModalProps = {
   open: boolean;
   onClose: () => void;
 };
 
-const pricing: Record<
-  BillingInterval,
-  {
-    price: string;
-    period: string;
-    cta: string;
-  }
-> = {
-  monthly: {
-    price: "£5.99",
-    period: "per month",
-    cta: "Continue with Pro — £5.99/month",
-  },
-  annual: {
-    price: "£59.99",
-    period: "per year",
-    cta: "Continue with Pro — £59.99/year",
-  },
-};
 
 const benefits = [
   { label: "Contacts and lead capture", icon: ContactRound },

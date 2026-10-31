@@ -25,7 +25,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { isClientFeatureLocked, type ClientFeature } from "@/lib/client-feature-access";
 import type { DmiPlan } from "@/lib/entitlements";
-import UpgradeToProButton from "@/components/UpgradeToProButton";
+import UpgradeToProButton, {openUpgradeToProModal} from "@/components/UpgradeToProButton";
 import { useClientPlan } from "@/lib/use-client-plan";
 
 export const clientNavItems: {
@@ -56,7 +56,7 @@ export const clientNavItems: {
 export default function ClientSidebar() {
   const pathname = usePathname();
   const { plan, isPaid, loading } = useClientPlan();
-  const showPlanPrompt = loading || !plan || !isPaid;
+  const showPlanPrompt = !pathname.startsWith("/client/billing") && (loading || !plan || !isPaid);
 
   return (
     <aside className="dmi-sidebar sticky top-0 flex h-screen w-72 shrink-0 flex-col border-r">
@@ -125,7 +125,7 @@ export function ClientMobileHeader() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const { plan, isPaid, loading } = useClientPlan();
-  const showPlanPrompt = loading || !plan || !isPaid;
+  const showPlanPrompt = !pathname.startsWith("/client/billing") && (loading || !plan || !isPaid);
   const pageTitle = useMemo(() => {
     const activeItem = clientNavItems
       .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
@@ -294,7 +294,8 @@ function ClientNavLinks({
           <Link
             key={item.href}
             href={item.href}
-            onClick={onNavigate}
+            prefetch={locked?false:undefined}
+            onClick={event=>{if(locked){event.preventDefault();openUpgradeToProModal();}onNavigate?.();}}
             className={`flex min-h-11 items-center gap-3 rounded-[var(--radius-md)] px-3 py-3 text-sm font-medium transition-all duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#AC00FF] ${
               isActive
                 ? "dmi-nav-active text-white"

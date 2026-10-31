@@ -9,5 +9,6 @@ export async function requireBillingIdentity(request: Request) {
   if (!token) throw new ApiRouteError(401, "UNAUTHENTICATED", "Authentication is required.");
   const { data, error } = await createApiSupabaseClient(token).auth.getUser(token);
   if (error || !data.user) throw new ApiRouteError(401, "UNAUTHENTICATED", "Authentication is required.");
-  return { userId: data.user.id, email: data.user.email || null, profileId: data.user.id };
+  const name = data.user.user_metadata?.full_name || data.user.user_metadata?.name;
+  return { name: typeof name === "string" ? name.trim().slice(0,256) || null : null, userId: data.user.id, email: data.user.email || null, profileId: data.user.id };
 }

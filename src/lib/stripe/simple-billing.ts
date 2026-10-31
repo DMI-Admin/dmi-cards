@@ -78,16 +78,17 @@ export function billingService(stripe: Stripe, store: Store, prices: Prices, ori
     await store.save(row);
     return row;
   }
-  async function checkout(account: string, interval: 'monthly' | 'annual', requestId: string) {
+  async function checkout(account: string, interval: 'monthly' | 'annual', requestId: string, contact?: {email: string | null; name?: string | null}) {
     if (!uuid.test(account) || !uuid.test(requestId) || !['monthly','annual'].includes(interval)) throw Error('Invalid checkout');
     let row = await store.read(account);
     if (!row?.stripe_customer_id) {
-      const c = await stripe.customers.create({ metadata: {dmi_app:'dmi_cards',dmi_user_id:account} }, {idempotencyKey:`dmi:customer:${live}:${account}`});
+      const c = await stripe.customers.create({ ...(contact?.email?{email:contact.email}:{}),...(contact?.name?{name:contact.name}:{}),metadata: {dmi_app:'dmi_cards',dmi_user_id:account} }, {idempotencyKey:`dmi:customer:${live}:${account}`});
       await store.bind(account,c.id);
       row = await store.read(account);
     }
     if (!row?.stripe_customer_id) throw Error('Customer unavailable');
     const c = await customer(account,row.stripe_customer_id);
+    if (!c.deleted && !c.email && contact?.email) await stripe.customers.update(c.id,{email:contact.email,...(!c.name&&contact.name?{name:contact.name}:{})});
     const subscriptions = await stripe.subscriptions.list({customer:c.id,status:'all',limit:100});
     if (subscriptions.has_more || subscriptions.data.some(s => !['canceled','incomplete_expired'].includes(s.status))) throw Error('Manage your existing subscription in Billing');
     const sessions = await stripe.checkout.sessions.list({customer:c.id,status:'open',limit:100});

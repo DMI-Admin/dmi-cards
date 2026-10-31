@@ -71,7 +71,7 @@ function storedDashboardTheme(): ThemeChoice {
 
 export default function ClientDashboardPage() {
   const router = useRouter();
-  const { plan, isPaid, loading: planLoading } = useClientPlan();
+  const { plan, isPaid, loading: planLoading, billing } = useClientPlan();
   const planResolved = Boolean(plan) && !planLoading;
   const showPaidDashboard = planResolved && isPaid;
   const [templates, setTemplates] = useState<SharedTemplate[]>([]);
@@ -189,7 +189,7 @@ export default function ClientDashboardPage() {
 
   return (
     <ClientPortalPage>
-      <ProUpgradeWelcome plan={plan} loading={planLoading} />
+      <ProUpgradeWelcome plan={plan} loading={planLoading} billing={billing} />
       <ClientPortalHeader
         title="Dashboard"
         description="Manage your digital card, public link, QR code, and sharing tools from one place."
@@ -277,7 +277,7 @@ export default function ClientDashboardPage() {
   );
 }
 
-function ProUpgradeWelcome({plan,loading}:{plan:DmiPlan|null;loading:boolean}) {
+function ProUpgradeWelcome({plan,loading,billing}:{plan:DmiPlan|null;loading:boolean;billing?:{status:string|null;cancelAtPeriodEnd:boolean;currentPeriodEnd:string|null}}) {
   const [shown,setShown]=useState(false);
   useEffect(()=>{
     if(loading||plan!=='pro')return;
@@ -289,7 +289,9 @@ function ProUpgradeWelcome({plan,loading}:{plan:DmiPlan|null;loading:boolean}) {
     url.searchParams.delete('upgraded');
     window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
   },[plan,loading]);
-  if(!shown||loading||plan!=='pro')return null;
+  if(loading||plan!=='pro')return null;
+  if(billing?.status==='past_due'||billing?.cancelAtPeriodEnd)return <section role="status" className={`mb-6 rounded-2xl border p-5 ${billing.status==='past_due'?'border-amber-500/40 bg-amber-500/10':'border-[var(--dmi-border)] bg-[var(--dmi-surface-soft)]'}`}><p className="font-medium">{billing.status==='past_due'?'Your last payment failed. Update your card to keep Pro.':`Your Pro plan ends on ${billing.currentPeriodEnd?new Date(billing.currentPeriodEnd).toLocaleDateString('en-GB'):'the end of your current period'}.`}</p><Link href="/client/billing" prefetch={false} className={`mt-3 ${clientButtonClass.secondary}`}>{billing.status==='past_due'?'Update payment method':'View Billing'}</Link></section>;
+  if(!shown)return null;
   return <section role="status" className="relative mb-6 rounded-3xl border border-[#AC00FF]/30 bg-[var(--brand-gradient-subtle)] p-5 pr-14 shadow-[var(--shadow-sm)] sm:p-6 sm:pr-16" aria-label="Welcome to DMI Cards Pro">
     <h2 className="text-lg font-bold tracking-normal sm:text-xl">🎉 Welcome to DMI Cards Pro — everything&apos;s unlocked</h2>
     <p className="mt-2 text-sm text-[var(--text-secondary)]">Your next connection starts here.</p>
@@ -906,18 +908,18 @@ function LockedPreviewOverlay({
   description: string;
 }) {
   return (
-    <div className="absolute inset-0 flex items-center justify-center bg-[var(--dmi-surface)]/80 p-5 backdrop-blur-[2px]">
-      <div className="max-w-sm rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-5 text-center shadow-[var(--shadow-md)]">
-        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--brand-gradient-subtle)] text-[var(--text-accent)]">
+    <UpgradeToProButton aria-label="Upgrade to Pro to unlock this feature" className="absolute inset-0 flex items-center justify-center bg-[var(--dmi-surface)]/80 p-5 backdrop-blur-[2px]">
+      <span className="block max-w-sm rounded-2xl border border-[var(--dmi-border)] bg-[var(--dmi-surface)] p-5 text-center shadow-[var(--shadow-md)]">
+        <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--brand-gradient-subtle)] text-[var(--text-accent)]">
           <Icon className="h-5 w-5" />
-        </div>
-        <h3 className="mt-4 text-base font-semibold text-[var(--text-primary)]">{title}</h3>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{description}</p>
-        <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-accent)]">
+        </span>
+        <span className="mt-4 block text-base font-semibold text-[var(--text-primary)]">{title}</span>
+        <span className="mt-2 block text-sm leading-6 text-[var(--text-secondary)]">{description}</span>
+        <span className="mt-3 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-accent)]">
           Available on Pro
-        </p>
-      </div>
-    </div>
+        </span>
+      </span>
+    </UpgradeToProButton>
   );
 }
 

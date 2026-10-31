@@ -24,7 +24,7 @@ function reset(price='price_month',status='active'){
  invoice={id:'in_fixture',parent:{subscription_details:{subscription:sub.id}}};
 }
 const stripe={
- customers:{retrieve:async()=>structuredClone(customerRecord),create:async(p,o)=>{calls.push(['customer',p,o]);return{id:'cus_fixture'};}},
+ customers:{update:async(id,fields)=>{calls.push(['customer_update',id,fields]);Object.assign(customerRecord,fields);return structuredClone(customerRecord);},retrieve:async()=>structuredClone(customerRecord),create:async(p,o)=>{calls.push(['customer',p,o]);return{id:'cus_fixture'};}},
  subscriptions:{retrieve:async id=>{calls.push(['retrieve',id]);return structuredClone(sub);},list:async()=>({data:inventory,has_more:false})},
  checkout:{sessions:{expire:async id=>{calls.push(['expire',id]);return{...session,status:'expired'};},list:async()=>({data:open,has_more:false}),create:async(p,o)=>{calls.push(['checkout',p,o]);return{...session,status:'open'};},retrieve:async()=>structuredClone(session)}},
  billingPortal:{configurations:{list:async()=>({data:configs})},sessions:{create:async p=>{calls.push(['portal',p]);return{url:'https://billing.stripe.com/synthetic'};}}},
@@ -81,7 +81,7 @@ function route(file){
   if(name.endsWith('/config'))return{BillingConfigurationError,constructStripeWebhookEvent:({payload,signature})=>sdk.webhooks.constructEvent(payload,signature,secret)};
   if(name.endsWith('/webhook-mode-guard'))return modeModule.exports;
   if(name.endsWith('/simple-billing'))return{...moduleService,isTransientBillingFailure:error=>moduleService.isTransientBillingFailure(error),simpleBilling:()=>{serviceAccess++;return makeService();}};
-  if(name.endsWith('/client-identity'))return{requireBillingIdentity:async r=>{if(r.headers.get('Authorization')!=='Bearer offline')throw Error('Unauthorized');return{userId:user};}};
+  if(name.endsWith('/client-identity'))return{requireBillingIdentity:async r=>{if(r.headers.get('Authorization')!=='Bearer offline')throw Error('Unauthorized');return{userId:user,email:'account@fixture.invalid',name:'DMI Customer'};}};
   return responseHelpers;
  }});return loaded.exports;
 }
@@ -274,24 +274,35 @@ await test('billing requests, authentication and return sync are unchanged by pa
  for(const [file,name] of [['src/app/client/billing/page.tsx','BillingPage'],['src/app/client/billing/pay/PaymentClient.tsx','PaymentClient'],['src/app/client/billing/complete/page.tsx','CheckoutComplete']]){
   const statements=text=>pageFunction(text,name).fn.body.statements.filter(n=>ts.isFunctionDeclaration(n)||(ts.isExpressionStatement(n)&&ts.isCallExpression(n.expression)&&n.expression.expression.getText()==='useEffect')).map(n=>n.getText());
   const original=statements(beforeDesign(file)),current=statements(fs.readFileSync(file,'utf8'));
-  assert.deepEqual(current,original.map(s=>file.includes('/complete/')?s.replace("window.location.replace('/client/billing')","window.location.replace('/client/dashboard?upgraded=pro')"):s),file);
+  assert.deepEqual(current.map(s=>s.replace('   setSelectedInterval(interval as BillingInterval);\n','')),original.map(s=>file.includes('/complete/')?s.replace("window.location.replace('/client/billing')","window.location.replace('/client/dashboard?upgraded=pro')"):s),file);
  }
- for(const file of ['src/lib/stripe/simple-billing.ts','src/lib/stripe/config.ts','src/lib/api/client-context.ts','src/app/api/v1/billing/complete/route.ts','src/app/api/v1/billing/checkout/embedded/route.ts','src/app/api/stripe/webhook/route.ts','src/app/api/stripe/portal/route.ts','src/lib/use-client-plan.ts','supabase/migrations/20261030000100_account_billing.sql'])assert.equal(fs.readFileSync(file,'utf8'),beforeDesign(file),file);
+ for(const file of ['src/lib/stripe/config.ts','src/lib/api/client-context.ts','src/app/api/v1/billing/complete/route.ts','src/app/api/stripe/webhook/route.ts','src/app/api/stripe/portal/route.ts','src/lib/use-client-plan.ts','supabase/migrations/20261030000100_account_billing.sql'])assert.equal(fs.readFileSync(file,'utf8'),beforeDesign(file),file);
 });
-await test('Stripe rendered observer changes presentation only, never completion/SDK behavior',async()=>{
- const file='src/components/EmbeddedPayment.tsx',text=fs.readFileSync(file,'utf8');
- const observer="onAnalyticsEvent:event=>{if(!disposed&&event.eventType==='checkoutRendered')setRendered(true);},";
- assert.ok(text.includes(observer));
- const effect=s=>pageFunction(s,'EmbeddedPayment').fn.body.statements.find(n=>ts.isExpressionStatement(n)&&ts.isCallExpression(n.expression)&&n.expression.expression.getText()==='useEffect').getText();
- assert.equal(effect(text.replace(observer,'')),effect(beforeDesign(file)));
- assert.match(text,/Loading your secure Stripe payment form/);
+await test('Stripe loader uses iframe load, atomically reveals the form and cleans up without polling',async()=>{
+ const source=fs.readFileSync('src/components/EmbeddedPayment.tsx','utf8');
+ assert.doesNotMatch(source,/onAnalyticsEvent|setInterval|setTimeout/);
+ const original=beforeDesign('src/components/EmbeddedPayment.tsx');
+ const options=text=>{let value;function visit(n){if(ts.isCallExpression(n)&&n.expression.getText().endsWith('.createEmbeddedCheckoutPage'))value=n.arguments[0];ts.forEachChild(n,visit);}visit(ts.createSourceFile('embedded.tsx',text,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX));return value.properties.filter(p=>p.name?.getText()==='onComplete'||p.name?.getText()==='clientSecret').map(p=>p.getText());};
+ assert.deepEqual(options(source),options(original));
+ for(const fail of [false,true,'frame']){
+  const state=[],listeners=new Map();let cursor=0,setup,cleanup,observed=false,disconnected=false;
+  const frame={addEventListener:(event,fn)=>listeners.set(event,fn),removeEventListener:event=>listeners.delete(event)};
+  const host={querySelectorAll:()=>[frame]},loaded={exports:{}};
+  const react={useRef:()=>({current:host}),useState:initial=>{const index=cursor++;if(!(index in state))state[index]=initial;return[state[index],value=>{state[index]=value;}];},useEffect:fn=>{setup||=fn;}};
+  vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{module:loaded,exports:loaded.exports,Set,Error,MutationObserver:class{observe(){observed=true;}disconnect(){disconnected=true;}},require:name=>name==='react'?react:name.endsWith('/pure')?{loadStripe:async()=>({createEmbeddedCheckoutPage:async()=>{if(fail===true)throw Error('fixture');return{mount:()=>{},destroy:()=>{}};}})}:{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})}});
+  const render=()=>{cursor=0;return loaded.exports.default({sessionId:'cs_fixture',clientSecret:'fixture',publishableKey:'pk_test_fixture'});};
+  let view=render();assert.equal(view.props['aria-busy'],true);cleanup=setup();await new Promise(resolve=>setImmediate(resolve));
+  if(fail){if(fail==='frame')listeners.get('error')();view=render();assert.equal(view.props['aria-busy'],false);assert.equal(view.props.children[0],false);assert.equal(view.props.children[1].props.role,'alert');assert.ok(view.props.children[2].props.className.includes('opacity-0'));}
+  else{assert.ok(observed);listeners.get('load')();view=render();assert.equal(view.props['aria-busy'],false);assert.equal(view.props.children[0],false);assert.ok(!view.props.children[2].props.className.includes('opacity-0'));}
+  cleanup();assert.ok(disconnected);assert.equal(listeners.size,0);
+ }
 });
 await test('billing pages use the shared sidebar shell, approved display states and Portal action',async()=>{
  for(const file of ['src/app/client/billing/page.tsx','src/app/client/billing/pay/PaymentClient.tsx','src/app/client/billing/complete/page.tsx']){
   const text=fs.readFileSync(file,'utf8');assert.ok(text.includes('<ClientPortalPage>'));assert.ok(text.includes('<ClientPortalHeader'));
  }
  const billing=fs.readFileSync('src/app/client/billing/page.tsx','utf8');
- for(const label of ['Individual Pro','Enterprise','Free','Past due','Ending on','Active','Manage subscription, payment method and invoices','Contact Sales','seatQuantity'])assert.ok(billing.includes(label),label);
+ for(const label of ['Individual Pro','Enterprise','Free','Past due','Ends on','Active','Manage subscription, payment method and invoices','Contact Sales','seatQuantity'])assert.ok(billing.includes(label),label);
  const complete=fs.readFileSync('src/app/client/billing/complete/page.tsx','utf8');
  assert.ok(complete.includes('href="/client/billing"'));assert.ok(complete.includes('/client/dashboard?upgraded=pro'));
 });
@@ -316,5 +327,106 @@ await test('Pro welcome requires authoritative Pro, consumes only its query flag
  assert.deepEqual(nodes(view).filter(n=>n.type==='a').map(n=>n.props.href),['/client/contacts','/client/tap-to-share','/client/analytics','/client/integrations']);
  nodes(view).find(n=>n.props?.['aria-label']==='Dismiss Pro welcome').props.onClick();assert.equal(h.render(props),null);
  const refreshed=welcome(h.url());assert.equal(refreshed.render(props),null);assert.equal(refreshed.render(props),null);
+});
+const jsxRuntime={jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})};
+const uiNodes=view=>!view?[]:Array.isArray(view)?view.flatMap(uiNodes):typeof view==='object'?[view,...uiNodes(view.props?.children)]:[];
+const uiText=view=>!view?'':Array.isArray(view)?view.map(uiText).join(' '):typeof view==='object'?uiText(view.props?.children):String(view);
+function pricingFixture(){const loaded={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/lib/pro-pricing.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{module:loaded,exports:loaded.exports});return loaded.exports;}
+function renderBilling(plan,billing,source='stripe_billing'){
+ const loaded={exports:{}},state=[{plan,source,billing},'',false];let cursor=0;
+ vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/app/client/billing/page.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{module:loaded,exports:loaded.exports,Date,require:name=>name==='react'?{useState:()=>[state[cursor++],()=>{}],useEffect:()=>{}}:name==='react/jsx-runtime'?jsxRuntime:name==='next/link'?{default:'a'}:name.endsWith('/UpgradeToProButton')?{default:'upgrade'}:name.endsWith('/ClientPortalShell')?{ClientPortalPage:'main',ClientPortalHeader:'header',clientButtonClass:{primary:'primary',secondary:'secondary'}}:name.endsWith('/pro-pricing')?pricingFixture():{}});
+ return loaded.exports.default();
+}
+for(const [label,plan,status,cancel,expected]of [
+ ['Free','free',null,false,'Free'],['active','pro','active',false,'Individual Pro · Active'],
+ ['ending','pro','active',true,'Individual Pro · Ends on'],['past due','pro','past_due',false,'Payment failed — update your card to keep Pro'],
+ ['Enterprise','enterprise','active',false,'Seats: 25'],
+])await test('Billing renders one '+label+' state with the correct single action',async()=>{
+ const view=renderBilling(plan,{status,cancelAtPeriodEnd:cancel,currentPeriodEnd:'2026-12-01T00:00:00Z',seatQuantity:25,hasCustomer:true},plan==='free'?'temporary_free_cap':'stripe_billing');
+ const text=uiText(view).replace(/\s+/g,' ');assert.ok(text.includes(expected),text);
+ const nodes=uiNodes(view),upgrades=nodes.filter(n=>n.type==='upgrade'),manage=nodes.filter(n=>n.type==='button');
+ if(plan==='free'){assert.equal(upgrades.length,1);assert.equal(manage.length,0);assert.ok(text.includes('£5.99'));assert.ok(text.includes('£59.99'));}
+ else if(plan==='enterprise'){assert.equal(upgrades.length,0);assert.equal(manage.length,0);assert.ok(text.includes('Contact Sales'));}
+ else{assert.equal(upgrades.length,0);assert.equal(manage.length,1);assert.ok(text.includes(cancel?'Manage or resume subscription':'Manage subscription, payment method and invoices'));}
+});
+await test('no Manage action exists without an authoritative subscription',async()=>{
+ const view=renderBilling('pro',{status:'active',cancelAtPeriodEnd:false,currentPeriodEnd:null,hasCustomer:true},'temporary_free_cap');
+ assert.equal(uiNodes(view).filter(n=>n.type==='button').length,0);
+});
+await test('new Stripe Customer receives authenticated email/name and unchanged ownership metadata',async()=>{
+ await service().checkout(user,'monthly',other,{email:'account@fixture.invalid',name:'DMI Customer'});
+ const data=calls.find(c=>c[0]==='customer')[1];assert.equal(data.email,'account@fixture.invalid');assert.equal(data.name,'DMI Customer');assert.equal(JSON.stringify(data.metadata),JSON.stringify(metadata));
+});
+await test('owned existing Customer missing email is updated before Session creation',async()=>{
+ rows.set(user,{account_id:user,stripe_customer_id:'cus_fixture',plan:'free'});
+ await service().checkout(user,'monthly',other,{email:'account@fixture.invalid',name:'DMI Customer'});
+ assert.ok(!calls.some(c=>c[0]==='customer'));const update=calls.find(c=>c[0]==='customer_update');assert.equal(update[2].email,'account@fixture.invalid');assert.ok(calls.indexOf(update)<calls.findIndex(c=>c[0]==='checkout'));assert.deepEqual(customerRecord.metadata,metadata);
+});
+await test('existing customer email/name are not overwritten',async()=>{
+ customerRecord.email='existing@fixture.invalid';customerRecord.name='Existing';rows.set(user,{account_id:user,stripe_customer_id:'cus_fixture',plan:'free'});
+ await service().checkout(user,'monthly',other,{email:'account@fixture.invalid',name:'DMI Customer'});assert.ok(!calls.some(c=>c[0]==='customer_update'));
+});
+await test('foreign customer cannot be updated for email prefill',async()=>{
+ customerRecord.metadata.dmi_app='foreign';rows.set(user,{account_id:user,stripe_customer_id:'cus_fixture',plan:'free'});
+ await assert.rejects(service().checkout(user,'monthly',other,{email:'account@fixture.invalid'}));assert.ok(!calls.some(c=>['customer_update','checkout'].includes(c[0])));
+});
+await test('checkout endpoint takes contact only from authenticated identity',async()=>{
+ const original=makeService;let contact;
+ makeService=()=>({checkout:async(_user,_interval,_request,details)=>{contact=details;return{};}});
+ try{const r=await route('src/app/api/v1/billing/checkout/embedded/route.ts').POST(new Request('https://fixture.invalid',{method:'POST',headers:{Authorization:'Bearer offline'},body:JSON.stringify({interval:'monthly',requestId:other})}));assert.equal(r.status,200);assert.equal(contact.email,'account@fixture.invalid');assert.equal(contact.name,'DMI Customer');
+ for(const field of ['email','name']){const rejected=await route('src/app/api/v1/billing/checkout/embedded/route.ts').POST(new Request('https://fixture.invalid',{method:'POST',headers:{Authorization:'Bearer offline'},body:JSON.stringify({interval:'monthly',requestId:other,[field]:'untrusted'})}));assert.equal(rejected.status,400);}}
+ finally{makeService=original;}
+});
+await test('subscription synchronizer, webhook and return ownership checks remain unchanged',async()=>{
+ const find=(text,name)=>{let found;function visit(n){if(ts.isFunctionDeclaration(n)&&n.name?.text===name)found=n.getText();ts.forEachChild(n,visit);}visit(ts.createSourceFile('service.ts',text,ts.ScriptTarget.Latest,true));assert.ok(found);return found;};
+ for(const name of ['customer','syncSubscriptionFromStripe','complete','webhook'])assert.equal(find(fs.readFileSync('src/lib/stripe/simple-billing.ts','utf8'),name),find(beforeDesign('src/lib/stripe/simple-billing.ts'),name));
+});
+function isolatedUi(file,name,globals={}){
+ const {fn,ast}=pageFunction(fs.readFileSync(file,'utf8'),name),loaded={exports:{}};
+ vm.runInNewContext(ts.transpileModule('export '+ts.createPrinter().printNode(ts.EmitHint.Unspecified,fn,ast),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{module:loaded,exports:loaded.exports,URL,Date,...globals,require:()=>jsxRuntime});return loaded.exports[name];
+}
+await test('past-due and ending notices use existing dashboard data and exclude the welcome banner',async()=>{
+ for(const status of ['past_due','active']){
+  const fn=isolatedUi('src/app/client/dashboard/page.tsx','ProUpgradeWelcome',{Link:'a',X:'svg',clientButtonClass:{secondary:'button'},useState:()=>[true,()=>{}],useEffect:()=>{}});
+  const billing={status,cancelAtPeriodEnd:true,currentPeriodEnd:'2026-12-01T00:00:00Z'};
+  const view=fn({plan:'pro',loading:false,billing}),text=uiText(view);
+  assert.ok(text.includes(status==='past_due'?'Your last payment failed. Update your card to keep Pro.':'Your Pro plan ends on'));
+  assert.ok(!text.includes('everything'));assert.equal(uiNodes(view).filter(n=>n.type==='a'&&n.props.href==='/client/billing').length,1);
+  assert.equal(fn({plan:'free',loading:false,billing}),null);assert.equal(fn({plan:'pro',loading:true,billing}),null);
+ }
+});
+await test('all four locked sidebar links open the existing modal; paid links retain navigation',async()=>{
+ const items=[['Contacts','contacts'],['Tap to Share','tap-to-share'],['Analytics','analytics'],['Integrations','integrations']].map(([label,feature])=>({label,feature,href:'/client/'+feature,icon:'svg'}));
+ let opened=0,navigated=0;
+ const fn=isolatedUi('src/components/ClientSidebar.tsx','ClientNavLinks',{Link:'a',Lock:'svg',clientNavItems:items,isClientFeatureLocked:(_feature,plan)=>plan==='free',openUpgradeToProModal:()=>{opened++;}});
+ for(const plan of ['free','pro']){
+  for(const link of uiNodes(fn({pathname:'/client/dashboard',plan,onNavigate:()=>{navigated++;}})).filter(n=>n.type==='a')){
+   let prevented=false;link.props.onClick({preventDefault:()=>{prevented=true;}});assert.equal(prevented,plan==='free');
+  }
+ }
+ assert.equal(opened,4);assert.equal(navigated,8);
+ const overlay=isolatedUi('src/app/client/dashboard/page.tsx','LockedPreviewOverlay',{UpgradeToProButton:'upgrade'});
+ assert.equal(overlay({icon:'svg',title:'Unlock with Pro',description:'Analytics'}).type,'upgrade');
+});
+await test('display pricing is shared without changing the upgrade modal',async()=>{
+ const file='src/components/UpgradeToProModal.tsx',before=execFileSync('git',['show','c1a9d013cb5dd303440a772ed5f12767a5565c23:'+file],{encoding:'utf8'});
+ assert.equal(pageFunction(fs.readFileSync(file,'utf8'),'UpgradeToProModal').fn.getText(),pageFunction(before,'UpgradeToProModal').fn.getText());
+ assert.equal(pricingFixture().proPricing.monthly.price,'£5.99');assert.equal(pricingFixture().proPricing.annual.price,'£59.99');
+ for(const file of ['src/app/client/billing/pay/PaymentClient.tsx','src/app/client/billing/page.tsx'])assert.ok(fs.readFileSync(file,'utf8').includes("from '@/lib/pro-pricing'"));
+});
+await test('payment summary is compact, switch reloads the interval and Back restores history',async()=>{
+ for(const interval of ['monthly','annual']){
+  const loaded={exports:{}},state=[{},false,interval];let cursor=0,back=0,replaced='';
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/app/client/billing/pay/PaymentClient.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{module:loaded,exports:loaded.exports,window:{history:{length:2,back:()=>{back++;}},location:{replace:url=>{replaced=url;}}},require:name=>name==='react'?{useState:()=>[state[cursor++],()=>{}],useRef:()=>({current:null}),useEffect:()=>{}}:name==='react/jsx-runtime'?jsxRuntime:name.endsWith('/ClientPortalShell')?{ClientPortalPage:'main',ClientPortalHeader:'header',clientButtonClass:{secondary:'button'}}:name.endsWith('/pro-pricing')?pricingFixture():{}});
+  const view=loaded.exports.default(),text=uiText(view);assert.ok(text.includes(pricingFixture().proPricing[interval].price));assert.ok(!text.includes('Contacts and lead capture'));
+  const header=uiNodes(view).find(n=>n.type==='header');header.props.action.props.onClick();assert.equal(back,1);
+  const link=uiNodes(view).find(n=>n.type==='a'&&n.props.href?.startsWith('/client/billing/pay?interval='));let prevented=false;link.props.onClick({preventDefault:()=>{prevented=true;}});assert.ok(prevented);assert.equal(replaced,'/client/billing/pay?interval='+(interval==='monthly'?'annual':'monthly'));
+ }
+});
+await test('authenticated identity supplies contact without changing auth checks',async()=>{
+ const loaded={exports:{}},identity={id:user,email:'account@fixture.invalid',user_metadata:{full_name:'  DMI Customer  '}};
+ vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/lib/stripe/client-identity.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module:loaded,exports:loaded.exports,require:name=>name.endsWith('/client-context')?{bearerTokenFromRequest:()=> 'fixture',createApiSupabaseClient:()=>({auth:{getUser:async()=>({data:{user:identity},error:null})}})}:{}});
+ const result=await loaded.exports.requireBillingIdentity({});assert.equal(result.userId,user);assert.equal(result.email,identity.email);assert.equal(result.name,'DMI Customer');
+ for(const file of ['src/lib/client-feature-access.ts','src/lib/entitlements/index.ts'])assert.equal(fs.readFileSync(file,'utf8'),beforeDesign(file));
 });
 console.log(`Simple billing full ${passed}/${passed}`);
